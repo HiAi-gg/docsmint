@@ -1,0 +1,33 @@
+{
+  "name": "hiai-docs",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "AI-native knowledge base. Markdown-first, auto-embeddings, self-hostable.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hiai-gg/hiai-docs.git"
+  },
+  "homepage": "https://github.com/hiai-gg/hiai-docs#readme",
+  "bugs": {
+    "url": "https://github.com/hiai-gg/hiai-docs/issues"
+  },
+  "keywords": [
+    "knowledge-base",
+    "wiki",
+    "markdown",
+    "ai-embeddings",
+    "rag",
+    "self-hosted",
+    "pgvector"
+  ],
+  "engines": {
+    "bun": ">= 1.3.14"
+  },
+  "scripts": {
+    "dev": "docker compose up -d",
+    "build": "docker compose build",
+    "start": "docker compose up -d",
+    "stop": "docker compose down"
+  }
+}

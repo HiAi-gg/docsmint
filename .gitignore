@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+bun.lock
+
+# Build outputs
+dist/
+build/
+.svelte-kit/
+.next/
+.output/
+
+# Paraglide generated (regenerated on build)
+frontend/src/lib/paraglide/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Docker dev overrides
+docker-compose.dev.yml
+
+# Database
+*.sqlite
+*.sqlite-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+
+# OpenCode
+.opencode/
+
+# MinIO data (local dev)
+minio_data/
+
+# Ollama models (local dev)
+ollama_data/
+
+# Backup
+backup/

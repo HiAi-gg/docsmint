@@ -1,0 +1,49 @@
+{
+  "name": "@hiai-docs/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --fix src/",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@inlang/paraglide-js": "^2.18.1",
+    "@inlang/paraglide-sveltekit": "^0.16.1",
+    "@tiptap/core": "^3.23.5",
+    "@tiptap/extension-code-block-lowlight": "^3.18.0",
+    "@tiptap/extension-highlight": "^3.18.0",
+    "@tiptap/extension-link": "^3.18.0",
+    "@tiptap/markdown": "^3.18.0",
+    "@tiptap/pm": "^3.23.5",
+    "@tiptap/starter-kit": "^3.23.5",
+    "better-auth": "^1.6.11",
+    "bits-ui": "^2.18.1",
+    "clsx": "^2.1.1",
+    "lowlight": "^3.3.0",
+    "lucide-svelte": "^0.577.0",
+    "shadcn-svelte": "^1.2.7",
+    "svelte-tiptap": "^3.0.1",
+    "tailwind-merge": "^3.6.0",
+    "tailwind-variants": "^3.2.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.0",
+    "@sveltejs/adapter-node": "^5.2.11",
+    "@sveltejs/kit": "^2.60.0",
+    "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^25.9.1",
+    "svelte": "^5.55.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.8.0",
+    "vite": "^7.3.1",
+    "vitest": "^3.0.0"
+  }
+}

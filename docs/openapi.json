@@ -1,0 +1,385 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "hiai-docs API",
+    "version": "0.1.0",
+    "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
+    "contact": {
+      "name": "hiai-gg",
+      "url": "https://github.com/hiai-gg/hiai-docs"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    { "url": "http://localhost:50700", "description": "Local development" }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Health check" },
+    { "name": "Auth", "description": "Authentication" },
+    { "name": "Documents", "description": "Document CRUD" },
+    { "name": "Folders", "description": "Folder management" },
+    { "name": "Tags", "description": "Tag management" },
+    { "name": "Versions", "description": "Document version history" },
+    { "name": "Search", "description": "Hybrid full-text + semantic search" },
+    { "name": "Share", "description": "Sharing and guest access" }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Health check",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/documents": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "List documents",
+        "operationId": "listDocuments",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [
+          { "name": "folderId", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "tag", "in": "query", "schema": { "type": "string", "format": "uuid" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1, "minimum": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "minimum": 1, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated list of documents",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DocumentListResponse" } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Documents"],
+        "summary": "Create document",
+        "operationId": "createDocument",
+        "security": [{ "sessionAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateDocument" } } }
+        },
+        "responses": {
+          "201": { "description": "Document created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/documents/{id}": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "Get document with tags",
+        "operationId": "getDocument",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Document details", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DocumentWithTags" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["Documents"],
+        "summary": "Update document (auto-saves version)",
+        "operationId": "updateDocument",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateDocument" } } }
+        },
+        "responses": {
+          "200": { "description": "Document updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Documents"],
+        "summary": "Delete document",
+        "operationId": "deleteDocument",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Document deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/folders": {
+      "get": {
+        "tags": ["Folders"],
+        "summary": "List folders",
+        "operationId": "listFolders",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "parentId", "in": "query", "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "List of folders", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Folder" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Folders"],
+        "summary": "Create folder",
+        "operationId": "createFolder",
+        "security": [{ "sessionAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateFolder" } } }
+        },
+        "responses": {
+          "201": { "description": "Folder created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Folder" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/folders/{id}": {
+      "patch": {
+        "tags": ["Folders"],
+        "summary": "Update folder",
+        "operationId": "updateFolder",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateFolder" } } } },
+        "responses": {
+          "200": { "description": "Folder updated" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Folders"],
+        "summary": "Delete folder",
+        "operationId": "deleteFolder",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Folder deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "tags": ["Tags"],
+        "summary": "List tags with document counts",
+        "operationId": "listTags",
+        "security": [{ "sessionAuth": [] }],
+        "responses": {
+          "200": { "description": "List of tags", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TagWithCount" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "tags": ["Tags"],
+        "summary": "Create tag",
+        "operationId": "createTag",
+        "security": [{ "sessionAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTag" } } } },
+        "responses": {
+          "201": { "description": "Tag created" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "Tag name already exists" }
+        }
+      }
+    },
+    "/api/tags/{id}": {
+      "patch": {
+        "tags": ["Tags"],
+        "summary": "Update tag",
+        "operationId": "updateTag",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateTag" } } } },
+        "responses": {
+          "200": { "description": "Tag updated" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["Tags"],
+        "summary": "Delete tag",
+        "operationId": "deleteTag",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Tag deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/documents/{id}/tags": {
+      "post": {
+        "tags": ["Tags"],
+        "summary": "Add tag to document",
+        "operationId": "addTagToDocument",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "tagId": { "type": "string", "format": "uuid" } }, "required": ["tagId"] } } } },
+        "responses": {
+          "201": { "description": "Tag added" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/documents/{id}/tags/{tagId}": {
+      "delete": {
+        "tags": ["Tags"],
+        "summary": "Remove tag from document",
+        "operationId": "removeTagFromDocument",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "tagId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Tag removed" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/documents/{id}/versions": {
+      "get": {
+        "tags": ["Versions"],
+        "summary": "List document versions",
+        "operationId": "listVersions",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "List of versions", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Version" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/documents/{id}/versions/{vid}": {
+      "get": {
+        "tags": ["Versions"],
+        "summary": "Get specific version",
+        "operationId": "getVersion",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "vid", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Version details" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": ["Search"],
+        "summary": "Hybrid full-text + semantic search",
+        "operationId": "search",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" }, "description": "Search query" },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20, "maximum": 100 } }
+        ],
+        "responses": {
+          "200": { "description": "Search results", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/search/suggest": {
+      "get": {
+        "tags": ["Search"],
+        "summary": "Title autocomplete suggestions",
+        "operationId": "searchSuggest",
+        "security": [{ "sessionAuth": [] }],
+        "parameters": [{ "name": "q", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "Suggestions", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SearchSuggestion" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/share/link": {
+      "post": {
+        "tags": ["Share"],
+        "summary": "Create share link",
+        "operationId": "createShareLink",
+        "security": [{ "sessionAuth": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateShareLink" } } } },
+        "responses": {
+          "201": { "description": "Share link created" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/share/{token}": {
+      "get": {
+        "tags": ["Share"],
+        "summary": "Access shared document/folder (public)",
+        "operationId": "accessShareLink",
+        "parameters": [
+          { "name": "token", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "password", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Shared content" },
+          "401": { "description": "Password required or invalid" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "description": "Rate limited" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "better-auth.session_token",
+        "description": "Session cookie from Better Auth"
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Authentication required", "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string", "example": "Unauthorized" } } } } } },
+      "BadRequest": { "description": "Invalid input", "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string" }, "details": { "type": "object" } } } } } },
+      "NotFound": { "description": "Resource not found", "content": { "application/json": { "schema": { "type": "object", "properties": { "error": { "type": "string", "example": "Document not found" } } } } } }
+    },
+    "schemas": {
+      "HealthResponse": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" }, "timestamp": { "type": "string", "format": "date-time" } } },
+      "Document": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "ownerId": { "type": "string", "format": "uuid" }, "folderId": { "type": "string", "format": "uuid", "nullable": true }, "title": { "type": "string" }, "content": { "type": "string" }, "contentTipex": { "nullable": true }, "metadata": { "nullable": true }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "DocumentWithTags": { "allOf": [{ "$ref": "#/components/schemas/Document" }, { "type": "object", "properties": { "tags": { "type": "array", "items": { "$ref": "#/components/schemas/Tag" } } } }] },
+      "DocumentListResponse": { "type": "object", "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Document" } }, "total": { "type": "integer" }, "page": { "type": "integer" }, "limit": { "type": "integer" } } },
+      "CreateDocument": { "type": "object", "properties": { "title": { "type": "string", "default": "Untitled" }, "content": { "type": "string" }, "folderId": { "type": "string", "format": "uuid" } } },
+      "UpdateDocument": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" }, "contentTipex": {}, "metadata": {}, "folderId": { "type": "string", "format": "uuid", "nullable": true } } },
+      "Folder": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "ownerId": { "type": "string", "format": "uuid" }, "parentId": { "type": "string", "format": "uuid", "nullable": true }, "name": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" } } },
+      "CreateFolder": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "parentId": { "type": "string", "format": "uuid" } } },
+      "UpdateFolder": { "type": "object", "properties": { "name": { "type": "string" }, "parentId": { "type": "string", "format": "uuid", "nullable": true } } },
+      "Tag": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "color": { "type": "string", "nullable": true }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "TagWithCount": { "allOf": [{ "$ref": "#/components/schemas/Tag" }, { "type": "object", "properties": { "documentCount": { "type": "integer" } } }] },
+      "CreateTag": { "type": "object", "required": ["name"], "properties": { "name": { "type": "string" }, "color": { "type": "string" } } },
+      "UpdateTag": { "type": "object", "properties": { "name": { "type": "string" }, "color": { "type": "string" } } },
+      "Version": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "documentId": { "type": "string", "format": "uuid" }, "content": { "type": "string" }, "contentTipex": { "nullable": true }, "createdBy": { "type": "string", "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "SearchResponse": { "type": "object", "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } }, "total": { "type": "integer" }, "page": { "type": "integer" }, "limit": { "type": "integer" } } },
+      "SearchResult": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "title": { "type": "string" }, "snippet": { "type": "string" }, "score": { "type": "number" }, "folder_id": { "type": "string", "format": "uuid", "nullable": true }, "created_at": { "type": "string", "format": "date-time" }, "updated_at": { "type": "string", "format": "date-time" } } },
+      "SearchSuggestion": { "type": "object", "properties": { "id": { "type": "string", "format": "uuid" }, "title": { "type": "string" }, "score": { "type": "number" } } },
+      "CreateShareLink": { "type": "object", "properties": { "documentId": { "type": "string", "format": "uuid" }, "folderId": { "type": "string", "format": "uuid" }, "password": { "type": "string" }, "expiresIn": { "type": "integer", "description": "Seconds until expiration" } } }
+    }
+  }
+}

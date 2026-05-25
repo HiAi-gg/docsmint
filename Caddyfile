@@ -1,0 +1,31 @@
+# hiai-docs Caddyfile
+
+:80 {
+	# For local development / Docker internal
+	reverse_proxy /api/* api:50700
+	reverse_proxy web:50701
+
+	encode gzip
+	log
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
+
+docs.{$DOMAIN:localhost} {
+	# For production — Caddy auto-provisions TLS
+	reverse_proxy /api/* api:50700
+	reverse_proxy web:50701
+
+	encode gzip
+	log
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}
