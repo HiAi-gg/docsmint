@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronRight, FileText, Folder, Plus } from "lucide-svelte";
+import { Check, ChevronRight, Copy, FileText, Folder, Plus } from "lucide-svelte";
 import { onMount } from "svelte";
 import { flip } from "svelte/animate";
 import { type DndEvent, dndzone } from "svelte-dnd-action";
@@ -22,6 +22,7 @@ import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
 import { cn } from "$lib/utils";
+import { copyToClipboard } from "$lib/utils/clipboard.js";
 
 interface FolderItem {
 	id: string;
@@ -41,6 +42,9 @@ let originalFolderByDoc = new Map<string, string | null>();
 let expandedFolderIds = $state<Set<string>>(new Set());
 let loadError = $state<string | null>(null);
 let dragDisabled = $state(false);
+// True while a drag is in flight across any zone. Folder auto-expand on
+// hover should only fire during a drag, not on plain mouseover.
+let isDraggingGlobal = $state(false);
 
 let rootItems = $state<DndDoc[]>([]);
 let folderDocsMap = $state<Record<string, DndDoc[]>>({});
@@ -52,6 +56,22 @@ let newFolderSubmitting = $state(false);
 
 let expandTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingExpandFolderId = $state<string | null>(null);
+
+let copiedDocId = $state<string | null>(null);
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function handleCopyLink(docId: string) {
+	if (typeof window === "undefined") return;
+	const url = `${window.location.origin}/docs/${docId}`;
+	const ok = await copyToClipboard(url);
+	if (!ok) return;
+	copiedDocId = docId;
+	if (copyTimer) clearTimeout(copyTimer);
+	copyTimer = setTimeout(() => {
+		copiedDocId = null;
+		copyTimer = null;
+	}, 2000);
+}
 
 function clearExpandTimer() {
 	if (expandTimer !== null) {
@@ -207,6 +227,7 @@ function setZoneItems(zoneFolderId: string | null, next: DndDoc[]) {
 
 function handleConsider(zoneFolderId: string | null) {
 	return (e: CustomEvent<DndEvent<DndDoc>>) => {
+		isDraggingGlobal = true;
 		const next = sanitizeItems(e.detail.items);
 		setZoneItems(zoneFolderId, next);
 		clearExpandTimer();
@@ -219,6 +240,7 @@ function handleFinalize(zoneFolderId: string | null) {
 		setZoneItems(zoneFolderId, next);
 		clearExpandTimer();
 		void persistZoneChanges(zoneFolderId, next);
+		isDraggingGlobal = false;
 	};
 }
 
@@ -262,7 +284,7 @@ async function persistZoneChanges(
     onfinalize={handleFinalize(null)}
   >
     {#each rootItems as doc (doc.id)}
-      <div animate:flip={{ duration: FLIP_MS }}>
+      <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
         <a
           href={`/docs/${doc.id}`}
           data-sveltekit-noscroll
@@ -275,6 +297,19 @@ async function persistZoneChanges(
           <FileText class="size-4 shrink-0 text-muted-foreground" />
           <span class="min-w-0 truncate">{doc.title}</span>
         </a>
+        <button
+          type="button"
+          class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {copiedDocId === doc.id ? 'opacity-100' : ''}"
+          aria-label={m.action_copy_link()}
+          title={m.action_copy_link()}
+          onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); void handleCopyLink(doc.id); }}
+        >
+          {#if copiedDocId === doc.id}
+            <Check class="size-3.5" />
+          {:else}
+            <Copy class="size-3.5" />
+          {/if}
+        </button>
       </div>
     {/each}
   </div>
@@ -285,8 +320,13 @@ async function persistZoneChanges(
     <div
       role="group"
       aria-label={folder.name}
-      onmouseenter={() => scheduleFolderExpand(folder.id)}
-      onmouseleave={clearExpandTimer}
+      onmouseenter={() => {
+        if (isDraggingGlobal && !expandedFolderIds.has(folder.id))
+          scheduleFolderExpand(folder.id);
+      }}
+      onmouseleave={() => {
+        if (isDraggingGlobal) clearExpandTimer();
+      }}
     >
       <button
         type="button"
@@ -310,7 +350,7 @@ async function persistZoneChanges(
             onfinalize={handleFinalize(folder.id)}
           >
             {#each folderDocs as doc (doc.id)}
-              <div animate:flip={{ duration: FLIP_MS }}>
+              <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
                 <a
                   href={`/docs/${doc.id}`}
                   data-sveltekit-noscroll
@@ -323,6 +363,19 @@ async function persistZoneChanges(
                   <FileText class="size-4 shrink-0 text-muted-foreground" />
                   <span class="min-w-0 truncate">{doc.title}</span>
                 </a>
+                <button
+                  type="button"
+                  class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {copiedDocId === doc.id ? 'opacity-100' : ''}"
+                  aria-label={m.action_copy_link()}
+                  title={m.action_copy_link()}
+                  onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); void handleCopyLink(doc.id); }}
+                >
+                  {#if copiedDocId === doc.id}
+                    <Check class="size-3.5" />
+                  {:else}
+                    <Copy class="size-3.5" />
+                  {/if}
+                </button>
               </div>
             {/each}
           </div>

@@ -22,18 +22,23 @@ import {
 	addTagToDocument,
 	listTags,
 	removeTagFromDocument,
+	type Tag,
 } from "$lib/api/tags";
+import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import type { TipexEditorOutput } from "$lib/components/editor/TipexEditor.svelte";
 import TipexEditor from "$lib/components/editor/TipexEditor.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
+import ScrollToTop from "$lib/components/ScrollToTop.svelte";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import * as m from "$lib/paraglide/messages.js";
 
 const { data } = $props();
@@ -53,6 +58,9 @@ let showMenu = $state(false);
 let loading = $state(true);
 let error = $state<string | null>(null);
 let showShareDialog = $state(false);
+let showCreateTagDialog = $state(false);
+let showDeleteDialog = $state(false);
+let deleteBusy = $state(false);
 
 // Tag management
 type DocTag = { id: string; name: string; color: string };
@@ -163,13 +171,25 @@ async function handleTitleUpdate(newTitle: string) {
 
 async function handleDelete() {
 	showMenu = false;
-	if (!window.confirm(m.doc_delete_confirm_hard())) return;
+	showDeleteDialog = true;
+}
+
+async function confirmDelete() {
+	if (deleteBusy) return;
+	deleteBusy = true;
 	try {
 		await deleteDocument(data.document.id);
+		showDeleteDialog = false;
 		goto("/");
 	} catch (_e) {
 		error = m.doc_delete_error();
+	} finally {
+		deleteBusy = false;
 	}
+}
+
+function cancelDelete() {
+	showDeleteDialog = false;
 }
 
 function handleExport() {
@@ -212,10 +232,23 @@ async function handleAddTag(tagId: string) {
 		await addTagToDocument(data.document.id, tagId);
 		if (tag) tags = [...tags, { id: tag.id, name: tag.name, color: tag.color }];
 		availableTags = availableTags.filter((t) => t.id !== tagId);
-	} catch (_e) {
+	} catch (e) {
+		console.error("handleAddTag: addTagToDocument failed", e);
 		setError(m.tag_add_error());
 	} finally {
 		tagBusy = false;
+	}
+}
+
+async function handleTagCreated(newTag: Tag) {
+	// Add to available tags (in case it wasn't already there) and assign
+	// to this document immediately so the user doesn't need a second click.
+	availableTags = [
+		...availableTags.filter((t) => t.id !== newTag.id),
+		{ id: newTag.id, name: newTag.name, color: newTag.color ?? "#888" },
+	];
+	if (!assignedTagIds.has(newTag.id)) {
+		await handleAddTag(newTag.id);
 	}
 }
 
@@ -428,6 +461,14 @@ async function handleRemoveTag(tagId: string) {
                 </DropdownMenuItem>
               {/each}
             {/if}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              disabled={tagBusy}
+              onSelect={() => (showCreateTagDialog = true)}
+            >
+              <Plus class="tag-swatch" />
+              {m.tags_create_new()}
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -449,6 +490,23 @@ async function handleRemoveTag(tagId: string) {
     </main>
 
     <ShareDialog bind:open={showShareDialog} documentId={data.document.id} documentTitle={title} />
+    <TagCreateDialog
+      bind:open={showCreateTagDialog}
+      mode="create"
+      onCreated={handleTagCreated}
+    />
+    <ConfirmDialog
+      bind:open={showDeleteDialog}
+      title={m.action_delete()}
+      description={m.doc_delete_confirm_hard()}
+      confirmLabel={m.action_delete()}
+      cancelLabel={m.action_cancel()}
+      variant="destructive"
+      busy={deleteBusy}
+      onConfirm={confirmDelete}
+      onCancel={cancelDelete}
+    />
+    <ScrollToTop />
   </div>
 {/if}
 

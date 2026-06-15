@@ -21,6 +21,7 @@
     "@tiptap/extension-collaboration-cursor": "^2.26.2",
     "@tiptap/extension-highlight": "^3.26.1",
     "@tiptap/extension-link": "^3.26.1",
+    "@tiptap/extension-text-align": "^3.26.1",
     "@tiptap/markdown": "^3.26.1",
     "@tiptap/pm": "^3.26.1",
     "@tiptap/starter-kit": "^3.26.1",

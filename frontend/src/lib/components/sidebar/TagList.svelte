@@ -10,6 +10,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import { cn } from "$lib/utils";
 import * as m from "$lib/paraglide/messages.js";
 
@@ -18,6 +19,8 @@ let activeId = $state<string | null>(null);
 let loadError = $state<string | null>(null);
 let showCreateDialog = $state(false);
 let editTarget = $state<Tag | null>(null);
+let showDeleteDialog = $state(false);
+let deleteTarget = $state<Tag | null>(null);
 let busy = $state(false);
 
 async function refresh() {
@@ -55,14 +58,26 @@ function handleDialogClose() {
 	editTarget = null;
 }
 
-async function handleDelete(t: Tag) {
-	if (busy) return;
-	if (!window.confirm(m.doc_delete_confirm_hard())) return;
+function startDelete(t: Tag) {
+	deleteTarget = t;
+	showDeleteDialog = true;
+}
+
+function cancelDelete() {
+	showDeleteDialog = false;
+	deleteTarget = null;
+}
+
+async function confirmDelete() {
+	const t = deleteTarget;
+	if (!t || busy) return;
 	busy = true;
 	try {
 		await deleteTag(t.id);
 		tags = tags.filter((tag) => tag.id !== t.id);
 		if (activeId === t.id) activeId = null;
+		showDeleteDialog = false;
+		deleteTarget = null;
 	} catch (e) {
 		console.error("TagList: deleteTag failed", e);
 		loadError = m.error_generic();
@@ -129,7 +144,7 @@ async function handleDelete(t: Tag) {
             </DropdownMenuItem>
             <DropdownMenuItem
               class="text-destructive focus:text-destructive"
-              onSelect={() => handleDelete(tag)}
+              onSelect={() => startDelete(tag)}
             >
               {m.action_delete()}
             </DropdownMenuItem>
@@ -156,4 +171,15 @@ async function handleDelete(t: Tag) {
   onCreated={handleCreated}
   onUpdated={handleUpdated}
   onClose={handleDialogClose}
+/>
+
+<ConfirmDialog
+  bind:open={showDeleteDialog}
+  title={m.tags_delete_title()}
+  description={m.tags_delete_description()}
+  confirmLabel={m.action_delete()}
+  variant="destructive"
+  busy={busy}
+  onConfirm={confirmDelete}
+  onCancel={cancelDelete}
 />

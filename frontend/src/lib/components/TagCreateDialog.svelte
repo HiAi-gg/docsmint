@@ -61,6 +61,14 @@ let submitError = $state<string | null>(null);
 let submitting = $state(false);
 
 const isEdit = $derived(mode === "edit");
+const dialogTitle = $derived(isEdit ? m.tags_edit() : m.tags_new());
+const submitLabel = $derived(
+	submitting
+		? m.action_loading()
+		: isEdit
+			? m.action_save()
+			: m.action_create(),
+);
 
 function reset() {
 	name = "";
@@ -175,7 +183,7 @@ function handleInputKeydown(e: KeyboardEvent) {
 
 <Dialog bind:open onOpenChange={handleOpenChange}>
   <DialogHeader>
-    <DialogTitle>{m.tags_new()}</DialogTitle>
+    <DialogTitle>{dialogTitle}</DialogTitle>
     <DialogDescription>{m.tags_name_placeholder()}</DialogDescription>
   </DialogHeader>
 
@@ -263,11 +271,7 @@ function handleInputKeydown(e: KeyboardEvent) {
       {#if submitting}
         <Loader2 class="mr-1 size-4 animate-spin" />
       {/if}
-      {submitting
-        ? m.action_loading()
-        : isEdit
-          ? m.action_save()
-          : m.action_create()}
+      {submitLabel}
     </Button>
   </DialogFooter>
 </Dialog>

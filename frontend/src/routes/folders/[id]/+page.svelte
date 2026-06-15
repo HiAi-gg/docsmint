@@ -17,6 +17,7 @@ import DocumentCard from "$lib/components/DocumentCard.svelte";
 import FolderCard from "$lib/components/FolderCard.svelte";
 import { Badge } from "$lib/components/ui/badge/index.js";
 import { Button } from "$lib/components/ui/button/index.js";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -30,6 +31,9 @@ const { data } = $props();
 let sortBy = $state<SortOption>("updated");
 let editingName = $state(false);
 let editName = $state("");
+let showDeleteDialog = $state(false);
+let deleteTargetId = $state<string | null>(null);
+let deleteBusy = $state(false);
 
 /** Sort documents by the selected option. */
 const sortedDocuments = $derived.by(() => {
@@ -83,16 +87,31 @@ function handleRenameKeydown(e: KeyboardEvent) {
 }
 
 function handleDeleteFolder(id: string) {
-	if (!confirm(m.folders_delete_confirm())) {
-		return;
+	deleteTargetId = id;
+	showDeleteDialog = true;
+}
+
+function cancelDeleteFolder() {
+	showDeleteDialog = false;
+	deleteTargetId = null;
+}
+
+async function confirmDeleteFolder() {
+	const id = deleteTargetId;
+	if (!id || deleteBusy) return;
+	deleteBusy = true;
+	try {
+		await apiFetch(`/api/folders/${id}`, { method: "DELETE" });
+		data.folder.children = data.folder.children.filter(
+			(c: Folder) => c.id !== id,
+		);
+		showDeleteDialog = false;
+		deleteTargetId = null;
+	} catch (e: unknown) {
+		console.error("Failed to delete folder", e);
+	} finally {
+		deleteBusy = false;
 	}
-	apiFetch(`/api/folders/${id}`, { method: "DELETE" })
-		.then(() => {
-			data.folder.children = data.folder.children.filter(
-				(c: Folder) => c.id !== id,
-			);
-		})
-		.catch((e: unknown) => console.error("Failed to delete folder", e));
 }
 
 function handleRenameFolder(id: string) {
@@ -286,3 +305,15 @@ function getSortLabel(option: SortOption): string {
     {/if}
   {/if}
 </div>
+
+<ConfirmDialog
+  bind:open={showDeleteDialog}
+  title={m.folders_delete_title()}
+  description={m.folders_delete_description()}
+  confirmLabel={m.action_delete()}
+  cancelLabel={m.action_cancel()}
+  variant="destructive"
+  busy={deleteBusy}
+  onConfirm={confirmDeleteFolder}
+  onCancel={cancelDeleteFolder}
+/>

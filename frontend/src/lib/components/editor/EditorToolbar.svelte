@@ -2,8 +2,14 @@
 <script lang="ts">
 import type { Editor } from "@tiptap/core";
 import {
+	AlignCenter,
+	AlignJustify,
+	AlignLeft,
+	AlignRight,
 	Bold,
+	Check,
 	Code2,
+	Copy,
 	Heading1,
 	Heading2,
 	Heading3,
@@ -14,6 +20,9 @@ import {
 	List,
 	ListOrdered,
 	Loader2,
+	Redo,
+	Smile,
+	Undo,
 } from "lucide-svelte";
 import {
 	isFileSizeAllowed,
@@ -56,9 +65,41 @@ const HIGHLIGHT_COLORS = [
 
 type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]["value"];
 
+// Curated list of 20 common emojis shown in the picker popover. Kept short
+// and useful (faces, gestures, common objects) instead of an exhaustive
+// catalog — the native OS emoji picker is still one click away on most
+// platforms.
+const EMOJIS = [
+	"😀",
+	"😂",
+	"😍",
+	"🤔",
+	"😎",
+	"😢",
+	"😡",
+	"🥳",
+	"👍",
+	"👏",
+	"🙏",
+	"🔥",
+	"⭐",
+	"✅",
+	"❌",
+	"❤️",
+	"🎉",
+	"💡",
+	"📌",
+	"🚀",
+] as const;
+
+type TextAlignValue = "left" | "center" | "right" | "justify";
+
 let linkDialogOpen = $state(false);
 let highlightPickerOpen = $state(false);
 let highlightPickerRoot = $state<HTMLDivElement | null>(null);
+let emojiPickerOpen = $state(false);
+let emojiPickerRoot = $state<HTMLDivElement | null>(null);
+let copyConfirmation = $state(false);
 
 // TipTap mutates its internal state during transactions but doesn't bump
 // Svelte's reactive graph, so template calls to `editor.isActive(...)` would
@@ -105,6 +146,10 @@ const activeStates = $derived.by<ActiveStates>(() => {
 		codeBlock: editor.isActive("codeBlock"),
 		link: editor.isActive("link"),
 		highlight: editor.isActive("highlight"),
+		alignLeft: editor.isActive({ textAlign: "left" }),
+		alignCenter: editor.isActive({ textAlign: "center" }),
+		alignRight: editor.isActive({ textAlign: "right" }),
+		alignJustify: editor.isActive({ textAlign: "justify" }),
 	};
 });
 
@@ -216,6 +261,52 @@ function clearHighlight() {
 	highlightPickerOpen = false;
 }
 
+function toggleEmojiPicker() {
+	emojiPickerOpen = !emojiPickerOpen;
+}
+
+function insertEmoji(emoji: string) {
+	if (!editor) return;
+	editor.chain().focus().insertContent(emoji).run();
+	emojiPickerOpen = false;
+}
+
+function applyAlignment(value: TextAlignValue) {
+	if (!editor) return;
+	editor.chain().focus().setTextAlign(value).run();
+}
+
+function undo() {
+	if (!editor) return;
+	editor.chain().focus().undo().run();
+}
+
+function redo() {
+	if (!editor) return;
+	editor.chain().focus().redo().run();
+}
+
+// Copy the editor's current markdown (falling back to plain text when the
+// Markdown extension's getMarkdown() helper is not available, e.g. while a
+// collaboration doc is mounted without the markdown plugin). The Copy
+// button shows a brief "Copied" confirmation next to the icon for ~1.5s.
+async function copyContent() {
+	if (!editor) return;
+	const ed = editor as Editor & { getMarkdown?: () => string };
+	const content = ed.getMarkdown ? ed.getMarkdown() : editor.getText();
+	try {
+		await navigator.clipboard.writeText(content);
+		copyConfirmation = true;
+		setTimeout(() => {
+			copyConfirmation = false;
+		}, 1500);
+	} catch (_err) {
+		// Clipboard API can throw if the page is not focused or the
+		// permission was denied; swallow — the user can retry or copy
+		// manually from the document body.
+	}
+}
+
 // --- Image upload state ---
 let imageFileInput = $state<HTMLInputElement | null>(null);
 let imageUploading = $state(false);
@@ -269,19 +360,33 @@ async function handleImageSelected(event: Event) {
 	}
 }
 
-// Close the picker when clicking outside its root element.
+// Close the highlight + emoji pickers when clicking outside their root
+// element. Both popovers share the same outside-pointer + Escape
+// dismissal logic; the only difference is which open flag and root
+// element they read.
 $effect(() => {
-	if (!highlightPickerOpen) return;
+	if (!highlightPickerOpen && !emojiPickerOpen) return;
 	function onDocPointer(e: PointerEvent) {
-		const root = highlightPickerRoot;
-		if (!root) return;
 		const target = e.target as Node | null;
-		if (target && !root.contains(target)) {
-			highlightPickerOpen = false;
+		if (!target) return;
+		if (highlightPickerOpen) {
+			const root = highlightPickerRoot;
+			if (root && !root.contains(target)) {
+				highlightPickerOpen = false;
+			}
+		}
+		if (emojiPickerOpen) {
+			const root = emojiPickerRoot;
+			if (root && !root.contains(target)) {
+				emojiPickerOpen = false;
+			}
 		}
 	}
 	function onKey(e: KeyboardEvent) {
-		if (e.key === "Escape") highlightPickerOpen = false;
+		if (e.key === "Escape") {
+			highlightPickerOpen = false;
+			emojiPickerOpen = false;
+		}
 	}
 	document.addEventListener("pointerdown", onDocPointer);
 	document.addEventListener("keydown", onKey);
@@ -391,6 +496,135 @@ $effect(() => {
 			class="visually-hidden-file-input"
 			onchange={handleImageSelected}
 		/>
+
+		<div class="toolbar-divider" aria-hidden="true"></div>
+
+		<div class="emoji-picker" bind:this={emojiPickerRoot}>
+			<button
+				class="toolbar-btn"
+				disabled={isDisabled()}
+				onclick={toggleEmojiPicker}
+				title={m.editor_toolbar_emoji()}
+				aria-label={m.editor_toolbar_emoji()}
+				aria-haspopup="true"
+				aria-expanded={emojiPickerOpen}
+				type="button"
+			>
+				<Smile size={16} />
+			</button>
+
+			{#if emojiPickerOpen}
+				<div class="emoji-popover" role="menu" aria-label={m.editor_toolbar_emoji()}>
+					<div class="emoji-grid">
+						{#each EMOJIS as emoji (emoji)}
+							<button
+								type="button"
+								class="emoji-button"
+								role="menuitem"
+								onclick={() => insertEmoji(emoji)}
+								aria-label={emoji}
+							>
+								{emoji}
+							</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<div class="toolbar-divider" aria-hidden="true"></div>
+
+		<div class="align-group" role="group" aria-label={m.editor_toolbar_align_left()}>
+			<button
+				class="toolbar-btn"
+				class:active={activeStates.alignLeft ?? false}
+				disabled={isDisabled()}
+				onclick={() => applyAlignment("left")}
+				title={m.editor_toolbar_align_left()}
+				aria-label={m.editor_toolbar_align_left()}
+				aria-pressed={activeStates.alignLeft ?? false}
+				type="button"
+			>
+				<AlignLeft size={16} />
+			</button>
+			<button
+				class="toolbar-btn"
+				class:active={activeStates.alignCenter ?? false}
+				disabled={isDisabled()}
+				onclick={() => applyAlignment("center")}
+				title={m.editor_toolbar_align_center()}
+				aria-label={m.editor_toolbar_align_center()}
+				aria-pressed={activeStates.alignCenter ?? false}
+				type="button"
+			>
+				<AlignCenter size={16} />
+			</button>
+			<button
+				class="toolbar-btn"
+				class:active={activeStates.alignRight ?? false}
+				disabled={isDisabled()}
+				onclick={() => applyAlignment("right")}
+				title={m.editor_toolbar_align_right()}
+				aria-label={m.editor_toolbar_align_right()}
+				aria-pressed={activeStates.alignRight ?? false}
+				type="button"
+			>
+				<AlignRight size={16} />
+			</button>
+			<button
+				class="toolbar-btn"
+				class:active={activeStates.alignJustify ?? false}
+				disabled={isDisabled()}
+				onclick={() => applyAlignment("justify")}
+				title={m.editor_toolbar_align_justify()}
+				aria-label={m.editor_toolbar_align_justify()}
+				aria-pressed={activeStates.alignJustify ?? false}
+				type="button"
+			>
+				<AlignJustify size={16} />
+			</button>
+		</div>
+
+		<div class="toolbar-divider" aria-hidden="true"></div>
+
+		<button
+			class="toolbar-btn"
+			disabled={isDisabled()}
+			onclick={undo}
+			title={m.editor_toolbar_undo()}
+			aria-label={m.editor_toolbar_undo()}
+			type="button"
+		>
+			<Undo size={16} />
+		</button>
+		<button
+			class="toolbar-btn"
+			disabled={isDisabled()}
+			onclick={redo}
+			title={m.editor_toolbar_redo()}
+			aria-label={m.editor_toolbar_redo()}
+			type="button"
+		>
+			<Redo size={16} />
+		</button>
+
+		<div class="toolbar-divider" aria-hidden="true"></div>
+
+		<button
+			class="toolbar-btn copy-btn"
+			class:copied={copyConfirmation}
+			disabled={isDisabled()}
+			onclick={copyContent}
+			title={copyConfirmation ? m.editor_toolbar_copied() : m.editor_toolbar_copy()}
+			aria-label={m.editor_toolbar_copy()}
+			type="button"
+		>
+			{#if copyConfirmation}
+				<Check size={16} />
+			{:else}
+				<Copy size={16} />
+			{/if}
+		</button>
 	</div>
 
 	{#if imageError}
@@ -611,5 +845,74 @@ $effect(() => {
 		font-size: 16px;
 		line-height: 1;
 		padding: 0 4px;
+	}
+
+	/* Emoji picker — same popover pattern as the highlight picker, but the
+	   grid cells render an emoji glyph instead of a color swatch. */
+	.emoji-picker {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.emoji-popover {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 20;
+		padding: 8px;
+		background: var(--popover);
+		color: var(--popover-foreground);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		min-width: 220px;
+	}
+
+	.emoji-grid {
+		display: grid;
+		grid-template-columns: repeat(5, 1fr);
+		gap: 4px;
+	}
+
+	.emoji-button {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 36px;
+		height: 36px;
+		font-size: 1.25rem;
+		line-height: 1;
+		background: transparent;
+		border: 1px solid transparent;
+		border-radius: 6px;
+		cursor: pointer;
+		padding: 0;
+		transition: background 0.1s ease, transform 0.1s ease;
+	}
+
+	.emoji-button:hover {
+		background: var(--accent);
+		transform: scale(1.08);
+	}
+
+	.emoji-button:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 1px;
+	}
+
+	/* Text-align group: keeps the four buttons visually grouped together
+	   with a subtle shared background, so users see them as one control. */
+	.align-group {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+	}
+
+	/* Copy button — turn the icon green briefly when the clipboard write
+	   succeeded so users get a clear visual confirmation. */
+	.copy-btn.copied {
+		color: #16a34a;
 	}
 </style>

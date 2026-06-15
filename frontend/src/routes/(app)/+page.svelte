@@ -10,6 +10,8 @@ import {
 } from "$lib/api/documents";
 import * as m from "$lib/paraglide/messages.js";
 import SearchBar from "$lib/components/SearchBar.svelte";
+import ScrollToTop from "$lib/components/ScrollToTop.svelte";
+import { stripMarkdown } from "$lib/utils/strip-markdown";
 
 let recentDocs = $state<Document[]>([]);
 let loading = $state(true);
@@ -134,7 +136,7 @@ const hasDocs = $derived(recentDocs.length > 0);
                   <h3 class="font-medium leading-tight group-hover:text-primary">{doc.title}</h3>
                 </div>
               </div>
-              <p class="mb-3 text-sm text-muted-foreground line-clamp-2">{doc.content?.slice(0, 120) ?? ""}</p>
+              <p class="mb-3 text-sm text-muted-foreground line-clamp-2">{stripMarkdown(doc.content || "").slice(0, 120)}</p>
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-1 text-xs text-muted-foreground">
                   <Clock class="size-3" />
@@ -171,3 +173,5 @@ const hasDocs = $derived(recentDocs.length > 0);
         </div>
       {/if}
     </div>
+
+<ScrollToTop />

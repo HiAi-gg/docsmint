@@ -2,8 +2,10 @@
 import { goto } from "$app/navigation";
 import {
 	ArrowUpRight,
+	Check,
 	Copy,
 	FileText,
+	Files,
 	FolderInput,
 	MoreVertical,
 	Trash2,
@@ -11,6 +13,8 @@ import {
 import * as m from "$lib/paraglide/messages.js";
 import type { Document } from "$lib/types.js";
 import { cn, formatRelativeTime } from "$lib/utils.js";
+import { copyToClipboard } from "$lib/utils/clipboard.js";
+import { stripMarkdown } from "$lib/utils/strip-markdown";
 import {
 	Card,
 	CardContent,
@@ -46,7 +50,24 @@ function handleKeydown(e: KeyboardEvent) {
 	}
 }
 
-const preview = $derived(doc.excerpt || doc.content?.slice(0, 100) || "");
+let linkCopied = $state(false);
+let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function handleCopyLink(e: Event) {
+	e.stopPropagation();
+	if (typeof window === "undefined") return;
+	const url = `${window.location.origin}/docs/${doc.id}`;
+	const ok = await copyToClipboard(url);
+	if (!ok) return;
+	linkCopied = true;
+	if (copyTimer) clearTimeout(copyTimer);
+	copyTimer = setTimeout(() => {
+		linkCopied = false;
+		copyTimer = null;
+	}, 2000);
+}
+
+const preview = $derived(stripMarkdown(doc.excerpt || doc.content || "").slice(0, 100));
 </script>
 
 <Card
@@ -74,8 +95,17 @@ const preview = $derived(doc.excerpt || doc.content?.slice(0, 100) || "");
           <ArrowUpRight class="size-4" />
           {m.doc_open()}
         </DropdownMenuItem>
+        <DropdownMenuItem onclick={handleCopyLink}>
+          {#if linkCopied}
+            <Check class="size-4" />
+            {m.share_copied()}
+          {:else}
+            <Copy class="size-4" />
+            {m.action_copy_link()}
+          {/if}
+        </DropdownMenuItem>
         <DropdownMenuItem onclick={(e: Event) => { e.stopPropagation(); onDuplicate?.(doc.id); }}>
-          <Copy class="size-4" />
+          <Files class="size-4" />
           {m.doc_duplicate()}
         </DropdownMenuItem>
         <DropdownMenuItem onclick={(e: Event) => e.stopPropagation()}>

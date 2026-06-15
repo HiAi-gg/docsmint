@@ -20,7 +20,7 @@ function handleKeydown(e: KeyboardEvent) {
     type="text"
     bind:value={query}
     onkeydown={handleKeydown}
-    placeholder={m.search_placeholder_shortcut()}
+    placeholder={m.search_placeholder()}
     class="flex h-9 w-full rounded-md border border-input bg-transparent pl-9 pr-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
   />
 </div>

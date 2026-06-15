@@ -16,6 +16,7 @@ import { shareRoutes } from "./api/routes/share";
 import { tagRoutes } from "./api/routes/tags";
 import { versionRoutes } from "./api/routes/versions";
 import { webhookRoutes } from "./api/routes/webhooks";
+import { attachmentRoutes } from "./api/routes/attachments";
 import { config } from "./lib/config";
 import { startEmbeddingWorker } from "./lib/embedding-queue";
 import { logger } from "./lib/logger";
@@ -116,6 +117,7 @@ const app = new Elysia()
 	.use(authMiddleware)
 	.use(authRoutes)
 	.use(tagRoutes)
+	.use(attachmentRoutes)
 	.use(shareRoutes)
 	.use(searchRoutes)
 	.use(documentRoutes)

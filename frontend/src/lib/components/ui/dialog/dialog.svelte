@@ -11,6 +11,8 @@ let {
 	children?: Snippet;
 } = $props();
 
+let contentRef: HTMLDivElement | null = $state(null);
+
 function close() {
 	open = false;
 	onOpenChange?.(false);
@@ -21,7 +23,11 @@ function handleKeydown(e: KeyboardEvent) {
 }
 
 function handleBackdropClick(e: MouseEvent) {
-	if (e.target === e.currentTarget) close();
+	// The outer wrapper has a backdrop div and a content div as children,
+	// so `e.target === e.currentTarget` is not reliable (clicks on the
+	// backdrop div match). Check that the click is outside the dialog
+	// content panel instead.
+	if (contentRef && !contentRef.contains(e.target as Node)) close();
 }
 
 $effect(() => {
@@ -45,6 +51,7 @@ $effect(() => {
   >
     <div class="fixed inset-0 bg-black/80" aria-hidden="true"></div>
     <div
+      bind:this={contentRef}
       class="relative z-50 grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg"
       role="dialog"
       aria-modal="true"

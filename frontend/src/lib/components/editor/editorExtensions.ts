@@ -14,6 +14,7 @@ import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Highlight from "@tiptap/extension-highlight";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import TextAlign from "@tiptap/extension-text-align";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
@@ -38,4 +39,5 @@ export const editorExtensions = [
 	}),
 	Highlight.configure({ multicolor: true }),
 	CodeBlockLowlight.configure({ lowlight }),
+	TextAlign.configure({ types: ["heading", "paragraph"] }),
 ];
