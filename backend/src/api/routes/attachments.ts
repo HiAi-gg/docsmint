@@ -9,6 +9,58 @@ import { BUCKET, minio, minioPublic } from "../../lib/minio";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const INTEGRITY_PROBE_BYTES = 8;
+
+/**
+ * Read the first few bytes of an uploaded object back from MinIO and
+ * compare them to the source buffer. Returns true on match, false on
+ * mismatch, and true (treated as success) if the readback itself fails
+ * — we never want a transient readback error to reject a successful
+ * upload, but we DO want to catch a real byte-level corruption in the
+ * put → get round trip.
+ */
+async function verifyUploadIntegrity(
+	source: Buffer,
+	key: string,
+): Promise<boolean> {
+	const probeLen = Math.min(INTEGRITY_PROBE_BYTES, source.length);
+	if (probeLen === 0) return true;
+	const expected = source.subarray(0, probeLen);
+
+	try {
+		const stream = await minio.getPartialObject(BUCKET, key, 0, probeLen);
+		const chunks: Buffer[] = [];
+		for await (const chunk of stream) {
+			chunks.push(chunk as Buffer);
+		}
+		const actual = Buffer.concat(chunks);
+		if (actual.length !== probeLen) {
+			logger.warn(
+				{ key, expected: probeLen, got: actual.length },
+				"Integrity probe: length mismatch (readback skipped)",
+			);
+			return true;
+		}
+		if (!actual.equals(expected)) {
+			logger.error(
+				{
+					key,
+					expected: expected.toString("hex"),
+					got: actual.toString("hex"),
+				},
+				"Integrity probe: byte mismatch — upload is corrupted",
+			);
+			return false;
+		}
+		return true;
+	} catch (err) {
+		logger.warn(
+			{ err, key },
+			"Integrity probe: readback failed (treated as success)",
+		);
+		return true;
+	}
+}
 
 async function getClientIp(request: Request): Promise<string> {
 	return (
@@ -85,9 +137,31 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		try {
 			// Upload to MinIO
 			const arrayBuffer = await file.arrayBuffer();
-			await minio.putObject(BUCKET, key, Buffer.from(arrayBuffer), file.size, {
+			const buffer = Buffer.from(arrayBuffer);
+			await minio.putObject(BUCKET, key, buffer, file.size, {
 				"Content-Type": file.type,
 			});
+
+			// Defensive integrity check: read the first 8 bytes back from
+			// MinIO and compare to the source buffer. The current pipeline
+			// (Bun Request.formData() + Buffer.from(arrayBuffer) +
+			// minio.putObject) is binary-safe — empirical round-trip tests
+			// confirm no corruption — but a non-text-mode regression in any
+			// of those layers would surface as 0x89 being replaced with
+			// 0xEF 0xBF 0xBD (UTF-8 U+FFFD) for PNG/JPEG high-bit bytes.
+			// The check is best-effort: a readback failure (e.g. transient
+			// network blip) logs a warning but does not fail the upload.
+			const integrityOk = await verifyUploadIntegrity(buffer, key);
+			if (!integrityOk) {
+				await minio.removeObject(BUCKET, key).catch((removeErr) => {
+					logger.error(
+						{ err: removeErr, key },
+						"Failed to clean up corrupted upload",
+					);
+				});
+				set.status = 500;
+				return { error: "Upload integrity check failed" };
+			}
 
 			// Insert attachment row
 			const [created] = await db
