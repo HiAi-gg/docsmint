@@ -6,6 +6,7 @@ import {
 	Code,
 	Download,
 	FileText,
+	Folder,
 	Loader2,
 	MoreHorizontal,
 	Pencil,
@@ -429,6 +430,17 @@ async function handleRemoveTag(tagId: string) {
 
       <!-- Tags -->
       <div class="tag-row">
+        {#if data.document.folderName}
+          <a
+            href="/folders/{data.document.folderId}"
+            class="folder-badge"
+            title={data.document.folderName}
+            aria-label={data.document.folderName}
+          >
+            <Folder size={14} />
+            {data.document.folderName}
+          </a>
+        {/if}
         {#each tags as tag (tag.id)}
           <span
             class="tag-badge"
@@ -824,6 +836,24 @@ async function handleRemoveTag(tagId: string) {
     font-size: 12px;
     font-weight: 500;
     border: 1px solid;
+  }
+
+  .folder-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    background: var(--accent);
+    color: var(--accent-foreground);
+    border: 1px solid var(--border);
+    text-decoration: none;
+    transition: opacity 0.15s;
+  }
+
+  .folder-badge:hover {
+    opacity: 0.8;
   }
 
   .tag-remove {

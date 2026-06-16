@@ -26,6 +26,9 @@ let activeTags = $state<string[]>([]);
 let dateFrom = $state("");
 let dateTo = $state("");
 let currentPage = $state(1);
+let sortOrder = $state<"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc">(
+	"relevance",
+);
 
 $effect(() => {
 	query = data.query ?? "";
@@ -71,6 +74,7 @@ $effect(() => {
 $effect(() => {
 	const q = data.query;
 	const p = data.page;
+	const sort = sortOrder;
 
 	if (!q) {
 		searchResponse = null;
@@ -80,7 +84,7 @@ $effect(() => {
 
 	loading = true;
 
-	search(q, p, PAGE_SIZE).then((res) => {
+	search(q, p, PAGE_SIZE, sort).then((res) => {
 		searchResponse = res;
 		loading = false;
 	});
@@ -212,7 +216,7 @@ function goToPage(page: number) {
   <div class="flex gap-8">
     <!-- Filter sidebar -->
     <aside
-      class="hidden w-56 shrink-0 space-y-6 lg:block"
+      class="w-56 shrink-0 space-y-6"
     >
       {@render filterPanel()}
     </aside>
@@ -390,10 +394,23 @@ function goToPage(page: number) {
 <!-- Results list -->
 {#snippet resultsList()}
   <div>
-    <p class="mb-4 text-sm text-muted-foreground">
-      {(searchResponse?.total ?? 0) === 1 ? m.search_result_for({count: searchResponse!.total}) : m.search_results_for({count: searchResponse!.total})}
-      "<span class="font-medium text-foreground">{data.query}</span>"
-    </p>
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">
+        {(searchResponse?.total ?? 0) === 1 ? m.search_result_for({count: searchResponse!.total}) : m.search_results_for({count: searchResponse!.total})}
+        "<span class="font-medium text-foreground">{data.query}</span>"
+      </p>
+      <select
+        bind:value={sortOrder}
+        class="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label="Sort results"
+      >
+        <option value="relevance">Relevance</option>
+        <option value="date_desc">Date (newest first)</option>
+        <option value="date_asc">Date (oldest first)</option>
+        <option value="name_asc">Name (A-Z)</option>
+        <option value="name_desc">Name (Z-A)</option>
+      </select>
+    </div>
 
     <div class="space-y-3">
       {#each searchResponse?.items ?? [] as result (result.id)}

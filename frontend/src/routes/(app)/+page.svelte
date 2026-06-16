@@ -30,16 +30,26 @@ let importInput = $state<HTMLInputElement | undefined>(undefined);
 let copiedDocId = $state<string | null>(null);
 let copyLoadingDocId = $state<string | null>(null);
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
+let selectedTagId = $state<string | null>(null);
 
-onMount(async () => {
+async function loadDocs(tagId: string | null = selectedTagId) {
+	loading = true;
+	error = null;
 	try {
-		const res = await listDocuments({ limit: 6 });
+		const res = await listDocuments({
+			limit: 6,
+			...(tagId ? { tag: tagId } : {}),
+		});
 		recentDocs = res.items;
 	} catch (err) {
 		error = err instanceof Error ? err.message : m.doc_load_error();
 	} finally {
 		loading = false;
 	}
+}
+
+onMount(() => {
+	void loadDocs(null);
 });
 
 onDestroy(() => {
@@ -98,8 +108,7 @@ async function handleImportFile(e: Event) {
 	if (!file) return;
 	try {
 		await importDocument(file);
-		const res = await listDocuments({ limit: 6 });
-		recentDocs = res.items;
+		await loadDocs();
 		// Nudge sidebar components (RecentDocs, FolderTree) to refetch
 		// their document lists. They subscribe to the doc refresh nonce
 		// via $effect and re-load on change, so the imported document
@@ -121,6 +130,23 @@ function relativeTime(iso: string): string {
 }
 
 const hasDocs = $derived(recentDocs.length > 0);
+
+const availableTags = $derived(
+	(() => {
+		const seen = new Map<string, { id: string; name: string }>();
+		for (const doc of recentDocs) {
+			for (const t of doc.tags ?? []) {
+				if (!seen.has(t.id)) seen.set(t.id, { id: t.id, name: t.name });
+			}
+		}
+		return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+	})(),
+);
+
+function selectTag(tagId: string | null) {
+	selectedTagId = tagId;
+	void loadDocs(tagId);
+}
 </script>
 
 <svelte:head>
@@ -150,6 +176,32 @@ const hasDocs = $derived(recentDocs.length > 0);
       <!-- Search -->
       <SearchBar class="mb-8" />
 
+      <!-- Tag Filter Bar -->
+      {#if !loading && !error && availableTags.length > 0}
+        <div class="mb-6 flex flex-wrap items-center gap-2">
+          <span class="text-xs font-medium text-muted-foreground">Filter:</span>
+          <button
+            type="button"
+            onclick={() => selectTag(null)}
+            class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {selectedTagId === null ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
+            aria-pressed={selectedTagId === null}
+          >
+            All
+          </button>
+          {#each availableTags as tag (tag.id)}
+            <button
+              type="button"
+              onclick={() => selectTag(tag.id)}
+              class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {selectedTagId === tag.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
+              aria-pressed={selectedTagId === tag.id}
+            >
+              <Tag class="size-3" />
+              {tag.name}
+            </button>
+          {/each}
+        </div>
+      {/if}
+
       {#if loading}
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {#each Array(3) as _}
@@ -169,7 +221,7 @@ const hasDocs = $derived(recentDocs.length > 0);
           <h2 class="mb-2 text-lg font-semibold">{m.dashboard_error_title()}</h2>
           <p class="mb-6 max-w-sm text-sm text-muted-foreground">{error}</p>
           <button
-            onclick={async () => { loading = true; error = null; try { const res = await listDocuments({ limit: 6 }); recentDocs = res.items; } catch (e) { error = e instanceof Error ? e.message : m.doc_load_error(); } finally { loading = false; } }}
+            onclick={() => loadDocs()}
             class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90"
           >
             {m.dashboard_error_retry()}

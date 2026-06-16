@@ -11,6 +11,9 @@ const searchQuerySchema = z.object({
 	q: z.string().optional(),
 	page: z.coerce.number().int().min(1).default(1),
 	limit: z.coerce.number().int().min(1).max(100).default(20),
+	sort: z
+		.enum(["relevance", "date_desc", "date_asc", "name_asc", "name_desc"])
+		.default("relevance"),
 });
 
 const suggestQuerySchema = z.object({
@@ -46,7 +49,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			return { error: "Invalid query", details: parsed.error.flatten() };
 		}
 		try {
-			const { q: rawQ, page, limit } = parsed.data;
+			const { q: rawQ, page, limit, sort } = parsed.data;
 			const q = rawQ ?? "";
 			const offset = (page - 1) * limit;
 
@@ -108,10 +111,34 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				}
 			}
 
-			// Sort by combined score, paginate
-			const allResults = Array.from(merged.values()).sort(
-				(a, b) => b.score - a.score,
-			);
+			// Sort by selected order, then paginate
+			const allResults = Array.from(merged.values());
+			switch (sort) {
+				case "date_desc":
+					allResults.sort(
+						(a, b) =>
+							new Date(b.createdAt).getTime() -
+							new Date(a.createdAt).getTime(),
+					);
+					break;
+				case "date_asc":
+					allResults.sort(
+						(a, b) =>
+							new Date(a.createdAt).getTime() -
+							new Date(b.createdAt).getTime(),
+					);
+					break;
+				case "name_asc":
+					allResults.sort((a, b) => a.title.localeCompare(b.title));
+					break;
+				case "name_desc":
+					allResults.sort((a, b) => b.title.localeCompare(a.title));
+					break;
+				case "relevance":
+				default:
+					allResults.sort((a, b) => b.score - a.score);
+					break;
+			}
 			const total = allResults.length;
 			const items = allResults.slice(offset, offset + limit);
 

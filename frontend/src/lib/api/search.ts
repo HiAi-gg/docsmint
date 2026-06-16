@@ -32,6 +32,13 @@ export interface FilterOptions {
 
 // --- Public API --------------------------------------------------------------
 
+export type SearchSort =
+	| "relevance"
+	| "date_desc"
+	| "date_asc"
+	| "name_asc"
+	| "name_desc";
+
 /**
  * Full hybrid search (text + semantic).
  */
@@ -39,6 +46,7 @@ export async function search(
 	query: string,
 	page = 1,
 	limit = 20,
+	sort: SearchSort = "relevance",
 ): Promise<SearchResponse> {
 	if (!query.trim()) {
 		return { items: [], total: 0, page: 1, limit };
@@ -48,6 +56,7 @@ export async function search(
 		page: String(page),
 		limit: String(limit),
 	});
+	if (sort !== "relevance") params.set("sort", sort);
 	return apiFetch(`/api/search?${params}`);
 }
 
