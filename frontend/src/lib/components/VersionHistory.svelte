@@ -1,6 +1,6 @@
 <script lang="ts">
-import { onMount } from "svelte";
 import { Clock, History, Loader2, RotateCcw } from "lucide-svelte";
+import { onMount } from "svelte";
 import { apiFetch } from "$lib/api/client";
 import * as m from "$lib/paraglide/messages.js";
 

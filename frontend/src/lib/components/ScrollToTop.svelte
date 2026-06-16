@@ -1,6 +1,6 @@
 <script lang="ts">
-import { onDestroy } from "svelte";
 import { ArrowUp } from "lucide-svelte";
+import { onDestroy } from "svelte";
 
 const SCROLL_THRESHOLD = 300;
 
@@ -10,7 +10,8 @@ let visible = $state(false);
 let activeTarget: HTMLElement | null = null;
 
 function handleScroll() {
-	visible = (activeTarget ? activeTarget.scrollTop : window.scrollY) > SCROLL_THRESHOLD;
+	visible =
+		(activeTarget ? activeTarget.scrollTop : window.scrollY) > SCROLL_THRESHOLD;
 }
 
 function scrollToTop() {

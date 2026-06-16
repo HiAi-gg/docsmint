@@ -3,10 +3,10 @@
 import { Loader2 } from "lucide-svelte";
 import {
 	createTag,
-	updateTag,
 	createTagInputSchema,
-	updateTagInputSchema,
 	type Tag,
+	updateTag,
+	updateTagInputSchema,
 } from "$lib/api/tags";
 import { Button } from "$lib/components/ui/button";
 import {
@@ -18,8 +18,8 @@ import {
 } from "$lib/components/ui/dialog";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
-import { cn } from "$lib/utils";
 import * as m from "$lib/paraglide/messages.js";
+import { cn } from "$lib/utils";
 
 // Curated palette — common tag colors that read well on light & dark surfaces.
 const PRESET_COLORS = [
@@ -156,10 +156,7 @@ async function doCreate(trimmed: string, pickedColor: string) {
 	}
 }
 
-async function doUpdate(
-	id: string,
-	data: { name?: string; color?: string },
-) {
+async function doUpdate(id: string, data: { name?: string; color?: string }) {
 	submitting = true;
 	try {
 		const updated = await updateTag(id, data);

@@ -280,14 +280,21 @@ function handleWrapperClick(event: MouseEvent) {
     margin: 0.5rem 0;
   }
 
-  .editor-content :global(.tiptap ul),
+  .editor-content :global(.tiptap ul) {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+    list-style-type: disc;
+  }
+
   .editor-content :global(.tiptap ol) {
     padding-left: 1.5rem;
     margin: 0.5rem 0;
+    list-style-type: decimal;
   }
 
   .editor-content :global(.tiptap li) {
     margin: 0.25rem 0;
+    display: list-item;
   }
 
   .editor-content :global(.tiptap blockquote) {

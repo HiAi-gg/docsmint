@@ -2,18 +2,18 @@
 <script lang="ts">
 import { Loader2, MoreVertical, Plus } from "lucide-svelte";
 import { onMount } from "svelte";
-import { listTags, deleteTag, type Tag } from "$lib/api/tags";
-import { getTagRefreshNonce, refreshTags } from "$lib/stores/tag-store.svelte";
+import { deleteTag, listTags, type Tag } from "$lib/api/tags";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
-import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
-import { cn } from "$lib/utils";
 import * as m from "$lib/paraglide/messages.js";
+import { getTagRefreshNonce, refreshTags } from "$lib/stores/tag-store.svelte";
+import { cn } from "$lib/utils";
 
 let tags = $state<Tag[]>([]);
 let activeId = $state<string | null>(null);

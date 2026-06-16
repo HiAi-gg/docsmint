@@ -2,6 +2,15 @@ interface FetchOptions extends RequestInit {
 	timeout?: number;
 }
 
+export class ApiError extends Error {
+	status: number;
+	constructor(message: string, status: number) {
+		super(message);
+		this.name = "ApiError";
+		this.status = status;
+	}
+}
+
 export async function apiFetch<T>(
 	path: string,
 	options: FetchOptions = {},
@@ -35,7 +44,10 @@ export async function apiFetch<T>(
 			const error = await response
 				.json()
 				.catch(() => ({ error: response.statusText }));
-			throw new Error(error.error ?? `HTTP ${response.status}`);
+			throw new ApiError(
+				error.error ?? `HTTP ${response.status}`,
+				response.status,
+			);
 		}
 
 		return response.json() as Promise<T>;

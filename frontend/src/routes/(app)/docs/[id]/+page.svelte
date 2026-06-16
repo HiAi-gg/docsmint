@@ -14,9 +14,9 @@ import {
 	Trash2,
 	X,
 } from "lucide-svelte";
-import { onMount } from "svelte";
-import { onDestroy } from "svelte";
+import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
+import { ApiError } from "$lib/api/client";
 import { deleteDocument, updateDocument } from "$lib/api/documents";
 import {
 	addTagToDocument,
@@ -24,13 +24,13 @@ import {
 	removeTagFromDocument,
 	type Tag,
 } from "$lib/api/tags";
-import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import type { TipexEditorOutput } from "$lib/components/editor/TipexEditor.svelte";
 import TipexEditor from "$lib/components/editor/TipexEditor.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
-import { refreshTags } from "$lib/stores/tag-store.svelte";
+import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -38,8 +38,8 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
-import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import * as m from "$lib/paraglide/messages.js";
+import { refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
 
@@ -140,20 +140,43 @@ function debounceContentSave(update: ContentUpdate) {
 	if (contentSaveTimer) clearTimeout(contentSaveTimer);
 	contentSaveTimer = setTimeout(async () => {
 		await saveContent(update);
-	}, 1000);
+	}, 2000);
+}
+
+// Retries with exponential backoff: 2s, 4s, 8s (max 3 attempts).
+// Used when the backend responds with 429 (rate limit) so fast typing
+// doesn't surface a hard error to the user.
+const RATE_LIMIT_BACKOFF_MS = [2000, 4000, 8000];
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function saveContent(update: ContentUpdate) {
 	saveStatus = "saving";
-	try {
-		await updateDocument(data.document.id, {
-			content: update.markdown,
-			contentTipex: update.json,
-		});
-		saveStatus = "saved";
-	} catch (_e) {
-		saveStatus = "unsaved";
-		error = m.doc_save_content_error();
+	for (let attempt = 0; attempt <= RATE_LIMIT_BACKOFF_MS.length; attempt++) {
+		try {
+			await updateDocument(data.document.id, {
+				content: update.markdown,
+				contentTipex: update.json,
+			});
+			saveStatus = "saved";
+			return;
+		} catch (e) {
+			if (
+				e instanceof ApiError &&
+				e.status === 429 &&
+				attempt < RATE_LIMIT_BACKOFF_MS.length
+			) {
+				const wait = RATE_LIMIT_BACKOFF_MS[attempt];
+				error = "Saving too fast. Waiting before retry...";
+				await sleep(wait);
+				continue;
+			}
+			saveStatus = "unsaved";
+			error = m.doc_save_content_error();
+			return;
+		}
 	}
 }
 

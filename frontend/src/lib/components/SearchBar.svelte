@@ -1,6 +1,6 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import { Search } from "lucide-svelte";
+import { goto } from "$app/navigation";
 import * as m from "$lib/paraglide/messages.js";
 import { cn } from "$lib/utils.js";
 

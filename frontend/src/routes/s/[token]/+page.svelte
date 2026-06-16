@@ -25,7 +25,9 @@ let copied = $state(false);
 // SvelteKit-injected fetch avoids the `window.fetch` warning during SSR/CSR
 // transitions. Falls back to global fetch when running outside a load fn
 // (e.g. in unit tests).
-const kitFetch = $derived((page.data.fetch as typeof fetch | undefined) ?? globalThis.fetch);
+const kitFetch = $derived(
+	(page.data.fetch as typeof fetch | undefined) ?? globalThis.fetch,
+);
 
 // Configure marked for safe, GFM-flavored rendering of shared document
 // markdown. The TipexEditor JSON path (contentTipex) is preferred when the

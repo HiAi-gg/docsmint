@@ -1,5 +1,4 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
 import {
 	Folder,
 	FolderInput,
@@ -7,9 +6,7 @@ import {
 	Pencil,
 	Trash2,
 } from "lucide-svelte";
-import * as m from "$lib/paraglide/messages.js";
-import type { Folder as FolderType } from "$lib/types.js";
-import { formatRelativeTime } from "$lib/utils.js";
+import { goto } from "$app/navigation";
 import { Card, CardContent } from "$lib/components/ui/card/index.js";
 import {
 	DropdownMenu,
@@ -18,6 +15,9 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu/index.js";
+import * as m from "$lib/paraglide/messages.js";
+import type { Folder as FolderType } from "$lib/types.js";
+import { formatRelativeTime } from "$lib/utils.js";
 
 const {
 	folder,

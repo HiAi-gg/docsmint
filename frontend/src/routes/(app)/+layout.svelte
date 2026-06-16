@@ -1,6 +1,7 @@
 <script lang="ts">
-import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
 import ScrollToTop from "$lib/components/ScrollToTop.svelte";
+import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
+
 const { children } = $props();
 
 let mainElement = $state<HTMLElement | null>(null);

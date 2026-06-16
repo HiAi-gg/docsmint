@@ -1,3 +1,4 @@
+import { authClient } from "$lib/auth-client";
 import { apiFetch } from "./client.js";
 
 export interface UserProfile {
@@ -19,10 +20,25 @@ export interface EmbeddingConfig {
 export async function getProfile(): Promise<UserProfile> {
 	try {
 		const session = await apiFetch<{ user?: UserProfile }>("/api/auth/session");
-		return session.user ?? { id: "", name: "User", email: "", avatar: null };
+		if (session.user?.name || session.user?.email) {
+			return session.user;
+		}
 	} catch {
-		return { id: "", name: "User", email: "", avatar: null };
+		/* fall through */
 	}
+
+	// Fallback: try client-side getSession (works even when server-side
+	// /api/auth/session returns empty, e.g. for newly registered users).
+	const { data } = await authClient.getSession();
+	if (data?.user) {
+		return {
+			id: data.user.id ?? "",
+			name: data.user.name ?? "User",
+			email: data.user.email ?? "",
+			avatar: null,
+		};
+	}
+	return { id: "", name: "User", email: "", avatar: null };
 }
 
 export async function updateProfile(data: {
