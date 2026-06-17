@@ -1,7 +1,7 @@
 <script lang="ts">
 import "../app.css";
 import { getLocale } from "$lib/paraglide/runtime";
-import { initTheme, subscribeTheme, themeStore } from "$lib/stores/theme";
+import { initTheme, subscribeTheme, themeStore } from "$lib/stores/theme.svelte";
 
 const { children } = $props();
 

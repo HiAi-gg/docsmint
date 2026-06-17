@@ -9,7 +9,7 @@ import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
 import * as Tabs from "$lib/components/ui/tabs";
 import * as m from "$lib/paraglide/messages.js";
-import { type Theme, themeStore } from "$lib/stores/theme";
+import { type Theme, themeStore } from "$lib/stores/theme.svelte";
 
 let {
 	open = $bindable(false),

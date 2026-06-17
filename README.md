@@ -13,6 +13,21 @@ A modern, lightweight, self-hosted knowledge base with built-in vector embedding
 
 ---
 
+## Table of Contents
+
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Quick Start](#quick-start)
+- [Stack](#stack)
+- [Project Structure](#project-structure)
+- [Configuration](#configuration)
+- [API Documentation](#api-documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Related Projects](#related-projects)
+
+---
+
 ## Features
 
 - **Markdown-first** — Rich WYSIWYG editor (svelte-tiptap + TipTap v3) with raw Markdown toggle
@@ -178,10 +193,12 @@ REST API available at `http://localhost:50700/api/`.
 
 Key endpoints:
 - `POST /api/documents` — Create document
-- `GET /api/documents/:id` — Get document
-- `GET /api/search?q=query` — Hybrid search
+- `GET /api/documents/:id` — Get document with tags
+- `GET /api/search?q=query` — Hybrid full-text + semantic search
 - `POST /api/share` — Create share link
-- `GET /api/share/:token` — Access shared content
+- `GET /api/share/:token` — Access shared content (public)
+- `POST /api/documents/:id/attachments` — Upload image
+- `WS /ws/collab/:documentId` — Real-time collaborative editing
 
 Full API documentation available in [docs/API.md](docs/API.md).
 

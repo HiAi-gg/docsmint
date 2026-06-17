@@ -9,7 +9,7 @@ import {
 	updateProfile,
 } from "$lib/api/settings";
 import * as m from "$lib/paraglide/messages.js";
-import { themeStore } from "$lib/stores/theme";
+import { themeStore } from "$lib/stores/theme.svelte";
 
 let activeTab = $state<"profile" | "embedding" | "danger">("profile");
 let saveStatus = $state<"idle" | "saving" | "saved" | "error">("idle");

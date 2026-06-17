@@ -1,0 +1,18 @@
+{
+  "projectName": "hiai-docs",
+  "projectOwner": "hiai-gg",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": ["README.md"],
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "vgalibov",
+      "name": "vgalibov",
+      "avatar_url": "https://github.com/vgalibov.png",
+      "profile": "https://github.com/vgalibov",
+      "contributions": ["code", "doc", "infra", "review", "maintenance"]
+    }
+  ],
+  "contributorsPerLine": 7
+}

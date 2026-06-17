@@ -66,10 +66,91 @@ curl -X PATCH http://localhost:50700/api/documents/UUID \
   -d '{"title": "Updated", "content": "New content"}'
 ```
 
+### Duplicate document
+
+```bash
+curl -X POST http://localhost:50700/api/documents/UUID/duplicate
+```
+
+Creates a copy with "(Copy)" suffix, including version snapshot and embedding queue.
+
+### Export document
+
+```bash
+curl http://localhost:50700/api/documents/UUID/export
+```
+
+Returns the document content as a `.md` file download.
+
+### Import document
+
+```bash
+# JSON import
+curl -X POST http://localhost:50700/api/documents/import \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Imported", "content": "# Hello"}'
+
+# File upload
+curl -X POST http://localhost:50700/api/documents/import \
+  -F "file=@doc.md" \
+  -F "folderId=UUID"
+```
+
+Supports `.md`, `.txt`, `.markdown`, `.json` files (max 10 MB).
+
+### Document versions
+
+```
+GET /api/documents/:id/versions        # List version history
+GET /api/documents/:id/versions/:vid   # Get specific version
+```
+
+Versions are auto-saved on every create/update. Each entry includes `id, content, contentTipex, createdBy, createdAt`.
+
+## Document Attachments
+
+```
+POST /api/documents/:id/attachments    # Upload image attachment
+GET  /api/documents/:id/attachments    # List attachments
+```
+
+Image uploads are stored in MinIO with integrity verification. Max file size: 10 MB. Only `image/*` MIME types accepted.
+
+```bash
+curl -X POST http://localhost:50700/api/documents/UUID/attachments \
+  -F "file=@screenshot.png"
+```
+
+Response includes `id, filename, mimeType, size, url` (presigned S3 URL, 24h expiry).
+
+## Collaboration (WebSocket)
+
+```
+WS /ws/collab/:documentId              # Real-time collaborative editing
+```
+
+Uses Yjs for CRDT-based conflict resolution. Authentication via query param `?token=<session_token_or_api_key>`.
+
+```bash
+# Connect via wscat (install: npm install -g wscat)
+wscat -c "ws://localhost:50700/ws/collab/DOCUMENT_ID?token=API_KEY"
+```
+
+Messages are JSON: `{ type: "sync" | "update" | "ping", update?: "base64", state?: "base64", clientId: number }`.
+
+## Webhooks
+
+```
+POST /api/webhooks/minio               # MinIO bucket event webhook
+```
+
+Verifies `x-minio-signature` header against `WEBHOOK_SECRET`. Currently handles `s3:ObjectRemoved:Delete` events to sync attachment DB records.
+
 ## Folders
 
 ```
-GET    /api/folders         # List (tree)
+GET    /api/folders         # List (tree, root-level unless ?parentId=UUID)
+GET    /api/folders/:id     # Get single folder
 POST   /api/folders         # Create
 PATCH  /api/folders/:id     # Rename/move
 DELETE /api/folders/:id     # Delete
@@ -101,10 +182,23 @@ GET /api/search/suggest   # Quick title suggestions (PUBLIC)
 ### Full search
 
 ```bash
-curl "http://localhost:50700/api/search?q=query&folderId=UUID&tag=UUID&page=1&limit=20"
+curl "http://localhost:50700/api/search?q=query&folder=UUID&tags=tag1,tag2&dateFrom=2026-01-01&dateTo=2026-12-31&sort=relevance&page=1&limit=20"
 ```
 
-Response: `{ items: SearchResult[], total, page, limit }` where each item has `id, title, snippet, score, folder_id, created_at, updated_at`.
+Query parameters:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `q` | string | Search query |
+| `folder` | UUID | Filter by folder |
+| `tags` | string | Comma-separated tag names (ANY match) |
+| `dateFrom` | ISO date | Filter docs created after |
+| `dateTo` | ISO date | Filter docs created before |
+| `sort` | enum | `relevance`, `date_desc`, `date_asc`, `name_asc`, `name_desc` |
+| `page` | int | Page number (default 1) |
+| `limit` | int | Per page (default 20, max 100) |
+
+Response: `{ items: SearchResult[], total, page, limit }` where each item has `id, title, snippet, score, folderId, createdAt, updatedAt`.
 
 ### Quick suggest
 
@@ -122,6 +216,7 @@ POST   /api/share           # Create link
 GET    /api/share/:token    # Access shared content (PUBLIC)
 DELETE /api/share/:id       # Revoke link
 POST   /api/share/:id/guests  # Add guest email
+DELETE /api/share/:id/guests/:email  # Remove guest access
 ```
 
 ### Create share link

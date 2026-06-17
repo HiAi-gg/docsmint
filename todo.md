@@ -181,5 +181,24 @@
 | Phase 5 — Versions | ✅ DONE | 5 files |
 | Phase 6 — Integration | ✅ DONE | API wiring + loading states |
 | Phase 7 — Docs & Deploy | ✅ DONE | 4 docs files |
+| Phase 8 — Release | 🔄 IN PROGRESS | Docs overhaul, release checklist, CI |
 
-**Total: 134 source files, 0 TS errors in backend, ~25 agents used**
+**Total: 134 source files, 0 TS errors in backend**
+
+---
+
+## Phase 8 — Release Preparation 🔄 IN PROGRESS
+
+### T8.1 — Documentation overhaul
+- [x] Add Table of Contents to README.md
+- [x] Verify API.md matches actual backend routes
+- [x] Create RELEASE_CHECKLIST.md
+
+### T8.2 — Pre-release cleanup
+- [ ] Bump version to v0.0.1
+- [ ] Regenerate secrets
+- [ ] Build Docker images
+- [ ] Run full test suite
+- [ ] Tag release
+- [ ] Push to GitHub
+- [ ] Create GitHub release
