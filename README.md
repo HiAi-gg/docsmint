@@ -1,7 +1,13 @@
 # hiai-docs
 
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![CI](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml)
+[![Stars](https://img.shields.io/github/stars/hiai-gg/hiai-docs)](https://github.com/hiai-gg/hiai-docs/stargazers)
+[![Bun](https://img.shields.io/badge/Runtime-Bun_1.3-black?logo=bun&logoColor=white)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 > **Your personal/team AI-ready knowledge vault.**
-> Markdown + AI embeddings + simple sharing — without the bloat.
 
 A modern, lightweight, self-hosted knowledge base with built-in vector embeddings, rich editing, and seamless AI integration.
 
@@ -17,6 +23,14 @@ A modern, lightweight, self-hosted knowledge base with built-in vector embedding
 - **Import/Export** — Upload .md files, download documents as Markdown
 - **Self-hosted** — Full data ownership, Docker deployment
 - **Agent-ready** — Clean REST API for AI agent integration (Mastra compatible)
+
+## Screenshots
+
+<!--
+  TODO: Add screenshots of the dashboard, editor, search, and dark mode.
+  Use 1200x675 (16:9) PNGs.
+  <img src="docs/screenshots/dashboard.png" width="100%" alt="hiai-docs dashboard with document grid" />
+-->
 
 ---
 
@@ -201,9 +215,9 @@ Full API documentation available in [docs/API.md](docs/API.md).
 
 | Project | Description |
 |---------|-------------|
-| [hiai-kit](../hiai-kit) | AI agent starter kit |
-| [hiai-store](../hiai-store) | Multi-tenant e-commerce |
-| [hiai-admin](../hiai-admin) | Platform admin panel |
-| [hiai-post](../hiai-post) | Social media management |
-| [hiai-observe](../hiai-observe) | Observability platform |
-| [hiai-amigo](../hiai-amigo) | Telegram AI bot |
+| [hiai-kit](https://github.com/hiai-gg/hiai-kit) | AI agent starter kit |
+| [hiai-store](https://github.com/hiai-gg/hiai-store) | Multi-tenant e-commerce |
+| [hiai-admin](https://github.com/hiai-gg/hiai-admin) | Platform admin panel |
+| [hiai-post](https://github.com/hiai-gg/hiai-post) | Social media management |
+| [hiai-observe](https://github.com/hiai-gg/hiai-observe) | Observability platform |
+| [hiai-amigo](https://github.com/hiai-gg/hiai-amigo) | Telegram AI bot |
