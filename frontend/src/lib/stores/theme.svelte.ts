@@ -35,8 +35,10 @@ function notify() {
 	for (const listener of listeners) listener();
 }
 
-let theme: Theme = "system";
-let resolvedIsDark = false;
+// Runes-backed reactive state so `themeStore.value` / `.isDark` update the UI
+// (e.g. the Settings theme picker highlight) when the theme changes.
+let theme = $state<Theme>("system");
+let resolvedIsDark = $state(false);
 let initialized = false;
 
 function initTheme() {

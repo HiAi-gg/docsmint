@@ -6,6 +6,7 @@ import {
 	FileText,
 	Folder,
 	Loader2,
+	MoreVertical,
 	Plus,
 } from "lucide-svelte";
 import { onMount } from "svelte";
@@ -13,13 +14,20 @@ import { flip } from "svelte/animate";
 import { type DndEvent, dndzone } from "svelte-dnd-action";
 import { page } from "$app/state";
 import {
+	deleteDocument,
 	type Document,
 	getDocument,
 	listDocuments,
 	updateDocument,
 } from "$lib/api/documents";
-import { createFolder, listFolders } from "$lib/api/folders";
+import {
+	createFolder,
+	deleteFolder,
+	listFolders,
+	updateFolder,
+} from "$lib/api/folders";
 import { Button } from "$lib/components/ui/button";
+import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import {
 	Dialog,
 	DialogDescription,
@@ -27,12 +35,25 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "$lib/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
-import { getDocRefreshNonce } from "$lib/stores/tag-store.svelte";
+import {
+	getDocRefreshNonce,
+	getSelectedTag,
+	refreshDocs,
+} from "$lib/stores/tag-store.svelte";
 import { cn } from "$lib/utils";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
+
+// Rename/delete target shared by folders and documents in the tree.
+type EntityKind = "folder" | "doc";
 
 interface FolderItem {
 	id: string;
@@ -63,6 +84,22 @@ let showNewFolderDialog = $state(false);
 let newFolderName = $state("");
 let newFolderError = $state<string | null>(null);
 let newFolderSubmitting = $state(false);
+
+// Rename dialog state (shared by folders and documents).
+let showRenameDialog = $state(false);
+let renameTarget = $state<{ kind: EntityKind; id: string; name: string } | null>(
+	null,
+);
+let renameValue = $state("");
+let renameError = $state<string | null>(null);
+let renameSubmitting = $state(false);
+
+// Delete confirmation state (shared by folders and documents).
+let showDeleteDialog = $state(false);
+let deleteTarget = $state<{ kind: EntityKind; id: string; name: string } | null>(
+	null,
+);
+let deleteBusy = $state(false);
 
 let expandTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingExpandFolderId = $state<string | null>(null);
@@ -174,7 +211,8 @@ async function loadFolders() {
 
 async function loadDocuments() {
 	try {
-		const res = await listDocuments({ limit: 100 });
+		const tag = getSelectedTag();
+		const res = await listDocuments({ limit: 100, ...(tag ? { tag } : {}) });
 		documents = res.items as DndDoc[];
 		originalFolderByDoc = new Map(
 			documents.map((d) => [d.id, d.folderId ?? null]),
@@ -200,6 +238,8 @@ onMount(() => {
 // a reactive dependency.
 $effect(() => {
 	void getDocRefreshNonce();
+	// Re-filter the tree when the shared selected tag changes (from TagList).
+	void getSelectedTag();
 	void refresh();
 });
 
@@ -308,10 +348,122 @@ async function persistZoneChanges(
 		await refresh();
 	}
 }
+
+// --- Rename / delete (folders and documents) ---
+function startRename(kind: EntityKind, id: string, name: string) {
+	renameTarget = { kind, id, name };
+	renameValue = name;
+	renameError = null;
+	showRenameDialog = true;
+}
+
+function closeRenameDialog() {
+	showRenameDialog = false;
+	renameTarget = null;
+	renameValue = "";
+	renameError = null;
+	renameSubmitting = false;
+}
+
+async function submitRename(e?: Event) {
+	e?.preventDefault();
+	const target = renameTarget;
+	if (!target) return;
+	const trimmed = renameValue.trim();
+	if (trimmed.length === 0) {
+		renameError = "Name is required";
+		return;
+	}
+	renameSubmitting = true;
+	try {
+		if (target.kind === "folder") {
+			await updateFolder(target.id, { name: trimmed });
+		} else {
+			await updateDocument(target.id, { title: trimmed });
+		}
+		closeRenameDialog();
+		await refresh();
+		// Notify the other sidebar lists (RecentDocs) to refetch.
+		refreshDocs();
+	} catch (err) {
+		console.error("FolderTree: rename failed", err);
+		renameError = err instanceof Error ? err.message : m.error_generic();
+	} finally {
+		renameSubmitting = false;
+	}
+}
+
+function startDelete(kind: EntityKind, id: string, name: string) {
+	deleteTarget = { kind, id, name };
+	showDeleteDialog = true;
+}
+
+function cancelDelete() {
+	showDeleteDialog = false;
+	deleteTarget = null;
+	deleteBusy = false;
+}
+
+async function confirmDelete() {
+	const target = deleteTarget;
+	if (!target || deleteBusy) return;
+	deleteBusy = true;
+	try {
+		if (target.kind === "folder") {
+			// Deleting a folder moves its documents back to the root: the
+			// documents.folder_id foreign key is ON DELETE SET NULL, so the
+			// documents survive and reappear at the top level.
+			await deleteFolder(target.id);
+		} else {
+			await deleteDocument(target.id);
+		}
+		cancelDelete();
+		await refresh();
+		refreshDocs();
+	} catch (err) {
+		console.error("FolderTree: delete failed", err);
+		loadError = err instanceof Error ? err.message : m.error_generic();
+		deleteBusy = false;
+	}
+}
 </script>
 
+{#snippet docMenu(doc: DndDoc)}
+  <DropdownMenu>
+    <DropdownMenuTrigger>
+      {#snippet child({ props })}
+        <button
+          {...props}
+          type="button"
+          class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={m.editor_more_options()}
+          title={m.editor_more_options()}
+          onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); }}
+        >
+          <MoreVertical class="size-3.5" />
+        </button>
+      {/snippet}
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      <DropdownMenuItem onSelect={() => startRename("doc", doc.id, doc.title)}>
+        {m.folders_rename()}
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        class="text-destructive focus:text-destructive"
+        onSelect={() => startDelete("doc", doc.id, doc.title)}
+      >
+        {m.action_delete()}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+{/snippet}
+
 <div class="space-y-1">
-  <h3 class="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{m.sidebar_folders()}</h3>
+  <a
+    href="/"
+    class="mb-2 block px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+    title={m.dashboard_title()}
+  >{m.sidebar_folders()}</a>
   {#if loadError}
     <p class="px-2 text-xs text-destructive">{loadError}</p>
   {/if}
@@ -352,6 +504,7 @@ async function persistZoneChanges(
             <Copy class="size-3.5" />
           {/if}
         </button>
+        {@render docMenu(doc)}
       </div>
     {/each}
   </div>
@@ -370,19 +523,47 @@ async function persistZoneChanges(
         if (isDraggingGlobal) clearExpandTimer();
       }}
     >
-      <button
-        type="button"
-        onclick={() => toggleFolder(folder.id)}
-        aria-expanded={isExpanded}
-        class={cn(
-          "flex w-full min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-          page.params.id === folder.id && "bg-accent text-accent-foreground font-medium"
-        )}
-      >
-        <ChevronRight class={cn("size-3.5 shrink-0 transition-transform", isExpanded && "rotate-90")} />
-        <Folder class="size-4 shrink-0 text-muted-foreground" />
-        <span class="min-w-0 truncate">{folder.name}</span>
-      </button>
+      <div class="group/folder flex w-full min-w-0 items-center gap-1">
+        <button
+          type="button"
+          onclick={() => toggleFolder(folder.id)}
+          aria-expanded={isExpanded}
+          class={cn(
+            "flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+            page.params.id === folder.id && "bg-accent text-accent-foreground font-medium"
+          )}
+        >
+          <ChevronRight class={cn("size-3.5 shrink-0 transition-transform", isExpanded && "rotate-90")} />
+          <Folder class="size-4 shrink-0 text-muted-foreground" />
+          <span class="min-w-0 truncate">{folder.name}</span>
+        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                type="button"
+                class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/folder:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={m.editor_more_options()}
+                title={m.editor_more_options()}
+              >
+                <MoreVertical class="size-3.5" />
+              </button>
+            {/snippet}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => startRename("folder", folder.id, folder.name)}>
+              {m.folders_rename()}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              class="text-destructive focus:text-destructive"
+              onSelect={() => startDelete("folder", folder.id, folder.name)}
+            >
+              {m.folders_delete()}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       {#if isExpanded}
         <div class="ml-4 border-l border-border pl-1">
           <div
@@ -421,6 +602,7 @@ async function persistZoneChanges(
                     <Copy class="size-3.5" />
                   {/if}
                 </button>
+                {@render docMenu(doc)}
               </div>
             {/each}
           </div>
@@ -485,3 +667,63 @@ async function persistZoneChanges(
     </Button>
   </DialogFooter>
 </Dialog>
+
+<!-- Rename dialog (folders and documents) -->
+<Dialog bind:open={showRenameDialog} onOpenChange={(next) => { if (!next) closeRenameDialog(); }}>
+  <DialogHeader>
+    <DialogTitle>{m.folders_rename()}</DialogTitle>
+    <DialogDescription>
+      {renameTarget?.kind === "folder" ? m.folders_name_placeholder() : m.doc_title_label()}
+    </DialogDescription>
+  </DialogHeader>
+
+  <form onsubmit={submitRename} class="space-y-4">
+    <div class="space-y-2">
+      <Label for="rename-input">
+        {renameTarget?.kind === "folder" ? m.folders_name_placeholder() : m.doc_title_label()}
+      </Label>
+      <Input
+        id="rename-input"
+        name="name"
+        type="text"
+        bind:value={renameValue}
+        maxlength={255}
+        required
+        disabled={renameSubmitting}
+        aria-invalid={renameError ? "true" : undefined}
+        aria-describedby={renameError ? "rename-input-error" : undefined}
+        autocomplete="off"
+      />
+      {#if renameError}
+        <p id="rename-input-error" class="text-xs text-destructive" role="alert">{renameError}</p>
+      {/if}
+    </div>
+  </form>
+
+  <DialogFooter>
+    <Button variant="outline" type="button" onclick={closeRenameDialog} disabled={renameSubmitting}>
+      {m.action_cancel()}
+    </Button>
+    <Button
+      type="submit"
+      onclick={submitRename}
+      disabled={renameSubmitting || renameValue.trim().length === 0}
+    >
+      {renameSubmitting ? m.action_loading() : m.action_save()}
+    </Button>
+  </DialogFooter>
+</Dialog>
+
+<!-- Delete confirmation (folders and documents) -->
+<ConfirmDialog
+  bind:open={showDeleteDialog}
+  title={deleteTarget?.kind === "folder" ? m.folders_delete_title() : m.doc_delete()}
+  description={deleteTarget?.kind === "folder"
+    ? "Delete this folder? Its documents will be moved to the root and will not be deleted."
+    : m.doc_delete_confirm()}
+  confirmLabel={m.action_delete()}
+  variant="destructive"
+  busy={deleteBusy}
+  onConfirm={confirmDelete}
+  onCancel={cancelDelete}
+/>

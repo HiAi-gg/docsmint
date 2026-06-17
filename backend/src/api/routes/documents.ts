@@ -1,12 +1,12 @@
 import { documents, documentTags, tags, versions } from "@hiai-docs/db/schema";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
-import { markdownToTipexJson } from "../../lib/markdown-to-tipex";
+import { markdownToDocJson } from "../../lib/markdown-to-doc";
 import {
 	documentRateLimiter,
 	rateLimitHeaders,
@@ -42,6 +42,36 @@ const importJsonSchema = z.object({
 	content: z.string().min(1).max(5_000_000),
 	folderId: z.string().uuid().optional(),
 });
+
+/**
+ * Attach a `tags` array (`{ id, name, color }`) to each document row in a
+ * list response. Runs a single grouped query for all rows so the list
+ * endpoint can show tags without an N+1 round trip.
+ */
+async function withTags<T extends { id: string }>(
+	rows: T[],
+): Promise<Array<T & { tags: Array<{ id: string; name: string; color: string | null }> }>> {
+	if (rows.length === 0) return [];
+	const ids = rows.map((r) => r.id);
+	const tagRows = await db
+		.select({
+			documentId: documentTags.documentId,
+			id: tags.id,
+			name: tags.name,
+			color: tags.color,
+		})
+		.from(documentTags)
+		.innerJoin(tags, eq(tags.id, documentTags.tagId))
+		.where(inArray(documentTags.documentId, ids));
+
+	const byDoc = new Map<string, Array<{ id: string; name: string; color: string | null }>>();
+	for (const t of tagRows) {
+		const list = byDoc.get(t.documentId) ?? [];
+		list.push({ id: t.id, name: t.name, color: t.color });
+		byDoc.set(t.documentId, list);
+	}
+	return rows.map((r) => ({ ...r, tags: byDoc.get(r.id) ?? [] }));
+}
 
 export const documentRoutes = new Elysia({ prefix: "/api" })
 	// GET /api/documents — List documents with pagination
@@ -99,7 +129,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						.limit(limit)
 						.offset(offset),
 				]);
-				return { items: rows, total: countResult[0]?.total ?? 0, page, limit };
+				return {
+					items: await withTags(rows),
+					total: countResult[0]?.total ?? 0,
+					page,
+					limit,
+				};
 			}
 
 			const [countResult, rows] = await Promise.all([
@@ -122,7 +157,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					.limit(limit)
 					.offset(offset),
 			]);
-			return { items: rows, total: countResult[0]?.total ?? 0, page, limit };
+			return {
+				items: await withTags(rows),
+				total: countResult[0]?.total ?? 0,
+				page,
+				limit,
+			};
 		} catch (err) {
 			logger.error({ err }, "Failed to list documents");
 			set.status = 500;
@@ -159,13 +199,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// (e.g. an import, a script, or any path that bypasses the
 			// editor), generate the JSON server-side so the editor opens
 			// with formatted content rather than the raw markdown source
-			// the next time the document is opened. `markdownToTipexJson`
+			// the next time the document is opened. `markdownToDocJson`
 			// returns `null` for empty input or on parse failure, in which
 			// case we simply persist the markdown without a JSON view — the
 			// frontend's `markdownToJson` helper will recover on load.
 			const initialContent = body.data.content ?? "";
-			const initialTipex = initialContent
-				? await markdownToTipexJson(initialContent)
+			const initialDocJson = initialContent
+				? await markdownToDocJson(initialContent)
 				: null;
 			const [created] = await db
 				.insert(documents)
@@ -173,7 +213,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					ownerId: userId,
 					title: body.data.title,
 					content: initialContent,
-					contentTipex: initialTipex,
+					contentTipex: initialDocJson,
 					folderId: body.data.folderId ?? null,
 				})
 				.returning();
@@ -185,7 +225,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			await db.insert(versions).values({
 				documentId: created.id,
 				content: initialContent,
-				contentTipex: initialTipex,
+				contentTipex: initialDocJson,
 				createdBy: userId,
 			});
 
@@ -316,10 +356,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// formatted content on the next open. When the client sends
 			// both fields (the editor's normal save path), prefer the
 			// client-supplied JSON — it reflects the user's live edits.
-			let resolvedTipex: unknown | undefined = body.data.contentTipex;
-			if (resolvedTipex === undefined && body.data.content !== undefined) {
-				resolvedTipex = body.data.content
-					? await markdownToTipexJson(body.data.content)
+			let resolvedDocJson: unknown | undefined = body.data.contentTipex;
+			if (resolvedDocJson === undefined && body.data.content !== undefined) {
+				resolvedDocJson = body.data.content
+					? await markdownToDocJson(body.data.content)
 					: null;
 			}
 
@@ -330,8 +370,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					...(body.data.content !== undefined && {
 						content: body.data.content,
 					}),
-					...(resolvedTipex !== undefined && {
-						contentTipex: resolvedTipex,
+					...(resolvedDocJson !== undefined && {
+						contentTipex: resolvedDocJson,
 					}),
 					...(body.data.metadata !== undefined && {
 						metadata: body.data.metadata,

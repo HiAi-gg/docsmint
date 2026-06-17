@@ -12,11 +12,15 @@ import {
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
-import { getTagRefreshNonce, refreshTags } from "$lib/stores/tag-store.svelte";
+import {
+	getSelectedTag,
+	getTagRefreshNonce,
+	refreshTags,
+	setSelectedTag,
+} from "$lib/stores/tag-store.svelte";
 import { cn } from "$lib/utils";
 
 let tags = $state<Tag[]>([]);
-let activeId = $state<string | null>(null);
 let loadError = $state<string | null>(null);
 let showCreateDialog = $state(false);
 let editTarget = $state<Tag | null>(null);
@@ -85,7 +89,7 @@ async function confirmDelete() {
 	try {
 		await deleteTag(t.id);
 		tags = tags.filter((tag) => tag.id !== t.id);
-		if (activeId === t.id) activeId = null;
+		if (getSelectedTag() === t.id) setSelectedTag(null);
 		showDeleteDialog = false;
 		deleteTarget = null;
 		refreshTags();
@@ -110,16 +114,16 @@ async function confirmDelete() {
       <div
         class={cn(
           "group/tag relative inline-flex items-center rounded-full transition-colors",
-          activeId === tag.id
+          getSelectedTag() === tag.id
             ? "bg-primary text-primary-foreground"
             : "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         )}
       >
         <button
           type="button"
-          onclick={() => { activeId = activeId === tag.id ? null : tag.id; }}
+          onclick={() => setSelectedTag(getSelectedTag() === tag.id ? null : tag.id, tag.name)}
           class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
-          aria-pressed={activeId === tag.id}
+          aria-pressed={getSelectedTag() === tag.id}
         >
           <span
             class="size-2.5 shrink-0 rounded-full"
@@ -135,7 +139,7 @@ async function confirmDelete() {
                 type="button"
                 class={cn(
                   "mr-0.5 inline-flex size-5 items-center justify-center rounded-full opacity-0 transition-opacity hover:bg-black/10 focus-visible:opacity-100 focus-visible:outline-none group-hover/tag:opacity-100",
-                  activeId === tag.id && "opacity-100",
+                  getSelectedTag() === tag.id && "opacity-100",
                 )}
                 aria-label={m.editor_more_options()}
                 title={m.editor_more_options()}

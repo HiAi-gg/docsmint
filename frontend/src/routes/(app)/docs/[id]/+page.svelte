@@ -19,6 +19,7 @@ import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { ApiError } from "$lib/api/client";
 import { deleteDocument, updateDocument } from "$lib/api/documents";
+import { createFolder, listFolders } from "$lib/api/folders";
 import {
 	addTagToDocument,
 	listTags,
@@ -27,8 +28,8 @@ import {
 } from "$lib/api/tags";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
-import type { TipexEditorOutput } from "$lib/components/editor/TipexEditor.svelte";
-import TipexEditor from "$lib/components/editor/TipexEditor.svelte";
+import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
+import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
@@ -40,7 +41,7 @@ import {
 	DropdownMenuTrigger,
 } from "$lib/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
-import { refreshTags } from "$lib/stores/tag-store.svelte";
+import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
 
@@ -70,8 +71,21 @@ let availableTags = $state<DocTag[]>([]);
 let tagsLoading = $state(false);
 let tagBusy = $state(false);
 
+// Folder management
+let folders = $state<{ id: string; name: string }[]>([]);
+let foldersLoading = $state(false);
+let currentFolderId = $state<string | null>(null);
+let currentFolderName = $state<string>("");
+let creatingFolder = $state(false);
+let newFolderName = $state("");
+
 $effect(() => {
 	tags = data.document.tags ?? [];
+});
+
+$effect(() => {
+	currentFolderId = data.document.folderId ?? null;
+	currentFolderName = data.document.folderName ?? "";
 });
 
 const assignedTagIds = $derived(new Set(tags.map((t) => t.id)));
@@ -127,11 +141,11 @@ function handleWindowClick(e: MouseEvent) {
 }
 
 // Auto-save debounce for content.
-// Accepts a TipexEditorOutput (`{ markdown, json }`) from either editor
+// Accepts a EditorOutput (`{ markdown, json }`) from either editor
 // so that edits in the raw-markdown view keep the server-side
 // `contentTipex` in sync — the wysiwyg editor reuses that field to avoid
 // re-parsing on every load.
-type ContentUpdate = TipexEditorOutput;
+type ContentUpdate = EditorOutput;
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function debounceContentSave(update: ContentUpdate) {
@@ -292,6 +306,55 @@ async function handleRemoveTag(tagId: string) {
 		tagBusy = false;
 	}
 }
+
+// --- Folder management ---
+async function loadFolders() {
+	if (folders.length > 0 || foldersLoading) return;
+	foldersLoading = true;
+	try {
+		// listFolders(null) returns a single synthetic root whose children
+		// are the user's top-level folders.
+		const result = await listFolders(null);
+		folders = (result[0]?.children ?? []).map((f) => ({
+			id: f.id,
+			name: f.name,
+		}));
+	} catch (_e) {
+		setError(m.error_generic());
+	} finally {
+		foldersLoading = false;
+	}
+}
+
+async function moveToFolder(folderId: string | null) {
+	try {
+		await updateDocument(data.document.id, { folderId });
+		currentFolderId = folderId;
+		currentFolderName = folderId
+			? (folders.find((f) => f.id === folderId)?.name ?? "")
+			: "";
+		saveStatus = "saved";
+		// Keep sidebar folder/doc lists in sync after a move.
+		refreshDocs();
+	} catch (_e) {
+		setError(m.doc_save_content_error());
+	}
+}
+
+async function handleCreateFolder() {
+	const name = newFolderName.trim();
+	if (!name) return;
+	try {
+		const created = await createFolder({ name });
+		folders = [...folders, { id: created.id, name: created.name }];
+		await moveToFolder(created.id);
+	} catch (_e) {
+		setError(m.error_generic());
+	} finally {
+		creatingFolder = false;
+		newFolderName = "";
+	}
+}
 </script>
 
 <svelte:window onclick={handleWindowClick} />
@@ -430,16 +493,75 @@ async function handleRemoveTag(tagId: string) {
 
       <!-- Tags -->
       <div class="tag-row">
-        {#if data.document.folderName}
-          <a
-            href="/folders/{data.document.folderId}"
-            class="folder-badge"
-            title={data.document.folderName}
-            aria-label={data.document.folderName}
-          >
-            <Folder size={14} />
-            {data.document.folderName}
-          </a>
+        <!-- Folder selector: shows the current folder (or "No folder") and
+             lets the user move the document, clear it to root, or create a
+             new folder. -->
+        <DropdownMenu onOpenChange={(open) => open && void loadFolders()}>
+          <DropdownMenuTrigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                type="button"
+                class="folder-badge"
+                title={currentFolderName || "No folder"}
+                aria-label="Change folder"
+              >
+                <Folder size={14} />
+                {currentFolderName || "No folder"}
+              </button>
+            {/snippet}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {#if foldersLoading}
+              <div class="tag-empty">{m.action_loading()}</div>
+            {:else}
+              {#each folders as folder (folder.id)}
+                <DropdownMenuItem onSelect={() => moveToFolder(folder.id)}>
+                  <Folder size={14} />
+                  {folder.name}
+                  {#if currentFolderId === folder.id}
+                    <Check size={12} />
+                  {/if}
+                </DropdownMenuItem>
+              {/each}
+            {/if}
+            <DropdownMenuItem
+              disabled={currentFolderId === null}
+              onSelect={() => moveToFolder(null)}
+            >
+              Move to root
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => { creatingFolder = true; }}>
+              <Plus size={14} />
+              New folder
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {#if creatingFolder}
+          <span class="folder-create">
+            <input
+              type="text"
+              bind:value={newFolderName}
+              placeholder="Folder name"
+              aria-label="New folder name"
+              onkeydown={(e) => {
+                if (e.key === "Enter") handleCreateFolder();
+                if (e.key === "Escape") { creatingFolder = false; newFolderName = ""; }
+              }}
+            />
+            <button type="button" class="folder-create-btn" onclick={handleCreateFolder}>
+              {m.action_save()}
+            </button>
+            <button
+              type="button"
+              class="folder-create-btn"
+              onclick={() => { creatingFolder = false; newFolderName = ""; }}
+            >
+              {m.action_cancel()}
+            </button>
+          </span>
         {/if}
         {#each tags as tag (tag.id)}
           <span
@@ -513,7 +635,7 @@ async function handleRemoveTag(tagId: string) {
       <!-- Editor -->
       <div class="editor-container">
         {#if mode === "wysiwyg"}
-          <TipexEditor
+          <HiAiEditor
             {content}
             {contentTipex}
             onUpdate={debounceContentSave}
@@ -928,9 +1050,42 @@ async function handleRemoveTag(tagId: string) {
     flex-direction: column;
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
+    /* `visible` (not `hidden`) so the editor toolbar popovers — emoji,
+       heading, list, align — are not clipped by the container edge. */
+    overflow: visible;
     min-height: 500px;
     background: var(--card);
+  }
+
+  .folder-create {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .folder-create input {
+    height: 24px;
+    padding: 0 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--background);
+    color: var(--foreground);
+  }
+
+  .folder-create-btn {
+    padding: 2px 8px;
+    font-size: 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+  }
+
+  .folder-create-btn:hover {
+    background: var(--muted);
+    color: var(--foreground);
   }
 
   /* Mobile responsive */

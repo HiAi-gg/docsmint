@@ -29,3 +29,25 @@ export function refreshDocs(): void {
 export function getDocRefreshNonce(): number {
 	return docRefreshNonce;
 }
+
+// Module-level reactive signal for the currently selected tag filter. Set by
+// the sidebar TagList; read by the dashboard and the sidebar RecentDocs so a
+// tag selection filters every document list in one place. `null` means no
+// filter (show all).
+let selectedTagId = $state<string | null>(null);
+// Tag NAME for the same selection. List endpoints filter by tag id, but the
+// search endpoint filters by tag name, so we keep both in sync here.
+let selectedTagName = $state<string | null>(null);
+
+export function setSelectedTag(id: string | null, name: string | null = null): void {
+	selectedTagId = id;
+	selectedTagName = id ? name : null;
+}
+
+export function getSelectedTag(): string | null {
+	return selectedTagId;
+}
+
+export function getSelectedTagName(): string | null {
+	return selectedTagName;
+}

@@ -10,13 +10,13 @@ import EditorToolbar from "./EditorToolbar.svelte";
 import { editorExtensions } from "./editorExtensions";
 import { markdownToJson } from "./markdown";
 
-export type TipexEditorOutput = { markdown: string; json: object };
+export type EditorOutput = { markdown: string; json: object };
 
 const {
 	content = "",
 	contentTipex,
 	placeholder = m.doc_content_placeholder(),
-	onUpdate = (_output: TipexEditorOutput) => {},
+	onUpdate = (_output: EditorOutput) => {},
 	editable = true,
 	collaboration = null,
 	documentId = "",
@@ -24,7 +24,7 @@ const {
 	content?: string;
 	contentTipex?: object;
 	placeholder?: string;
-	onUpdate?: (output: TipexEditorOutput) => void;
+	onUpdate?: (output: EditorOutput) => void;
 	editable?: boolean;
 	collaboration?: CollaborationSession | null;
 	documentId?: string;
@@ -42,7 +42,7 @@ let internalUpdate = false;
  * non-empty, parse the markdown into JSON in the browser so the wysiwyg
  * view shows formatted content rather than the raw markdown source. An
  * older version of the project did this server-side via
- * `backend/src/lib/markdown-to-tipex.ts`, but the markdown→JSON helper here
+ * `backend/src/lib/markdown-to-doc.ts`, but the markdown→JSON helper here
  * uses the same TipTap extension set as the editor itself, so the result
  * round-trips through `setContent` without node-mismatch errors. If the
  * parsed JSON does not match the editor schema on some edge case, the
@@ -56,7 +56,7 @@ function resolveInitialContent(): string | JSONContent {
 			return markdownToJson(content);
 		} catch (err) {
 			console.warn(
-				"TipexEditor: markdownToJson failed, falling back to raw markdown",
+				"HiAiEditor: markdownToJson failed, falling back to raw markdown",
 				err,
 			);
 			return content;
@@ -109,7 +109,16 @@ onMount(() => {
 				// function, so reading it as one always returned undefined and the
 				// fallback path produced plain text.
 				const getMarkdown = (ed as { getMarkdown?: () => string }).getMarkdown;
-				const markdown = getMarkdown ? getMarkdown.call(ed) : ed.getText();
+				// Guard the markdown serialization: a node type the markdown
+				// serializer doesn't recognize (e.g. tables on some versions)
+				// must not throw and abort the save — fall back to plain text.
+				let markdown: string;
+				try {
+					markdown = getMarkdown ? getMarkdown.call(ed) : ed.getText();
+				} catch (err) {
+					console.warn("HiAiEditor: getMarkdown failed, using plain text", err);
+					markdown = ed.getText();
+				}
 				const json = ed.getJSON() as object;
 				internalUpdate = true;
 				onUpdate({ markdown, json });
@@ -136,13 +145,13 @@ $effect(() => {
 	// missing but the markdown source is present, parse the markdown
 	// client-side so the wysiwyg view still shows formatted content for
 	// documents that were saved via the regular (non-TipTap) save path.
-	const hasTipex = contentTipex != null;
-	const nextSource: string | JSONContent = hasTipex
+	const hasDocJson = contentTipex != null;
+	const nextSource: string | JSONContent = hasDocJson
 		? (contentTipex as JSONContent)
 		: content && content.trim().length > 0
 			? markdownToJson(content)
 			: content;
-	const nextSerialized = hasTipex ? JSON.stringify(contentTipex) : content;
+	const nextSerialized = hasDocJson ? JSON.stringify(contentTipex) : content;
 	if (internalUpdate) {
 		internalUpdate = false;
 		prevContent = nextSerialized;
@@ -198,7 +207,7 @@ function handleWrapperClick(event: MouseEvent) {
 }
 </script>
 
-<div class="tipex-wrapper" onclick={handleWrapperClick} role="presentation">
+<div class="editor-wrapper" onclick={handleWrapperClick} role="presentation">
   {#if ready && editor}
     <EditorToolbar {editor} {documentId} />
     <div class="editor-content">
@@ -223,7 +232,7 @@ function handleWrapperClick(event: MouseEvent) {
 </div>
 
 <style>
-  .tipex-wrapper {
+  .editor-wrapper {
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -295,6 +304,34 @@ function handleWrapperClick(event: MouseEvent) {
   .editor-content :global(.tiptap li) {
     margin: 0.25rem 0;
     display: list-item;
+  }
+
+  /* Task lists — checkbox list. Override the default disc bullet and lay
+     each item out as [checkbox] [content]. */
+  .editor-content :global(.tiptap ul[data-type="taskList"]) {
+    list-style: none;
+    padding-left: 0.25rem;
+  }
+
+  .editor-content :global(.tiptap ul[data-type="taskList"] li) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .editor-content :global(.tiptap ul[data-type="taskList"] li > label) {
+    margin-top: 0.2rem;
+    user-select: none;
+  }
+
+  .editor-content :global(.tiptap ul[data-type="taskList"] li > div) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .editor-content :global(.tiptap ul[data-type="taskList"] input[type="checkbox"]) {
+    accent-color: var(--primary);
+    cursor: pointer;
   }
 
   .editor-content :global(.tiptap blockquote) {
@@ -373,6 +410,54 @@ function handleWrapperClick(event: MouseEvent) {
     border: none;
     border-top: 2px solid var(--border);
     margin: 1.5rem 0;
+  }
+
+  /* Tables */
+  .editor-content :global(.tiptap table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.75rem 0;
+    table-layout: fixed;
+    overflow: hidden;
+  }
+
+  .editor-content :global(.tiptap th),
+  .editor-content :global(.tiptap td) {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    vertical-align: top;
+    text-align: left;
+    min-width: 3rem;
+  }
+
+  .editor-content :global(.tiptap th) {
+    background: var(--muted);
+    font-weight: 600;
+  }
+
+  /* Active cell selection highlight (TipTap CellSelection) */
+  .editor-content :global(.tiptap .selectedCell::after) {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+    pointer-events: none;
+  }
+
+  .editor-content :global(.tiptap td),
+  .editor-content :global(.tiptap th) {
+    position: relative;
+  }
+
+  /* Column resize handle */
+  .editor-content :global(.tiptap .column-resize-handle) {
+    position: absolute;
+    right: -2px;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--primary);
+    cursor: col-resize;
   }
 
   .editor-content :global(.tiptap .doc-link) {

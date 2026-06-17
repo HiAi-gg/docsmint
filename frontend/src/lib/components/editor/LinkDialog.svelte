@@ -50,12 +50,35 @@ function handleApply() {
 	if (trimmed === "") {
 		editor.chain().focus().extendMarkRange("link").unsetLink().run();
 	} else {
-		editor
-			.chain()
-			.focus()
-			.extendMarkRange("link")
-			.setLink({ href: trimmed })
-			.run();
+		// Bare domains like "google.com" would otherwise be treated as a
+		// relative path and routed internally (e.g. /s/google.com). Prepend
+		// https:// unless the value already has a scheme, anchor, or path.
+		const normalized = /^(https?:\/\/|mailto:|tel:|\/|#)/i.test(trimmed)
+			? trimmed
+			: `https://${trimmed}`;
+
+		const { from, to } = editor.state.selection;
+		if (from === to) {
+			// No text selected: `setLink` would add a mark with nothing to
+			// apply it to, so nothing visible would be saved. Insert the URL
+			// itself as the link text instead.
+			editor
+				.chain()
+				.focus()
+				.insertContent({
+					type: "text",
+					text: normalized,
+					marks: [{ type: "link", attrs: { href: normalized } }],
+				})
+				.run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.extendMarkRange("link")
+				.setLink({ href: normalized })
+				.run();
+		}
 	}
 	close();
 }

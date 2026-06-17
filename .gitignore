@@ -58,3 +58,10 @@ backup/
 
 # SvelteKit backup
 .svelte-kit.bak/
+
+# Internal dev artifacts (not part of the public release)
+todo.md
+topics.txt
+*.local.md
+scratch/
+notes/

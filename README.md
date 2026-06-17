@@ -230,11 +230,9 @@ Full API documentation available in [docs/API.md](docs/API.md).
 
 ## Related Projects
 
+Part of the [HiAi](https://hiai.gg) open-source ecosystem:
+
 | Project | Description |
 |---------|-------------|
-| [hiai-kit](https://github.com/hiai-gg/hiai-kit) | AI agent starter kit |
-| [hiai-store](https://github.com/hiai-gg/hiai-store) | Multi-tenant e-commerce |
-| [hiai-admin](https://github.com/hiai-gg/hiai-admin) | Platform admin panel |
-| [hiai-post](https://github.com/hiai-gg/hiai-post) | Social media management |
+| [hiai-opencode](https://github.com/hiai-gg/hiai-opencode) | AI coding agent |
 | [hiai-observe](https://github.com/hiai-gg/hiai-observe) | Observability platform |
-| [hiai-amigo](https://github.com/hiai-gg/hiai-amigo) | Telegram AI bot |

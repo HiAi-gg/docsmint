@@ -58,7 +58,7 @@ export function updateDocument(
 	data: {
 		title?: string;
 		content?: string;
-		folderId?: string;
+		folderId?: string | null;
 		contentTipex?: unknown;
 	},
 ): Promise<Document> {

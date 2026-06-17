@@ -21,6 +21,7 @@ let shareData = $state<{
 	};
 } | null>(null);
 let copied = $state(false);
+let copiedText = $state(false);
 
 // SvelteKit-injected fetch avoids the `window.fetch` warning during SSR/CSR
 // transitions. Falls back to global fetch when running outside a load fn
@@ -30,18 +31,18 @@ const kitFetch = $derived(
 );
 
 // Configure marked for safe, GFM-flavored rendering of shared document
-// markdown. The TipexEditor JSON path (contentTipex) is preferred when the
+// markdown. The HiAiEditor JSON path (contentTipex) is preferred when the
 // server provides it, but `content` (raw markdown) is the universal fallback.
 marked.setOptions({ gfm: true, breaks: false });
 
 function renderContent(): string {
 	if (!shareData?.data) return "";
-	const tipex = shareData.data.contentTipex as
+	const docJson = shareData.data.contentTipex as
 		| { content?: unknown }
 		| null
 		| undefined;
-	if (tipex && Array.isArray(tipex.content)) {
-		return tipexToHtml(tipex as ProseMirrorDoc);
+	if (docJson && Array.isArray(docJson.content)) {
+		return docToHtml(docJson as ProseMirrorDoc);
 	}
 	const md = shareData.data.content;
 	if (md && md.length > 0) {
@@ -69,7 +70,7 @@ function escapeHtml(s: string): string {
 		.replace(/'/g, "&#39;");
 }
 
-function tipexToHtml(doc: ProseMirrorDoc): string {
+function docToHtml(doc: ProseMirrorDoc): string {
 	const renderNode = (node: ProseMirrorNode): string => {
 		if (node.type === "text") {
 			let html = escapeHtml(node.text ?? "");
@@ -102,7 +103,7 @@ function wrapMark(
 			return `<code>${html}</code>`;
 		case "link": {
 			const href = (mark.attrs?.href as string) ?? "#";
-			return `<a href="${escapeHtml(href)}" rel="noopener noreferrer">${html}</a>`;
+			return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`;
 		}
 		case "highlight": {
 			const color = (mark.attrs?.color as string) ?? "#fde68a";
@@ -116,7 +117,7 @@ function wrapMark(
 // Returns an inline `style` attribute fragment (` style="text-align: X"`) for
 // the block-level textAlign attribute, or an empty string when alignment is
 // unset / not a recognized value. Whitelists the four values supported by the
-// Tipex editor to avoid passing attacker-controlled strings into the markup.
+// editor to avoid passing attacker-controlled strings into the markup.
 function alignStyle(attrs?: Record<string, unknown>): string {
 	const align = attrs?.textAlign as string | undefined;
 	if (
@@ -146,8 +147,23 @@ function wrapBlock(node: ProseMirrorNode, inner: string): string {
 			return `<ol${align}>${inner}</ol>`;
 		case "listItem":
 			return `<li${align}>${inner}</li>`;
+		case "taskList":
+			return `<ul data-type="taskList">${inner}</ul>`;
+		case "taskItem": {
+			// Read-only checkbox reflecting the saved checked state.
+			const checked = node.attrs?.checked === true ? " checked" : "";
+			return `<li data-type="taskItem"${checked ? ' data-checked="true"' : ""}><label><input type="checkbox" disabled${checked} /></label><div>${inner}</div></li>`;
+		}
 		case "blockquote":
 			return `<blockquote${align}>${inner}</blockquote>`;
+		case "table":
+			return `<table><tbody>${inner}</tbody></table>`;
+		case "tableRow":
+			return `<tr>${inner}</tr>`;
+		case "tableHeader":
+			return `<th${align}>${inner}</th>`;
+		case "tableCell":
+			return `<td${align}>${inner}</td>`;
 		case "codeBlock":
 			return `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ""}>${inner}</code></pre>`;
 		case "horizontalRule":
@@ -216,6 +232,16 @@ function copyUrl() {
 	}, 2000);
 }
 
+function copyText() {
+	const text = shareData?.data?.content ?? "";
+	if (!text) return;
+	navigator.clipboard.writeText(text);
+	copiedText = true;
+	setTimeout(() => {
+		copiedText = false;
+	}, 2000);
+}
+
 fetchShare();
 </script>
 
@@ -237,16 +263,30 @@ fetchShare();
           {/if}
           {m.share_via_label()}
         </div>
-        <button
-          onclick={copyUrl}
-          class="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
-        >
-          {#if copied}
-            <Check class="h-3 w-3" /> {m.share_copied()}
-          {:else}
-            <Copy class="h-3 w-3" /> {m.share_copy_link()}
+        <div class="flex items-center gap-2">
+          {#if shareData.type === "document" && shareData.data?.content}
+            <button
+              onclick={copyText}
+              class="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
+            >
+              {#if copiedText}
+                <Check class="h-3 w-3" /> {m.share_copied()}
+              {:else}
+                <Copy class="h-3 w-3" /> Copy Text
+              {/if}
+            </button>
           {/if}
-        </button>
+          <button
+            onclick={copyUrl}
+            class="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
+          >
+            {#if copied}
+              <Check class="h-3 w-3" /> {m.share_copied()}
+            {:else}
+              <Copy class="h-3 w-3" /> {m.share_copy_link()}
+            {/if}
+          </button>
+        </div>
       </div>
 
       {#if shareData.type === "document"}
@@ -359,6 +399,22 @@ fetchShare();
   .shared-doc-body :global(li) {
     margin: 0.25rem 0;
   }
+  /* Task lists — no bullet, checkbox + content laid out in a row. */
+  .shared-doc-body :global(ul[data-type="taskList"]) {
+    list-style: none;
+    padding-left: 0.25rem;
+  }
+  .shared-doc-body :global(ul[data-type="taskList"] li) {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .shared-doc-body :global(ul[data-type="taskList"] li > label) {
+    margin-top: 0.2rem;
+  }
+  .shared-doc-body :global(ul[data-type="taskList"] input[type="checkbox"]) {
+    accent-color: var(--primary);
+  }
   .shared-doc-body :global(blockquote) {
     border-left: 3px solid var(--border);
     padding-left: 1rem;
@@ -410,5 +466,21 @@ fetchShare();
     background-color: var(--highlight-default, #fde68a);
     border-radius: 2px;
     padding: 0 2px;
+  }
+  .shared-doc-body :global(table) {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.75rem 0;
+  }
+  .shared-doc-body :global(th),
+  .shared-doc-body :global(td) {
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  .shared-doc-body :global(th) {
+    background: var(--muted);
+    font-weight: 600;
   }
 </style>

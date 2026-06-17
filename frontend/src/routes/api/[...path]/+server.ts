@@ -51,21 +51,33 @@ async function proxy(
 		request.method === "PUT" ||
 		request.method === "PATCH"
 	) {
-		const body = await request.text();
-		if (body) {
+		// Forward the raw bytes — NOT request.text(). Reading the body as text
+		// decodes it as UTF-8, which corrupts binary payloads such as
+		// multipart/form-data image uploads (high bytes get replaced with the
+		// U+FFFD replacement character, inflating and mangling the file). The
+		// original content-type header (with its multipart boundary) is
+		// preserved by buildHeaders().
+		const body = await request.arrayBuffer();
+		if (body.byteLength > 0) {
 			init.body = body;
 		}
 	}
 
 	try {
 		const response = await fetch(targetUrl, init);
-		const data = await response.text();
+		// Read the response as raw bytes for the same reason — image/binary
+		// responses (e.g. /api/attachments/:id/raw) must pass through intact.
+		const data = await response.arrayBuffer();
 
 		const responseHeaders = new Headers();
 		responseHeaders.set(
 			"content-type",
 			response.headers.get("content-type") || "application/json",
 		);
+		const cacheControl = response.headers.get("cache-control");
+		if (cacheControl) {
+			responseHeaders.set("cache-control", cacheControl);
+		}
 
 		response.headers.forEach((value, key) => {
 			if (key.toLowerCase() === "set-cookie") {

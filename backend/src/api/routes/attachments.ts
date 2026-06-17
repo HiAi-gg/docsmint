@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
-import { BUCKET, minio, minioPublic } from "../../lib/minio";
+import { BUCKET, minio } from "../../lib/minio";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -180,21 +180,18 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Failed to save attachment record" };
 			}
 
-			// Generate presigned GET URL (24h expiry) — signed against the
-			// public host/port so the browser can fetch it directly.
-			const presignedUrl = await minioPublic.presignedGetObject(
-				BUCKET,
-				key,
-				24 * 60 * 60,
-			);
-
+			// Return a stable, same-origin streaming URL instead of a 24h
+			// presigned URL. The presigned URL would expire (breaking images
+			// embedded in saved documents) and would not be reachable from the
+			// public share view. `/api/attachments/:id/raw` is permanent and
+			// public.
 			set.status = 201;
 			return {
 				id: created.id,
 				filename: created.filename,
 				mimeType: created.mimeType,
 				size: created.size,
-				url: presignedUrl,
+				url: `/api/attachments/${created.id}/raw`,
 			};
 		} catch (err) {
 			logger.error({ err }, "Failed to upload attachment");
@@ -231,29 +228,53 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				.from(attachments)
 				.where(eq(attachments.documentId, documentId));
 
-			// Generate presigned URLs for each attachment — signed against
-			// the public host/port so the browser can fetch directly.
-			const result = await Promise.all(
-				rows.map(async (row) => {
-					const presignedUrl = await minioPublic.presignedGetObject(
-						BUCKET,
-						row.minioKey,
-						24 * 60 * 60,
-					);
-					return {
-						id: row.id,
-						filename: row.filename,
-						mimeType: row.mimeType,
-						size: row.size,
-						url: presignedUrl,
-					};
-				}),
-			);
+			// Stable same-origin streaming URLs (see POST handler note).
+			const result = rows.map((row) => ({
+				id: row.id,
+				filename: row.filename,
+				mimeType: row.mimeType,
+				size: row.size,
+				url: `/api/attachments/${row.id}/raw`,
+			}));
 
 			return { items: result };
 		} catch (err) {
 			logger.error({ err }, "Failed to list attachments");
 			set.status = 500;
 			return { error: "Failed to list attachments" };
+		}
+	})
+
+	// GET /api/attachments/:id/raw — Stream attachment bytes (PUBLIC, no auth).
+	// Intentionally public so images embedded in shared documents load without
+	// a session. The attachment id is a UUID, so it is unguessable.
+	.get("/attachments/:id/raw", async ({ params, set }) => {
+		try {
+			const [row] = await db
+				.select()
+				.from(attachments)
+				.where(eq(attachments.id, params.id))
+				.limit(1);
+			if (!row) {
+				set.status = 404;
+				return { error: "Attachment not found" };
+			}
+
+			const stream = await minio.getObject(BUCKET, row.minioKey);
+			const chunks: Buffer[] = [];
+			for await (const chunk of stream) {
+				chunks.push(chunk as Buffer);
+			}
+			const buffer = Buffer.concat(chunks);
+
+			set.headers = {
+				"Content-Type": row.mimeType,
+				"Cache-Control": "public, max-age=31536000, immutable",
+			};
+			return buffer;
+		} catch (err) {
+			logger.error({ err }, "Failed to stream attachment");
+			set.status = 500;
+			return { error: "Failed to stream attachment" };
 		}
 	});

@@ -52,7 +52,7 @@ export const documentRateLimiter = createRateLimiter({
 });
 export const writeRateLimiter = createRateLimiter({
 	windowSec: 60,
-	max: 20,
+	max: 60,
 	keyPrefix: "write",
 });
 export const shareRateLimiter = createRateLimiter({

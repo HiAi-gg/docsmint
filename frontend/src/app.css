@@ -4,13 +4,20 @@
    shadcn-svelte CSS Variables (new-york, slate)
    ============================================ */
 :root {
+	/* Explicit color-scheme makes native form controls (notably the
+	   <input type="date"> calendar popup) use the themed renderer that
+	   honors `accent-color`. Without it Chrome falls back to its default
+	   blue accent and ignores `accent-color`. */
+	color-scheme: light;
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.145 0.013 285.82);
 	--card: oklch(1 0 0);
 	--card-foreground: oklch(0.145 0.013 285.82);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.145 0.013 285.82);
-	--primary: oklch(0.205 0.042 265.76);
+	/* Brand accent (light theme): selections, focus rings, primary buttons,
+	   native form accents (calendar/date selected day via accent-color). */
+	--primary: #20b2aa;
 	--primary-foreground: oklch(0.985 0.002 247.86);
 	--secondary: oklch(0.97 0.004 264.54);
 	--secondary-foreground: oklch(0.205 0.042 265.76);
@@ -22,11 +29,11 @@
 	--destructive-foreground: oklch(0.985 0.002 247.86);
 	--border: oklch(0.922 0.007 264.54);
 	--input: oklch(0.922 0.007 264.54);
-	--ring: oklch(0.708 0.165 254.62);
+	--ring: #20b2aa;
 	--radius: 0.625rem;
 
 	/* App-level tokens */
-	--color-primary: oklch(0.205 0.042 265.76);
+	--color-primary: #20b2aa;
 	--color-secondary: oklch(0.97 0.004 264.54);
 	--color-bg: oklch(1 0 0);
 	--color-surface: oklch(0.985 0.002 247.86);
@@ -50,30 +57,34 @@
 }
 
 .dark {
-	--background: oklch(0.145 0.013 285.82);
-	--foreground: oklch(0.985 0.002 247.86);
-	--card: oklch(0.145 0.013 285.82);
-	--card-foreground: oklch(0.985 0.002 247.86);
-	--popover: oklch(0.145 0.013 285.82);
-	--popover-foreground: oklch(0.985 0.002 247.86);
-	--primary: oklch(0.985 0.002 247.86);
-	--primary-foreground: oklch(0.205 0.042 265.76);
-	--secondary: oklch(0.269 0.019 270.87);
-	--secondary-foreground: oklch(0.985 0.002 247.86);
-	--muted: oklch(0.269 0.019 270.87);
-	--muted-foreground: oklch(0.708 0.016 270.87);
-	--accent: oklch(0.269 0.019 270.87);
-	--accent-foreground: oklch(0.985 0.002 247.86);
-	--destructive: oklch(0.396 0.178 27.33);
-	--destructive-foreground: oklch(0.985 0.002 247.86);
-	--border: oklch(0.269 0.019 270.87);
-	--input: oklch(0.269 0.019 270.87);
-	--ring: oklch(0.439 0.172 270.87);
+	color-scheme: dark;
+	--background: oklch(0.16 0 0);
+	--foreground: oklch(0.96 0 0);
+	--card: oklch(0.20 0 0);
+	--card-foreground: oklch(0.96 0 0);
+	--popover: oklch(0.24 0 0);
+	--popover-foreground: oklch(0.96 0 0);
+	/* Brand accent (dark theme). */
+	--primary: #9932cc;
+	--primary-foreground: oklch(0.98 0 0);
+	--secondary: oklch(0.24 0 0);
+	--secondary-foreground: oklch(0.96 0 0);
+	--muted: oklch(0.26 0 0);
+	--muted-foreground: oklch(0.74 0 0);
+	--accent: oklch(0.28 0 0);
+	--accent-foreground: oklch(0.96 0 0);
+	--destructive: oklch(0.58 0.18 25);
+	--destructive-foreground: oklch(0.98 0.01 25);
+	--border: oklch(0.32 0 0);
+	--input: oklch(0.34 0 0);
+	--ring: #9932cc;
 
-	--color-primary: oklch(0.985 0.002 247.86);
-	--color-secondary: oklch(0.269 0.019 270.87);
-	--color-bg: oklch(0.145 0.013 285.82);
-	--color-surface: oklch(0.205 0.013 285.82);
+	--color-primary: #9932cc;
+	--color-secondary: oklch(0.24 0 0);
+	--color-bg: oklch(0.16 0 0);
+	--color-surface: oklch(0.20 0 0);
+
+	--highlight-default: #78350f;
 
 	/* Syntax highlighting — dark mode (Material Palenight) */
 	--hljs-keyword: #c792ea;
@@ -113,21 +124,56 @@
 }
 
 /* ============================================
-   Skip-to-content accessibility link
+   Base Document Layout Styles
    ============================================ */
+html,
+body {
+	background-color: var(--background);
+	color: var(--foreground);
+	accent-color: var(--primary);
+	transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+input,
+select,
+textarea {
+	accent-color: var(--primary);
+}
+
+/* Unified text-selection highlight in the brand accent color. */
+::selection {
+	background-color: var(--primary);
+	color: var(--primary-foreground);
+}
+
+/* Skip-to-content accessibility link — visually hidden until focused. */
 .skip-link {
-  position: absolute;
-  top: -100%;
-  left: 0;
-  z-index: 9999;
-  padding: 8px 16px;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  text-decoration: none;
-  border-radius: 0 0 4px 0;
+	position: absolute;
+	top: -100%;
+	left: 0;
+	z-index: 9999;
+	padding: 8px 16px;
+	background: var(--primary);
+	color: var(--primary-foreground);
+	text-decoration: none;
+	border-radius: 0 0 4px 0;
 }
 .skip-link:focus {
-  top: 0;
+	top: 0;
+}
+
+/* Native date/time pickers: force the brand accent on the calendar popup
+   (selected day, today marker) instead of the browser-default blue. */
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+input[type="month"],
+input[type="week"] {
+	accent-color: var(--primary);
+}
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+	cursor: pointer;
 }
 
 /* ============================================
@@ -158,4 +204,34 @@
 	height: auto;
 	margin: 0.5rem 0;
 	border-radius: 6px;
+}
+
+/* Ensure list markers render despite Tailwind v4 preflight resetting
+   `list-style` on ul/ol. Applies to both the live editor and the public
+   shared-document view. */
+.tiptap ul,
+.shared-doc-body ul {
+	list-style: disc outside;
+	padding-left: 1.5rem;
+}
+.tiptap ol,
+.shared-doc-body ol {
+	list-style: decimal outside;
+	padding-left: 1.5rem;
+}
+.tiptap li,
+.shared-doc-body li {
+	display: list-item;
+}
+
+/* Task lists are checkbox lists, not bulleted: cancel the disc marker and
+   the list-item display the safety rules above would otherwise apply. */
+.tiptap ul[data-type="taskList"],
+.shared-doc-body ul[data-type="taskList"] {
+	list-style: none;
+	padding-left: 0.25rem;
+}
+.tiptap ul[data-type="taskList"] li,
+.shared-doc-body ul[data-type="taskList"] li {
+	display: flex;
 }

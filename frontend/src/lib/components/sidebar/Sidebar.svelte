@@ -57,8 +57,9 @@ function toggleCollapse() {
 
   {#if !collapsed}
     <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-3">
-      <!-- Search -->
-      <SearchBar />
+      <!-- Search — leave a right gap so the collapse toggle button
+           (positioned at the panel's top-right edge) stays clear of it. -->
+      <SearchBar class="mr-5" />
 
       {#if activePanel === "all"}
         <!-- Folders -->

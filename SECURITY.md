@@ -12,7 +12,7 @@ If you discover a security vulnerability in hiai-docs, please report it responsi
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **security@hiai-gg.dev**
+Instead, please email: **hiai@webs.cool**
 
 ### What to include
 

@@ -14,8 +14,10 @@ import {
 } from "lucide-svelte";
 import { goto } from "$app/navigation";
 import { getFilterOptions, type SearchResponse, search } from "$lib/api/search";
+import DatePicker from "$lib/components/DatePicker.svelte";
 import SearchResult from "$lib/components/SearchResult.svelte";
 import * as m from "$lib/paraglide/messages.js";
+import { getSelectedTagName } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
 
@@ -79,6 +81,11 @@ $effect(() => {
 	const tags = activeTags;
 	const from = dateFrom;
 	const to = dateTo;
+	// Merge the shared selected tag (set from the sidebar TagList) into the
+	// search filter so a tag picked anywhere also narrows search results.
+	const sharedTag = getSelectedTagName();
+	const effectiveTags =
+		sharedTag && !tags.includes(sharedTag) ? [...tags, sharedTag] : tags;
 
 	if (!q) {
 		searchResponse = null;
@@ -90,7 +97,7 @@ $effect(() => {
 
 	search(q, p, PAGE_SIZE, sort, {
 		folder: folder || undefined,
-		tags: tags.length > 0 ? tags : undefined,
+		tags: effectiveTags.length > 0 ? effectiveTags : undefined,
 		dateFrom: from || undefined,
 		dateTo: to || undefined,
 	}).then((res) => {
@@ -362,23 +369,27 @@ function goToPage(page: number) {
       <div class="space-y-2">
         <div>
           <label for="dateFrom" class="text-xs text-muted-foreground">{m.search_date_from()}</label>
-          <input
-            id="dateFrom"
-            type="date"
-            bind:value={dateFrom}
-            onchange={applyDateRange}
-            class="mt-0.5 flex h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
+          <div class="mt-0.5">
+            <DatePicker
+              id="dateFrom"
+              bind:value={dateFrom}
+              onchange={applyDateRange}
+              ariaLabel={m.search_date_from()}
+              placeholder={m.search_date_from()}
+            />
+          </div>
         </div>
         <div>
           <label for="dateTo" class="text-xs text-muted-foreground">{m.search_date_to()}</label>
-          <input
-            id="dateTo"
-            type="date"
-            bind:value={dateTo}
-            onchange={applyDateRange}
-            class="mt-0.5 flex h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
+          <div class="mt-0.5">
+            <DatePicker
+              id="dateTo"
+              bind:value={dateTo}
+              onchange={applyDateRange}
+              ariaLabel={m.search_date_to()}
+              placeholder={m.search_date_to()}
+            />
+          </div>
         </div>
       </div>
     </div>

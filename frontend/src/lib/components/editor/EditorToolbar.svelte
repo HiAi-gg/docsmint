@@ -12,15 +12,21 @@ import {
 	Code2,
 	Copy,
 	Heading1,
+	Heading2,
+	Heading3,
 	Highlighter,
 	Image as ImageIcon,
 	Italic,
 	Link as LinkIcon,
 	List,
+	ListChecks,
 	ListOrdered,
 	Loader2,
+	Minus,
+	Quote,
 	Redo,
 	Smile,
+	Table as TableIcon,
 	Type,
 	Underline,
 	Undo,
@@ -100,6 +106,11 @@ let highlightPickerOpen = $state(false);
 let highlightPickerRoot = $state<HTMLDivElement | null>(null);
 let emojiPickerOpen = $state(false);
 let emojiPickerRoot = $state<HTMLDivElement | null>(null);
+let tablePickerOpen = $state(false);
+let tablePickerRoot = $state<HTMLDivElement | null>(null);
+// Hovered cell extent in the table size-picker grid (1-based; 0 = none).
+let tableHoverRows = $state(0);
+let tableHoverCols = $state(0);
 let headingDropdownOpen = $state(false);
 let headingDropdownRoot = $state<HTMLDivElement | null>(null);
 let listDropdownOpen = $state(false);
@@ -151,6 +162,8 @@ const activeStates = $derived.by<ActiveStates>(() => {
 		heading3: editor.isActive("heading", { level: 3 }),
 		bulletList: editor.isActive("bulletList"),
 		orderedList: editor.isActive("orderedList"),
+		taskList: editor.isActive("taskList"),
+		blockquote: editor.isActive("blockquote"),
 		codeBlock: editor.isActive("codeBlock"),
 		link: editor.isActive("link"),
 		highlight: editor.isActive("highlight"),
@@ -227,6 +240,22 @@ function insertEmoji(emoji: string) {
 	emojiPickerOpen = false;
 }
 
+// Table size-picker: an 8×8 grid where the user hovers to choose how many
+// rows/columns and clicks to insert the table (with a header row).
+const TABLE_GRID_MAX = 8;
+
+function toggleTablePicker() {
+	tablePickerOpen = !tablePickerOpen;
+	tableHoverRows = 0;
+	tableHoverCols = 0;
+}
+
+function insertTable(rows: number, cols: number) {
+	if (!editor) return;
+	editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+	tablePickerOpen = false;
+}
+
 function toggleHeadingDropdown() {
 	headingDropdownOpen = !headingDropdownOpen;
 }
@@ -245,14 +274,26 @@ function toggleListDropdown() {
 	listDropdownOpen = !listDropdownOpen;
 }
 
-function applyList(kind: "bullet" | "ordered") {
+function applyList(kind: "bullet" | "ordered" | "task") {
 	if (!editor) return;
 	if (kind === "bullet") {
 		editor.chain().focus().toggleBulletList().run();
-	} else {
+	} else if (kind === "ordered") {
 		editor.chain().focus().toggleOrderedList().run();
+	} else {
+		editor.chain().focus().toggleTaskList().run();
 	}
 	listDropdownOpen = false;
+}
+
+function toggleBlockquote() {
+	if (!editor) return;
+	editor.chain().focus().toggleBlockquote().run();
+}
+
+function insertHorizontalRule() {
+	if (!editor) return;
+	editor.chain().focus().setHorizontalRule().run();
 }
 
 function toggleAlignDropdown() {
@@ -356,6 +397,7 @@ $effect(() => {
 	if (
 		!highlightPickerOpen &&
 		!emojiPickerOpen &&
+		!tablePickerOpen &&
 		!headingDropdownOpen &&
 		!listDropdownOpen &&
 		!alignDropdownOpen
@@ -375,6 +417,12 @@ $effect(() => {
 			const root = emojiPickerRoot;
 			if (root && !root.contains(target)) {
 				emojiPickerOpen = false;
+			}
+		}
+		if (tablePickerOpen) {
+			const root = tablePickerRoot;
+			if (root && !root.contains(target)) {
+				tablePickerOpen = false;
 			}
 		}
 		if (headingDropdownOpen) {
@@ -400,6 +448,7 @@ $effect(() => {
 		if (e.key === "Escape") {
 			highlightPickerOpen = false;
 			emojiPickerOpen = false;
+			tablePickerOpen = false;
 			headingDropdownOpen = false;
 			listDropdownOpen = false;
 			alignDropdownOpen = false;
@@ -530,7 +579,7 @@ $effect(() => {
 						role="menuitem"
 						onclick={() => applyHeading(2)}
 					>
-						<Heading1 size={16} />
+						<Heading2 size={16} />
 						<span>{m.editor_toolbar_heading_2()}</span>
 					</button>
 					<button
@@ -540,7 +589,7 @@ $effect(() => {
 						role="menuitem"
 						onclick={() => applyHeading(3)}
 					>
-						<Heading1 size={16} />
+						<Heading3 size={16} />
 						<span>{m.editor_toolbar_heading_3()}</span>
 					</button>
 				</div>
@@ -588,13 +637,23 @@ $effect(() => {
 						<ListOrdered size={16} />
 						<span>{m.editor_toolbar_ordered_list()}</span>
 					</button>
+					<button
+						type="button"
+						class="dropdown-item"
+						class:selected={activeStates.taskList ?? false}
+						role="menuitem"
+						onclick={() => applyList("task")}
+					>
+						<ListChecks size={16} />
+						<span>Task list</span>
+					</button>
 				</div>
 			{/if}
 		</div>
 
 		<div class="toolbar-divider" aria-hidden="true"></div>
 
-		<!-- Block marks: Code block, Link -->
+		<!-- Block marks: Code block, Quote, Horizontal rule, Link -->
 		<button
 			class="toolbar-btn"
 			class:active={activeStates.codeBlock ?? false}
@@ -606,6 +665,28 @@ $effect(() => {
 			type="button"
 		>
 			<Code2 size={16} />
+		</button>
+		<button
+			class="toolbar-btn"
+			class:active={activeStates.blockquote ?? false}
+			disabled={isDisabled()}
+			onclick={toggleBlockquote}
+			title="Quote"
+			aria-label="Quote"
+			aria-pressed={activeStates.blockquote ?? false}
+			type="button"
+		>
+			<Quote size={16} />
+		</button>
+		<button
+			class="toolbar-btn"
+			disabled={isDisabled()}
+			onclick={insertHorizontalRule}
+			title={m.editor_toolbar_horizontal_rule()}
+			aria-label={m.editor_toolbar_horizontal_rule()}
+			type="button"
+		>
+			<Minus size={16} />
 		</button>
 		<button
 			class="toolbar-btn"
@@ -813,6 +894,55 @@ $effect(() => {
 
 		<div class="toolbar-divider" aria-hidden="true"></div>
 
+		<!-- Table insert with size picker -->
+		<div class="table-picker" bind:this={tablePickerRoot}>
+			<button
+				class="toolbar-btn"
+				disabled={isDisabled()}
+				onclick={toggleTablePicker}
+				title="Insert table"
+				aria-label="Insert table"
+				aria-haspopup="true"
+				aria-expanded={tablePickerOpen}
+				type="button"
+			>
+				<TableIcon size={16} />
+			</button>
+
+			{#if tablePickerOpen}
+				<div class="table-popover" role="menu" aria-label="Insert table">
+					<div class="table-grid" role="presentation">
+						{#each Array(TABLE_GRID_MAX) as _, r}
+							{#each Array(TABLE_GRID_MAX) as _, c}
+								<button
+									type="button"
+									class="table-cell"
+									class:active={r < tableHoverRows && c < tableHoverCols}
+									onmouseenter={() => {
+										tableHoverRows = r + 1;
+										tableHoverCols = c + 1;
+									}}
+									onfocus={() => {
+										tableHoverRows = r + 1;
+										tableHoverCols = c + 1;
+									}}
+									onclick={() => insertTable(r + 1, c + 1)}
+									aria-label={`${r + 1} × ${c + 1}`}
+								></button>
+							{/each}
+						{/each}
+					</div>
+					<div class="table-grid-label">
+						{tableHoverRows > 0
+							? `${tableHoverRows} × ${tableHoverCols}`
+							: "Insert table"}
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<div class="toolbar-divider" aria-hidden="true"></div>
+
 		<button
 			class="toolbar-btn copy-btn"
 			class:copied={copyConfirmation}
@@ -851,8 +981,8 @@ $effect(() => {
 	.toolbar {
 		display: flex;
 		align-items: center;
-		gap: 2px;
-		padding: 6px 12px;
+		gap: 1px;
+		padding: 6px 10px;
 		border-bottom: 1px solid var(--border);
 		background: var(--card);
 		flex-wrap: wrap;
@@ -863,17 +993,17 @@ $effect(() => {
 
 	.toolbar-divider {
 		width: 1px;
-		height: 20px;
+		height: 18px;
 		background: var(--border);
-		margin: 0 4px;
+		margin: 0 2px;
 	}
 
 	.toolbar-btn {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-width: 44px;
-		min-height: 44px;
+		min-width: 34px;
+		min-height: 34px;
 		border: none;
 		border-radius: 6px;
 		background: transparent;
@@ -908,8 +1038,8 @@ $effect(() => {
 	}
 
 	.dropdown-trigger {
-		gap: 4px;
-		padding: 0 8px;
+		gap: 2px;
+		padding: 0 6px;
 	}
 
 	.dropdown-trigger-label {
@@ -926,7 +1056,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 30;
+		z-index: 50;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
@@ -1001,7 +1131,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 30;
+		z-index: 50;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
@@ -1131,7 +1261,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 60;
+		z-index: 70;
 		padding: 8px;
 		background: var(--popover);
 		color: var(--popover-foreground);
@@ -1171,6 +1301,61 @@ $effect(() => {
 	.emoji-button:focus-visible {
 		outline: 2px solid var(--ring);
 		outline-offset: 1px;
+	}
+
+	/* Table size-picker — hover the grid to choose rows × columns. */
+	.table-picker {
+		position: relative;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.table-popover {
+		position: absolute;
+		top: calc(100% + 6px);
+		left: 0;
+		z-index: 70;
+		padding: 8px;
+		background: var(--popover);
+		color: var(--popover-foreground);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	}
+
+	.table-grid {
+		display: grid;
+		grid-template-columns: repeat(8, 18px);
+		grid-auto-rows: 18px;
+		gap: 3px;
+	}
+
+	.table-cell {
+		width: 18px;
+		height: 18px;
+		padding: 0;
+		border: 1px solid var(--border);
+		border-radius: 3px;
+		background: var(--background);
+		cursor: pointer;
+		transition: background 0.08s ease, border-color 0.08s ease;
+	}
+
+	.table-cell:hover {
+		border-color: var(--primary);
+	}
+
+	.table-cell.active {
+		background: color-mix(in srgb, var(--primary) 35%, transparent);
+		border-color: var(--primary);
+	}
+
+	.table-grid-label {
+		margin-top: 8px;
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
 	}
 
 	/* Copy button — turn the icon green briefly when the clipboard write

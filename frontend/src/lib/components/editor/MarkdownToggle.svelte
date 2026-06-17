@@ -2,14 +2,14 @@
 <script lang="ts">
 import * as m from "$lib/paraglide/messages.js";
 import { markdownToJson } from "./markdown";
-import type { TipexEditorOutput } from "./TipexEditor.svelte";
+import type { EditorOutput } from "./HiAiEditor.svelte";
 
 const {
 	content = "",
-	onUpdate = (_output: TipexEditorOutput) => {},
+	onUpdate = (_output: EditorOutput) => {},
 }: {
 	content?: string;
-	onUpdate?: (output: TipexEditorOutput) => void;
+	onUpdate?: (output: EditorOutput) => void;
 } = $props();
 
 let textarea = $state<HTMLTextAreaElement | null>(null);

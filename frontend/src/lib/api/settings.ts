@@ -19,7 +19,9 @@ export interface EmbeddingConfig {
 
 export async function getProfile(): Promise<UserProfile> {
 	try {
-		const session = await apiFetch<{ user?: UserProfile }>("/api/auth/session");
+		const session = await apiFetch<{ user?: UserProfile }>(
+			"/api/auth/get-session",
+		);
 		if (session.user?.name || session.user?.email) {
 			return session.user;
 		}

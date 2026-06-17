@@ -29,7 +29,7 @@ function getManager(): MarkdownManager {
 
 /**
  * Parse a markdown string into a ProseMirror document matching the
- * TipexEditor schema. Returns `{ type: "doc", content: [...] }`.
+ * HiAiEditor schema. Returns `{ type: "doc", content: [...] }`.
  *
  * Browser-only: relies on `window.DOMParser` inside `generateJSON`.
  */

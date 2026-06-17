@@ -9,7 +9,7 @@ import {
 	Tag,
 	Upload,
 } from "lucide-svelte";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy } from "svelte";
 import { goto } from "$app/navigation";
 import {
 	createDocument,
@@ -20,7 +20,11 @@ import {
 } from "$lib/api/documents";
 import SearchBar from "$lib/components/SearchBar.svelte";
 import * as m from "$lib/paraglide/messages.js";
-import { refreshDocs } from "$lib/stores/tag-store.svelte";
+import {
+	getSelectedTag,
+	refreshDocs,
+	setSelectedTag,
+} from "$lib/stores/tag-store.svelte";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
 import { stripMarkdown } from "$lib/utils/strip-markdown";
 
@@ -31,9 +35,8 @@ let importInput = $state<HTMLInputElement | undefined>(undefined);
 let copiedDocId = $state<string | null>(null);
 let copyLoadingDocId = $state<string | null>(null);
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
-let selectedTagId = $state<string | null>(null);
 
-async function loadDocs(tagId: string | null = selectedTagId) {
+async function loadDocs(tagId: string | null = getSelectedTag()) {
 	loading = true;
 	error = null;
 	try {
@@ -49,8 +52,11 @@ async function loadDocs(tagId: string | null = selectedTagId) {
 	}
 }
 
-onMount(() => {
-	void loadDocs(null);
+// Load on mount and reload whenever the shared selected tag changes (driven
+// by the sidebar TagList), so a tag selection filters the dashboard too.
+$effect(() => {
+	const tag = getSelectedTag();
+	void loadDocs(tag);
 });
 
 onDestroy(() => {
@@ -145,8 +151,8 @@ const availableTags = $derived(
 );
 
 function selectTag(tagId: string | null) {
-	selectedTagId = tagId;
-	void loadDocs(tagId);
+	// Drives the shared store; the $effect above reloads the doc list.
+	setSelectedTag(tagId);
 }
 </script>
 
@@ -184,8 +190,8 @@ function selectTag(tagId: string | null) {
           <button
             type="button"
             onclick={() => selectTag(null)}
-            class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {selectedTagId === null ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
-            aria-pressed={selectedTagId === null}
+            class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {getSelectedTag() === null ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
+            aria-pressed={getSelectedTag() === null}
           >
             {m.search_filter_all()}
           </button>
@@ -193,8 +199,8 @@ function selectTag(tagId: string | null) {
             <button
               type="button"
               onclick={() => selectTag(tag.id)}
-              class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {selectedTagId === tag.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
-              aria-pressed={selectedTagId === tag.id}
+              class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {getSelectedTag() === tag.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
+              aria-pressed={getSelectedTag() === tag.id}
             >
               <Tag class="size-3" />
               {tag.name}
@@ -265,10 +271,10 @@ function selectTag(tagId: string | null) {
                 </div>
                 {#if doc.tags?.length}
                   <div class="flex items-center gap-1">
-                    {#each doc.tags.slice(0, 2) as tag}
+                    {#each doc.tags.slice(0, 2) as tag (tag.id)}
                       <span class="inline-flex items-center gap-0.5 rounded-full bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
                         <Tag class="size-2.5" />
-                        {tag}
+                        {tag.name}
                       </span>
                     {/each}
                   </div>
