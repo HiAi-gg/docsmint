@@ -8,8 +8,21 @@ import {
 	updateEmbeddingConfig,
 	updateProfile,
 } from "$lib/api/settings";
+import { signOut } from "$lib/auth-client";
 import * as m from "$lib/paraglide/messages.js";
 import { themeStore } from "$lib/stores/theme.svelte";
+
+let loggingOut = $state(false);
+
+async function handleLogout() {
+	loggingOut = true;
+	try {
+		await signOut();
+		goto("/login");
+	} catch {
+		loggingOut = false;
+	}
+}
 
 let activeTab = $state<"profile" | "embedding" | "danger">("profile");
 let saveStatus = $state<"idle" | "saving" | "saved" | "error">("idle");
@@ -103,9 +116,19 @@ async function handleDeleteAccount() {
         <label for="email" class="text-sm font-medium">{m.settings_email()}</label>
         <input id="email" type="email" bind:value={email} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
       </div>
-      <button onclick={saveProfile} disabled={saveStatus === "saving"} class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-        {saveStatus === "saving" ? m.settings_saving() : saveStatus === "saved" ? m.settings_saved_status() : m.settings_save()}
-      </button>
+      <div class="flex items-center gap-3">
+        <button onclick={saveProfile} disabled={saveStatus === "saving"} class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+          {saveStatus === "saving" ? m.settings_saving() : saveStatus === "saved" ? m.settings_saved_status() : m.settings_save()}
+        </button>
+        <button
+          id="logout-button"
+          onclick={handleLogout}
+          disabled={loggingOut}
+          class="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50"
+        >
+          {loggingOut ? "…" : m.auth_logout()}
+        </button>
+      </div>
     </div>
   {/if}
 

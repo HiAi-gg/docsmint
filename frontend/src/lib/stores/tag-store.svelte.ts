@@ -39,7 +39,10 @@ let selectedTagId = $state<string | null>(null);
 // search endpoint filters by tag name, so we keep both in sync here.
 let selectedTagName = $state<string | null>(null);
 
-export function setSelectedTag(id: string | null, name: string | null = null): void {
+export function setSelectedTag(
+	id: string | null,
+	name: string | null = null,
+): void {
 	selectedTagId = id;
 	selectedTagName = id ? name : null;
 }

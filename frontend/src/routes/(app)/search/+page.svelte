@@ -28,9 +28,9 @@ let activeTags = $state<string[]>([]);
 let dateFrom = $state("");
 let dateTo = $state("");
 let currentPage = $state(1);
-let sortOrder = $state<"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc">(
-	"relevance",
-);
+let sortOrder = $state<
+	"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc"
+>("relevance");
 
 $effect(() => {
 	query = data.query ?? "";
@@ -204,7 +204,7 @@ function goToPage(page: number) {
 <svelte:window onkeydown={handleKeydown} />
 
 <svelte:head>
-  <title>{data.query ? m.search_title_with_query({query: data.query}) : m.search_title()} — {m.app_name()}</title>
+  <title>{data.query ? m.search_title_with_query({query: data.query}) : m.search_title()} - {m.app_name()}</title>
 </svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 py-8">

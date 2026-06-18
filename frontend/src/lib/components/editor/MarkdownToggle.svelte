@@ -1,8 +1,8 @@
 <!-- MarkdownToggle.svelte — Raw Markdown editing view -->
 <script lang="ts">
 import * as m from "$lib/paraglide/messages.js";
-import { markdownToJson } from "./markdown";
 import type { EditorOutput } from "./HiAiEditor.svelte";
+import { markdownToJson } from "./markdown";
 
 const {
 	content = "",

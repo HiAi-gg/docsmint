@@ -11,7 +11,7 @@ initTheme();
 <svelte:head>
 	<meta name="description" content="Self-hosted AI-first documentation platform" />
 	<meta name="og:type" content="website" />
-	<meta name="og:title" content="hiai-docs" />
+	<meta name="og:title" content="HiAi-Docs" />
 	<meta name="og:description" content="AI-first documentation platform with semantic search" />
 </svelte:head>
 

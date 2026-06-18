@@ -2,8 +2,8 @@
 import { Check, Copy, FileText, Loader2, MoreVertical } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
 import {
-	deleteDocument,
 	type Document,
+	deleteDocument,
 	getDocument,
 	listDocuments,
 	updateDocument,

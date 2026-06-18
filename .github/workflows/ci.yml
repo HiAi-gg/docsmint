@@ -85,7 +85,7 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: cd packages/db && bun run db:push
+      - run: cd packages/db && bun run db:migrate
       - run: bun run test
 
   # ---------------------------------------------------------------------------

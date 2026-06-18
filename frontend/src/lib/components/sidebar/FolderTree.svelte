@@ -14,8 +14,8 @@ import { flip } from "svelte/animate";
 import { type DndEvent, dndzone } from "svelte-dnd-action";
 import { page } from "$app/state";
 import {
-	deleteDocument,
 	type Document,
+	deleteDocument,
 	getDocument,
 	listDocuments,
 	updateDocument,
@@ -87,18 +87,22 @@ let newFolderSubmitting = $state(false);
 
 // Rename dialog state (shared by folders and documents).
 let showRenameDialog = $state(false);
-let renameTarget = $state<{ kind: EntityKind; id: string; name: string } | null>(
-	null,
-);
+let renameTarget = $state<{
+	kind: EntityKind;
+	id: string;
+	name: string;
+} | null>(null);
 let renameValue = $state("");
 let renameError = $state<string | null>(null);
 let renameSubmitting = $state(false);
 
 // Delete confirmation state (shared by folders and documents).
 let showDeleteDialog = $state(false);
-let deleteTarget = $state<{ kind: EntityKind; id: string; name: string } | null>(
-	null,
-);
+let deleteTarget = $state<{
+	kind: EntityKind;
+	id: string;
+	name: string;
+} | null>(null);
 let deleteBusy = $state(false);
 
 let expandTimer: ReturnType<typeof setTimeout> | null = null;

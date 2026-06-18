@@ -27,9 +27,9 @@ import {
 	type Tag,
 } from "$lib/api/tags";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
-import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
+import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
