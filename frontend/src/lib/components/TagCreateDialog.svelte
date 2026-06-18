@@ -8,16 +8,16 @@ import {
 	updateTag,
 	updateTagInputSchema,
 } from "$lib/api/tags";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "@hiai/ui/components/ui/button";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "$lib/components/ui/dialog";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
+} from "@hiai/ui/components/ui/dialog";
+import { Input } from "@hiai/ui/components/ui/input";
+import { Label } from "@hiai/ui/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
 import { cn } from "$lib/utils";
 

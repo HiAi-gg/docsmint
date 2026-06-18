@@ -10,7 +10,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "$lib/components/ui/dropdown-menu";
+} from "@hiai/ui/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	getSelectedTag,

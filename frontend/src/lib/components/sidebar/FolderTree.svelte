@@ -26,7 +26,7 @@ import {
 	listFolders,
 	updateFolder,
 } from "$lib/api/folders";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "@hiai/ui/components/ui/button";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
 import {
 	Dialog,
@@ -34,15 +34,15 @@ import {
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "$lib/components/ui/dialog";
+} from "@hiai/ui/components/ui/dialog";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "$lib/components/ui/dropdown-menu";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
+} from "@hiai/ui/components/ui/dropdown-menu";
+import { Input } from "@hiai/ui/components/ui/input";
+import { Label } from "@hiai/ui/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	getDocRefreshNonce,

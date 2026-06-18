@@ -2,14 +2,14 @@
      window.confirm() so destructive actions get styled, accessible UI. -->
 <script lang="ts">
 import { Loader2 } from "lucide-svelte";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "@hiai/ui/components/ui/button";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "$lib/components/ui/dialog";
+} from "@hiai/ui/components/ui/dialog";
 import * as m from "$lib/paraglide/messages.js";
 
 let {

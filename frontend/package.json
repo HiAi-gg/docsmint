@@ -14,7 +14,7 @@
     "test": "bun test --path-ignore-patterns='*node_modules*' src/"
   },
   "dependencies": {
-    "@hiai/ui": "file:../../../../packages/hiai-ui",
+    "@hiai/ui": "file:../../../packages/hiai-ui",
     "@inlang/paraglide-js": "^2.19.0",
     "@tiptap/core": "^3.26.1",
     "@tiptap/extension-code-block-lowlight": "^3.26.1",

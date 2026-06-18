@@ -12,19 +12,19 @@ import {
 } from "lucide-svelte";
 import { goto } from "$app/navigation";
 import { getDocument } from "$lib/api/documents";
-import { Badge } from "$lib/components/ui/badge/index.js";
+import { Badge } from "@hiai/ui/components/ui/badge";
 import {
 	Card,
 	CardContent,
 	CardHeader,
-} from "$lib/components/ui/card/index.js";
+} from "@hiai/ui/components/ui/card";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "$lib/components/ui/dropdown-menu/index.js";
+} from "@hiai/ui/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
 import type { Document } from "$lib/types.js";
 import { copyToClipboard } from "$lib/utils/clipboard.js";

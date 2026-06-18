@@ -6,7 +6,7 @@ import {
 	AlignJustify,
 	AlignLeft,
 	AlignRight,
-	type Bold,
+	Bold,
 	Check,
 	ChevronDown,
 	Code2,
