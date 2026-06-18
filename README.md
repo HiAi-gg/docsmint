@@ -1,15 +1,22 @@
 # hiai-docs
 
+**The lightest AI-native self-hosted knowledge vault.**
+
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![CI](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hiai-gg/hiai-docs?sort=semver)](https://github.com/hiai-gg/hiai-docs/releases)
 [![Stars](https://img.shields.io/github/stars/hiai-gg/hiai-docs)](https://github.com/hiai-gg/hiai-docs/stargazers)
+[![CI](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/hiai-docs/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/Runtime-Bun_1.3-black?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
+[![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
+[![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-> **Your personal/team AI-ready knowledge vault.**
+hiai-docs is a lightweight **self-hosted knowledge base** built for users who want speed, full data ownership, and strong AI capabilities without heavy enterprise overhead. 
 
-A modern, lightweight, self-hosted knowledge base with built-in vector embeddings, rich editing, and seamless AI integration.
+If you are looking for a **local LLM knowledge base** or a **lightweight Outline alternative** / **Docmost alternative** that runs fully offline with **Ollama self-hosted** embeddings, hiai-docs offers an elegant, **RAG-ready knowledge vault** that automatically generates vector embeddings on every save (via Ollama), supports hybrid semantic search, and provides a clean REST API for AI agent integration.
 
 ---
 
@@ -19,6 +26,7 @@ A modern, lightweight, self-hosted knowledge base with built-in vector embedding
 - [Screenshots](#screenshots)
 - [Quick Start](#quick-start)
 - [Stack](#stack)
+- [Comparison](#comparison)
 - [Project Structure](#project-structure)
 - [Configuration](#configuration)
 - [API Documentation](#api-documentation)
@@ -30,14 +38,14 @@ A modern, lightweight, self-hosted knowledge base with built-in vector embedding
 
 ## Features
 
-- **Markdown-first** — Rich WYSIWYG editor (svelte-tiptap + TipTap v3) with raw Markdown toggle
-- **AI-native** — Automatic chunking + vector embeddings on every save (RAG-ready)
-- **Semantic search** — Hybrid full-text + pgvector search across your knowledge
-- **Folder hierarchy** — Nested folders for organizing documents
-- **Sharing** — Token-based links with password, expiration, and guest access
-- **Import/Export** — Upload .md files, download documents as Markdown
-- **Self-hosted** — Full data ownership, Docker deployment
-- **Agent-ready** — Clean REST API for AI agent integration (Mastra compatible)
+- **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
+- **AI-native** — automatic chunking + vector embeddings (Ollama) on every save
+- **Semantic search** — hybrid full-text + pgvector search
+- **Folder hierarchy** — nested folders to organize your documents
+- **Sharing** — token-protected links with password, expiration, and guest access
+- **Import / Export** — support for Markdown (.md) files
+- **Agent-ready** — clean REST API for AI agents (Mastra compatible and others)
+- **Self-hosted** — full data ownership with minimal resource usage
 
 ## Screenshots
 
@@ -63,6 +71,27 @@ docker compose up -d
 ```
 
 Open http://localhost:50701
+
+## Agentic Quickstart (AI-Powered Setup)
+
+Don't want to run setup commands manually? Copy-paste this unified prompt into your AI assistant (OpenCode, Claude Code, Cursor, Copilot, etc.) and let it do the work:
+
+```text
+Set up and launch the hiai-docs project on my local system:
+1. Clone the repository at https://github.com/hiai-gg/hiai-docs (if not already cloned)
+2. Copy .env.example to .env
+3. Generate a secure random auth secret using openssl or a secure generator, and set it as BETTER_AUTH_SECRET in .env
+4. Install all dependencies with "bun install"
+5. Boot up the developer Docker container dependencies (Postgres, Redis, Ollama, MinIO) by running:
+   bun run docker:dev
+6. Generate and apply database migrations to setup schemas by running:
+   bun run db:push
+7. Spin up the application services (Elysia API and SvelteKit web) in development/watch mode:
+   bun run dev
+8. Verify health status by checking:
+   - SvelteKit Web UI: http://localhost:50701
+   - Elysia API Health: http://localhost:50700/api/health
+```
 
 ### Local Development (Recommended for hacking)
 
@@ -129,6 +158,23 @@ The frontend dev server is pinned to port 50701 in `frontend/vite.config.ts` wit
 | Editor | [svelte-tiptap](https://github.com/sibiraj-s/svelte-tiptap) + [TipTap v3](https://tiptap.dev) |
 | Embeddings | [Ollama](https://ollama.ai) (configurable) |
 | Storage | [MinIO](https://min.io) (S3-compatible) |
+
+---
+
+## Comparison with other self-hosted solutions
+
+| Project            | Best For                              | hiai-docs vs them                              | License / Limitations                          |
+|--------------------|---------------------------------------|------------------------------------------------|------------------------------------------------|
+| **La Suite Docs**  | Government & teams, strong block editor | Much lighter and faster                        | MIT (fully unrestricted)                       |
+| **Outline**        | Teams with integrations               | Lighter + built-in RAG out of the box          | BSL 1.1 – free for self-hosting, restrictions on offering as hosted service |
+| **Docmost**        | Confluence / Notion replacement       | Simpler, faster, lower resource usage          | AGPL-3.0 (Community) – fully open, Enterprise features extra |
+| **Wiki.js**        | Markdown + Git sync                   | Better AI & semantic search                    | AGPL-3.0                                       |
+| **hiai-docs**      | **Lightweight AI-first vault**        | —                                              | MIT (fully unrestricted)                       |
+| **AFFiNE**         | Notion + whiteboard experience        | Much lighter, far lower overhead               | MIT (frontend) + restrictive EE license (backend) – production limits (10 users / 100 GB on free tier) |
+| **Trilium Notes**  | Personal knowledge + scripting        | Better sharing & semantic search               | AGPL-3.0                                       |
+| **SilverBullet**   | Extensible Markdown notes             | Better AI integration & sharing                | MIT                                            |
+
+**hiai-docs** sits in the **lightweight AI-first** niche — ideal when you want built-in embeddings, fast performance, and minimal resource consumption rather than heavy collaboration features or enterprise complexity.
 
 ---
 

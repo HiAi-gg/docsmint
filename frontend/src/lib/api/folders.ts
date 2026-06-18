@@ -19,7 +19,7 @@ interface DocumentWire {
 	id: string;
 	title: string;
 	content?: string;
-	contentTipex?: unknown;
+	contentJson?: unknown;
 	metadata?: unknown;
 	folderId: string | null;
 	createdAt: string;

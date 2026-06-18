@@ -14,7 +14,7 @@ const createDocumentSchema = z.object({
 const updateDocumentSchema = z.object({
 	title: z.string().min(1).max(500).optional(),
 	content: z.string().optional(),
-	contentTipex: z.unknown().optional(),
+	contentJson: z.unknown().optional(),
 	metadata: z.unknown().optional(),
 	folderId: z.string().uuid().nullable().optional(),
 });
@@ -160,9 +160,9 @@ describe("updateDocumentSchema", () => {
 		expect(result.success).toBe(true);
 	});
 
-	test("accepts contentTipex (rich editor format)", () => {
+	test("accepts contentJson (rich editor format)", () => {
 		const result = updateDocumentSchema.safeParse({
-			contentTipex: { type: "doc", content: [{ type: "paragraph" }] },
+			contentJson: { type: "doc", content: [{ type: "paragraph" }] },
 		});
 		expect(result.success).toBe(true);
 	});

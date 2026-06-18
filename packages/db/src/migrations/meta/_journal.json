@@ -15,6 +15,13 @@
       "when": 1781110876591,
       "tag": "0001_w2_3_test",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781197276591,
+      "tag": "0002_rename_content_json",
+      "breakpoints": true
     }
   ]
 }

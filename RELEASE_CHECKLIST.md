@@ -1,4 +1,4 @@
-# Release Checklist — hiai-docs
+# Release Checklist - hiai-docs
 
 > Use this checklist for every release. Tick items as they are completed.
 

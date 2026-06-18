@@ -15,7 +15,7 @@ const {
 let textarea = $state<HTMLTextAreaElement | null>(null);
 
 // Persist + parse the new markdown into a ProseMirror doc so the
-// `contentTipex` field stays in sync. Without this the wysiwyg editor
+// `contentJson` field stays in sync. Without this the wysiwyg editor
 // would show stale content the next time the user switches modes.
 // Parsing happens synchronously on every keystroke — the underlying
 // `marked` tokenizer is fast and `generateJSON` is cheap for the

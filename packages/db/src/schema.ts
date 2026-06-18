@@ -137,7 +137,7 @@ export const documents = pgTable(
     }),
     title: text("title").notNull().default("Untitled"),
     content: text("content").default(""),
-    contentTipex: jsonb("content_tipex"),
+    contentJson: jsonb("content_json"),
     metadata: jsonb("metadata"),
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
@@ -322,7 +322,7 @@ export const versions = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
     content: text("content").notNull(),
-    contentTipex: jsonb("content_tipex"),
+    contentJson: jsonb("content_json"),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

@@ -8,7 +8,7 @@ interface Version {
 	id: string;
 	documentId: string;
 	content: string;
-	contentTipex?: unknown;
+	contentJson?: unknown;
 	createdBy: string;
 	createdAt: string;
 }

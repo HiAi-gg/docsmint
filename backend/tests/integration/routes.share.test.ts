@@ -344,7 +344,7 @@ describe("GET /api/share/:token (public access)", () => {
       ownerId: OWNER_ID,
       title: "Shared Doc",
       content: "The quick brown fox",
-      contentTipex: { type: "doc" },
+      contentJson: { type: "doc" },
       metadata: { tag: "x" },
       createdAt: new Date("2024-01-01"),
       updatedAt: new Date("2024-01-01"),

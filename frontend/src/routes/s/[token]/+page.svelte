@@ -15,7 +15,7 @@ let shareData = $state<{
 	data?: {
 		title?: string;
 		content?: string;
-		contentTipex?: object | null;
+		contentJson?: object | null;
 		name?: string;
 		documents?: { title: string }[];
 	};
@@ -31,13 +31,13 @@ const kitFetch = $derived(
 );
 
 // Configure marked for safe, GFM-flavored rendering of shared document
-// markdown. The HiAiEditor JSON path (contentTipex) is preferred when the
+// markdown. The HiAiEditor JSON path (contentJson) is preferred when the
 // server provides it, but `content` (raw markdown) is the universal fallback.
 marked.setOptions({ gfm: true, breaks: false });
 
 function renderContent(): string {
 	if (!shareData?.data) return "";
-	const docJson = shareData.data.contentTipex as
+	const docJson = shareData.data.contentJson as
 		| { content?: unknown }
 		| null
 		| undefined;

@@ -22,7 +22,7 @@ const createDocumentSchema = z.object({
 const updateDocumentSchema = z.object({
 	title: z.string().min(1).max(500).optional(),
 	content: z.string().optional(),
-	contentTipex: z.unknown().optional(),
+	contentJson: z.unknown().optional(),
 	metadata: z.unknown().optional(),
 	folderId: z.string().uuid().nullable().optional(),
 });
@@ -213,7 +213,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					ownerId: userId,
 					title: body.data.title,
 					content: initialContent,
-					contentTipex: initialDocJson,
+					contentJson: initialDocJson,
 					folderId: body.data.folderId ?? null,
 				})
 				.returning();
@@ -225,7 +225,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			await db.insert(versions).values({
 				documentId: created.id,
 				content: initialContent,
-				contentTipex: initialDocJson,
+				contentJson: initialDocJson,
 				createdBy: userId,
 			});
 
@@ -266,7 +266,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					folderId: documents.folderId,
 					title: documents.title,
 					content: documents.content,
-					contentTipex: documents.contentTipex,
+					contentJson: documents.contentJson,
 					metadata: documents.metadata,
 					createdAt: documents.createdAt,
 					updatedAt: documents.updatedAt,
@@ -322,7 +322,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		if (
 			!body.data.title &&
 			body.data.content === undefined &&
-			body.data.contentTipex === undefined &&
+			body.data.contentJson === undefined &&
 			body.data.metadata === undefined &&
 			body.data.folderId === undefined
 		) {
@@ -334,7 +334,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				.select({
 					id: documents.id,
 					content: documents.content,
-					contentTipex: documents.contentTipex,
+					contentJson: documents.contentJson,
 				})
 				.from(documents)
 				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
@@ -347,16 +347,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			await db.insert(versions).values({
 				documentId: params.id,
 				content: existing[0]?.content ?? "",
-				contentTipex: existing[0]?.contentTipex,
+				contentJson: existing[0]?.contentJson,
 				createdBy: userId,
 			});
 
-			// When the client sends new `content` but no `contentTipex`,
+			// When the client sends new `content` but no `contentJson`,
 			// generate the JSON view server-side so the editor can render
 			// formatted content on the next open. When the client sends
 			// both fields (the editor's normal save path), prefer the
 			// client-supplied JSON — it reflects the user's live edits.
-			let resolvedDocJson: unknown | undefined = body.data.contentTipex;
+			let resolvedDocJson: unknown | undefined = body.data.contentJson;
 			if (resolvedDocJson === undefined && body.data.content !== undefined) {
 				resolvedDocJson = body.data.content
 					? await markdownToDocJson(body.data.content)
@@ -371,7 +371,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						content: body.data.content,
 					}),
 					...(resolvedDocJson !== undefined && {
-						contentTipex: resolvedDocJson,
+						contentJson: resolvedDocJson,
 					}),
 					...(body.data.metadata !== undefined && {
 						metadata: body.data.metadata,
@@ -432,7 +432,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					folderId: source.folderId,
 					title: `${source.title} (Copy)`,
 					content: source.content ?? "",
-					contentTipex: source.contentTipex,
+					contentJson: source.contentJson,
 					metadata: source.metadata,
 				})
 				.returning();
@@ -444,7 +444,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			await db.insert(versions).values({
 				documentId: copy.id,
 				content: copy.content ?? "",
-				contentTipex: copy.contentTipex,
+				contentJson: copy.contentJson,
 				createdBy: userId,
 			});
 

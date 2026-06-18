@@ -28,7 +28,7 @@ const editorExtensions = [
 
 /**
  * Convert raw markdown text to TipTap/ProseMirror JSON that the editor
- * accepts as `contentTipex`. Returns `null` for empty input or on failure
+ * accepts as `contentJson`. Returns `null` for empty input or on failure
  * so the import handler can fall back to storing the raw text only.
  */
 export async function markdownToDocJson(

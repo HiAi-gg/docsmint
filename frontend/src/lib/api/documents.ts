@@ -4,7 +4,7 @@ export interface Document {
 	id: string;
 	title: string;
 	content: string;
-	contentTipex?: unknown;
+	contentJson?: unknown;
 	folderId?: string | null;
 	folderName?: string;
 	tags?: Array<{ id: string; name: string; color: string }>;
@@ -59,7 +59,7 @@ export function updateDocument(
 		title?: string;
 		content?: string;
 		folderId?: string | null;
-		contentTipex?: unknown;
+		contentJson?: unknown;
 	},
 ): Promise<Document> {
 	return apiFetch(`/api/documents/${id}`, {

@@ -14,7 +14,7 @@ export type EditorOutput = { markdown: string; json: object };
 
 const {
 	content = "",
-	contentTipex,
+	contentJson,
 	placeholder = m.doc_content_placeholder(),
 	onUpdate = (_output: EditorOutput) => {},
 	editable = true,
@@ -22,7 +22,7 @@ const {
 	documentId = "",
 }: {
 	content?: string;
-	contentTipex?: object;
+	contentJson?: object;
 	placeholder?: string;
 	onUpdate?: (output: EditorOutput) => void;
 	editable?: boolean;
@@ -50,7 +50,7 @@ let internalUpdate = false;
  * than showing nothing.
  */
 function resolveInitialContent(): string | JSONContent {
-	if (contentTipex) return contentTipex as JSONContent;
+	if (contentJson) return contentJson as JSONContent;
 	if (content && content.trim().length > 0) {
 		try {
 			return markdownToJson(content);
@@ -145,13 +145,13 @@ $effect(() => {
 	// missing but the markdown source is present, parse the markdown
 	// client-side so the wysiwyg view still shows formatted content for
 	// documents that were saved via the regular (non-TipTap) save path.
-	const hasDocJson = contentTipex != null;
+	const hasDocJson = contentJson != null;
 	const nextSource: string | JSONContent = hasDocJson
-		? (contentTipex as JSONContent)
+		? (contentJson as JSONContent)
 		: content && content.trim().length > 0
 			? markdownToJson(content)
 			: content;
-	const nextSerialized = hasDocJson ? JSON.stringify(contentTipex) : content;
+	const nextSerialized = hasDocJson ? JSON.stringify(contentJson) : content;
 	if (internalUpdate) {
 		internalUpdate = false;
 		prevContent = nextSerialized;

@@ -1,6 +1,6 @@
 {
   "$schema": "https://inlang.com/schema/message-format",
-  "app_name": "hiai-docs",
+  "app_name": "HiAi-Docs",
   "app_description": "AI-first documentation platform",
 
   "nav_dashboard": "Dashboard",
@@ -19,7 +19,7 @@
   "dashboard_error_retry": "Retry",
   "dashboard_empty_title": "Create your first document",
   "dashboard_empty_description": "Get started by creating a new document. Your notes will be automatically embedded for AI-powered search.",
-  "dashboard_page_title": "Dashboard — hiai-docs",
+  "dashboard_page_title": "Dashboard - HiAi-Docs",
 
   "doc_title_placeholder": "Untitled",
   "doc_title_label": "Document title",
@@ -165,6 +165,7 @@
   "auth_password_required": "Password is required",
   "auth_password_min": "Password must be at least 8 characters",
   "auth_name_placeholder": "Your name",
+  "auth_logout": "Log out",
 
   "error_generic": "Something went wrong",
   "error_not_found": "Page not found",
@@ -240,7 +241,7 @@
   "version_restore_confirm": "Restore this version? Current content will be saved as a new version.",
 
   "attachment_drop_here": "Drop file here or click to upload",
-  "attachment_types_hint": "Images, PDF, Markdown, Text — Max 10MB",
+  "attachment_types_hint": "Images, PDF, Markdown, Text - Max 10MB",
   "attachment_file_too_large": "File too large ({size}). Max 10MB.",
   "attachment_remove": "Remove",
 
@@ -249,13 +250,13 @@
   "login_submit": "Sign in",
   "login_loading": "Signing in...",
   "login_or": "or",
-  "login_demo_hint": "Demo mode — use any email/password to sign in",
-  "login_page_title": "Login — hiai-docs",
+  "login_demo_hint": "Demo mode - use any email/password to sign in",
+  "login_page_title": "Login - HiAi-Docs",
 
   "register_title": "Create account",
-  "register_subtitle": "Get started with hiai-docs",
+  "register_subtitle": "Get started with HiAi-Docs",
   "register_loading": "Creating account...",
-  "register_page_title": "Register — hiai-docs",
+  "register_page_title": "Register - HiAi-Docs",
 
   "breadcrumb_home": "Home",
   "aria_breadcrumb": "Breadcrumb",
@@ -281,7 +282,7 @@
   "doc_save_content_error": "Failed to save content",
   "doc_save_title_error": "Failed to save title",
   "doc_delete_error": "Failed to delete document",
-  "doc_page_title": "{title} — hiai-docs",
+  "doc_page_title": "{title} - HiAi-Docs",
   "tags_load_error": "Failed to load tags",
   "tag_add_error": "Failed to add tag",
   "tag_remove_error": "Failed to remove tag",
@@ -294,25 +295,25 @@
   "folder_new_subfolder": "New Subfolder",
   "folder_empty_title": "This folder is empty",
   "folder_empty_description": "Create a document or subfolder to get started",
-  "folder_page_title": "{name} — hiai-docs",
+  "folder_page_title": "{name} - HiAi-Docs",
 
   "sort_name": "Name",
   "sort_date_modified": "Date modified",
   "sort_date_created": "Date created",
 
-  "share_page_title": "Shared Content — hiai-docs",
+  "share_page_title": "Shared Content - HiAi-Docs",
   "share_load_error": "Failed to load shared content",
   "share_network_error": "Network error",
   "share_go_home": "Go to homepage",
   "share_password_placeholder": "Enter password",
   "share_access_button": "Access content",
   "share_password_incorrect": "Incorrect password. Please try again.",
-  "share_via_label": "Shared via hiai-docs",
+  "share_via_label": "Shared via HiAi-Docs",
   "share_copied": "Copied",
   "share_empty_document": "Empty document",
   "share_folder_empty": "This folder is empty",
 
-  "settings_page_title": "Settings — hiai-docs",
+  "settings_page_title": "Settings - HiAi-Docs",
   "settings_tab_embedding": "Embedding",
   "settings_tab_danger": "Danger",
   "settings_saving": "Saving...",

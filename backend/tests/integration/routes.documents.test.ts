@@ -91,7 +91,7 @@ function seedDocument(overrides: Partial<any> = {}): any {
 		folderId: null,
 		title: "Seeded Doc",
 		content: "hello world",
-		contentTipex: null,
+		contentJson: null,
 		metadata: null,
 		createdAt: now,
 		updatedAt: now,

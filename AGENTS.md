@@ -2,17 +2,23 @@
 
 > Standalone, open-source, AI-native knowledge base. Markdown-first, auto-embeddings, self-hostable.
 
-## 📍 Источник правды экосистемы (читать первым)
+## 📍 Ecosystem Source of Truth (read first)
 
-hiai-docs — часть экосистемы HiAi. Роль: **модуль документов**, подключается куда угодно
-(первый потребитель — `hiai-amigo`); **также источник дизайн-токенов** для всей экосистемы.
-Считается готовым продуктом — для экосистемы важны только унификация и интеграция.
+hiai-docs is part of the HiAi ecosystem. Role: **documents module**, integrates anywhere
+(first consumer is `hiai-amigo`); **also the source of design tokens** for the entire ecosystem.
+It is considered a complete product - only unification and integration are important for the ecosystem.
 
-**hiai-docs — standalone open-source project.** Self-hostable, no external dependencies
+**hiai-docs - standalone open-source project.** Self-hostable, no external dependencies
 beyond what's in `docker-compose.yml`. MIT licensed.
 
-### Документы проекта (индекс)
-`README.md` · `AGENTS.md` (этот) · `todo.md` — core. `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` — стандартные.
+**Ecosystem design standard:** `frontend/src/app.css` is the source of truth for tokens; it is
+mirrored by [`../../packages/hiai-ui/styles/tokens.css`](../../packages/hiai-ui/src/styles/tokens.css).
+If you change the design here -> synchronize the package. Integration contract and plan for integrating docs into `@hiai/ui`
+(DOC1): [`../../packages/hiai-ui/README.md`](../../packages/hiai-ui/README.md) ·
+[`../HIAI_UI_PACKAGE_PLAN.md`](../HIAI_UI_PACKAGE_PLAN.md).
+
+### Project Documents (Index)
+`README.md` · `AGENTS.md` (this one) · `todo.md` - core. `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` - standard.
 
 ## Identity & Purpose
 

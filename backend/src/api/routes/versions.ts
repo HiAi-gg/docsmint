@@ -32,7 +32,7 @@ export const versionRoutes = new Elysia({
 					id: versions.id,
 					documentId: versions.documentId,
 					content: versions.content,
-					contentTipex: versions.contentTipex,
+					contentJson: versions.contentJson,
 					createdBy: versions.createdBy,
 					createdAt: versions.createdAt,
 				})
@@ -72,7 +72,7 @@ export const versionRoutes = new Elysia({
 					id: versions.id,
 					documentId: versions.documentId,
 					content: versions.content,
-					contentTipex: versions.contentTipex,
+					contentJson: versions.contentJson,
 					createdBy: versions.createdBy,
 					createdAt: versions.createdAt,
 				})

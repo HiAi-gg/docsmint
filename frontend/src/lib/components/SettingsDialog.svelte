@@ -1,8 +1,9 @@
 <script lang="ts">
-import { Loader2, Save } from "lucide-svelte";
+import { Loader2, LogOut, Save } from "lucide-svelte";
 import { onMount } from "svelte";
+import { goto } from "$app/navigation";
 import { getProfile, updateProfile } from "$lib/api/settings";
-import { authClient } from "$lib/auth-client";
+import { authClient, signOut } from "$lib/auth-client";
 import { Button } from "$lib/components/ui/button";
 import * as Dialog from "$lib/components/ui/dialog";
 import { Input } from "$lib/components/ui/input";
@@ -95,8 +96,7 @@ async function changePassword() {
 		}, 2000);
 	} catch (e) {
 		passwordStatus = "error";
-		passwordError =
-			e instanceof Error ? e.message : m.error_generic();
+		passwordError = e instanceof Error ? e.message : m.error_generic();
 	}
 }
 
@@ -109,6 +109,19 @@ const themeOptions: Array<{ value: Theme; label: string; key: string }> = [
 	{ value: "dark", label: m.theme_dark(), key: "dark" },
 	{ value: "system", label: m.theme_system(), key: "system" },
 ];
+
+let loggingOut = $state(false);
+
+async function handleLogout() {
+	loggingOut = true;
+	try {
+		await signOut();
+		open = false;
+		goto("/login");
+	} catch {
+		loggingOut = false;
+	}
+}
 
 function close() {
 	open = false;
@@ -240,6 +253,16 @@ function close() {
 	</Tabs.Tabs>
 
 	<Dialog.DialogFooter>
+		<Button
+			id="logout-button"
+			variant="ghost"
+			onclick={handleLogout}
+			disabled={loggingOut}
+			class="mr-auto text-muted-foreground hover:text-destructive"
+		>
+			<LogOut class="mr-2 size-4" />
+			{loggingOut ? "…" : m.auth_logout()}
+		</Button>
 		<Button variant="outline" onclick={close}>{m.action_close()}</Button>
 	</Dialog.DialogFooter>
 </Dialog.Dialog>

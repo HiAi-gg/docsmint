@@ -1,7 +1,7 @@
 // markdown.ts — Browser-side markdown ↔ TipTap JSON helpers.
 //
 // MarkdownToggle edits raw markdown. The server stores both the markdown
-// and the equivalent ProseMirror JSON (`contentTipex`); the JSON is what the
+// and the equivalent ProseMirror JSON (`contentJson`); the JSON is what the
 // wysiwyg editor uses when the user switches back. We can't just save the
 // markdown string — the JSON field has to be kept in sync, otherwise the
 // next visit to the wysiwyg mode would show stale content until the user

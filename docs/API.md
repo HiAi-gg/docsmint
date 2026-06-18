@@ -105,7 +105,7 @@ GET /api/documents/:id/versions        # List version history
 GET /api/documents/:id/versions/:vid   # Get specific version
 ```
 
-Versions are auto-saved on every create/update. Each entry includes `id, content, contentTipex, createdBy, createdAt`.
+Versions are auto-saved on every create/update. Each entry includes `id, content, contentJson, createdBy, createdAt`.
 
 ## Document Attachments
 

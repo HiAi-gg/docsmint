@@ -47,12 +47,12 @@ const { data } = $props();
 
 let title = $state("");
 let content = $state("");
-let contentTipex = $state<object | undefined>(undefined);
+let contentJson = $state<object | undefined>(undefined);
 $effect(() => {
 	title = data.document.title;
 	content = data.document.content ?? "";
-	contentTipex =
-		(data.document.contentTipex as object | null | undefined) ?? undefined;
+	contentJson =
+		(data.document.contentJson as object | null | undefined) ?? undefined;
 });
 let mode = $state<"wysiwyg" | "markdown">("wysiwyg");
 let saveStatus = $state<"saved" | "saving" | "unsaved">("saved");
@@ -116,8 +116,8 @@ function setError(msg: string | null) {
 onMount(() => {
 	title = data.document.title;
 	content = data.document.content;
-	contentTipex =
-		(data.document.contentTipex as object | null | undefined) ?? undefined;
+	contentJson =
+		(data.document.contentJson as object | null | undefined) ?? undefined;
 	loading = false;
 });
 
@@ -143,14 +143,14 @@ function handleWindowClick(e: MouseEvent) {
 // Auto-save debounce for content.
 // Accepts a EditorOutput (`{ markdown, json }`) from either editor
 // so that edits in the raw-markdown view keep the server-side
-// `contentTipex` in sync — the wysiwyg editor reuses that field to avoid
+// `contentJson` in sync — the wysiwyg editor reuses that field to avoid
 // re-parsing on every load.
 type ContentUpdate = EditorOutput;
 let contentSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function debounceContentSave(update: ContentUpdate) {
 	content = update.markdown;
-	contentTipex = update.json;
+	contentJson = update.json;
 	saveStatus = "unsaved";
 	if (contentSaveTimer) clearTimeout(contentSaveTimer);
 	contentSaveTimer = setTimeout(async () => {
@@ -173,7 +173,7 @@ async function saveContent(update: ContentUpdate) {
 		try {
 			await updateDocument(data.document.id, {
 				content: update.markdown,
-				contentTipex: update.json,
+				contentJson: update.json,
 			});
 			saveStatus = "saved";
 			return;
@@ -637,7 +637,7 @@ async function handleCreateFolder() {
         {#if mode === "wysiwyg"}
           <HiAiEditor
             {content}
-            {contentTipex}
+            {contentJson}
             onUpdate={debounceContentSave}
             editable={true}
             documentId={data.document.id}
