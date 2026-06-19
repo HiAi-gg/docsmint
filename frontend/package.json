@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
-    "typecheck": "paraglide-js compile --project ./project.inlang && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "paraglide-js compile --project ./project.inlang && bun test --path-ignore-patterns='*node_modules*' src/"
+    "typecheck": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && bun test --path-ignore-patterns='*node_modules*' src/"
   },
   "dependencies": {
     "@hiai-gg/hiai-ui": "workspace:*",
