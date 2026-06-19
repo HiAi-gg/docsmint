@@ -144,6 +144,9 @@ jobs:
   docker-build:
     name: Docker Build & Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -263,7 +266,6 @@ jobs:
           severity: "CRITICAL,HIGH"
           output: "trivy-api.sarif"
       - name: Upload Trivy SARIF (backend)
-        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-api.sarif
@@ -280,7 +282,6 @@ jobs:
           severity: "CRITICAL,HIGH"
           output: "trivy-web.sarif"
       - name: Upload Trivy SARIF (frontend)
-        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-web.sarif
