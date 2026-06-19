@@ -11,6 +11,7 @@ RUN bun install --no-verify
 
 # Build
 FROM base AS build
+COPY package.json tsconfig.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
 COPY --from=deps /app/backend/node_modules ./backend/node_modules

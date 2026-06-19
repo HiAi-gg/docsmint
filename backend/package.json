@@ -1,12 +1,12 @@
 {
   "name": "@hiai-docs/backend",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "license": "MIT",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
+    "build": "bun build src/index.ts --outdir dist --target bun --external drizzle-orm --external drizzle-orm/* --external postgres",
     "start": "bun run dist/index.js",
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
