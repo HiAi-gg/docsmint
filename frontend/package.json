@@ -11,7 +11,7 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
     "typecheck": "paraglide-js compile --project ./project.inlang && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "bun test --path-ignore-patterns='*node_modules*' src/"
+    "test": "paraglide-js compile --project ./project.inlang && bun test --path-ignore-patterns='*node_modules*' src/"
   },
   "dependencies": {
     "@hiai-gg/hiai-ui": "workspace:*",
