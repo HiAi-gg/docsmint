@@ -158,7 +158,7 @@ Then verify: `docker ps` should work without `sudo`.
 ## Stack
 
 | Layer | Technology |
-|-------|-----------|
+|-------|----------|
 | Runtime | [Bun](https://bun.sh) 1.3.14+ |
 | Backend | [Elysia](https://elysiajs.com) 1.4.28+ |
 | ORM | [Drizzle ORM](https://orm.drizzle.team) 0.45.2+ |
