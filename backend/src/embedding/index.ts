@@ -6,88 +6,55 @@
 import { config } from "../lib/config";
 import { logger } from "../lib/logger";
 import { chunkText } from "./chunker";
-import { getOllamaEmbedding } from "./providers/ollama";
-import { getOpenRouterEmbedding } from "./providers/openrouter";
-
-const EMBEDDING_DIMENSIONS = 1024;
-
-/**
- * Get an embedding vector using the primary provider.
- */
-async function getPrimaryEmbedding(text: string): Promise<number[]> {
-	switch (config.EMBEDDING_PROVIDER) {
-		case "ollama":
-			return getOllamaEmbedding(
-				text,
-				config.EMBEDDING_MODEL,
-				config.EMBEDDING_OLLAMA_URL,
-			);
-		case "openrouter":
-			return getOpenRouterEmbedding(
-				text,
-				config.EMBEDDING_MODEL,
-				config.OPENROUTER_API_KEY ?? "",
-			);
-		case "voyage":
-			// Voyage not yet implemented — fall through to fallback
-			throw new Error("Voyage embedding provider is not yet implemented");
-		default:
-			throw new Error(
-				`Unknown embedding provider: ${config.EMBEDDING_PROVIDER}`,
-			);
-	}
-}
-
-/**
- * Get an embedding vector using the fallback provider.
- */
-async function getFallbackEmbedding(text: string): Promise<number[]> {
-	switch (config.EMBEDDING_FALLBACK_PROVIDER) {
-		case "ollama":
-			return getOllamaEmbedding(
-				text,
-				config.EMBEDDING_FALLBACK_MODEL,
-				config.EMBEDDING_OLLAMA_URL,
-			);
-		case "openrouter":
-			return getOpenRouterEmbedding(
-				text,
-				config.EMBEDDING_FALLBACK_MODEL,
-				config.OPENROUTER_API_KEY ?? "",
-			);
-		case "voyage":
-			throw new Error("Voyage embedding provider is not yet implemented");
-		default:
-			throw new Error(
-				`Unknown fallback embedding provider: ${config.EMBEDDING_FALLBACK_PROVIDER}`,
-			);
-	}
-}
+import { getOpenAICompatibleEmbedding } from "./providers/openai-compatible";
+import { EMBEDDING_DIMENSIONS } from "./utils";
 
 /**
  * Get an embedding vector for a single text.
  * Tries primary provider, then fallback, then returns a zero vector.
  */
 export async function getEmbedding(text: string): Promise<number[]> {
+	if (!config.EMBEDDING_BASE_URL || !config.EMBEDDING_MODEL) {
+		logger.warn(
+			"Embedding primary provider not configured (EMBEDDING_BASE_URL or EMBEDDING_MODEL missing), returning zero vector",
+		);
+		return new Array(EMBEDDING_DIMENSIONS).fill(0);
+	}
+
 	try {
-		const embedding = await getPrimaryEmbedding(text);
-		return embedding;
+		return await getOpenAICompatibleEmbedding(
+			text,
+			config.EMBEDDING_BASE_URL,
+			config.EMBEDDING_API_KEY ?? "",
+			config.EMBEDDING_MODEL,
+		);
 	} catch (primaryErr) {
 		logger.warn(
-			{ err: primaryErr, provider: config.EMBEDDING_PROVIDER },
+			{ err: primaryErr, model: config.EMBEDDING_MODEL },
 			"Primary embedding provider failed, trying fallback",
 		);
 
-		try {
-			const embedding = await getFallbackEmbedding(text);
-			return embedding;
-		} catch (fallbackErr) {
-			logger.error(
-				{ err: fallbackErr, provider: config.EMBEDDING_FALLBACK_PROVIDER },
-				"Fallback embedding provider also failed, returning zero vector",
+		if (config.EMBEDDING_FALLBACK_BASE_URL && config.EMBEDDING_FALLBACK_MODEL) {
+			try {
+				return await getOpenAICompatibleEmbedding(
+					text,
+					config.EMBEDDING_FALLBACK_BASE_URL,
+					config.EMBEDDING_FALLBACK_API_KEY ?? "",
+					config.EMBEDDING_FALLBACK_MODEL,
+				);
+			} catch (fallbackErr) {
+				logger.error(
+					{ err: fallbackErr, model: config.EMBEDDING_FALLBACK_MODEL },
+					"Fallback embedding provider also failed, returning zero vector",
+				);
+			}
+		} else {
+			logger.warn(
+				"Embedding fallback provider not configured, returning zero vector",
 			);
-			return new Array(EMBEDDING_DIMENSIONS).fill(0);
 		}
+
+		return new Array(EMBEDDING_DIMENSIONS).fill(0);
 	}
 }
 

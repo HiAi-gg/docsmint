@@ -29,8 +29,13 @@ let saveStatus = $state<"idle" | "saving" | "saved" | "error">("idle");
 
 let name = $state("User");
 let email = $state("user@example.com");
-let embeddingProvider = $state("ollama");
-let embeddingModel = $state("nomic-embed-text");
+let embeddingBaseUrl = $state("");
+let embeddingApiKey = $state("");
+let embeddingModel = $state("");
+let embeddingFallbackBaseUrl = $state("");
+let embeddingFallbackApiKey = $state("");
+let embeddingFallbackModel = $state("");
+let showFallback = $state(false);
 let deleteConfirm = $state(false);
 
 onMount(async () => {
@@ -43,8 +48,13 @@ onMount(async () => {
 	}
 
 	const config = getEmbeddingConfig();
-	embeddingProvider = config.provider;
+	embeddingBaseUrl = config.baseUrl;
+	embeddingApiKey = config.apiKey;
 	embeddingModel = config.model;
+	embeddingFallbackBaseUrl = config.fallbackBaseUrl ?? "";
+	embeddingFallbackApiKey = config.fallbackApiKey ?? "";
+	embeddingFallbackModel = config.fallbackModel ?? "";
+	showFallback = !!(config.fallbackBaseUrl || config.fallbackModel);
 });
 
 async function saveProfile() {
@@ -64,8 +74,12 @@ function saveEmbedding() {
 	saveStatus = "saving";
 	try {
 		updateEmbeddingConfig({
-			provider: embeddingProvider as "ollama" | "openrouter" | "voyage",
+			baseUrl: embeddingBaseUrl,
+			apiKey: embeddingApiKey,
 			model: embeddingModel,
+			fallbackBaseUrl: embeddingFallbackBaseUrl || null,
+			fallbackApiKey: embeddingFallbackApiKey || null,
+			fallbackModel: embeddingFallbackModel || null,
 		});
 		saveStatus = "saved";
 		setTimeout(() => {
@@ -136,17 +150,39 @@ async function handleDeleteAccount() {
     <div class="space-y-4 rounded-lg border border-border bg-card p-6">
       <h2 class="text-lg font-medium">{m.settings_embedding_title()}</h2>
       <div class="space-y-2">
-        <label for="provider" class="text-sm font-medium">{m.settings_embedding_provider()}</label>
-        <select id="provider" bind:value={embeddingProvider} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-          <option value="ollama">{m.settings_embedding_provider_ollama()}</option>
-          <option value="openrouter">{m.settings_embedding_provider_openrouter()}</option>
-          <option value="voyage">{m.settings_embedding_provider_voyage()}</option>
-        </select>
+        <label for="embedding-base-url" class="text-sm font-medium">{m.settings_embedding_base_url()}</label>
+        <input id="embedding-base-url" bind:value={embeddingBaseUrl} placeholder="https://api.openai.com/v1" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
       </div>
       <div class="space-y-2">
-        <label for="model" class="text-sm font-medium">{m.settings_embedding_model()}</label>
-        <input id="model" bind:value={embeddingModel} placeholder="nomic-embed-text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+        <label for="embedding-api-key" class="text-sm font-medium">{m.settings_embedding_api_key()}</label>
+        <input id="embedding-api-key" type="password" bind:value={embeddingApiKey} placeholder="sk-..." class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
       </div>
+      <div class="space-y-2">
+        <label for="embedding-model" class="text-sm font-medium">{m.settings_embedding_model()}</label>
+        <input id="embedding-model" bind:value={embeddingModel} placeholder="text-embedding-3-small" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+      </div>
+
+      <button onclick={() => { showFallback = !showFallback; }} class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+        {showFallback ? "− " : "+ "}{m.settings_embedding_fallback_title()}
+      </button>
+
+      {#if showFallback}
+        <div class="space-y-4 rounded-lg border border-border p-4">
+          <div class="space-y-2">
+            <label for="embedding-fallback-base-url" class="text-sm font-medium">{m.settings_embedding_fallback_base_url()}</label>
+            <input id="embedding-fallback-base-url" bind:value={embeddingFallbackBaseUrl} placeholder="http://localhost:11434" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+          </div>
+          <div class="space-y-2">
+            <label for="embedding-fallback-api-key" class="text-sm font-medium">{m.settings_embedding_fallback_api_key()}</label>
+            <input id="embedding-fallback-api-key" type="password" bind:value={embeddingFallbackApiKey} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+          </div>
+          <div class="space-y-2">
+            <label for="embedding-fallback-model" class="text-sm font-medium">{m.settings_embedding_fallback_model()}</label>
+            <input id="embedding-fallback-model" bind:value={embeddingFallbackModel} placeholder="nomic-embed-text" class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+          </div>
+        </div>
+      {/if}
+
       <button onclick={saveEmbedding} disabled={saveStatus === "saving"} class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
         {saveStatus === "saving" ? m.settings_saving() : saveStatus === "saved" ? m.settings_saved_status() : m.settings_embedding_save()}
       </button>

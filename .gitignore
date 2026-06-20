@@ -20,6 +20,7 @@ frontend/src/lib/paraglide/
 
 # Docker dev overrides
 docker-compose.dev.yml
+!docker-compose.dev.yml.example
 
 # Database
 *.sqlite

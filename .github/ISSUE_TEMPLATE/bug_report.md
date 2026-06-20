@@ -43,8 +43,9 @@ assignees: []
 <!-- Relevant environment variables from `.env` (redact secrets). -->
 
 ```bash
-EMBEDDING_PROVIDER=
+EMBEDDING_BASE_URL=
 EMBEDDING_MODEL=
+EMBEDDING_API_KEY=
 DATABASE_URL=postgresql://***:***@***:**/hiai_docs
 ```
 

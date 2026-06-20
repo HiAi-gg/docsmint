@@ -9,9 +9,11 @@ export interface UserProfile {
 }
 
 export interface EmbeddingConfig {
-	provider: "ollama" | "openrouter" | "voyage";
+	baseUrl: string;
+	apiKey: string;
 	model: string;
-	fallbackProvider: string | null;
+	fallbackBaseUrl: string | null;
+	fallbackApiKey: string | null;
 	fallbackModel: string | null;
 }
 
@@ -59,10 +61,12 @@ const EMBEDDING_KEY = "hiai-docs:embedding-config";
 export function getEmbeddingConfig(): EmbeddingConfig {
 	if (typeof window === "undefined") {
 		return {
-			provider: "ollama",
-			model: "nomic-embed-text",
-			fallbackProvider: "openrouter",
-			fallbackModel: "openai/text-embedding-3-small",
+			baseUrl: "",
+			apiKey: "",
+			model: "",
+			fallbackBaseUrl: null,
+			fallbackApiKey: null,
+			fallbackModel: null,
 		};
 	}
 	try {
@@ -72,10 +76,12 @@ export function getEmbeddingConfig(): EmbeddingConfig {
 		/* ignore */
 	}
 	return {
-		provider: "ollama",
-		model: "nomic-embed-text",
-		fallbackProvider: "openrouter",
-		fallbackModel: "openai/text-embedding-3-small",
+		baseUrl: "",
+		apiKey: "",
+		model: "",
+		fallbackBaseUrl: null,
+		fallbackApiKey: null,
+		fallbackModel: null,
 	};
 }
 

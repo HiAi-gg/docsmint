@@ -16,7 +16,7 @@
 
 hiai-docs is a lightweight **self-hosted knowledge base** built for users who want speed, full data ownership, and strong AI capabilities without heavy enterprise overhead. 
 
-If you are looking for a **local LLM knowledge base** or a **lightweight Outline alternative** / **Docmost alternative** that runs fully offline with **Ollama self-hosted** embeddings, hiai-docs offers an elegant, **RAG-ready knowledge vault** that automatically generates vector embeddings on every save (via Ollama), supports hybrid semantic search, and provides a clean REST API for AI agent integration.
+If you are looking for a **local LLM knowledge base** or a **lightweight Outline alternative** / **Docmost alternative**, hiai-docs offers an elegant, **RAG-ready knowledge vault** that automatically generates vector embeddings on every save, supports hybrid semantic search, and provides a clean REST API for AI agent integration.
 
 ---
 
@@ -39,7 +39,7 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 ## Features
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
-- **AI-native** — automatic chunking + vector embeddings (Ollama) on every save
+- **AI-native** — automatic chunking + vector embeddings on every save
 - **Semantic search** — hybrid full-text + pgvector search
 - **Folder hierarchy** — nested folders to organize your documents
 - **Sharing** — token-protected links with password, expiration, and guest access
@@ -82,8 +82,8 @@ Set up and launch the hiai-docs project on my local system:
 2. Copy .env.example to .env
 3. Generate a secure random auth secret using openssl or a secure generator, and set it as BETTER_AUTH_SECRET in .env
 4. Install all dependencies with "bun install"
-5. Boot up the developer Docker container dependencies (Postgres, Redis, Ollama, MinIO) by running:
-   bun run docker:dev
+5. Boot up the developer Docker container dependencies (Postgres, Redis, MinIO) by running:
+    bun run docker:dev
 6. Generate and apply database migrations to setup schemas by running:
    bun run db:push
 7. Spin up the application services (Elysia API and SvelteKit web) in development/watch mode:
@@ -106,7 +106,7 @@ This is the fastest dev loop. `bun run dev` runs `vite dev` (port 50701) and `bu
 bun install
 
 # 2. Start infrastructure in Docker
-bun run docker:dev          # brings up postgres, redis, ollama, minio
+bun run docker:dev          # brings up postgres, redis, minio
 
 # 3. Push DB schema (one-time, or after schema changes)
 bun run db:push
@@ -136,6 +136,20 @@ The frontend dev server is pinned to port 50701 in `frontend/vite.config.ts` wit
 
 ### Troubleshooting
 
+#### Docker: permission denied
+
+If you get `permission denied` when running Docker commands:
+
+```bash
+# Add your user to the docker group
+sudo usermod -aG docker $USER
+
+# Log out and back in, or run:
+newgrp docker
+```
+
+Then verify: `docker ps` should work without `sudo`.
+
 - **Port 50701 already in use** — `docker compose down` to stop stale containers, then retry `bun run dev` or `bun run docker:dev`.
 - **Changes not showing up** — `bun run dev` already wires HMR. If running via Docker, confirm the bind mount is in `docker-compose.dev.yml` (not the prod `docker-compose.yml`, which builds an immutable image).
 - **`bun install` complains about the lockfile** — ensure `bun.lock` is in sync: `bun install`.
@@ -156,7 +170,7 @@ The frontend dev server is pinned to port 50701 in `frontend/vite.config.ts` wit
 | Frontend | [SvelteKit](https://kit.svelte.dev) 2.60+ |
 | UI | [shadcn-svelte](https://shadcn-svelte.com) (new-york style) |
 | Editor | [svelte-tiptap](https://github.com/sibiraj-s/svelte-tiptap) + [TipTap v3](https://tiptap.dev) |
-| Embeddings | [Ollama](https://ollama.ai) (configurable) |
+| Embeddings | OpenAI-compatible API (configurable) |
 | Storage | [MinIO](https://min.io) (S3-compatible) |
 
 ---
@@ -225,9 +239,10 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `BETTER_AUTH_URL` | http://localhost:50700 | Auth base URL |
 | `MINIO_ACCESS_KEY` | minioadmin | MinIO access key |
 | `MINIO_SECRET_KEY` | minioadmin | MinIO secret key |
-| `EMBEDDING_PROVIDER` | ollama | Embedding provider (ollama/openrouter/voyage) |
+| `EMBEDDING_BASE_URL` | — | Base URL for OpenAI-compatible embedding API (optional) |
+| `EMBEDDING_API_KEY` | — | API key for embedding service (leave empty for local inference) |
 | `EMBEDDING_MODEL` | nomic-embed-text | Embedding model name |
-| `OPENROUTER_API_KEY` | — | OpenRouter API key (fallback) |
+| `CORS_ORIGINS` | http://localhost:50701 | Comma-separated allowed origins (required for local dev) |
 
 See `.env.example` for full list.
 

@@ -15,14 +15,12 @@ const envSchema = z.object({
 		.default("info"),
 	BETTER_AUTH_SECRET: z.string().default("change-me-to-random-32-chars"),
 	BETTER_AUTH_URL: z.string().default("http://localhost:50700"),
-	EMBEDDING_PROVIDER: z
-		.enum(["ollama", "openrouter", "voyage"])
-		.default("ollama"),
-	EMBEDDING_MODEL: z.string().default("nomic-embed-text"),
-	EMBEDDING_OLLAMA_URL: z.string().default("http://localhost:11434"),
-	EMBEDDING_FALLBACK_PROVIDER: z.string().default("openrouter"),
-	EMBEDDING_FALLBACK_MODEL: z.string().default("openai/text-embedding-3-small"),
-	OPENROUTER_API_KEY: z.string().optional(),
+	EMBEDDING_BASE_URL: z.string().optional(),
+	EMBEDDING_API_KEY: z.string().optional(),
+	EMBEDDING_MODEL: z.string().optional(),
+	EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
+	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
+	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
 	MINIO_ENDPOINT: z.string().default("localhost"),
 	MINIO_PORT: z.coerce.number().default(9010),
 	MINIO_ACCESS_KEY: z.string().default("minioadmin"),
@@ -40,7 +38,12 @@ describe("config schema", () => {
 			expect(result.data.API_PORT).toBe(50700);
 			expect(result.data.NODE_ENV).toBe("development");
 			expect(result.data.LOG_LEVEL).toBe("info");
-			expect(result.data.EMBEDDING_PROVIDER).toBe("ollama");
+			expect(result.data.EMBEDDING_BASE_URL).toBeUndefined();
+			expect(result.data.EMBEDDING_API_KEY).toBeUndefined();
+			expect(result.data.EMBEDDING_MODEL).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_BASE_URL).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
 			expect(result.data.MINIO_PORT).toBe(9010);
 		}
 	});
@@ -50,19 +53,28 @@ describe("config schema", () => {
 		expect(result.success).toBe(false);
 	});
 
-	test("accepts valid embedding providers", () => {
-		expect(envSchema.safeParse({ EMBEDDING_PROVIDER: "ollama" }).success).toBe(
-			true,
-		);
-		expect(
-			envSchema.safeParse({ EMBEDDING_PROVIDER: "openrouter" }).success,
-		).toBe(true);
-		expect(envSchema.safeParse({ EMBEDDING_PROVIDER: "voyage" }).success).toBe(
-			true,
-		);
-		expect(envSchema.safeParse({ EMBEDDING_PROVIDER: "invalid" }).success).toBe(
-			false,
-		);
+	test("accepts valid embedding configuration", () => {
+		const result = envSchema.safeParse({
+			EMBEDDING_BASE_URL: "http://localhost:11434",
+			EMBEDDING_API_KEY: "test-api-key",
+			EMBEDDING_MODEL: "nomic-embed-text",
+			EMBEDDING_FALLBACK_BASE_URL: "https://openrouter.ai/api/v1",
+			EMBEDDING_FALLBACK_API_KEY: "fallback-api-key",
+			EMBEDDING_FALLBACK_MODEL: "openai/text-embedding-3-small",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.EMBEDDING_BASE_URL).toBe("http://localhost:11434");
+			expect(result.data.EMBEDDING_API_KEY).toBe("test-api-key");
+			expect(result.data.EMBEDDING_MODEL).toBe("nomic-embed-text");
+			expect(result.data.EMBEDDING_FALLBACK_BASE_URL).toBe(
+				"https://openrouter.ai/api/v1",
+			);
+			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBe("fallback-api-key");
+			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBe(
+				"openai/text-embedding-3-small",
+			);
+		}
 	});
 
 	test("coerces string port to number", () => {
@@ -81,11 +93,16 @@ describe("config schema", () => {
 		expect(envSchema.safeParse({ LOG_LEVEL: "verbose" }).success).toBe(false);
 	});
 
-	test("OPENROUTER_API_KEY is optional", () => {
+	test("all embedding fields are optional and default to undefined", () => {
 		const result = envSchema.safeParse({});
 		expect(result.success).toBe(true);
 		if (result.success) {
-			expect(result.data.OPENROUTER_API_KEY).toBeUndefined();
+			expect(result.data.EMBEDDING_BASE_URL).toBeUndefined();
+			expect(result.data.EMBEDDING_API_KEY).toBeUndefined();
+			expect(result.data.EMBEDDING_MODEL).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_BASE_URL).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBeUndefined();
+			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
 		}
 	});
 });

@@ -52,7 +52,7 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 
 - **Biome/Svelte 5:** 44 false-positive lint errors on Svelte 5 runes (non-blocking)
 - **Typebox pin:** required for Elysia 1.4.28 compatibility
-- **OPENROUTER_API_KEY:** placeholder, replace before production
+- **Embedding API keys:** configure EMBEDDING_BASE_URL, EMBEDDING_API_KEY, and EMBEDDING_MODEL in .env (optional for Ollama self-hosting)
 - **No E2E tests:** tracked in todo.md T6.3
 - **No automated backups:** operator responsibility
 

@@ -4,7 +4,7 @@
 
 ## Pre-Release
 
-- [ ] **Bump version** — Update version in `package.json`, `backend/package.json`, `frontend/package.json`, `packages/db/package.json`
+- [ ] **Bump version** — Update version in all 6 files: `package.json`, `backend/package.json`, `frontend/package.json`, `packages/db/package.json`, `package.public.json`, `backend/src/index.ts` (swagger version)
 - [ ] **Regenerate secrets** — Generate fresh values for `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `HIAI_DOCS_API_KEY`:
       ```bash
       openssl rand -hex 32   # repeat for each secret
@@ -12,7 +12,7 @@
 - [ ] **Update `.env.example`** if any new env vars were added
 - [ ] **Run full typecheck** — `bun run typecheck` (0 errors)
 - [ ] **Run full test suite** — `bun test` (all passing)
-- [ ] **Run lint** — `bun run lint` in backend (0 errors)
+- [ ] **Run lint** — `bun run lint` (0 errors)
 
 ## Build
 
@@ -22,10 +22,12 @@
 
 ## Release
 
-- [ ] **Commit and tag** — `git tag -a v<version> -m "v<version>"`
-- [ ] **Push** — `git push origin dev --tags`
-- [ ] **Create GitHub release** — Use the tag, include changelog summary
+- [ ] **Commit and tag** — `git add -A && git commit -m "Release v<version>" && git tag -a v<version> -m "v<version>"`
+- [ ] **Push** — `git push origin main --tags`
 - [ ] **Verify CI** — Confirm CI pipeline passes on GitHub Actions
+- [ ] **Verify Docker Hub** — Images pushed as `vgalibov/hiai-docs:api-v<version>` and `vgalibov/hiai-docs:web-v<version>`
+- [ ] **Verify npm** — `npm view @hiai-gg/hiai-docs@<version>` shows the new version
+- [ ] **Create GitHub release** — Use the tag, include changelog summary
 
 ## Post-Release
 

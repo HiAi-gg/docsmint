@@ -37,7 +37,7 @@ hiai-docs/
 | Frontend | SvelteKit 2.60+ / Svelte 5.55+ |
 | UI | shadcn-svelte (new-york) + Tailwind v4 |
 | Editor | TipTap + svelte-tiptap |
-| Embeddings | Ollama (configurable) |
+| Embeddings | OpenAI-compatible API (optional) |
 | Storage | MinIO (S3-compatible) |
 
 ## Data Flow
@@ -46,17 +46,17 @@ hiai-docs/
 User → SvelteKit Frontend → REST API (Elysia) → PostgreSQL
                                               → Redis (queue/cache)
                                               → MinIO (attachments)
-                                              → Ollama (embeddings)
+                                              → [Optional] Embedding API
 ```
 
 1. User creates/edits document in TipTap editor
 2. Frontend PATCHes document via API
 3. API saves content + version to PostgreSQL
-4. API enqueues embedding job to Redis
-5. Background worker fetches document, chunks text, generates vector via Ollama
-6. Worker stores vector in pgvector column
+4. If embeddings are configured, API enqueues embedding job to Redis
+5. Background worker fetches document, chunks text, generates vector via OpenAI-compatible API
+6. Worker stores vector in pgvector column (if embeddings enabled)
 
-Search queries run hybrid: full-text (tsvector) + semantic (pgvector cosine).
+Search queries run hybrid: full-text (tsvector) + semantic (pgvector cosine) when embeddings are configured. Without embeddings configured, only full-text search is available.
 
 ## Module Boundaries
 

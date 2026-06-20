@@ -1,16 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
 describe("embedding providers", () => {
-	test("getOllamaEmbedding is a function", async () => {
-		const mod = await import("../embedding/providers/ollama");
-		expect(typeof mod.getOllamaEmbedding).toBe("function");
-	});
-
-	test("getOpenRouterEmbedding is a function", async () => {
-		const mod = await import("../embedding/providers/openrouter");
-		expect(typeof mod.getOpenRouterEmbedding).toBe("function");
-	});
-
 	test("getEmbedding returns 1024-dim vector (fallback to zero when unavailable)", async () => {
 		const mod = await import("../embedding/index");
 		const result = await mod.getEmbedding("test text");

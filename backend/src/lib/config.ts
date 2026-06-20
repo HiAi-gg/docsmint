@@ -28,14 +28,12 @@ const envSchema = z.object({
 	WEBHOOK_SECRET: z.string().default("change-me-to-random-32-chars"),
 	BETTER_AUTH_URL: z.string().default("http://localhost:50700"),
 	CORS_ORIGINS: z.string().optional(),
-	EMBEDDING_PROVIDER: z
-		.enum(["ollama", "openrouter", "voyage"])
-		.default("ollama"),
-	EMBEDDING_MODEL: z.string().default("nomic-embed-text"),
-	EMBEDDING_OLLAMA_URL: z.string().default("http://localhost:11434"),
-	EMBEDDING_FALLBACK_PROVIDER: z.string().default("openrouter"),
-	EMBEDDING_FALLBACK_MODEL: z.string().default("openai/text-embedding-3-small"),
-	OPENROUTER_API_KEY: z.string().optional(),
+	EMBEDDING_BASE_URL: z.string().optional(),
+	EMBEDDING_API_KEY: z.string().optional(),
+	EMBEDDING_MODEL: z.string().optional(),
+	EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
+	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
+	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
 	API_PORT: z.coerce.number().default(50700),
 	NODE_ENV: z
 		.enum(["development", "production", "test"])

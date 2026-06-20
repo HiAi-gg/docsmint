@@ -66,7 +66,12 @@ export const csrfMiddleware = new Elysia()
 		if (origin && host) {
 			try {
 				const originUrl = new URL(origin);
-				if (originUrl.host !== host) {
+				const allowedOrigins = config.CORS_ORIGINS?.split(",") ?? [];
+				const isAllowed =
+					config.NODE_ENV === "production"
+						? originUrl.host === host
+						: allowedOrigins.includes(originUrl.origin);
+				if (!isAllowed) {
 					set.status = 403;
 					return { error: "CSRF: origin mismatch" };
 				}

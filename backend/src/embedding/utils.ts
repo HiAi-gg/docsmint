@@ -2,6 +2,8 @@
  * Shared embedding utilities.
  */
 
+export const EMBEDDING_DIMENSIONS = 1024;
+
 /**
  * Pad or truncate a vector to exactly `dims` dimensions.
  */

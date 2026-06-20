@@ -49,9 +49,9 @@ Copy `.env.example` and fill in:
 | `MINIO_ACCESS_KEY` | Yes | `minioadmin` | MinIO access key |
 | `MINIO_SECRET_KEY` | Yes | `minioadmin` | MinIO secret key |
 | `MINIO_BUCKET` | Yes | `hiai-docs` | MinIO bucket name |
-| `EMBEDDING_PROVIDER` | No | `ollama` | `ollama`, `openrouter`, or `voyage` |
-| `EMBEDDING_MODEL` | No | `nomic-embed-text` | Model name |
-| `OPENROUTER_API_KEY` | If fallback | — | OpenRouter API key |
+| `EMBEDDING_BASE_URL` | If embeddings enabled | — | Base URL for OpenAI-compatible embedding API |
+| `EMBEDDING_API_KEY` | If embeddings enabled | — | API key for embedding provider |
+| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | Model name for embeddings |
 | `API_PORT` | No | `50700` | Backend port |
 | `WEB_PORT` | No | `50701` | Frontend port |
 | `NODE_ENV` | No | `development` | `development` or `production` |
@@ -106,7 +106,6 @@ bun run db:push
 |-----------|------|---------|
 | postgres | 5433 | PostgreSQL 18 + pgvector |
 | redis | 6380 | Cache/queue |
-| ollama | 11434 | Embedding provider |
 | minio | 9000/9001 | S3-compatible file storage |
 | api | 50700 | Elysia REST API |
 | web | 50701 | SvelteKit frontend |
