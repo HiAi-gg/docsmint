@@ -5,12 +5,12 @@
  */
 
 import { logger } from "../../lib/logger";
-import { normalizeDimensions, EMBEDDING_DIMENSIONS } from "../utils";
+import { EMBEDDING_DIMENSIONS, normalizeDimensions } from "../utils";
 
 const TIMEOUT_MS = 30_000;
 
 interface OpenAICompatibleEmbeddingResponse {
-  data: Array<{ embedding: number[] }>;
+	data: Array<{ embedding: number[] }>;
 }
 
 /**
@@ -22,61 +22,61 @@ interface OpenAICompatibleEmbeddingResponse {
  * @returns number[] of length 1024
  */
 export async function getOpenAICompatibleEmbedding(
-  text: string,
-  baseUrl: string,
-  apiKey: string,
-  model: string,
+	text: string,
+	baseUrl: string,
+	apiKey: string,
+	model: string,
 ): Promise<number[]> {
-  const url = `${baseUrl.replace(/\/$/, "")}/embeddings`;
+	const url = `${baseUrl.replace(/\/$/, "")}/embeddings`;
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
-  }
+	const headers: Record<string, string> = {
+		"Content-Type": "application/json",
+	};
+	if (apiKey) {
+		headers.Authorization = `Bearer ${apiKey}`;
+	}
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ model, input: text }),
-      signal: controller.signal,
-    });
+	try {
+		const response = await fetch(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify({ model, input: text }),
+			signal: controller.signal,
+		});
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "unknown");
-      throw new Error(
-        `OpenAI-compatible embedding failed: ${response.status} ${body}`,
-      );
-    }
+		if (!response.ok) {
+			const body = await response.text().catch(() => "unknown");
+			throw new Error(
+				`OpenAI-compatible embedding failed: ${response.status} ${body}`,
+			);
+		}
 
-    const data = (await response.json()) as OpenAICompatibleEmbeddingResponse;
-    const embedding = data.data?.[0]?.embedding;
+		const data = (await response.json()) as OpenAICompatibleEmbeddingResponse;
+		const embedding = data.data?.[0]?.embedding;
 
-    if (!Array.isArray(embedding) || embedding.length === 0) {
-      throw new Error(
-        "OpenAI-compatible provider returned empty or invalid embedding",
-      );
-    }
+		if (!Array.isArray(embedding) || embedding.length === 0) {
+			throw new Error(
+				"OpenAI-compatible provider returned empty or invalid embedding",
+			);
+		}
 
-    return normalizeDimensions(embedding, EMBEDDING_DIMENSIONS);
-  } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
-      logger.error(
-        { url, model },
-        "OpenAI-compatible embedding request timed out",
-      );
-      throw new Error(
-        `OpenAI-compatible embedding timed out after ${TIMEOUT_MS}ms`,
-      );
-    }
-    logger.error({ err, url, model }, "OpenAI-compatible embedding error");
-    throw err;
-  } finally {
-    clearTimeout(timeout);
-  }
+		return normalizeDimensions(embedding, EMBEDDING_DIMENSIONS);
+	} catch (err) {
+		if (err instanceof Error && err.name === "AbortError") {
+			logger.error(
+				{ url, model },
+				"OpenAI-compatible embedding request timed out",
+			);
+			throw new Error(
+				`OpenAI-compatible embedding timed out after ${TIMEOUT_MS}ms`,
+			);
+		}
+		logger.error({ err, url, model }, "OpenAI-compatible embedding error");
+		throw err;
+	} finally {
+		clearTimeout(timeout);
+	}
 }
