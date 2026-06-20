@@ -20,12 +20,13 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
 	// Legacy fallback — works on HTTP (insecure contexts)
 	try {
-		const textarea = document.createElement('textarea');
+		const textarea = document.createElement("textarea");
 		textarea.value = text;
-		textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+		textarea.style.cssText =
+			"position:fixed;left:-9999px;top:-9999px;opacity:0;";
 		document.body.appendChild(textarea);
 		textarea.select();
-		const ok = document.execCommand('copy');
+		const ok = document.execCommand("copy");
 		document.body.removeChild(textarea);
 		return ok;
 	} catch {
