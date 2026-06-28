@@ -172,8 +172,15 @@ async function callEntityExtractionLLM(
 	const endpoints: Array<{ baseUrl: string; apiKey: string; model: string }> =
 		[];
 
-	const primaryBase = options.llmBaseUrl ?? config.EMBEDDING_BASE_URL;
-	const primaryKey = options.llmApiKey ?? config.EMBEDDING_API_KEY ?? "";
+	const primaryBase =
+		options.llmBaseUrl ??
+		config.GRAPH_EXTRACT_BASE_URL ??
+		config.EMBEDDING_BASE_URL;
+	const primaryKey =
+		options.llmApiKey ??
+		config.GRAPH_EXTRACT_API_KEY ??
+		config.EMBEDDING_API_KEY ??
+		"";
 	const primaryModel =
 		options.llmModel ??
 		config.GRAPH_EXTRACT_MODEL ??
@@ -186,9 +193,17 @@ async function callEntityExtractionLLM(
 			model: primaryModel,
 		});
 
-	const fallbackBase = config.EMBEDDING_FALLBACK_BASE_URL;
-	const fallbackKey = config.EMBEDDING_FALLBACK_API_KEY ?? "";
-	const fallbackModel = config.EMBEDDING_FALLBACK_MODEL ?? primaryModel;
+	const fallbackBase =
+		config.GRAPH_EXTRACT_FALLBACK_BASE_URL ??
+		config.EMBEDDING_FALLBACK_BASE_URL;
+	const fallbackKey =
+		config.GRAPH_EXTRACT_FALLBACK_API_KEY ??
+		config.EMBEDDING_FALLBACK_API_KEY ??
+		"";
+	const fallbackModel =
+		config.GRAPH_EXTRACT_FALLBACK_MODEL ??
+		config.EMBEDDING_FALLBACK_MODEL ??
+		primaryModel;
 	if (
 		fallbackBase &&
 		(fallbackBase !== primaryBase || fallbackKey !== primaryKey)

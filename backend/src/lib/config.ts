@@ -68,6 +68,19 @@ const envSchema = z.object({
 	// GraphRAG extractor reuses the configured embedding provider's model
 	// name where possible; falls back to `gpt-4o-mini` if neither is set.
 	GRAPH_EXTRACT_MODEL: z.string().optional(),
+	// Base URL for the LLM that performs entity extraction. This endpoint
+	// MUST accept OpenAI-compatible chat completion requests
+	// (POST {url}/chat/completions). When absent, falls back to
+	// EMBEDDING_BASE_URL — which is usually WRONG (embedding endpoint !=
+	// chat endpoint). Set this explicitly for production.
+	GRAPH_EXTRACT_BASE_URL: z.string().optional(),
+	// API key for the entity extraction LLM. Optional; defaults to
+	// EMBEDDING_API_KEY when absent.
+	GRAPH_EXTRACT_API_KEY: z.string().optional(),
+	// Fallback LLM for entity extraction.
+	GRAPH_EXTRACT_FALLBACK_BASE_URL: z.string().optional(),
+	GRAPH_EXTRACT_FALLBACK_API_KEY: z.string().optional(),
+	GRAPH_EXTRACT_FALLBACK_MODEL: z.string().optional(),
 	// Hybrid search weights — applied to the merged text + semantic score.
 	// Both must be in [0, 1]; defaults preserve the historical 0.4 text /
 	// 0.6 semantic balance from the README contract.
