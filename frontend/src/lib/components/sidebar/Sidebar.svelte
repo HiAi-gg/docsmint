@@ -22,6 +22,47 @@ let showSettings = $state(false);
 type PanelMode = "all" | "recent" | "tags";
 let activePanel = $state<PanelMode>("all");
 
+let width = $state(256); // default is 256px
+let isResizing = $state(false);
+
+$effect(() => {
+	if (typeof window !== "undefined") {
+		const saved = localStorage.getItem("hiai_sidebar_width");
+		if (saved) {
+			const parsed = parseInt(saved, 10);
+			if (!Number.isNaN(parsed) && parsed >= 180 && parsed <= 500) {
+				width = parsed;
+			}
+		}
+	}
+});
+
+$effect(() => {
+	if (isResizing) {
+		window.addEventListener("mousemove", handleResize);
+		window.addEventListener("mouseup", stopResize);
+		return () => {
+			window.removeEventListener("mousemove", handleResize);
+			window.removeEventListener("mouseup", stopResize);
+		};
+	}
+});
+
+function startResize(e: MouseEvent) {
+	e.preventDefault();
+	isResizing = true;
+}
+
+function handleResize(e: MouseEvent) {
+	const newWidth = Math.max(180, Math.min(500, e.clientX));
+	width = newWidth;
+}
+
+function stopResize() {
+	isResizing = false;
+	localStorage.setItem("hiai_sidebar_width", width.toString());
+}
+
 function openSearch() {
 	goto("/search");
 }
@@ -39,10 +80,27 @@ function toggleCollapse() {
 }
 </script>
 
-<aside class={cn(
-  "relative flex h-screen flex-col border-r border-border bg-card transition-[width] duration-200",
-  collapsed ? "w-12" : "w-64"
-)}>
+<aside
+  class={cn(
+    "relative flex h-screen flex-col border-r border-border bg-card",
+    !isResizing && "transition-[width] duration-200"
+  )}
+  style={collapsed ? "width: 48px;" : `width: ${width}px;`}
+>
+  <!-- Resize Handle -->
+  {#if !collapsed}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      role="separator"
+      tabindex="-1"
+      class={cn(
+        "absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize hover:bg-primary/50 transition-colors",
+        isResizing && "bg-primary w-1"
+      )}
+      onmousedown={startResize}
+    ></div>
+  {/if}
   <!-- Toggle -->
   <button
     onclick={toggleCollapse}
@@ -62,7 +120,9 @@ function toggleCollapse() {
       <SearchBar class="mr-5" />
 
       {#if activePanel === "all"}
-        <!-- Folders -->
+        <!-- Documents: FolderTree renders categories as headers, with
+             folders inside each category and files inside each folder.
+             The hierarchy is now: Documents → Categories → Folders → Files. -->
         <FolderTree />
 
         <!-- Separator -->

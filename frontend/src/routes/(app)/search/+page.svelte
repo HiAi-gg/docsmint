@@ -1,10 +1,12 @@
 <script lang="ts">
 import {
 	Calendar,
+	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
 	FileSearch,
 	Folder,
+	FolderKanban,
 	Loader2,
 	RotateCcw,
 	Search,
@@ -13,11 +15,15 @@ import {
 	X,
 } from "lucide-svelte";
 import { goto } from "$app/navigation";
+import { type Category, listCategories } from "$lib/api/categories";
+import { type Document, listDocuments } from "$lib/api/documents";
+import { listFolders } from "$lib/api/folders";
 import { getFilterOptions, type SearchResponse, search } from "$lib/api/search";
 import DatePicker from "$lib/components/DatePicker.svelte";
 import SearchResult from "$lib/components/SearchResult.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { getSelectedTagName } from "$lib/stores/tag-store.svelte";
+import type { Folder as FolderType } from "$lib/types.js";
 
 const { data } = $props();
 
@@ -25,6 +31,9 @@ const { data } = $props();
 let query = $state("");
 let activeFolder = $state("");
 let activeTags = $state<string[]>([]);
+// activeCategoryId is the UUID of the currently selected category filter.
+// Empty string means "no category filter" (the default).
+let activeCategoryId = $state("");
 let dateFrom = $state("");
 let dateTo = $state("");
 let currentPage = $state(1);
@@ -32,10 +41,20 @@ let sortOrder = $state<
 	"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc"
 >("relevance");
 
+// Collapsible filters state
+let foldersExpanded = $state(true);
+let categoriesExpanded = $state(true);
+
+// Flat data for local search
+let allDocuments = $state<Document[]>([]);
+let allFolders = $state<FolderType[]>([]);
+let allCategories = $state<Category[]>([]);
+
 $effect(() => {
 	query = data.query ?? "";
 	activeFolder = data.filters?.folder ?? "";
 	activeTags = data.filters?.tags ?? [];
+	activeCategoryId = data.filters?.category ?? "";
 	dateFrom = data.filters?.dateFrom ?? "";
 	dateTo = data.filters?.dateTo ?? "";
 	currentPage = data.page ?? 1;
@@ -49,6 +68,7 @@ let folders = $state<string[]>([]);
 let tags = $state<Array<{ id: string; name: string; color: string | null }>>(
 	[],
 );
+let categories = $state<Array<{ id: string; name: string }>>([]);
 
 const PAGE_SIZE = 5;
 
@@ -60,19 +80,54 @@ const totalPages = $derived(
 const hasActiveFilters = $derived(
 	activeFolder !== "" ||
 		activeTags.length > 0 ||
+		activeCategoryId !== "" ||
 		dateFrom !== "" ||
 		dateTo !== "",
 );
 
 // --- Effects -----------------------------------------------------------------
 
-// Load filter options on mount
+// Load filter options and local search lists on mount
 $effect(() => {
 	getFilterOptions().then((opts) => {
 		folders = opts.folders;
 		tags = opts.tags;
+		categories = opts.categories;
+	});
+
+	listDocuments({ limit: 1000 }).then((res) => {
+		allDocuments = res.items;
+	});
+	listFolders(null, true).then((res) => {
+		allFolders = res;
+	});
+	listCategories().then((res) => {
+		allCategories = res;
 	});
 });
+
+const queryLower = $derived(query.trim().toLowerCase());
+
+const matchingDocs = $derived.by(() => {
+	if (!queryLower) return [];
+	return allDocuments.filter((d) => d.title.toLowerCase().includes(queryLower));
+});
+
+const matchingFolders = $derived.by(() => {
+	if (!queryLower) return [];
+	return allFolders.filter((f) => f.name.toLowerCase().includes(queryLower));
+});
+
+const matchingCategories = $derived.by(() => {
+	if (!queryLower) return [];
+	return allCategories.filter((c) => c.name.toLowerCase().includes(queryLower));
+});
+
+const hasAnyLocalMatches = $derived(
+	matchingDocs.length > 0 ||
+		matchingFolders.length > 0 ||
+		matchingCategories.length > 0,
+);
 
 // Run search when query or filters change
 $effect(() => {
@@ -81,6 +136,7 @@ $effect(() => {
 	const sort = sortOrder;
 	const folder = activeFolder;
 	const tags = activeTags;
+	const category = activeCategoryId;
 	const from = dateFrom;
 	const to = dateTo;
 	// Merge the shared selected tag (set from the sidebar TagList) into the
@@ -100,6 +156,7 @@ $effect(() => {
 	search(q, p, PAGE_SIZE, sort, {
 		folder: folder || undefined,
 		tags: effectiveTags.length > 0 ? effectiveTags : undefined,
+		category: category || undefined,
 		dateFrom: from || undefined,
 		dateTo: to || undefined,
 	}).then((res) => {
@@ -116,6 +173,7 @@ function buildUrl(overrides: Record<string, string | undefined>) {
 	const q = overrides.q ?? query;
 	const folder = overrides.folder ?? activeFolder;
 	const t = overrides.tags ?? activeTags.join(",");
+	const cat = overrides.category ?? activeCategoryId;
 	const df = overrides.dateFrom ?? dateFrom;
 	const dt = overrides.dateTo ?? dateTo;
 	const p = overrides.page ?? String(currentPage);
@@ -123,6 +181,7 @@ function buildUrl(overrides: Record<string, string | undefined>) {
 	if (q) params.set("q", q);
 	if (folder) params.set("folder", folder);
 	if (t) params.set("tags", t);
+	if (cat) params.set("category", cat);
 	if (df) params.set("dateFrom", df);
 	if (dt) params.set("dateTo", dt);
 	if (p && p !== "1") params.set("page", p);
@@ -150,6 +209,7 @@ function clearSearch() {
 	query = "";
 	activeFolder = "";
 	activeTags = [];
+	activeCategoryId = "";
 	dateFrom = "";
 	dateTo = "";
 	currentPage = 1;
@@ -172,6 +232,14 @@ function toggleTag(tag: string) {
 	});
 }
 
+function toggleCategory(categoryId: string) {
+	activeCategoryId = activeCategoryId === categoryId ? "" : categoryId;
+	currentPage = 1;
+	goto(buildUrl({ category: activeCategoryId, page: "1" }), {
+		replaceState: true,
+	});
+}
+
 function applyDateRange() {
 	currentPage = 1;
 	goto(buildUrl({ dateFrom, dateTo, page: "1" }), { replaceState: true });
@@ -180,6 +248,7 @@ function applyDateRange() {
 function clearFilters() {
 	activeFolder = "";
 	activeTags = [];
+	activeCategoryId = "";
 	dateFrom = "";
 	dateTo = "";
 	currentPage = 1;
@@ -187,6 +256,7 @@ function clearFilters() {
 		buildUrl({
 			folder: undefined,
 			tags: undefined,
+			category: undefined,
 			dateFrom: undefined,
 			dateTo: undefined,
 			page: "1",
@@ -282,12 +352,86 @@ function goToPage(page: number) {
 
     <!-- Results area -->
     <main class="min-w-0 flex-1">
-      {#if loading}
-        {@render loadingState()}
-      {:else if searchResponse && searchResponse.items.length > 0}
-        {@render resultsList()}
-      {:else if data.query}
-        {@render noResults()}
+      <!-- Instant Title Matches -->
+      {#if query.trim() && hasAnyLocalMatches}
+        <div class="mb-6 space-y-4">
+          <h3 class="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Instant Title Matches
+          </h3>
+
+          {#if matchingDocs.length > 0}
+            <div class="space-y-2">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                {m.nav_documents()}
+              </h4>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {#each matchingDocs as doc (doc.id)}
+                  <a
+                    href="/docs/{doc.id}"
+                    class="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  >
+                    <FileSearch class="size-4 shrink-0 text-muted-foreground" />
+                    <span class="font-medium text-sm truncate">{doc.title}</span>
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          {#if matchingFolders.length > 0}
+            <div class="space-y-2">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                {m.nav_folders()}
+              </h4>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {#each matchingFolders as folder (folder.id)}
+                  <a
+                    href="/folders/{folder.id}"
+                    class="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  >
+                    <Folder class="size-4 shrink-0 text-muted-foreground" />
+                    <span class="font-medium text-sm truncate">{folder.name}</span>
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          {#if matchingCategories.length > 0}
+            <div class="space-y-2">
+              <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">
+                {m.categories_title()}
+              </h4>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {#each matchingCategories as category (category.id)}
+                  <a
+                    href="/folders#category-{category.id}"
+                    class="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent"
+                  >
+                    <FolderKanban class="size-4 shrink-0 text-muted-foreground" />
+                    <span class="font-medium text-sm truncate">{category.name}</span>
+                  </a>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Server Search Results -->
+      {#if query.trim()}
+        <div class="border-t border-border/60 pt-6">
+          <h3 class="mb-4 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            AI-powered Semantic Search
+          </h3>
+          {#if loading}
+            {@render loadingState()}
+          {:else if searchResponse && searchResponse.items.length > 0}
+            {@render resultsList()}
+          {:else if !hasAnyLocalMatches}
+            {@render noResults()}
+          {/if}
+        </div>
       {:else}
         {@render emptyState()}
       {/if}
@@ -312,27 +456,38 @@ function goToPage(page: number) {
     <!-- Folder filter -->
     {#if folders.length > 0}
       <div>
-        <h4
-          class="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+        <button
+          type="button"
+          onclick={() => (foldersExpanded = !foldersExpanded)}
+          class="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Folder class="size-3.5" />
-          {m.search_folders()}
-        </h4>
-        <div class="space-y-0.5">
-          {#each folders as folder}
-            <button
-              onclick={() => toggleFolder(folder)}
-              class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeFolder === folder
-                ? 'bg-primary/10 font-medium text-primary'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-            >
-              <span class="truncate">{folder}</span>
-              {#if activeFolder === folder}
-                <X class="size-3 shrink-0" />
-              {/if}
-            </button>
-          {/each}
-        </div>
+          <span class="flex items-center gap-1.5">
+            <Folder class="size-3.5" />
+            {m.search_folders()}
+          </span>
+          {#if foldersExpanded}
+            <ChevronDown class="size-3" />
+          {:else}
+            <ChevronRight class="size-3" />
+          {/if}
+        </button>
+        {#if foldersExpanded}
+          <div class="space-y-0.5">
+            {#each folders as folder}
+              <button
+                onclick={() => toggleFolder(folder)}
+                class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeFolder === folder
+                  ? 'bg-primary/10 font-medium text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+              >
+                <span class="truncate">{folder}</span>
+                {#if activeFolder === folder}
+                  <X class="size-3 shrink-0" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -360,6 +515,44 @@ function goToPage(page: number) {
             </button>
           {/each}
         </div>
+      </div>
+    {/if}
+
+    <!-- Category filter -->
+    {#if categories.length > 0}
+      <div>
+        <button
+          type="button"
+          onclick={() => (categoriesExpanded = !categoriesExpanded)}
+          class="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span class="flex items-center gap-1.5">
+            <FolderKanban class="size-3.5" />
+            {m.categories_title()}
+          </span>
+          {#if categoriesExpanded}
+            <ChevronDown class="size-3" />
+          {:else}
+            <ChevronRight class="size-3" />
+          {/if}
+        </button>
+        {#if categoriesExpanded}
+          <div class="space-y-0.5">
+            {#each categories as category (category.id)}
+              <button
+                onclick={() => toggleCategory(category.id)}
+                class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeCategoryId === category.id
+                  ? 'bg-primary/10 font-medium text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+              >
+                <span class="truncate">{category.name}</span>
+                {#if activeCategoryId === category.id}
+                  <X class="size-3 shrink-0" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
       </div>
     {/if}
 
@@ -432,10 +625,12 @@ function goToPage(page: number) {
 {#snippet resultsList()}
   <div>
     <div class="mb-4 flex items-center justify-between gap-3">
-      <p class="text-sm text-muted-foreground">
-        {(searchResponse?.total ?? 0) === 1 ? m.search_result_for({count: searchResponse!.total}) : m.search_results_for({count: searchResponse!.total})}
-        "<span class="font-medium text-foreground">{data.query}</span>"
-      </p>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+        <p>
+          {(searchResponse?.total ?? 0) === 1 ? m.search_result_for({count: searchResponse!.total}) : m.search_results_for({count: searchResponse!.total})}
+          "<span class="font-medium text-foreground">{data.query}</span>"
+        </p>
+      </div>
       <select
         bind:value={sortOrder}
         class="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

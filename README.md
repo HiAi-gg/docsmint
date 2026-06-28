@@ -42,11 +42,21 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 ## Features
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
-- **AI-native** — automatic chunking + vector embeddings on every save
-- **Semantic search** — hybrid full-text + pgvector search
+- **AI-native** — automatic chunking + vector embeddings on every save, with
+  folder / tag / category metadata enriched into the chunk text for sharper
+  semantic recall
+- **Hybrid search** — full-text + pgvector combined with an optional
+  title-first boost (3x multiplier for documents whose title strongly
+  matches the query) and category-aware filtering
+- **Categories** — collapsible sidebar groups that classify folders and
+  documents independently of the folder hierarchy, filterable from the
+  search page
 - **Folder hierarchy** — nested folders to organize your documents
+- **Keyboard-first** — `⌘K` QuickSearch, `?` ShortcutHelp, editor shortcuts
+  (`⌘⇧7` toggle markdown, `⌘⇧E` export), and `Esc` to close any dialog
 - **Sharing** — token-protected links with password, expiration, and guest access
-- **Import / Export** — support for Markdown (.md) files
+- **Multi-file import** — drag in many `.md` / `.txt` / `.markdown` / `.json`
+  / `.docx` files at once with a per-file progress overlay
 - **Agent-ready** — clean REST API for AI agents (Mastra compatible and others)
 - **Self-hosted** — full data ownership with minimal resource usage
 

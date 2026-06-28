@@ -30,17 +30,6 @@ function handleBlur() {
 	}
 }
 
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Enter") {
-		e.preventDefault();
-		(e.target as HTMLInputElement).blur();
-	}
-	if (e.key === "Escape") {
-		localTitle = title;
-		(e.target as HTMLInputElement).blur();
-	}
-}
-
 function handleFocus() {
 	focused = true;
 }
@@ -53,7 +42,7 @@ function handleFocus() {
   bind:value={localTitle}
   onfocus={handleFocus}
   onblur={handleBlur}
-  onkeydown={handleKeydown}
+  onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } if (e.key === "Escape") { localTitle = title; (e.target as HTMLInputElement).blur(); } }}
   placeholder={m.doc_title_placeholder()}
   aria-label={m.doc_title_label()}
 />

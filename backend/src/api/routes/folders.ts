@@ -1,9 +1,10 @@
-import { folders } from "@hiai-docs/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { documents, folders } from "@hiai-docs/db/schema";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
+import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -18,6 +19,8 @@ const createFolderSchema = z.object({
 const updateFolderSchema = z.object({
 	name: z.string().min(1).max(255).optional(),
 	parentId: z.string().uuid().nullable().optional(),
+	categoryId: z.string().uuid().nullable().optional(),
+	order: z.number().int().nonnegative().optional(),
 });
 
 export const folderRoutes = new Elysia({ prefix: "/api/folders" })
@@ -29,7 +32,22 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const [row] = await db
-				.select()
+				.select({
+					id: folders.id,
+					ownerId: folders.ownerId,
+					parentId: folders.parentId,
+					categoryId: folders.categoryId,
+					name: folders.name,
+					order: folders.order,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+					documentCount: sql<number>`(
+						SELECT COUNT(*)::int
+						FROM ${documents}
+						WHERE ${documents.folderId} = ${folders.id}
+							AND ${documents.ownerId} = ${userId}
+					)`,
+				})
 				.from(folders)
 				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
 				.limit(1);
@@ -37,7 +55,37 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
-			return row;
+			// Fetch child folders and documents
+			const childFolders = await db
+				.select({
+					id: folders.id,
+					ownerId: folders.ownerId,
+					parentId: folders.parentId,
+					categoryId: folders.categoryId,
+					name: folders.name,
+					order: folders.order,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+					documentCount: sql<number>`(
+						SELECT COUNT(*)::int
+						FROM ${documents}
+						WHERE ${documents.folderId} = ${folders.id}
+							AND ${documents.ownerId} = ${userId}
+					)`,
+				})
+				.from(folders)
+				.where(
+					and(eq(folders.parentId, params.id), eq(folders.ownerId, userId)),
+				)
+				.orderBy(folders.order, folders.name);
+			const childDocs = await db
+				.select()
+				.from(documents)
+				.where(
+					and(eq(documents.folderId, params.id), eq(documents.ownerId, userId)),
+				)
+				.orderBy(documents.updatedAt);
+			return { ...row, children: childFolders, documents: childDocs };
 		} catch (err) {
 			logger.error({ err }, "Failed to get folder");
 			set.status = 500;
@@ -52,16 +100,33 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const conditions = [eq(folders.ownerId, userId)];
-			if (query.parentId) {
+			if (query.all === "true") {
+				// Don't filter by parentId, get all folders flat!
+			} else if (query.parentId) {
 				conditions.push(eq(folders.parentId, query.parentId));
 			} else {
 				conditions.push(isNull(folders.parentId));
 			}
 			const rows = await db
-				.select()
+				.select({
+					id: folders.id,
+					ownerId: folders.ownerId,
+					parentId: folders.parentId,
+					categoryId: folders.categoryId,
+					name: folders.name,
+					order: folders.order,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+					documentCount: sql<number>`(
+						SELECT COUNT(*)::int
+						FROM ${documents}
+						WHERE ${documents.folderId} = ${folders.id}
+							AND ${documents.ownerId} = ${userId}
+					)`,
+				})
 				.from(folders)
 				.where(and(...conditions))
-				.orderBy(folders.name);
+				.orderBy(folders.order, folders.name);
 			return rows;
 		} catch (err) {
 			logger.error({ err }, "Failed to list folders");
@@ -142,9 +207,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 400;
 			return { error: "Invalid input", details: parsed.error.flatten() };
 		}
-		if (parsed.data.name === undefined && parsed.data.parentId === undefined) {
+		if (
+			parsed.data.name === undefined &&
+			parsed.data.parentId === undefined &&
+			parsed.data.categoryId === undefined &&
+			parsed.data.order === undefined
+		) {
 			set.status = 400;
-			return { error: "At least one field (name or parentId) is required" };
+			return {
+				error:
+					"At least one field (name, parentId, categoryId, or order) is required",
+			};
 		}
 		try {
 			if (parsed.data.parentId) {
@@ -174,6 +247,12 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					...(parsed.data.parentId !== undefined && {
 						parentId: parsed.data.parentId,
 					}),
+					...(parsed.data.categoryId !== undefined && {
+						categoryId: parsed.data.categoryId,
+					}),
+					// If parentId is set (not null), categoryId MUST be null
+					...(parsed.data.parentId ? { categoryId: null } : {}),
+					...(parsed.data.order !== undefined && { order: parsed.data.order }),
 					updatedAt: new Date(),
 				})
 				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
@@ -182,6 +261,21 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
+
+			// When the folder name changes, every embedding that prepended
+			// "Folder: <old-name>" to its chunk text becomes stale. Re-embed
+			// the first batch of documents in this folder (max 100 per call)
+			// to bound the cost spike from a rename. Subsequent batches can
+			// be flushed by an explicit reindex job or a follow-up edit.
+			if (parsed.data.name !== undefined) {
+				await reembedDocumentsInFolder(params.id, userId).catch((err) =>
+					logger.error(
+						{ err, folderId: params.id },
+						"Failed to enqueue re-embedding for folder rename",
+					),
+				);
+			}
+
 			return updated;
 		} catch (err) {
 			logger.error({ err }, "Failed to update folder");
@@ -224,3 +318,33 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			return { error: "Failed to delete folder" };
 		}
 	});
+
+/**
+ * Enqueue re-embedding for up to `FOLDER_REEMBED_BATCH_SIZE` documents in a
+ * folder. The batch limit protects against API cost spikes when a folder
+ * with many documents is renamed; remaining documents will be re-embedded on
+ * their next content edit.
+ */
+const FOLDER_REEMBED_BATCH_SIZE = 100;
+
+async function reembedDocumentsInFolder(
+	folderId: string,
+	ownerId: string,
+): Promise<number> {
+	const docIds = await db
+		.select({ id: documents.id })
+		.from(documents)
+		.where(
+			and(eq(documents.folderId, folderId), eq(documents.ownerId, ownerId)),
+		)
+		.limit(FOLDER_REEMBED_BATCH_SIZE);
+
+	for (const { id } of docIds) {
+		enqueueEmbedding(id);
+	}
+	logger.info(
+		{ folderId, enqueued: docIds.length, limit: FOLDER_REEMBED_BATCH_SIZE },
+		"Re-embedding documents after folder change",
+	);
+	return docIds.length;
+}

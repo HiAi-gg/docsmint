@@ -29,18 +29,6 @@ function handleInput(e: Event) {
 	const target = e.target as HTMLTextAreaElement;
 	emitUpdate(target.value);
 }
-
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Tab") {
-		e.preventDefault();
-		const target = e.target as HTMLTextAreaElement;
-		const start = target.selectionStart;
-		const end = target.selectionEnd;
-		target.value = `${target.value.substring(0, start)}\t${target.value.substring(end)}`;
-		target.selectionStart = target.selectionEnd = start + 1;
-		emitUpdate(target.value);
-	}
-}
 </script>
 
 <div class="markdown-toggle">
@@ -48,7 +36,7 @@ function handleKeydown(e: KeyboardEvent) {
 		bind:this={textarea}
 		value={content}
 		oninput={handleInput}
-		onkeydown={handleKeydown}
+		onkeydown={(e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); const target = e.target as HTMLTextAreaElement; const start = target.selectionStart; const end = target.selectionEnd; target.value = `${target.value.substring(0, start)}\t${target.value.substring(end)}`; target.selectionStart = target.selectionEnd = start + 1; emitUpdate(target.value); } }}
 		class="markdown-textarea"
 		spellcheck="false"
 		placeholder={m.editor_markdown_placeholder()}

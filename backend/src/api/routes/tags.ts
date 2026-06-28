@@ -4,6 +4,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
+import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -196,6 +197,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				documentId: params.id,
 				tagId: body.data.tagId,
 			});
+			// Re-embed so the new tag name appears in the embedding preamble.
+			enqueueEmbedding(params.id);
 			set.status = 201;
 			return { success: true };
 		} catch (err) {
@@ -238,6 +241,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 						eq(documentTags.tagId, params.tagId),
 					),
 				);
+			// Re-embed so the removed tag is no longer in the preamble.
+			enqueueEmbedding(params.id);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to remove tag from document");

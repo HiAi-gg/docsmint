@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/backend",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -11,7 +11,8 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --path-ignore-patterns='*node_modules*' src/ tests/"
+    "test": "bun test --path-ignore-patterns='*node_modules*' src/ tests/",
+    "reembed": "bun run scripts/reembed-all.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "latest",
@@ -27,6 +28,7 @@
     "drizzle-orm": "latest",
     "elysia": "latest",
     "ioredis": "latest",
+    "mammoth": "^1.9.0",
     "marked": "latest",
     "minio": "latest",
     "nanoid": "latest",

@@ -17,6 +17,13 @@ const searchQuerySchema = z.object({
 		.default("relevance"),
 	folder: z.string().optional(),
 	tags: z.string().optional(),
+	/**
+	 * Optional category UUID filter. When supplied, results are restricted to
+	 * documents whose own `category_id` matches OR whose folder's
+	 * `category_id` matches (so a single category scope covers both direct
+	 * document membership and folder-level classification).
+	 */
+	category: z.string().uuid().optional(),
 	dateFrom: z.string().optional(),
 	dateTo: z.string().optional(),
 });
@@ -61,6 +68,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				sort,
 				folder,
 				tags,
+				category,
 				dateFrom,
 				dateTo,
 			} = parsed.data;
@@ -75,7 +83,10 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				semanticSearch(userId, q, limit * 2),
 			]);
 
-			// Merge results with weighted scoring (0.4 text + 0.6 semantic)
+			// Merge results with weighted scoring (0.4 text + 0.6 semantic).
+			// When title-first boosting is active, ids in `boostedTitles` get a
+			// 3x multiplier and are tagged with `titleMatch: true` so the
+			// frontend can badge them.
 			type RawSearchResult = {
 				id: string;
 				title: string;
@@ -134,6 +145,16 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 
 			if (folder) {
 				filtered = filtered.filter((r) => r.folder_id === folder);
+			}
+
+			if (category) {
+				// The category filter intersects with the merged set. A document
+				// qualifies if either (a) its own `category_id` matches, or
+				// (b) its folder's `category_id` matches. We resolve (b) by
+				// looking up folder→category for every folder id present in
+				// the result set, then build a Set for O(1) checks below.
+				const allowed = await categoryFilter(userId, category, filtered);
+				filtered = filtered.filter((r) => allowed.has(r.id));
 			}
 
 			if (dateFrom) {
@@ -241,6 +262,9 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 	});
 
 /**
+ * Title-match search used by the title-first hybrid stage.
+
+/**
  * Full-text search using PostgreSQL tsvector + ts_rank.
  */
 async function fullTextSearch(userId: string, q: string, limit: number) {
@@ -291,6 +315,79 @@ async function semanticSearch(userId: string, q: string, limit: number) {
 		logger.warn({ err }, "Semantic search failed, falling back to text-only");
 		return [];
 	}
+}
+
+/**
+ * Resolve the set of document ids that match a category scope.
+ *
+ * A document is in scope when either:
+ *   - its own `category_id` matches `categoryId`, or
+ *   - its folder's `category_id` matches `categoryId`.
+ *
+ * Used to narrow a merged search result list by category. We only look at
+ * the `folder_id`s present in `results` to keep the lookup bounded by the
+ * candidate set (no full-table scan). Folder ownership is verified via the
+ * folder→owner join so users cannot see documents in someone else's folder
+ * just by guessing a category UUID.
+ *
+ * Returns the empty set when no candidates qualify (callers fall through
+ * to an empty filtered list without an extra DB call).
+ */
+async function categoryFilter(
+	userId: string,
+	categoryId: string,
+	results: Array<{ id: string; folder_id: string | null }>,
+): Promise<Set<string>> {
+	if (results.length === 0) return new Set();
+
+	const folderIds = Array.from(
+		new Set(
+			results
+				.map((r) => r.folder_id)
+				.filter((id): id is string => typeof id === "string" && id.length > 0),
+		),
+	);
+
+	// (1) Documents whose own category_id matches — fetched directly from
+	// the DB because the merged result rows do not carry category_id.
+	const { documents, folders } = await import("@hiai-docs/db/schema");
+	const directRows = await db
+		.select({ id: documents.id })
+		.from(documents)
+		.where(
+			and(eq(documents.ownerId, userId), eq(documents.categoryId, categoryId)),
+		);
+	const direct = new Set(directRows.map((r) => r.id));
+
+	// (2) Documents whose folder's category_id matches.
+	if (folderIds.length === 0) return direct;
+
+	const folderRows = await db
+		.select({ id: folders.id })
+		.from(folders)
+		.where(
+			and(
+				eq(folders.ownerId, userId),
+				sql`${folders.id} IN (
+					WITH RECURSIVE cat_folders AS (
+						SELECT id FROM ${folders} WHERE category_id = ${categoryId} AND owner_id = ${userId}
+						UNION ALL
+						SELECT f.id FROM ${folders} f
+						JOIN cat_folders cf ON f.parent_id = cf.id
+					)
+					SELECT id FROM cat_folders
+				)`,
+				inArray(folders.id, folderIds),
+			),
+		);
+	const matchingFolderIds = new Set(folderRows.map((r) => r.id));
+	if (matchingFolderIds.size === 0) return direct;
+
+	const out = new Set<string>(direct);
+	for (const r of results) {
+		if (r.folder_id && matchingFolderIds.has(r.folder_id)) out.add(r.id);
+	}
+	return out;
 }
 
 /**

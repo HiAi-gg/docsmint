@@ -14,7 +14,9 @@ import {
 	Pencil,
 	Trash2,
 } from "lucide-svelte";
-import { goto } from "$app/navigation";
+import { goto, invalidateAll } from "$app/navigation";
+import { updateFolder } from "$lib/api/folders";
+import MoveDialog from "$lib/components/MoveDialog.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import type { Folder as FolderType } from "$lib/types.js";
 import { formatRelativeTime } from "$lib/utils.js";
@@ -33,18 +35,18 @@ function navigateToFolder() {
 	goto(`/folders/${folder.id}`);
 }
 
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Enter" || e.key === " ") {
-		e.preventDefault();
-		navigateToFolder();
-	}
+let showMoveDialog = $state(false);
+
+async function handleMove(parentId: string | null, categoryId: string | null) {
+	await updateFolder(folder.id, { parentId, categoryId });
+	await invalidateAll();
 }
 </script>
 
 <Card
   class="group cursor-pointer transition-shadow duration-200 hover:shadow-md"
   onclick={navigateToFolder}
-  onkeydown={handleKeydown}
+  onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateToFolder(); } }}
   role="button"
   tabindex={0}
 >
@@ -75,7 +77,7 @@ function handleKeydown(e: KeyboardEvent) {
           <Pencil class="size-4" />
           {m.folders_rename()}
         </DropdownMenuItem>
-        <DropdownMenuItem onclick={(e: Event) => e.stopPropagation()}>
+        <DropdownMenuItem onclick={(e: Event) => { e.stopPropagation(); showMoveDialog = true; }}>
           <FolderInput class="size-4" />
           {m.folders_move()}
         </DropdownMenuItem>
@@ -91,3 +93,12 @@ function handleKeydown(e: KeyboardEvent) {
     </DropdownMenu>
   </CardContent>
 </Card>
+
+<MoveDialog
+  bind:open={showMoveDialog}
+  itemId={folder.id}
+  itemType="folder"
+  initialParentId={folder.parentId}
+  initialCategoryId={folder.categoryId}
+  onSave={handleMove}
+/>

@@ -22,6 +22,27 @@
       "when": 1781197276591,
       "tag": "0002_rename_content_json",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781991444417,
+      "tag": "0003_cuddly_scrambler",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782076522076,
+      "tag": "0004_bouncy_pet_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782148854464,
+      "tag": "0005_certain_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }

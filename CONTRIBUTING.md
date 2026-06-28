@@ -39,6 +39,33 @@ docs: update API reference for share endpoints
 - **Validation**: Zod for all API inputs
 - **No Playwright**: use agent-browser for E2E tests
 
+## Keyboard Shortcuts
+
+The frontend has a global keyboard registry
+(`frontend/src/lib/stores/keyboard.svelte.ts`) with scoped handlers. When
+adding a new shortcut:
+
+- **Pick an existing scope** (`global`, `editor`, `dialog`, `list`) or
+  introduce a new one in `getShortcutsByScope`. New scopes must be added
+  to the `SCOPES_ORDER` array in `ShortcutHelp.svelte` so users can
+  discover them via the `?` help overlay.
+- **Use the cross-platform modifier syntax**: write `mod+k`, not `cmd+k`
+  or `ctrl+k`. The store translates `mod` to `⌘` on macOS and `Ctrl` on
+  every other platform, matching the convention used in shadcn-svelte
+  examples.
+- **Always set `overrideInput`** explicitly. Use `true` when the shortcut
+  must fire from inside an input/textarea (e.g. QuickSearch, dialog
+  close); use `false` for shortcuts that should only fire outside text
+  fields (the default for app-level bindings like `?`).
+- **Register on mount, unregister on cleanup**. Always pair
+  `registerShortcut` with an `unregisterShortcut` in the component's
+  `$effect` cleanup so leaving a page releases the binding.
+- **Don't shadow browser/OS defaults**. Reserve `Cmd+1..9` for the
+  browser's tab-switching; prefer `Cmd+Shift+Digit` for app-level jumps.
+- **Document every shortcut** in `docs/keyboard-shortcuts.md` and add
+  a matching `m.shortcut_help_*` message in `frontend/messages/en.json`
+  so the `?` overlay stays in sync with the source of truth.
+
 ## Project Structure
 
 ```

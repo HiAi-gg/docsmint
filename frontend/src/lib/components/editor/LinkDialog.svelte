@@ -82,13 +82,6 @@ function handleApply() {
 	}
 	close();
 }
-
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Enter") {
-		e.preventDefault();
-		handleApply();
-	}
-}
 </script>
 
 <Dialog bind:open>
@@ -105,7 +98,7 @@ function handleKeydown(e: KeyboardEvent) {
 			bind:value={url}
 			type="url"
 			placeholder="https://example.com"
-			onkeydown={handleKeydown}
+			onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter") { e.preventDefault(); handleApply(); } }}
 		/>
 	</div>
 	<DialogFooter>

@@ -138,8 +138,8 @@ async function confirmDelete() {
                 {...props}
                 type="button"
                 class={cn(
-                  "mr-0.5 inline-flex size-5 items-center justify-center rounded-full opacity-0 transition-opacity hover:bg-black/10 focus-visible:opacity-100 focus-visible:outline-none group-hover/tag:opacity-100",
-                  getSelectedTag() === tag.id && "opacity-100",
+                  "hidden size-5 items-center justify-center rounded-full hover:bg-black/10 focus-visible:inline-flex group-hover/tag:inline-flex mr-0.5 data-[state=open]:inline-flex",
+                  getSelectedTag() === tag.id && "inline-flex",
                 )}
                 aria-label={m.editor_more_options()}
                 title={m.editor_more_options()}

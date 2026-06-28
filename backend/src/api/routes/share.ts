@@ -53,7 +53,7 @@ function calculateExpiresAt(
 // Redis-based rate limiter for public access
 // ============================================
 
-const RATE_LIMIT_MAX = 10;
+const RATE_LIMIT_MAX = 60;
 const RATE_LIMIT_WINDOW_SEC = 60;
 
 async function checkRateLimit(
@@ -61,11 +61,20 @@ async function checkRateLimit(
 ): Promise<{ allowed: boolean; retryAfter?: number }> {
 	const key = `hiai-docs:ratelimit:${ip}`;
 	try {
-		const count = await redis.incr(key);
-		if (count === 1) {
-			await redis.expire(key, RATE_LIMIT_WINDOW_SEC);
+		// Atomic first-increment with TTL
+		const first = await redis.set(key, 1, "EX", RATE_LIMIT_WINDOW_SEC, "NX");
+		let current: number;
+		if (first === "OK") {
+			current = 1;
+		} else {
+			current = await redis.incr(key);
+			// Ensure TTL is set if it somehow expired
+			const ttl = await redis.ttl(key);
+			if (ttl === -1) {
+				await redis.expire(key, RATE_LIMIT_WINDOW_SEC);
+			}
 		}
-		if (count > RATE_LIMIT_MAX) {
+		if (current > RATE_LIMIT_MAX) {
 			const ttl = await redis.ttl(key);
 			return {
 				allowed: false,
@@ -324,6 +333,17 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 				return { error: "Shared folder no longer exists" };
 			}
 
+			const childFolders = await db
+				.select({
+					id: folders.id,
+					name: folders.name,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+				})
+				.from(folders)
+				.where(eq(folders.parentId, link.folderId))
+				.orderBy(folders.name);
+
 			const folderDocs = await db
 				.select({
 					id: documents.id,
@@ -342,6 +362,12 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 					name: folder.name,
 					createdAt: folder.createdAt.toISOString(),
 					updatedAt: folder.updatedAt.toISOString(),
+					folders: childFolders.map((f) => ({
+						id: f.id,
+						name: f.name,
+						createdAt: f.createdAt.toISOString(),
+						updatedAt: f.updatedAt.toISOString(),
+					})),
 					documents: folderDocs.map((doc) => ({
 						id: doc.id,
 						title: doc.title,
@@ -509,4 +535,223 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		);
 
 		return { success: true };
+	})
+
+	// GET /api/share/:token/folders/:folderId — Get shared subfolder content
+	.get("/:token/folders/:folderId", async ({ params, request, set }) => {
+		const { token, folderId } = params;
+
+		// 1. Authenticate share link
+		const ip = getClientIp(request);
+		const rl = await checkRateLimit(ip);
+		if (!rl.allowed) {
+			set.status = 429;
+			return { error: "Too many requests", retryAfter: rl.retryAfter };
+		}
+		const [link] = await db
+			.select()
+			.from(shareLinks)
+			.where(eq(shareLinks.token, token))
+			.limit(1);
+		if (!link) {
+			set.status = 404;
+			return { error: "Share link not found" };
+		}
+		if (link.expiresAt && link.expiresAt < new Date()) {
+			set.status = 410;
+			return { error: "Share link has expired" };
+		}
+		if (link.passwordHash) {
+			const password = request.headers.get("x-share-password");
+			if (!password) {
+				set.status = 401;
+				return { error: "Password required", requiresPassword: true };
+			}
+			const valid = await Bun.password.verify(password, link.passwordHash);
+			if (!valid) {
+				set.status = 401;
+				return { error: "Invalid password" };
+			}
+		}
+
+		// 2. Verify target folder is under the shared root folder
+		if (!link.folderId) {
+			set.status = 403;
+			return { error: "Access denied" };
+		}
+		const isDescendant = await isFolderDescendant(folderId, link.folderId);
+		if (!isDescendant) {
+			set.status = 403;
+			return { error: "Access denied" };
+		}
+
+		// 3. Fetch subfolder data
+		const [folder] = await db
+			.select({
+				id: folders.id,
+				name: folders.name,
+				parentId: folders.parentId,
+				createdAt: folders.createdAt,
+				updatedAt: folders.updatedAt,
+			})
+			.from(folders)
+			.where(eq(folders.id, folderId))
+			.limit(1);
+		if (!folder) {
+			set.status = 404;
+			return { error: "Folder not found" };
+		}
+
+		const childFolders = await db
+			.select({
+				id: folders.id,
+				name: folders.name,
+				createdAt: folders.createdAt,
+				updatedAt: folders.updatedAt,
+			})
+			.from(folders)
+			.where(eq(folders.parentId, folderId))
+			.orderBy(folders.name);
+
+		const folderDocs = await db
+			.select({
+				id: documents.id,
+				title: documents.title,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents)
+			.where(eq(documents.folderId, folderId))
+			.orderBy(documents.title);
+
+		return {
+			id: folder.id,
+			name: folder.name,
+			parentId: folder.parentId,
+			folders: childFolders.map((f) => ({
+				id: f.id,
+				name: f.name,
+				createdAt: f.createdAt.toISOString(),
+				updatedAt: f.updatedAt.toISOString(),
+			})),
+			documents: folderDocs.map((doc) => ({
+				id: doc.id,
+				title: doc.title,
+				createdAt: doc.createdAt.toISOString(),
+				updatedAt: doc.updatedAt.toISOString(),
+			})),
+		};
+	})
+
+	// GET /api/share/:token/documents/:docId — Get shared document content
+	.get("/:token/documents/:docId", async ({ params, request, set }) => {
+		const { token, docId } = params;
+
+		// 1. Authenticate share link
+		const ip = getClientIp(request);
+		const rl = await checkRateLimit(ip);
+		if (!rl.allowed) {
+			set.status = 429;
+			return { error: "Too many requests", retryAfter: rl.retryAfter };
+		}
+		const [link] = await db
+			.select()
+			.from(shareLinks)
+			.where(eq(shareLinks.token, token))
+			.limit(1);
+		if (!link) {
+			set.status = 404;
+			return { error: "Share link not found" };
+		}
+		if (link.expiresAt && link.expiresAt < new Date()) {
+			set.status = 410;
+			return { error: "Share link has expired" };
+		}
+		if (link.passwordHash) {
+			const password = request.headers.get("x-share-password");
+			if (!password) {
+				set.status = 401;
+				return { error: "Password required", requiresPassword: true };
+			}
+			const valid = await Bun.password.verify(password, link.passwordHash);
+			if (!valid) {
+				set.status = 401;
+				return { error: "Invalid password" };
+			}
+		}
+
+		// 2. Verify target document is under the shared root folder or is the shared document
+		let isAllowed = false;
+		if (link.documentId === docId) {
+			isAllowed = true;
+		} else if (link.folderId) {
+			isAllowed = await isDocumentDescendant(docId, link.folderId);
+		}
+		if (!isAllowed) {
+			set.status = 403;
+			return { error: "Access denied" };
+		}
+
+		// 3. Fetch document data
+		const [doc] = await db
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				contentJson: documents.contentJson,
+				metadata: documents.metadata,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents)
+			.where(eq(documents.id, docId))
+			.limit(1);
+
+		if (!doc) {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+
+		return {
+			id: doc.id,
+			title: doc.title,
+			content: doc.content,
+			contentJson: doc.contentJson,
+			metadata: doc.metadata,
+			createdAt: doc.createdAt.toISOString(),
+			updatedAt: doc.updatedAt.toISOString(),
+		};
 	});
+
+async function isFolderDescendant(
+	targetFolderId: string,
+	rootFolderId: string,
+): Promise<boolean> {
+	if (targetFolderId === rootFolderId) return true;
+	let currentId: string | null = targetFolderId;
+	const visited = new Set<string>();
+	while (currentId && currentId !== rootFolderId && !visited.has(currentId)) {
+		visited.add(currentId);
+		const [row] = await db
+			.select({ parentId: folders.parentId })
+			.from(folders)
+			.where(eq(folders.id, currentId))
+			.limit(1);
+		if (!row) return false;
+		currentId = row.parentId;
+	}
+	return currentId === rootFolderId;
+}
+
+async function isDocumentDescendant(
+	docId: string,
+	rootFolderId: string,
+): Promise<boolean> {
+	const [doc] = await db
+		.select({ folderId: documents.folderId })
+		.from(documents)
+		.where(eq(documents.id, docId))
+		.limit(1);
+	if (!doc?.folderId) return false;
+	return isFolderDescendant(doc.folderId, rootFolderId);
+}

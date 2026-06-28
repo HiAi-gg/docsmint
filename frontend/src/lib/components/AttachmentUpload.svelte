@@ -15,7 +15,10 @@ let error = $state("");
 let inputRef: HTMLInputElement | undefined = $state();
 
 const maxSize = 10 * 1024 * 1024; // 10MB
-const accept = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.md,.txt,.csv,.json";
+// Accepted types for attachment uploads. `.docx` is supported by the
+// underlying document import path on the backend, so we allow it here
+// as well for consistency with the dashboard multi-file importer.
+const accept = ".jpg,.jpeg,.png,.gif,.webp,.pdf,.md,.txt,.csv,.json,.docx";
 
 function formatSize(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;

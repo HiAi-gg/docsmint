@@ -62,6 +62,9 @@ backup/
 
 # Internal dev artifacts (not part of the public release)
 todo.md
+AGENTS.md
+AGENTS.md.bak
+todo.md.bak
 topics.txt
 *.local.md
 scratch/

@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
     # 9021 host: avoids conflict with webs-minio (9001) and ai-shared-minio (9011)
     ports:
-      - "9000:9000"
+      - "${MINIO_PORT:-9000}:9000"
       - "9021:9001"
     volumes:
       - minio_data:/data
@@ -105,7 +105,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
       MINIO_BUCKET: ${MINIO_BUCKET:-hiai-docs}
       MINIO_PUBLIC_ENDPOINT: localhost
-      MINIO_PUBLIC_PORT: 9000
+      MINIO_PUBLIC_PORT: ${MINIO_PORT:-9000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:50700}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:50701,http://127.0.0.1:50701}
@@ -116,7 +116,11 @@ services:
       EMBEDDING_FALLBACK_API_KEY: ${EMBEDDING_FALLBACK_API_KEY:-}
       EMBEDDING_FALLBACK_MODEL: ${EMBEDDING_FALLBACK_MODEL:-}
       API_PORT: ${API_PORT:-50700}
-      NODE_ENV: production
+      HIAI_DOCS_API_KEY: ${HIAI_DOCS_API_KEY}
+      OWNER_ID: ${OWNER_ID}
+      EMBEDDING_OLLAMA_URL: ${EMBEDDING_OLLAMA_URL:-}
+      EMBEDDING_FALLBACK_PROVIDER: ${EMBEDDING_FALLBACK_PROVIDER:-}
+      NODE_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-info}
     networks:
       - hiai-docs-net

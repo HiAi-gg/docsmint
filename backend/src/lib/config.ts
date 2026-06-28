@@ -43,6 +43,12 @@ const envSchema = z.object({
 		.default("info"),
 	HIAI_DOCS_API_KEY: z.string().optional(),
 	OWNER_ID: z.string().default("api-key-user"),
+	// Number of auto-saved (non-snapshot) versions to retain per document.
+	// Snapshots are never pruned. Default 50.
+	VERSION_RETENTION_COUNT: z.coerce.number().default(50),
+	// Chunking (optional, defaults: 500 tokens, 50 overlap)
+	CHUNK_TARGET_TOKENS: z.coerce.number().int().min(100).max(2000).default(500),
+	CHUNK_OVERLAP_TOKENS: z.coerce.number().int().min(0).max(500).default(50),
 });
 
 let config: z.infer<typeof envSchema>;

@@ -10,9 +10,11 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
+import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { markdownToDocJson } from "../../lib/markdown-to-doc";
+import { maybePruneVersions } from "../../lib/version-prune";
 import {
 	documentRateLimiter,
 	rateLimitHeaders,
@@ -23,6 +25,7 @@ const createDocumentSchema = z.object({
 	title: z.string().min(1).max(500).default("Untitled"),
 	content: z.string().optional(),
 	folderId: z.string().uuid().optional(),
+	categoryId: z.string().uuid().nullable().optional(),
 });
 
 const updateDocumentSchema = z.object({
@@ -31,6 +34,7 @@ const updateDocumentSchema = z.object({
 	contentJson: z.unknown().optional(),
 	metadata: z.unknown().optional(),
 	folderId: z.string().uuid().nullable().optional(),
+	categoryId: z.string().uuid().nullable().optional(),
 });
 
 const listQuerySchema = z.object({
@@ -40,7 +44,13 @@ const listQuerySchema = z.object({
 	limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const ALLOWED_IMPORT_EXTENSIONS = [".md", ".txt", ".markdown", ".json"];
+const ALLOWED_IMPORT_EXTENSIONS = [
+	".md",
+	".txt",
+	".markdown",
+	".json",
+	".docx",
+];
 const MAX_IMPORT_SIZE = 10 * 1024 * 1024;
 
 const importJsonSchema = z.object({
@@ -48,6 +58,57 @@ const importJsonSchema = z.object({
 	content: z.string().min(1).max(5_000_000),
 	folderId: z.string().uuid().optional(),
 });
+
+/**
+ * Resolve a single uploaded file to an importable item ({title, content}).
+ *
+ * Branching:
+ *   - .json: parse as JSON, validate against `importJsonSchema`, use embedded
+ *     title/content when present.
+ *   - .docx: stream into a Buffer and convert via `docxToMarkdown`. The
+ *     filename minus `.docx` becomes the title. mammoth's plain-text output
+ *     is sufficient for chunking/embedding and avoids extra dependency on
+ *     the `mammoth/mammoth.markdown` subpath.
+ *   - .md / .markdown / .txt: read as text, derive title from filename.
+ *
+ * Errors thrown here bubble up to the `/import` handler which decides the
+ * appropriate HTTP status (422 for DOCX parse failures, 400 for JSON shape
+ * problems, 500 for the rest).
+ */
+async function importFileToItem(file: File): Promise<{
+	title: string;
+	content: string;
+}> {
+	const name = file.name;
+	if (name.toLowerCase().endsWith(".docx")) {
+		const arrayBuffer = await file.arrayBuffer();
+		const buffer = Buffer.from(arrayBuffer);
+		const content = await docxToMarkdown(buffer, name);
+		return {
+			title: name.replace(/\.docx$/i, ""),
+			content,
+		};
+	}
+	if (name.toLowerCase().endsWith(".json")) {
+		const text = await file.text();
+		const jsonBody = JSON.parse(text);
+		const jsonParsed = importJsonSchema.safeParse(jsonBody);
+		if (!jsonParsed.success) {
+			throw new Error(
+				`Invalid JSON format in "${name}": ${JSON.stringify(jsonParsed.error.flatten())}`,
+			);
+		}
+		return {
+			title: jsonParsed.data.title ?? name.replace(/\.json$/i, ""),
+			content: jsonParsed.data.content,
+		};
+	}
+	const text = await file.text();
+	return {
+		title: name.replace(/\.(md|txt|markdown)$/i, ""),
+		content: text,
+	};
+}
 
 /**
  * Attach a `tags` array (`{ id, name, color }`) to each document row in a
@@ -82,6 +143,26 @@ async function withTags<T extends { id: string }>(
 		byDoc.set(t.documentId, list);
 	}
 	return rows.map((r) => ({ ...r, tags: byDoc.get(r.id) ?? [] }));
+}
+
+async function resolveFolderCategory(
+	folderId: string,
+	userId: string,
+): Promise<string | null> {
+	let currentId: string | null = folderId;
+	const visited = new Set<string>();
+	while (currentId && !visited.has(currentId)) {
+		visited.add(currentId);
+		const [folder] = await db
+			.select({ parentId: folders.parentId, categoryId: folders.categoryId })
+			.from(folders)
+			.where(and(eq(folders.id, currentId), eq(folders.ownerId, userId)))
+			.limit(1);
+		if (!folder) return null;
+		if (folder.categoryId) return folder.categoryId;
+		currentId = folder.parentId;
+	}
+	return null;
 }
 
 export const documentRoutes = new Elysia({ prefix: "/api" })
@@ -130,6 +211,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								"content",
 							),
 							folderId: documents.folderId,
+							categoryId: documents.categoryId,
 							createdAt: documents.createdAt,
 							updatedAt: documents.updatedAt,
 						})
@@ -159,6 +241,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						title: documents.title,
 						content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
 						folderId: documents.folderId,
+						categoryId: documents.categoryId,
 						createdAt: documents.createdAt,
 						updatedAt: documents.updatedAt,
 					})
@@ -218,6 +301,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const initialDocJson = initialContent
 				? await markdownToDocJson(initialContent)
 				: null;
+			const folderId = body.data.folderId ?? null;
+			let categoryId = body.data.categoryId ?? null;
+			if (folderId && !categoryId) {
+				categoryId = await resolveFolderCategory(folderId, userId);
+			}
+
 			const [created] = await db
 				.insert(documents)
 				.values({
@@ -225,7 +314,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					title: body.data.title,
 					content: initialContent,
 					contentJson: initialDocJson,
-					folderId: body.data.folderId ?? null,
+					folderId,
+					categoryId,
 				})
 				.returning();
 			if (!created) {
@@ -276,6 +366,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					ownerId: documents.ownerId,
 					folderId: documents.folderId,
 					folderName: folders.name,
+					categoryId: documents.categoryId,
 					title: documents.title,
 					content: documents.content,
 					contentJson: documents.contentJson,
@@ -337,7 +428,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			body.data.content === undefined &&
 			body.data.contentJson === undefined &&
 			body.data.metadata === undefined &&
-			body.data.folderId === undefined
+			body.data.folderId === undefined &&
+			body.data.categoryId === undefined
 		) {
 			set.status = 400;
 			return { error: "At least one field is required" };
@@ -348,6 +440,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					id: documents.id,
 					content: documents.content,
 					contentJson: documents.contentJson,
+					folderId: documents.folderId,
+					categoryId: documents.categoryId,
 				})
 				.from(documents)
 				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
@@ -363,6 +457,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				contentJson: existing[0]?.contentJson,
 				createdBy: userId,
 			});
+
+			// Fire-and-forget pruning. We don't await — pruning is a
+			// background GC pass and must not block the user's PATCH
+			// response. `maybePruneVersions` debounces itself via Redis
+			// so rapid PATCHes (auto-save) won't trigger repeated scans.
+			maybePruneVersions(params.id).catch((err) =>
+				logger.error({ err, docId: params.id }, "Background prune failed"),
+			);
 
 			// When the client sends new `content` but no `contentJson`,
 			// generate the JSON view server-side so the editor can render
@@ -392,12 +494,27 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					...(body.data.folderId !== undefined && {
 						folderId: body.data.folderId,
 					}),
+					...(body.data.categoryId !== undefined && {
+						categoryId: body.data.categoryId,
+					}),
 					updatedAt: new Date(),
 				})
 				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
 				.returning();
 
-			if (body.data.content !== undefined || body.data.title !== undefined) {
+			// Re-embed if either the content changed OR any metadata-bearing
+			// field changed. The embedding preamble includes folder/category
+			// names, so changing either invalidates the existing vectors even
+			// when the content text is unchanged.
+			const folderChanged =
+				body.data.folderId !== undefined &&
+				body.data.folderId !== existing[0]?.folderId;
+			const categoryChanged =
+				body.data.categoryId !== undefined &&
+				body.data.categoryId !== existing[0]?.categoryId;
+			const contentChanged =
+				body.data.content !== undefined || body.data.title !== undefined;
+			if (contentChanged || folderChanged || categoryChanged) {
 				enqueueEmbedding(params.id);
 			}
 			return updated;
@@ -443,6 +560,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				.values({
 					ownerId: userId,
 					folderId: source.folderId,
+					categoryId: source.categoryId,
 					title: `${source.title} (Copy)`,
 					content: source.content ?? "",
 					contentJson: source.contentJson,
@@ -565,8 +683,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const contentType = request.headers.get("content-type") ?? "";
-			let title: string;
-			let content: string;
+
+			// Per-item import result. `filename` is captured from the
+			// uploaded `File.name` for multipart uploads, and synthesized
+			// from the title (`.md` suffix) for the JSON single-item path
+			// so the response can echo a stable per-file identifier the
+			// client uses to reconcile its progress UI.
+			type ImportedItem = {
+				filename: string;
+				title: string;
+				content: string;
+			};
+			let items: ImportedItem[];
 			let folderId: string | null = null;
 
 			if (contentType.includes("application/json")) {
@@ -579,51 +707,56 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						details: parsed.error.flatten(),
 					};
 				}
-				title = parsed.data.title ?? "Imported Document";
-				content = parsed.data.content;
+				const jsonTitle = parsed.data.title ?? "Imported Document";
+				items = [
+					{
+						filename: `${jsonTitle}.md`,
+						title: jsonTitle,
+						content: parsed.data.content,
+					},
+				];
 				folderId = parsed.data.folderId ?? null;
 			} else if (contentType.includes("multipart/form-data")) {
 				const formData = await request.formData();
-				const file = formData.get("file") as File | null;
-				folderId = (formData.get("folderId") as string) ?? null;
-				if (!file) {
+				// `formData.getAll("file")` returns every uploaded file in
+				// order. A single-file upload still works (array of length 1)
+				// so backward compatibility is preserved.
+				const files = formData.getAll("file") as File[];
+				if (files.length === 0) {
 					set.status = 400;
-					return { error: "File is required" };
+					return { error: "At least one file is required" };
 				}
-				if (file.size > MAX_IMPORT_SIZE) {
-					set.status = 413;
-					return {
-						error: `File too large. Maximum size: ${MAX_IMPORT_SIZE / 1024 / 1024}MB`,
-					};
-				}
-				const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
-				if (!ALLOWED_IMPORT_EXTENSIONS.includes(ext)) {
-					set.status = 415;
-					return {
-						error: `Invalid file type. Allowed: ${ALLOWED_IMPORT_EXTENSIONS.join(", ")}`,
-					};
-				}
-				if (folderId && !z.string().uuid().safeParse(folderId).success) {
-					set.status = 400;
-					return { error: "Invalid folderId" };
-				}
-				const text = await file.text();
-				const name = file.name;
-				if (name.endsWith(".json")) {
-					const jsonBody = JSON.parse(text);
-					const jsonParsed = importJsonSchema.safeParse(jsonBody);
-					if (!jsonParsed.success) {
+				const rawFolderId = formData.get("folderId");
+				if (rawFolderId !== null && rawFolderId !== undefined) {
+					const folderCheck = z.string().uuid().safeParse(String(rawFolderId));
+					if (!folderCheck.success) {
 						set.status = 400;
+						return { error: "Invalid folderId" };
+					}
+					folderId = folderCheck.data;
+				}
+
+				items = [];
+				for (const file of files) {
+					if (file.size > MAX_IMPORT_SIZE) {
+						set.status = 413;
 						return {
-							error: "Invalid JSON format",
-							details: jsonParsed.error.flatten(),
+							error: `File "${file.name}" too large. Maximum size: ${MAX_IMPORT_SIZE / 1024 / 1024}MB`,
 						};
 					}
-					title = jsonParsed.data.title ?? name.replace(/\.json$/, "");
-					content = jsonParsed.data.content;
-				} else {
-					title = name.replace(/\.(md|txt|markdown)$/, "");
-					content = text;
+					const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
+					if (!ALLOWED_IMPORT_EXTENSIONS.includes(ext)) {
+						set.status = 415;
+						return {
+							error: `Invalid file type for "${file.name}". Allowed: ${ALLOWED_IMPORT_EXTENSIONS.join(", ")}`,
+						};
+					}
+					const parsedItem = await importFileToItem(file);
+					items.push({
+						filename: file.name,
+						title: parsedItem.title,
+						content: parsedItem.content,
+					});
 				}
 			} else {
 				set.status = 415;
@@ -633,30 +766,100 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				};
 			}
 
-			const [created] = await db
-				.insert(documents)
-				.values({
-					ownerId: userId,
-					title,
-					content,
-					folderId: folderId ?? null,
-				})
-				.returning();
-			if (!created) {
-				set.status = 500;
-				return { error: "Failed to import document" };
+			if (items.length === 0) {
+				set.status = 400;
+				return { error: "No importable items supplied" };
 			}
 
-			await db.insert(versions).values({
-				documentId: created.id,
-				content,
-				createdBy: userId,
+			let resolvedCategoryId: string | null = null;
+			if (folderId) {
+				resolvedCategoryId = await resolveFolderCategory(folderId, userId);
+			}
+
+			// All-or-nothing batch create. If any insert fails, the whole
+			// transaction rolls back and the client can retry without
+			// worrying about partial imports leaving the DB inconsistent.
+			// We zip each created row with its source item so the response
+			// builder below never has to index into a parallel array
+			// (which would otherwise require non-null assertions under
+			// `noUncheckedIndexedAccess`).
+			type CreatedEntry = {
+				item: ImportedItem;
+				row: { id: string; title: string };
+			};
+			const created = await db.transaction(async (tx) => {
+				const out: CreatedEntry[] = [];
+				for (const item of items) {
+					const [row] = await tx
+						.insert(documents)
+						.values({
+							ownerId: userId,
+							title: item.title,
+							content: item.content,
+							folderId,
+							categoryId: resolvedCategoryId,
+						})
+						.returning({ id: documents.id, title: documents.title });
+					if (!row) {
+						throw new Error(`Failed to insert document "${item.title}"`);
+					}
+					await tx.insert(versions).values({
+						documentId: row.id,
+						content: item.content,
+						createdBy: userId,
+					});
+					out.push({ item, row });
+				}
+				return out;
 			});
 
-			enqueueEmbedding(created.id);
+			// Embedding enqueue happens AFTER the transaction commits so
+			// embeddings never get computed for documents that were rolled
+			// back. We deliberately don't await — embedding is a background
+			// job and shouldn't block the import response.
+			for (const { row } of created) {
+				enqueueEmbedding(row.id);
+			}
+
 			set.status = 201;
-			return created;
+			// Per-file result envelope. The frontend reconciles its
+			// progress overlay by matching on `filename` (see
+			// `frontend/src/routes/(app)/+page.svelte` and
+			// `frontend/src/lib/api/documents.ts:ImportResponse`), so
+			// every accepted file must round-trip with the same name it
+			// had on disk (multipart path) or a stable synthesized
+			// fallback (JSON path). The all-or-nothing transaction above
+			// guarantees every result here is a success — any failure
+			// short-circuits to the catch block with a 4xx/5xx status.
+			const now = new Date().toISOString();
+			const results = created.map(({ item, row }) => ({
+				filename: item.filename,
+				status: "ok" as const,
+				document: {
+					id: row.id,
+					title: row.title,
+					content: item.content,
+					createdAt: now,
+					updatedAt: now,
+				},
+			}));
+			return {
+				items: results,
+				imported: results.length,
+				failed: 0,
+			};
 		} catch (err) {
+			// DOCX parsing failures are user-actionable (bad file, encrypted
+			// doc) so we surface them as 422 with a descriptive message
+			// rather than collapsing them into a generic 500.
+			if (err instanceof DocxParseError) {
+				logger.warn(
+					{ err, fileName: err.fileName },
+					"DOCX parse failure during import",
+				);
+				set.status = 422;
+				return { error: err.message };
+			}
 			logger.error({ err }, "Failed to import document");
 			set.status = 500;
 			return { error: "Failed to import document" };

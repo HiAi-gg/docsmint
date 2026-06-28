@@ -8,12 +8,14 @@ import {
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
 import {
+	Bookmark,
 	Check,
 	ChevronRight,
 	Code,
 	Download,
 	FileText,
 	Folder,
+	History,
 	Loader2,
 	MoreHorizontal,
 	Pencil,
@@ -22,6 +24,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-svelte";
+import { marked } from "marked";
 import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { ApiError } from "$lib/api/client";
@@ -40,6 +43,7 @@ import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
@@ -48,12 +52,6 @@ const { data } = $props();
 let title = $state("");
 let content = $state("");
 let contentJson = $state<object | undefined>(undefined);
-$effect(() => {
-	title = data.document.title;
-	content = data.document.content ?? "";
-	contentJson =
-		(data.document.contentJson as object | null | undefined) ?? undefined;
-});
 let mode = $state<"wysiwyg" | "markdown">("wysiwyg");
 let saveStatus = $state<"saved" | "saving" | "unsaved">("saved");
 let showMenu = $state(false);
@@ -62,6 +60,7 @@ let error = $state<string | null>(null);
 let showShareDialog = $state(false);
 let showCreateTagDialog = $state(false);
 let showDeleteDialog = $state(false);
+let showVersionPanel = $state(false);
 let deleteBusy = $state(false);
 
 // Tag management
@@ -72,21 +71,92 @@ let tagsLoading = $state(false);
 let tagBusy = $state(false);
 
 // Folder management
-let folders = $state<{ id: string; name: string }[]>([]);
+import type { Folder as FolderType } from "$lib/types.js";
+
+let folders = $state<FolderType[]>([]);
 let foldersLoading = $state(false);
 let currentFolderId = $state<string | null>(null);
-let currentFolderName = $state<string>("");
 let creatingFolder = $state(false);
 let newFolderName = $state("");
 
+// Category management
+import { type Category, listCategories } from "$lib/api/categories";
+
+let categories = $state<Category[]>([]);
+let categoriesLoading = $state(false);
+let currentCategoryId = $state<string | null>(null);
+
+// Consolidated sync effect — reads `data.document` once into a local alias
+// so Svelte tracks the prop reference (not the writes below). Three
+// fragmented effects previously each tracked `data.document` independently,
+// and the cascading writes to `content` / `contentJson` (consumed by
+// HiAiEditor) could trigger cross-component cycles that surfaced as
+// `effect_update_depth_exceeded` on mount, route change, and markdown toggle.
+//
+// Rule: read `data.document` into a local `doc` const, then only read from
+// that local alias inside the body. Never read the `$state` variables that
+// this effect writes to — that would re-introduce a read-after-write cycle.
 $effect(() => {
-	tags = data.document.tags ?? [];
+	const doc = data.document;
+	title = doc.title;
+	content = doc.content ?? "";
+	contentJson = (doc.contentJson as object | null | undefined) ?? undefined;
+	tags = doc.tags ?? [];
+	currentFolderId = doc.folderId ?? null;
+	currentCategoryId = doc.categoryId ?? null;
 });
 
-$effect(() => {
-	currentFolderId = data.document.folderId ?? null;
-	currentFolderName = data.document.folderName ?? "";
+function getFolderPathName(folderId: string): string {
+	const path: string[] = [];
+	let current = folders.find((f) => f.id === folderId);
+	const visited = new Set<string>();
+	while (current && !visited.has(current.id)) {
+		visited.add(current.id);
+		path.unshift(current.name);
+		const parentId = current.parentId;
+		current = parentId ? folders.find((f) => f.id === parentId) : undefined;
+	}
+	return path.join(" > ");
+}
+
+const currentFolderName = $derived.by(() => {
+	if (!currentFolderId) return "No folder";
+	return getFolderPathName(currentFolderId) || "No folder";
 });
+
+const currentCategoryName = $derived.by(() => {
+	if (!currentCategoryId) return "Uncategorized";
+	const found = categories.find((c) => c.id === currentCategoryId);
+	return found ? found.name : "Uncategorized";
+});
+
+function buildFolderTreeList(
+	foldersList: FolderType[],
+): Array<{ folder: FolderType; depth: number }> {
+	const byParent = new Map<string | null, FolderType[]>();
+	for (const f of foldersList) {
+		const pId = f.parentId ?? null;
+		if (!byParent.has(pId)) {
+			byParent.set(pId, []);
+		}
+		byParent.get(pId)!.push(f);
+	}
+	for (const [_, list] of byParent.entries()) {
+		list.sort((a, b) => a.name.localeCompare(b.name));
+	}
+	const result: Array<{ folder: FolderType; depth: number }> = [];
+	function traverse(parentId: string | null, depth: number) {
+		const children = byParent.get(parentId) ?? [];
+		for (const child of children) {
+			result.push({ folder: child, depth });
+			traverse(child.id, depth + 1);
+		}
+	}
+	traverse(null, 0);
+	return result;
+}
+
+const hierarchicalFolders = $derived(buildFolderTreeList(folders));
 
 const assignedTagIds = $derived(new Set(tags.map((t) => t.id)));
 const assignableTags = $derived(
@@ -113,12 +183,13 @@ function setError(msg: string | null) {
 }
 
 // Initialize after mount
-onMount(() => {
+onMount(async () => {
 	title = data.document.title;
 	content = data.document.content;
 	contentJson =
 		(data.document.contentJson as object | null | undefined) ?? undefined;
 	loading = false;
+	await Promise.all([loadCategories(), loadFolders()]);
 });
 
 onDestroy(() => {
@@ -243,6 +314,125 @@ function handleExport() {
 	URL.revokeObjectURL(url);
 }
 
+function handleExportDocx() {
+	showMenu = false;
+	const htmlContent = marked.parse(content || "", { async: false }) as string;
+	const docHtml = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head><title>${title || "Document"}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>
+body { font-family: Arial, sans-serif; line-height: 1.6; }
+h1 { font-size: 24pt; font-weight: bold; margin-top: 12pt; margin-bottom: 6pt; }
+h2 { font-size: 18pt; font-weight: bold; margin-top: 12pt; margin-bottom: 6pt; }
+h3 { font-size: 14pt; font-weight: bold; margin-top: 12pt; margin-bottom: 4pt; }
+p { margin-bottom: 6pt; }
+code { font-family: Courier, monospace; background-color: #f4f4f4; padding: 2px 4px; }
+pre { font-family: Courier, monospace; background-color: #f4f4f4; padding: 8px; border: 1px solid #ccc; }
+blockquote { border-left: 3px solid #ccc; padding-left: 8px; margin-left: 0; color: #666; }
+table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
+th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+th { background-color: #f4f4f4; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>${title || "Untitled Document"}</h1>
+${htmlContent}
+</body>
+</html>
+	`;
+	const blob = new Blob([docHtml], {
+		type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	});
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = `${title || "Untitled Document"}.docx`;
+	a.click();
+	URL.revokeObjectURL(url);
+}
+
+function handleExportPdf() {
+	showMenu = false;
+	const htmlContent = marked.parse(content || "", { async: false }) as string;
+
+	const iframe = document.createElement("iframe");
+	iframe.style.position = "fixed";
+	iframe.style.right = "0";
+	iframe.style.bottom = "0";
+	iframe.style.width = "0";
+	iframe.style.height = "0";
+	iframe.style.border = "0";
+	document.body.appendChild(iframe);
+
+	const doc = iframe.contentWindow?.document;
+	if (!doc) return;
+
+	doc.open();
+	doc.write(`
+<html>
+<head>
+<title>${title || "Untitled Document"}</title>
+<style>
+body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	line-height: 1.6;
+	color: #000;
+	padding: 2cm;
+}
+h1 { font-size: 28px; font-weight: bold; margin-bottom: 20px; }
+h2 { font-size: 22px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
+h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
+p { margin-bottom: 12px; }
+ul, ol { padding-left: 20px; margin-bottom: 12px; }
+li { margin-bottom: 4px; }
+blockquote {
+	border-left: 3px solid #ccc;
+	padding-left: 12px;
+	margin: 12px 0;
+	color: #666;
+	font-style: italic;
+}
+pre {
+	background: #f4f4f4;
+	border: 1px solid #ddd;
+	padding: 12px;
+	border-radius: 4px;
+	overflow-x: auto;
+	font-family: monospace;
+}
+code {
+	background: #f4f4f4;
+	padding: 2px 4px;
+	border-radius: 3px;
+	font-family: monospace;
+}
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th { background-color: #f4f4f4; }
+img { max-width: 100%; height: auto; }
+@media print {
+	body { padding: 0; }
+}
+</style>
+</head>
+<body>
+<h1>${title || "Untitled Document"}</h1>
+${htmlContent}
+\x3Cscript>
+window.onload = function() {
+	window.print();
+	setTimeout(function() {
+		window.frameElement.remove();
+	}, 100);
+};
+\x3C/script>
+</body>
+</html>
+	`);
+	doc.close();
+}
+
 function handleShare() {
 	showShareDialog = true;
 }
@@ -314,13 +504,7 @@ async function loadFolders() {
 	if (folders.length > 0 || foldersLoading) return;
 	foldersLoading = true;
 	try {
-		// listFolders(null) returns a single synthetic root whose children
-		// are the user's top-level folders.
-		const result = await listFolders(null);
-		folders = (result[0]?.children ?? []).map((f) => ({
-			id: f.id,
-			name: f.name,
-		}));
+		folders = await listFolders(null, true);
 	} catch (_e) {
 		setError(m.error_generic());
 	} finally {
@@ -328,15 +512,42 @@ async function loadFolders() {
 	}
 }
 
+async function loadCategories() {
+	if (categories.length > 0 || categoriesLoading) return;
+	categoriesLoading = true;
+	try {
+		categories = await listCategories();
+	} catch (_e) {
+		setError(m.error_generic());
+	} finally {
+		categoriesLoading = false;
+	}
+}
+
 async function moveToFolder(folderId: string | null) {
 	try {
-		await updateDocument(data.document.id, { folderId });
+		const targetFolder = folderId
+			? folders.find((f) => f.id === folderId)
+			: null;
+		const categoryId =
+			(targetFolder ? targetFolder.categoryId : currentCategoryId) ?? null;
+
+		await updateDocument(data.document.id, { folderId, categoryId });
 		currentFolderId = folderId;
-		currentFolderName = folderId
-			? (folders.find((f) => f.id === folderId)?.name ?? "")
-			: "";
+		currentCategoryId = categoryId;
 		saveStatus = "saved";
-		// Keep sidebar folder/doc lists in sync after a move.
+		refreshDocs();
+	} catch (_e) {
+		setError(m.doc_save_content_error());
+	}
+}
+
+async function moveToCategory(categoryId: string | null) {
+	try {
+		await updateDocument(data.document.id, { categoryId, folderId: null });
+		currentCategoryId = categoryId;
+		currentFolderId = null;
+		saveStatus = "saved";
 		refreshDocs();
 	} catch (_e) {
 		setError(m.doc_save_content_error());
@@ -348,7 +559,7 @@ async function handleCreateFolder() {
 	if (!name) return;
 	try {
 		const created = await createFolder({ name });
-		folders = [...folders, { id: created.id, name: created.name }];
+		folders = [...folders, created];
 		await moveToFolder(created.id);
 	} catch (_e) {
 		setError(m.error_generic());
@@ -357,6 +568,35 @@ async function handleCreateFolder() {
 		newFolderName = "";
 	}
 }
+
+// --- Keyboard shortcuts wired by the editor ---------------------------------
+//
+// HiAiEditor dispatches `hiai:toggle-markdown` and `hiai:export-document`
+// CustomEvents when the user presses Cmd+Shift+7 or Cmd+Shift+E. The
+// shortcuts themselves are registered (and torn down) by the editor
+// component, but the actual side effects — flipping `mode` and running
+// the export — live here in the page so the editor stays reusable.
+
+function handleToggleMarkdownEvent() {
+	mode = mode === "wysiwyg" ? "markdown" : "wysiwyg";
+}
+
+function handleExportEvent() {
+	handleExport();
+}
+
+$effect(() => {
+	if (typeof window === "undefined") return;
+	window.addEventListener("hiai:toggle-markdown", handleToggleMarkdownEvent);
+	window.addEventListener("hiai:export-document", handleExportEvent);
+	return () => {
+		window.removeEventListener(
+			"hiai:toggle-markdown",
+			handleToggleMarkdownEvent,
+		);
+		window.removeEventListener("hiai:export-document", handleExportEvent);
+	};
+});
 </script>
 
 <svelte:window onclick={handleWindowClick} />
@@ -445,6 +685,17 @@ async function handleCreateFolder() {
           <Share2 size={16} />
         </button>
 
+        <!-- History -->
+        <button
+          class="action-btn"
+          title={m.version_history_title()}
+          aria-label={m.version_history_title()}
+          onclick={() => (showVersionPanel = !showVersionPanel)}
+          aria-pressed={showVersionPanel}
+        >
+          <History size={16} />
+        </button>
+
         <!-- More menu -->
         <div class="menu-container" data-menu-container>
           <button
@@ -463,6 +714,20 @@ async function handleCreateFolder() {
                 onclick={handleExport}
               >
                 <Download size={14} /> {m.editor_export_md()}
+              </button>
+              <button
+                class="dropdown-item"
+                role="menuitem"
+                onclick={handleExportDocx}
+              >
+                <Download size={14} /> Export DOCX
+              </button>
+              <button
+                class="dropdown-item"
+                role="menuitem"
+                onclick={handleExportPdf}
+              >
+                <Download size={14} /> Export PDF
               </button>
               <div class="dropdown-divider"></div>
               <button
@@ -489,12 +754,53 @@ async function handleCreateFolder() {
     {/if}
 
     <!-- Editor area -->
-    <main class="editor-main">
+    <div class="editor-body">
+      <main class="editor-main">
+        <div class="editor-main-inner">
       <!-- Editable title -->
       <DocumentTitle {title} onUpdate={handleTitleUpdate} />
 
       <!-- Tags -->
       <div class="tag-row">
+        <!-- Category selector -->
+        <DropdownMenu onOpenChange={(open) => open && void loadCategories()}>
+          <DropdownMenuTrigger>
+            {#snippet child({ props })}
+              <button
+                {...props}
+                type="button"
+                class="folder-badge"
+                title={currentCategoryName}
+                aria-label="Change category"
+              >
+                <Bookmark size={14} />
+                {currentCategoryName}
+              </button>
+            {/snippet}
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {#if categoriesLoading}
+              <div class="tag-empty">{m.action_loading()}</div>
+            {:else}
+              {#each categories as category (category.id)}
+                <DropdownMenuItem onSelect={() => moveToCategory(category.id)}>
+                  <Bookmark size={14} />
+                  {category.name}
+                  {#if currentCategoryId === category.id}
+                    <Check size={12} />
+                  {/if}
+                </DropdownMenuItem>
+              {/each}
+            {/if}
+            <DropdownMenuItem
+              disabled={currentCategoryId === null}
+              onSelect={() => moveToCategory(null)}
+            >
+              Uncategorize
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <!-- Folder selector: shows the current folder (or "No folder") and
              lets the user move the document, clear it to root, or create a
              new folder. -->
@@ -505,11 +811,11 @@ async function handleCreateFolder() {
                 {...props}
                 type="button"
                 class="folder-badge"
-                title={currentFolderName || "No folder"}
+                title={currentFolderName}
                 aria-label="Change folder"
               >
                 <Folder size={14} />
-                {currentFolderName || "No folder"}
+                {currentFolderName}
               </button>
             {/snippet}
           </DropdownMenuTrigger>
@@ -517,12 +823,14 @@ async function handleCreateFolder() {
             {#if foldersLoading}
               <div class="tag-empty">{m.action_loading()}</div>
             {:else}
-              {#each folders as folder (folder.id)}
+              {#each hierarchicalFolders as { folder, depth } (folder.id)}
                 <DropdownMenuItem onSelect={() => moveToFolder(folder.id)}>
-                  <Folder size={14} />
-                  {folder.name}
+                  <span style="display: flex; align-items: center; gap: 6px; padding-left: {depth * 16}px;" class="w-full">
+                    <Folder size={14} class="text-muted-foreground shrink-0" />
+                    <span class="truncate">{folder.name}</span>
+                  </span>
                   {#if currentFolderId === folder.id}
-                    <Check size={12} />
+                    <Check size={12} class="ml-auto" />
                   {/if}
                 </DropdownMenuItem>
               {/each}
@@ -648,7 +956,33 @@ async function handleCreateFolder() {
           <MarkdownToggle {content} onUpdate={debounceContentSave} />
         {/if}
       </div>
+        </div>
     </main>
+
+    {#if showVersionPanel}
+      <aside class="version-panel">
+        <div class="version-panel-header">
+          <h3>{m.version_history_title()}</h3>
+          <button
+            class="version-panel-close"
+            onclick={() => (showVersionPanel = false)}
+            aria-label={m.action_close()}
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div class="version-panel-body">
+          <VersionHistory
+            documentId={data.document.id}
+            onRestored={() => {
+              showVersionPanel = false;
+              window.location.reload();
+            }}
+          />
+        </div>
+      </aside>
+    {/if}
+    </div>
 
     <ShareDialog bind:open={showShareDialog} documentId={data.document.id} documentTitle={title} />
     <TagCreateDialog
@@ -933,14 +1267,77 @@ async function handleCreateFolder() {
   }
 
   /* Editor main area */
+  .editor-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
   .editor-main {
     flex: 1;
-    display: flex;
-    flex-direction: column;
+    overflow-y: auto;
+    min-width: 0;
+  }
+
+  .editor-main-inner {
     max-width: 860px;
     width: 100%;
     margin: 0 auto;
     padding: 32px 24px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Version history side panel */
+  .version-panel {
+    width: 320px;
+    flex-shrink: 0;
+    border-left: 1px solid var(--border);
+    background: var(--card);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .version-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .version-panel-header h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .version-panel-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted-foreground);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .version-panel-close:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+
+  .version-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
   }
 
   .tag-row {
@@ -1091,6 +1488,18 @@ async function handleCreateFolder() {
   }
 
   /* Mobile responsive */
+  @media (max-width: 1024px) {
+    .version-panel {
+      position: fixed;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 280px;
+      z-index: 100;
+      box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
+    }
+  }
+
   @media (max-width: 640px) {
     .editor-header {
       padding: 8px 16px;
@@ -1100,9 +1509,8 @@ async function handleCreateFolder() {
       display: none;
     }
 
-    .editor-main {
+    .editor-main-inner {
       padding: 20px 16px;
     }
-
   }
 </style>

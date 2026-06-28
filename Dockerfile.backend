@@ -15,10 +15,13 @@ COPY package.json bun.lock* ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY packages/db/package.json ./packages/db/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp-server/package.json ./packages/mcp-server/
+COPY packages/sdk/package.json ./packages/sdk/
 ENV BUN_INSTALL_CONCURRENCY=1
-RUN bun install --no-verify
-RUN bun install --cwd backend --no-verify
-RUN bun install --cwd packages/db --no-verify
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --no-verify
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --cwd backend --no-verify
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --cwd packages/db --no-verify
 
 # --- Build ---
 # Carry node_modules (workspace symlinks) from the deps stage, then layer
@@ -38,8 +41,13 @@ RUN cd backend && bun run build
 
 # --- Runtime ---
 # Slim image: only the compiled dist + the node_modules needed at runtime.
+# backend/node_modules must be copied too because the per-workspace install
+# (`bun install --cwd backend`) places runtime deps like drizzle-orm there —
+# they are NOT hoisted to the root node_modules.
 FROM base AS runtime
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
+COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=build /app/backend/dist ./backend/dist
 COPY backend/package.json ./backend/
 
@@ -51,7 +59,7 @@ WORKDIR /app/backend
 # Files copied above are owned by root, so we chown to make them readable/writable
 # by the unprivileged `app` user that runs the runtime stage.
 RUN addgroup -S app && adduser -S app -G app \
-    && chown -R app:app /app/backend /app/node_modules  # COPY files are root-owned by default; chown is required for non-root USER
+    && chown -R -h app:app /app/backend /app/node_modules  # COPY files are root-owned by default; chown is required for non-root USER
 
 USER app
 

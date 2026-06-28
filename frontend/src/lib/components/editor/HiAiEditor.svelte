@@ -2,10 +2,14 @@
 import type { JSONContent } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, untrack } from "svelte";
 import { createEditor, type Editor, EditorContent } from "svelte-tiptap";
 import type { CollaborationSession } from "$lib/collaboration";
 import * as m from "$lib/paraglide/messages.js";
+import {
+	registerShortcut,
+	unregisterShortcut,
+} from "$lib/stores/keyboard.svelte";
 import EditorToolbar from "./EditorToolbar.svelte";
 import { editorExtensions } from "./editorExtensions";
 import { markdownToJson } from "./markdown";
@@ -133,7 +137,37 @@ onMount(() => {
 		}
 	});
 
-	return () => unsubscribe();
+	// Editor-scoped shortcuts. `mod+shift+7` toggles the wysiwyg ↔
+	// markdown view; `mod+shift+e` exports the document. The handlers
+	// dispatch DOM CustomEvents that the doc page listens to (the page
+	// owns the actual `mode` state and `handleExport` logic) so we keep
+	// the editor pure. The shortcuts are scoped to "editor" so they
+	// don't fire while a user is interacting with the sidebar or the
+	// quick-search palette.
+	registerShortcut({
+		id: "editor-toggle-markdown",
+		keys: "mod+shift+7",
+		description: "Toggle markdown view",
+		scope: "editor",
+		handler: () => {
+			window.dispatchEvent(new CustomEvent("hiai:toggle-markdown"));
+		},
+	});
+	registerShortcut({
+		id: "editor-export",
+		keys: "mod+shift+e",
+		description: "Export document",
+		scope: "editor",
+		handler: () => {
+			window.dispatchEvent(new CustomEvent("hiai:export-document"));
+		},
+	});
+
+	return () => {
+		unregisterShortcut("editor-toggle-markdown");
+		unregisterShortcut("editor-export");
+		unsubscribe();
+	};
 });
 
 let prevContent = $state("");
@@ -160,7 +194,20 @@ $effect(() => {
 	if (nextSerialized !== prevContent) {
 		prevContent = nextSerialized;
 		suppressNextUpdate = true;
-		editor.commands.setContent(nextSource, { emitUpdate: false });
+		// Wrap `setContent` in `untrack` so any reactive reads inside
+		// TipTap (e.g. extensions touching $state during the transaction)
+		// are NOT registered as dependencies of this effect. Without
+		// `untrack`, those reads could re-trigger this effect after the
+		// write and cause `effect_update_depth_exceeded`.
+		//
+		// Capture `editor` in a local const first so TypeScript's narrowing
+		// survives across the untrack callback boundary (otherwise the
+		// narrowed `editor` (non-null after line 175's guard) would be lost
+		// inside the closure).
+		const ed = editor;
+		untrack(() => {
+			ed.commands.setContent(nextSource, { emitUpdate: false });
+		});
 	}
 });
 

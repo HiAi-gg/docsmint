@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, integer, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // pgvector vector type — maps to PostgreSQL vector(n) column
 const vector = customType<{ data: number[] }>({
@@ -100,13 +100,18 @@ export const folders = pgTable(
     parentId: uuid("parent_id").references((): AnyPgColumn => folders.id, {
       onDelete: "set null",
     }),
+    categoryId: uuid("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
     name: text("name").notNull(),
+    order: integer("order").notNull().default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [
     index("folders_owner_id_idx").on(table.ownerId),
     index("folders_parent_id_idx").on(table.parentId),
+    index("folders_category_id_idx").on(table.categoryId),
   ]
 );
 
@@ -117,6 +122,10 @@ export const folderRelations = relations(folders, ({ one, many }) => ({
     fields: [folders.parentId],
     references: [folders.id],
     relationName: "folderParent",
+  }),
+  category: one(categories, {
+    fields: [folders.categoryId],
+    references: [categories.id],
   }),
   children: many(folders, { relationName: "folderParent" }),
   documents: many(documents),
@@ -135,6 +144,9 @@ export const documents = pgTable(
     folderId: uuid("folder_id").references(() => folders.id, {
       onDelete: "set null",
     }),
+    categoryId: uuid("category_id").references(() => categories.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull().default("Untitled"),
     content: text("content").default(""),
     contentJson: jsonb("content_json"),
@@ -148,6 +160,7 @@ export const documents = pgTable(
   (table) => [
     index("documents_owner_id_idx").on(table.ownerId),
     index("documents_folder_id_idx").on(table.folderId),
+    index("documents_category_id_idx").on(table.categoryId),
     index("documents_created_at_idx").on(table.createdAt),
     index("idx_documents_search_vector").using("gin", table.searchVector),
     index("idx_documents_title_trgm").using(
@@ -162,6 +175,10 @@ export const documentRelations = relations(documents, ({ one, many }) => ({
   folder: one(folders, {
     fields: [documents.folderId],
     references: [folders.id],
+  }),
+  category: one(categories, {
+    fields: [documents.categoryId],
+    references: [categories.id],
   }),
   tags: many(documentTags),
   attachments: many(attachments),
@@ -190,6 +207,32 @@ export const tags = pgTable(
 
 export const tagRelations = relations(tags, ({ many }) => ({
   documents: many(documentTags),
+}));
+
+// ============================================
+// categories — document/folder classification
+// ============================================
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    order: integer("order").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("categories_owner_id_idx").on(table.ownerId),
+  ]
+);
+
+export const categoryRelations = relations(categories, ({ one, many }) => ({
+  owner: one(users, { fields: [categories.ownerId], references: [users.id] }),
+  folders: many(folders),
+  documents: many(documents),
 }));
 
 // ============================================
@@ -327,10 +370,15 @@ export const versions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
+    label: text("label"),
+    description: text("description"),
+    isSnapshot: boolean("is_snapshot").default(false),
+    restoredFrom: uuid("restored_from"),
   },
   (table) => [
     index("versions_document_id_idx").on(table.documentId),
     index("versions_created_at_idx").on(table.createdAt),
+    index("versions_is_snapshot_idx").on(table.isSnapshot),
   ]
 );
 

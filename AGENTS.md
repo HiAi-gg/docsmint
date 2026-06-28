@@ -1,3 +1,73 @@
+# hiai-docs — AGENTS.md
+
+> **Роль:** модуль документов, подключаемый в хосты (первый потребитель — `hiai-amigo`); **источник дизайн-токенов** для экосистемы. Standalone open-source AI-native knowledge base (Markdown-first, auto-embeddings, self-hostable).
+> **Статус:** готов
+> **Точка входа экосистемы:** [`projects/HIAI_INDEX.md`](../../projects/HIAI_INDEX.md)
+> **Канонические правила:** [`docs/hiai-ecosystem/CONVENTIONS.md`](../../docs/hiai-ecosystem/CONVENTIONS.md)
+
+## Cheat-sheet конвенций
+
+- **Runtime:** Bun 1.3.14+ (no Node, no npm, no yarn)
+- **Backend:** Elysia 1.4.28+ (ESM-only, TypeScript strict)
+- **Frontend:** SvelteKit 2.60+ + Svelte 5.55+ (`runes: true`)
+- **UI:** `@hiai/ui` + shadcn-svelte 1.2.7+ (new-york style) + Tailwind CSS v4
+- **Editor:** svelte-tiptap + TipTap v3 (WYSIWYG + raw MD toggle)
+- **ORM:** Drizzle ORM 0.45.2+
+- **Auth:** Better Auth
+- **Validation:** Zod (every route validated)
+- **DB:** PostgreSQL 18.4 + pgvector (user-scoped via `owner_id`, `tenant_id` reserved)
+- **Cache:** Redis 8.6+
+- **Storage:** MinIO (S3-compatible)
+- **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; `0.4 * full_text + 0.6 * semantic_cosine` (hybrid search)
+- **Logging:** Pino
+- **Lint:** Biome 2.5+ (`bun run lint`)
+- **Tests:** Vitest (`bun test --path-ignore-patterns='*node_modules*'`)
+- **Структура:** `backend/src/` (api/, embedding/, lib/) + `frontend/` (SvelteKit) + `packages/db/` (Drizzle)
+- **Module boundaries:** `api/` ≠ экспорт внутренних функций · `embedding/` ≠ импорт из `api/` · `lib/` ≠ импорт из `api/` или `embedding/`
+- **env только через** `src/lib/config.ts` (Zod); все `CORS_ORIGINS`, `EMBEDDING_*` через `.env`
+- **Импорт токенов:** `@hiai/ui/styles/tokens.css` (hiai-docs — источник токенов для экосистемы)
+- **Порты:** API `50700` · frontend dev `50701` · Postgres `5433` · Redis `6384` · MinIO `9000/9001` · Caddy `50708/50709`
+- **No Playwright** — использовать `agent-browser` для E2E
+- **English-only в коде/комментариях/README/AGENTS.md** (zero Russian)
+
+## Индекс проектных документов
+
+### Core
+- `README.md` — обзор проекта, quick start, конфигурация
+- `AGENTS.md` — этот файл: правила + указатель на канонические документы + индекс документов
+- `todo.md` — живой статус задач (активный бэклог)
+- `CONTRIBUTING.md` — code style, testing, PR workflow
+- `CODE_OF_CONDUCT.md` — community standards
+- `SECURITY.md` — vulnerability reporting
+
+### Канонические ссылки (читать первыми)
+- [`projects/HIAI_INDEX.md`](../../projects/HIAI_INDEX.md) — единая точка входа в стратегию и правила экосистемы
+- [`docs/hiai-ecosystem/CONVENTIONS.md`](../../docs/hiai-ecosystem/CONVENTIONS.md) — **правила и топология** (§1 стек, §2 структура, §3 порты, §4 дизайн-токены, §5 auth/RBAC, §6 plugin/embed-контракт)
+- [`docs/hiai-ecosystem/ARCHITECTURE.md`](../../docs/hiai-ecosystem/ARCHITECTURE.md) — архитектура (роли host/module, карта подключений)
+- [`docs/hiai-ecosystem/PORTS.md`](../../docs/hiai-ecosystem/PORTS.md) — реестр портов (docs = 50700/50701)
+- [`docs/hiai-ecosystem/DESIGN_SYSTEM.md`](../../docs/hiai-ecosystem/DESIGN_SYSTEM.md) — дизайн-токены и `@hiai/ui` контракт (hiai-docs = источник токенов)
+- [`docs/hiai-ecosystem/PLUGIN_CONTRACT.md`](../../docs/hiai-ecosystem/PLUGIN_CONTRACT.md) — контракт plugin/embed-контракта (как host-ы подключают docs)
+
+### Project-specific
+- [`docs/design-spec.md`](docs/design-spec.md) — спецификация дизайна (UI/UX и токены)
+- [`docs/API.md`](docs/API.md) — REST API reference
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — внутренняя архитектура (data isolation, embedding pipeline)
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — деплой (Docker, VPS)
+- [`docs/PRODUCTION_STATUS.md`](docs/PRODUCTION_STATUS.md) — статус продакшена
+- [`docs/categories.md`](docs/categories.md), [`docs/keyboard-shortcuts.md`](docs/keyboard-shortcuts.md), [`docs/upload.md`](docs/upload.md), [`docs/openapi.json`](docs/openapi.json) — справочные
+- `RELEASE_CHECKLIST.md` — чеклист релиза
+- `init.sql` — начальная схема
+
+### Quirks & workarounds (закреплено в `package.json`/Dockerfile)
+- `@sinclair/typebox` pinned в root devDependencies — резолв peer-dep конфликта с Elysia 1.4.28; **не удалять**.
+- `bun test --path-ignore-patterns='*node_modules*'` — обязательный флаг на каждом `test` script (Bun 1.3 walks hoisted node_modules).
+- Paraglide v2: `frontend/vite.config.ts` → `paraglideVitePlugin`; `frontend/src/hooks.ts` → `reroute` с `deLocalizeUrl`; `frontend/src/hooks.server.ts` → `paraglideMiddleware`. Deprecated `@inlang/paraglide-sveltekit` НЕ используется.
+
+> **Примечание:** Этот файл (`AGENTS.md`) и `todo.md` добавлены в `.gitignore` и не коммитятся.
+> Они содержат оперативные инструкции для агентов и могут меняться без review.
+
+---
+
 # hiai-docs
 
 > Standalone, open-source, AI-native knowledge base. Markdown-first, auto-embeddings, self-hostable.

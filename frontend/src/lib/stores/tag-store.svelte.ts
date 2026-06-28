@@ -4,6 +4,8 @@
 // reload. We expose a simple monotonically-increasing nonce that callers
 // can read inside a $effect to trigger refreshes.
 
+import { clearDocumentsCache } from "$lib/api/documents";
+
 let tagRefreshNonce = $state(0);
 
 export function refreshTags(): void {
@@ -23,6 +25,7 @@ export function getTagRefreshNonce(): number {
 let docRefreshNonce = $state(0);
 
 export function refreshDocs(): void {
+	clearDocumentsCache();
 	docRefreshNonce++;
 }
 

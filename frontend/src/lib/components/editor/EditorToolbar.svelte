@@ -8,6 +8,7 @@ import {
 	AlignLeft,
 	AlignRight,
 	Bold,
+	Camera,
 	Check,
 	ChevronDown,
 	Code2,
@@ -39,6 +40,7 @@ import {
 } from "$lib/api/attachments";
 import * as m from "$lib/paraglide/messages.js";
 import { copyToClipboard } from "$lib/utils/clipboard";
+import CreateSnapshotDialog from "../CreateSnapshotDialog.svelte";
 import LinkDialog from "./LinkDialog.svelte";
 
 const {
@@ -120,6 +122,7 @@ let listDropdownRoot = $state<HTMLDivElement | null>(null);
 let alignDropdownOpen = $state(false);
 let alignDropdownRoot = $state<HTMLDivElement | null>(null);
 let copyConfirmation = $state(false);
+let snapshotDialogOpen = $state(false);
 
 // TipTap mutates its internal state during transactions but doesn't bump
 // Svelte's reactive graph, so template calls to `editor.isActive(...)` would
@@ -945,6 +948,18 @@ $effect(() => {
 
 		<div class="toolbar-divider" aria-hidden="true"></div>
 
+		<!-- Snapshot: save a named version of the current document state -->
+		<button
+			class="toolbar-btn snapshot-btn"
+			disabled={isDisabled() || !documentId}
+			onclick={() => (snapshotDialogOpen = true)}
+			title={m.version_create_snapshot()}
+			aria-label={m.version_create_snapshot()}
+			type="button"
+		>
+			<Camera size={16} />
+		</button>
+
 		<button
 			class="toolbar-btn copy-btn"
 			class:copied={copyConfirmation}
@@ -977,6 +992,10 @@ $effect(() => {
 	{/if}
 
 	<LinkDialog bind:open={linkDialogOpen} {editor} />
+
+	{#if documentId}
+		<CreateSnapshotDialog bind:open={snapshotDialogOpen} {documentId} />
+	{/if}
 {/if}
 
 <style>
@@ -1044,11 +1063,6 @@ $effect(() => {
 		padding: 0 6px;
 	}
 
-	.dropdown-trigger-label {
-		font-size: 0.8rem;
-		font-weight: 500;
-		line-height: 1;
-	}
 
 	:global(.dropdown-chevron) {
 		opacity: 0.6;
@@ -1364,5 +1378,12 @@ $effect(() => {
 	   succeeded so users get a clear visual confirmation. */
 	.copy-btn.copied {
 		color: var(--primary);
+	}
+
+	/* Snapshot button — uses the same base as .toolbar-btn. No special
+	   hover/active state beyond the shared rule, but kept as its own
+	   class for future visual tweaks (e.g. a brief pulse on success). */
+	.snapshot-btn {
+		color: var(--muted-foreground);
 	}
 </style>

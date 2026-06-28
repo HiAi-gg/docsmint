@@ -24,6 +24,7 @@ export interface TestState {
 	folders: Map<string, any>;
 	documents: Map<string, any>;
 	tags: Map<string, any>;
+	categories: Map<string, any>;
 	documentTags: Array<{ documentId: string; tagId: string }>;
 	shareLinks: Map<string, any>;
 	guestAccess: any[];
@@ -48,6 +49,7 @@ function createState(): TestState {
 		folders: new Map(),
 		documents: new Map(),
 		tags: new Map(),
+		categories: new Map(),
 		documentTags: [],
 		shareLinks: new Map(),
 		guestAccess: [],
@@ -186,6 +188,8 @@ function getCollection(name: string): any[] | Map<string, any> {
 			return state.documents;
 		case "tags":
 			return state.tags;
+		case "categories":
+			return state.categories;
 		case "document_tags":
 			return state.documentTags;
 		case "share_links":
@@ -659,9 +663,21 @@ mock.module("../../src/lib/embedding-queue.js", () => ({
 	startEmbeddingWorker: () => {},
 }));
 
+// Mock only the network-calling embedding helpers. The pure utilities
+// (`buildMetadataPreamble`, `EmbeddingMetadata`) are deliberately left
+// un-mocked so unit tests in `src/__tests__/embedding-metadata.test.ts`
+// can import them through this path when run alongside the integration
+// suite. Without this carve-out the static import would resolve to the
+// stub below and the unit test would fail with "Export named
+// 'buildMetadataPreamble' not found".
+const REAL_EMBEDDING_MODULE = await import("../../src/embedding/index");
 mock.module("../../src/embedding/index.js", () => ({
 	getEmbedding: async () => new Array(1024).fill(0),
 	embedDocument: async () => [new Array(1024).fill(0)],
+	// Forward real exports so any test that pulls them through this mock
+	// path still gets the genuine implementation.
+	buildMetadataPreamble: REAL_EMBEDDING_MODULE.buildMetadataPreamble,
+	EmbeddingMetadata: REAL_EMBEDDING_MODULE.EmbeddingMetadata,
 }));
 
 mock.module("../../src/api/middleware/webhook-verify.js", () => ({
@@ -691,6 +707,7 @@ export async function setupHarness(): Promise<BuiltApp> {
 	const { documentRoutes } = await import("../../src/api/routes/documents");
 	const { versionRoutes } = await import("../../src/api/routes/versions");
 	const { webhookRoutes } = await import("../../src/api/routes/webhooks");
+	const { categoryRoutes } = await import("../../src/api/routes/categories");
 
 	const app = new Elysia()
 		.use(csrfMiddleware)
@@ -701,7 +718,8 @@ export async function setupHarness(): Promise<BuiltApp> {
 		.use(searchRoutes)
 		.use(documentRoutes)
 		.use(versionRoutes)
-		.use(webhookRoutes);
+		.use(webhookRoutes)
+		.use(categoryRoutes);
 
 	const { createHmac, randomBytes } = await import("node:crypto");
 	function signToken(token: string): string {

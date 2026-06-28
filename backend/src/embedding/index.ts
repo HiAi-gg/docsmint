@@ -59,14 +59,62 @@ export async function getEmbedding(text: string): Promise<number[]> {
 }
 
 /**
+ * Optional metadata used to enrich the chunk text before embedding.
+ * When any field is present, a "Folder: ...", "Tags: ...", or "Category: ..."
+ * line is prepended to the chunk so semantic search can use folder/tag/category
+ * context to disambiguate documents.
+ *
+ * All fields are optional. Passing `undefined` or an empty object preserves
+ * the original (metadata-free) embedding behavior — used by callers that do
+ * not have metadata available, e.g. legacy/test paths.
+ */
+export interface EmbeddingMetadata {
+	folderName?: string;
+	tagNames?: string[];
+	categoryName?: string;
+}
+
+/**
+ * Build the metadata preamble that gets prepended to the embedding text.
+ * Returns an empty string when no metadata is supplied so the chunk text is
+ * identical to the legacy `title + content` form (backward compatible).
+ */
+export function buildMetadataPreamble(metadata?: EmbeddingMetadata): string {
+	if (!metadata) return "";
+	const lines: string[] = [];
+	if (metadata.folderName && metadata.folderName.trim().length > 0) {
+		lines.push(`Folder: ${metadata.folderName.trim()}`);
+	}
+	if (metadata.tagNames && metadata.tagNames.length > 0) {
+		const cleaned = metadata.tagNames
+			.map((t) => t.trim())
+			.filter((t) => t.length > 0);
+		if (cleaned.length > 0) {
+			lines.push(`Tags: ${cleaned.join(", ")}`);
+		}
+	}
+	if (metadata.categoryName && metadata.categoryName.trim().length > 0) {
+		lines.push(`Category: ${metadata.categoryName.trim()}`);
+	}
+	if (lines.length === 0) return "";
+	return `${lines.join("\n")}\n\n`;
+}
+
+/**
  * Chunk a document and embed each chunk.
  * Returns one embedding vector per chunk.
+ *
+ * When `metadata` is supplied, its fields are prepended to the chunk text so
+ * the resulting embeddings reflect folder/tag/category context. Without
+ * metadata, the chunk text is just `title + content` (legacy behavior).
  */
 export async function embedDocument(
 	title: string,
 	content: string,
+	metadata?: EmbeddingMetadata,
 ): Promise<number[][]> {
-	const fullText = `${title}\n\n${content}`;
+	const preamble = buildMetadataPreamble(metadata);
+	const fullText = `${preamble}${title}\n\n${content}`;
 	const chunks = chunkText(fullText);
 
 	if (chunks.length === 0) {

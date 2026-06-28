@@ -23,8 +23,9 @@ import {
 	MoreVertical,
 	Trash2,
 } from "lucide-svelte";
-import { goto } from "$app/navigation";
-import { getDocument } from "$lib/api/documents";
+import { goto, invalidateAll } from "$app/navigation";
+import { getDocument, updateDocument } from "$lib/api/documents";
+import MoveDialog from "$lib/components/MoveDialog.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import type { Document } from "$lib/types.js";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
@@ -45,11 +46,11 @@ function navigateToDoc() {
 	goto(`/docs/${doc.id}`);
 }
 
-function handleKeydown(e: KeyboardEvent) {
-	if (e.key === "Enter" || e.key === " ") {
-		e.preventDefault();
-		navigateToDoc();
-	}
+let showMoveDialog = $state(false);
+
+async function handleMove(parentId: string | null, categoryId: string | null) {
+	await updateDocument(doc.id, { folderId: parentId, categoryId });
+	await invalidateAll();
 }
 
 let contentCopied = $state(false);
@@ -94,7 +95,7 @@ const preview = $derived(
 <Card
   class="group cursor-pointer transition-shadow duration-200 hover:shadow-md"
   onclick={navigateToDoc}
-  onkeydown={handleKeydown}
+  onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateToDoc(); } }}
   role="button"
   tabindex={0}
 >
@@ -132,7 +133,7 @@ const preview = $derived(
           <Files class="size-4" />
           {m.doc_duplicate()}
         </DropdownMenuItem>
-        <DropdownMenuItem onclick={(e: Event) => e.stopPropagation()}>
+        <DropdownMenuItem onclick={(e: Event) => { e.stopPropagation(); showMoveDialog = true; }}>
           <FolderInput class="size-4" />
           {m.doc_move_to_folder()}
         </DropdownMenuItem>
@@ -164,3 +165,12 @@ const preview = $derived(
     {/if}
   </CardContent>
 </Card>
+
+<MoveDialog
+  bind:open={showMoveDialog}
+  itemId={doc.id}
+  itemType="document"
+  initialParentId={doc.folderId}
+  initialCategoryId={doc.categoryId}
+  onSave={handleMove}
+/>

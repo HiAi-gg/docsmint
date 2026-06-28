@@ -31,8 +31,10 @@ export interface CreateShareLinkInput {
 export function createShareLink(
 	data: CreateShareLinkInput,
 ): Promise<ShareLink> {
-	if (!data.documentId) {
-		return Promise.reject(new Error("createShareLink: documentId is required"));
+	if (!data.documentId && !data.folderId) {
+		return Promise.reject(
+			new Error("createShareLink: documentId or folderId is required"),
+		);
 	}
 	return apiFetch("/api/share", { method: "POST", body: JSON.stringify(data) });
 }

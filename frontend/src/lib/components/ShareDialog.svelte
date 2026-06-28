@@ -1,16 +1,24 @@
 <script lang="ts">
 import { createShareLink } from "$lib/api/share";
 import * as m from "$lib/paraglide/messages.js";
+import {
+	registerShortcut,
+	unregisterShortcut,
+} from "$lib/stores/keyboard.svelte";
 import { copyToClipboard } from "$lib/utils/clipboard";
 
 let {
 	open = $bindable(false),
 	documentId = "",
 	documentTitle = "",
+	folderId = "",
+	folderName = "",
 }: {
 	open?: boolean;
 	documentId?: string;
 	documentTitle?: string;
+	folderId?: string;
+	folderName?: string;
 } = $props();
 
 let usePassword = $state(false);
@@ -22,6 +30,29 @@ let shareUrl = $state("");
 let copied = $state(false);
 let creating = $state(false);
 let error = $state("");
+
+// Register an Escape shortcut scoped to "dialog" so the share dialog
+// closes when the user hits Escape. The shortcut only matters while
+// the dialog is open, but the keyboard registry uses a Map keyed by
+// id, so the same shortcut stays registered after a single mount and
+// is only effective when this component is in the open state. We
+// register on mount and unregister on destroy.
+$effect(() => {
+	registerShortcut({
+		id: "share-dialog-escape",
+		keys: "escape",
+		description: "Close share dialog",
+		scope: "dialog",
+		enabled: open,
+		overrideInput: true,
+		handler: () => {
+			if (open) close();
+		},
+	});
+	return () => {
+		unregisterShortcut("share-dialog-escape");
+	};
+});
 
 function addGuest() {
 	const email = guestEmail.trim();
@@ -41,6 +72,7 @@ async function createLink() {
 	try {
 		const result = await createShareLink({
 			documentId: documentId || undefined,
+			folderId: folderId || undefined,
 			password: usePassword ? password : undefined,
 			expiresIn,
 			guestEmails: guestEmails.length > 0 ? guestEmails : undefined,
@@ -80,7 +112,7 @@ function close() {
     <button onclick={close} class="absolute inset-0 bg-black/50" aria-label={m.action_close()}></button>
     <div class="relative z-10 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-lg font-semibold">{m.share_create_title()} "{documentTitle}"</h2>
+        <h2 class="text-lg font-semibold">{m.share_create_title()} "{folderName || documentTitle}"</h2>
         <button onclick={close} class="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={m.action_close()}>&#10005;</button>
       </div>
 

@@ -1,13 +1,16 @@
 {
   "name": "hiai-docs",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "workspaces": [
     "backend",
     "frontend",
-    "packages/db"
+    "packages/db",
+    "packages/cli",
+    "packages/mcp-server",
+    "packages/sdk"
   ],
   "engines": {
     "bun": ">= 1.3.14"
@@ -27,10 +30,15 @@
     "docker:dev": "docker compose -f docker-compose.dev.yml up -d",
     "stop": "docker compose -f docker-compose.dev.yml down",
     "setup": "bun install && bun run docker:dev && bun run db:push",
-    "export:openapi": "bun run scripts/export-openapi.ts"
+    "export:openapi": "bun run scripts/export-openapi.ts",
+    "mcp:dev": "bun run --filter '@hiai-docs/mcp-server' dev",
+    "cli": "bun run --filter '@hiai-docs/cli' dev"
   },
   "devDependencies": {
     "@sinclair/typebox": "latest",
     "pino-pretty": "latest"
+  },
+  "dependencies": {
+    "svelte-dnd-action": "^0.9.70"
   }
 }

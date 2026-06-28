@@ -101,11 +101,73 @@ Supports `.md`, `.txt`, `.markdown`, `.json` files (max 10 MB).
 ### Document versions
 
 ```
-GET /api/documents/:id/versions        # List version history
-GET /api/documents/:id/versions/:vid   # Get specific version
+GET  /api/documents/:id/versions                       # List version history
+GET  /api/documents/:id/versions/:vid                  # Get specific version
+POST /api/documents/:id/versions                       # Create named snapshot
+POST /api/documents/:id/versions/:vid/restore          # Restore to version
+GET  /api/documents/:id/versions/:vid1/diff/:vid2      # Diff two versions
 ```
 
-Versions are auto-saved on every create/update. Each entry includes `id, content, contentJson, createdBy, createdAt`.
+Versions are auto-saved on every create/update. Each entry includes `id, content, contentJson, createdBy, createdAt, label, description, isSnapshot, restoredFrom`.
+
+### Named Snapshots
+
+Create a named, pinned version snapshot separate from auto-saved history.
+
+```bash
+curl -X POST http://localhost:50700/api/documents/UUID/versions \
+  -H "Content-Type: application/json" \
+  -d '{"label": "v1.0 Release", "description": "Production release version"}'
+```
+
+Body:
+- `label` (required, 1-200 chars) — Snapshot name
+- `description` (optional, max 1000 chars) — Description
+
+Snapshots are never pruned by the auto-cleanup system.
+
+### Restore Version
+
+Restores a document to a specific version. Current content is automatically saved as a backup version before restore.
+
+```bash
+curl -X POST http://localhost:50700/api/documents/UUID/versions/VERSION_ID/restore
+```
+
+Returns the updated document. Triggers re-embedding.
+
+### Version Diff
+
+Returns a line-based diff between two versions.
+
+```bash
+curl http://localhost:50700/api/documents/UUID/versions/VID1/diff/VID2
+```
+
+Response:
+```json
+{
+  "v1": { "id": "...", "label": "...", "createdAt": "..." },
+  "v2": { "id": "...", "label": "...", "createdAt": "..." },
+  "changes": { "added": 5, "removed": 2, "modified": 1 },
+  "hunks": [
+    { "type": "unchanged", "lines": ["line1"] },
+    { "type": "remove", "lines": ["old line"] },
+    { "type": "add", "lines": ["new line"] }
+  ]
+}
+```
+
+### Version List (Enhanced)
+
+The existing `GET /api/documents/:id/versions` endpoint now supports:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `onlySnapshots` | boolean | If true, return only named snapshots |
+| `limit` | int | Max results (1-500, default 100) |
+
+Each version entry now includes: `label`, `description`, `isSnapshot`, `restoredFrom`.
 
 ## Document Attachments
 
@@ -313,6 +375,79 @@ const docsTool = {
     return res.json();
   },
 };
+```
+
+## MCP Server
+
+hiai-docs provides a Model Context Protocol (MCP) server for AI agent integration.
+
+### Installation
+
+```bash
+cd packages/mcp-server && bun install
+```
+
+### Configuration
+
+```json
+{
+  "mcpServers": {
+    "hiai-docs": {
+      "command": "bun",
+      "args": ["run", "packages/mcp-server/src/index.ts"],
+      "env": {
+        "HIAI_DOCS_URL": "http://localhost:50700",
+        "HIAI_DOCS_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_documents` | Hybrid full-text + semantic search |
+| `get_document` | Read document by ID |
+| `create_document` | Create new document |
+| `update_document` | Update document content |
+| `list_documents` | List with filters/pagination |
+| `list_folders` | List folder tree |
+| `create_folder` | Create a folder |
+| `create_snapshot` | Create named version snapshot |
+| `get_version_history` | Version history for a document |
+| `export_document` | Export as markdown |
+
+## CLI
+
+A terminal CLI is available at `packages/cli/`.
+
+### Installation
+
+```bash
+cd packages/cli && bun install
+```
+
+### Configuration
+
+```bash
+hiai-docs config --url http://localhost:50700 --key YOUR_API_KEY
+```
+
+### Commands
+
+```bash
+hiai-docs search "query"              # Search documents
+hiai-docs list                         # List documents
+hiai-docs read <id>                    # Read document
+hiai-docs create --title "My Doc"      # Create document
+hiai-docs update <id> --content "..."  # Update document
+hiai-docs snapshot <id> --name "v1.0"  # Create snapshot
+hiai-docs history <id>                 # Version history
+hiai-docs restore <id> --version <vid> # Restore version
+hiai-docs export <id>                  # Export as markdown
+hiai-docs folders                      # List folders
 ```
 
 ## Error Codes

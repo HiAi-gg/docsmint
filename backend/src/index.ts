@@ -9,6 +9,7 @@ import {
 } from "./api/middleware/rate-limit";
 import { attachmentRoutes } from "./api/routes/attachments";
 import { authRoutes } from "./api/routes/auth";
+import { categoryRoutes } from "./api/routes/categories";
 import { collaborationRoutes } from "./api/routes/collaboration";
 import { documentRoutes } from "./api/routes/documents";
 import { folderRoutes } from "./api/routes/folders";
@@ -80,6 +81,10 @@ const swaggerConfig = {
 			{ name: "Documents", description: "Document CRUD and search" },
 			{ name: "Folders", description: "Folder management" },
 			{ name: "Tags", description: "Tag management" },
+			{
+				name: "Categories",
+				description: "Category management for folders and documents",
+			},
 			{ name: "Versions", description: "Document version history" },
 			{ name: "Share", description: "Sharing and guest access" },
 			{ name: "Search", description: "Hybrid full-text + semantic search" },
@@ -122,6 +127,7 @@ const app = new Elysia()
 	.use(authMiddleware)
 	.use(authRoutes)
 	.use(tagRoutes)
+	.use(categoryRoutes)
 	.use(attachmentRoutes)
 	.use(shareRoutes)
 	.use(searchRoutes)

@@ -10,7 +10,14 @@ interface FolderWire {
 	id: string;
 	name: string;
 	parentId: string | null;
+	// Backend `GET /api/folders` returns the raw row, so `categoryId` is
+	// present on the wire even though the list endpoint does not select
+	// it explicitly. The sidebar folder tree groups folders by category
+	// using this field.
+	categoryId?: string | null;
+	order?: number;
 	ownerId?: string;
+	documentCount?: number;
 	createdAt: string;
 	updatedAt: string;
 }
@@ -31,7 +38,9 @@ function toFolder(f: FolderWire): Folder {
 		id: f.id,
 		name: f.name,
 		parentId: f.parentId,
-		documentCount: 0,
+		categoryId: f.categoryId ?? null,
+		order: f.order ?? 0,
+		documentCount: f.documentCount ?? 0,
 		children: [],
 		documents: [],
 		createdAt: f.createdAt,
@@ -55,11 +64,25 @@ function toDocument(d: DocumentWire, folderName = ""): Document {
 }
 
 /** Get a single folder by ID. Backend: `GET /api/folders/:id`. */
-export async function getFolder(id: string): Promise<Folder> {
-	const row: FolderWire = await apiFetch<FolderWire>(
-		`/api/folders/${encodeURIComponent(id)}`,
-	);
-	return toFolder(row);
+export async function getFolder(
+	id: string,
+	fetcher?: typeof fetch,
+): Promise<Folder> {
+	const data: FolderWire & {
+		children?: FolderWire[];
+		documents?: DocumentWire[];
+	} = await apiFetch(`/api/folders/${encodeURIComponent(id)}`, {}, fetcher);
+	const folder = toFolder(data);
+	if (data.children) {
+		folder.children = data.children.map(toFolder);
+	}
+	if (data.documents) {
+		// The backend returns raw document rows; normalize them through
+		// `toDocument` so they satisfy the `Document` shape required by
+		// `DocumentCard` (which reads `tags`, `folderName`, and `excerpt`).
+		folder.documents = data.documents.map((d) => toDocument(d));
+	}
+	return folder;
 }
 
 /**
@@ -76,18 +99,32 @@ export async function getFolder(id: string): Promise<Folder> {
  */
 export async function listFolders(
 	parentId: string | null = null,
+	all = false,
+	fetcher?: typeof fetch,
 ): Promise<Folder[]> {
-	const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
-	const rows: FolderWire[] = await apiFetch<FolderWire[]>(`/api/folders${qs}`);
+	const params = new URLSearchParams();
+	if (parentId) {
+		params.append("parentId", parentId);
+	}
+	if (all) {
+		params.append("all", "true");
+	}
+	const qs = params.toString() ? `?${params.toString()}` : "";
+	const rows: FolderWire[] = await apiFetch<FolderWire[]>(
+		`/api/folders${qs}`,
+		{},
+		fetcher,
+	);
 	const folders = rows.map(toFolder);
 
-	if (parentId === null) {
+	if (parentId === null && !all) {
 		const now = new Date().toISOString();
 		return [
 			{
 				id: "root",
 				name: "Workspace",
 				parentId: null,
+				order: 0,
 				documentCount: 0,
 				children: folders,
 				documents: [],
@@ -110,6 +147,7 @@ export async function listFolders(
  */
 export async function getFolderPath(
 	folderId: string,
+	fetcher?: typeof fetch,
 ): Promise<Array<{ id: string; name: string }>> {
 	const path: Array<{ id: string; name: string }> = [];
 	const visited = new Set<string>();
@@ -119,6 +157,8 @@ export async function getFolderPath(
 		visited.add(currentId);
 		const folder: FolderWire = await apiFetch<FolderWire>(
 			`/api/folders/${encodeURIComponent(currentId)}`,
+			{},
+			fetcher,
 		);
 		path.unshift({ id: folder.id, name: folder.name });
 		currentId = folder.parentId;

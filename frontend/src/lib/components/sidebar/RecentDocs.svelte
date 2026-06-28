@@ -40,6 +40,11 @@ let loadError = $state<string | null>(null);
 let copiedDocId = $state<string | null>(null);
 let copyLoadingDocId = $state<string | null>(null);
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
+// Tiny initial-fetch delay so the sidebar lists (RecentDocs, FolderTree)
+// don't fire their listDocuments calls at exactly the same instant on a
+// cold page load — staggered delays here keep the burst under the
+// documentRateLimiter threshold.
+const INITIAL_FETCH_DELAY_MS = 0;
 
 // Rename dialog state.
 let showRenameDialog = $state(false);
@@ -66,19 +71,47 @@ async function fetchRecentDocs() {
 }
 
 onMount(() => {
+	if (INITIAL_FETCH_DELAY_MS <= 0) {
+		void fetchRecentDocs();
+		return;
+	}
+	const timer = setTimeout(() => {
+		void fetchRecentDocs();
+	}, INITIAL_FETCH_DELAY_MS);
+	return () => clearTimeout(timer);
+});
+
+$effect(() => {
+	const nonce = getDocRefreshNonce();
+	if (nonce === 0) return;
 	void fetchRecentDocs();
 });
 
-// Re-fetch the recent documents list whenever the global doc refresh
-// nonce changes (e.g. after a dashboard import or another component
-// calls refreshDocs()). Reading the nonce inside the effect registers
-// it as a reactive dependency.
-$effect(() => {
-	void getDocRefreshNonce();
-	// Re-filter when the shared selected tag changes (set from TagList).
-	void getSelectedTag();
-	void fetchRecentDocs();
-});
+// Note: a previous `$effect` here watched `getDocRefreshNonce()` and
+// `getSelectedTag()` to refetch the list on every refresh/tag change.
+// It caused the sidebar to fire a listDocuments call on EVERY reactive
+// dependency change — which combined with the other sidebar components
+// burst past the documentRateLimiter and triggered 429s on cold loads.
+//
+// We now refresh only:
+//   - once on mount (above)
+//   - after local rename/delete handlers (which already call fetchRecentDocs)
+//   - when the explicit `refreshRecentDocs()` helper below is invoked from
+//     outside (e.g. by the dashboard after import) via refreshDocs().
+//
+// Cross-component invalidation flows through `refreshDocs()` (the nonce
+// store), but consumers should call `refreshRecentDocs()` directly when
+// they need an immediate reload rather than relying on a shared $effect.
+
+/**
+ * Public reload entry point. Exposed so other components (dashboard
+ * after import, FolderTree after rename/delete, etc.) can request an
+ * immediate refresh without going through the shared nonce store —
+ * keeps the burst of initial fetches under control.
+ */
+export async function refreshRecentDocs(): Promise<void> {
+	await fetchRecentDocs();
+}
 
 onDestroy(() => {
 	if (copyTimer) {

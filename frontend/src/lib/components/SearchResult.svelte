@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Calendar, Folder, Tag } from "lucide-svelte";
+import { Calendar, Check, Folder, Tag } from "lucide-svelte";
+import * as m from "$lib/paraglide/messages.js";
 
 interface Props {
 	id: string;
@@ -10,6 +11,13 @@ interface Props {
 	tags: Array<{ id: string; name: string; color: string | null }>;
 	createdAt: string;
 	query?: string;
+	/**
+	 * When `true`, the result's title was a strong match for the query
+	 * and the backend's title-first boost applied a 3x score multiplier.
+	 * Surface a small green badge in the header so the user can see why
+	 * the result is at the top of the list.
+	 */
+	titleMatch?: boolean;
 }
 
 const {
@@ -21,6 +29,7 @@ const {
 	tags,
 	createdAt,
 	query = "",
+	titleMatch = false,
 }: Props = $props();
 
 function escapeHtml(text: string): string {
@@ -44,11 +53,13 @@ const highlightedSnippet = $derived(highlightText(snippet, query));
 const scorePercent = $derived(Math.round(score * 100));
 
 const scoreColor = $derived(
-	scorePercent >= 90
+	titleMatch
 		? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-		: scorePercent >= 75
-			? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
-			: "bg-muted text-muted-foreground",
+		: scorePercent >= 90
+			? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+			: scorePercent >= 75
+				? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
+				: "bg-muted text-muted-foreground",
 );
 
 const formattedDate = $derived(
@@ -71,11 +82,22 @@ const formattedDate = $derived(
     >
       {title}
     </h3>
-    <span
-      class="shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium {scoreColor}"
-    >
-      {scorePercent}%
-    </span>
+    <div class="flex shrink-0 items-center gap-1.5">
+      {#if titleMatch}
+        <span
+          class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+          title={m.search_title_match_badge()}
+        >
+          <Check class="size-3" />
+          {m.search_title_match_badge()}
+        </span>
+      {/if}
+      <span
+        class="rounded-full px-2.5 py-0.5 text-xs font-medium {scoreColor}"
+      >
+        {scorePercent}%
+      </span>
+    </div>
   </div>
 
   <!-- Snippet with highlighted terms -->

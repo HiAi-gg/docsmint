@@ -68,7 +68,7 @@ export const csrfMiddleware = new Elysia()
 				const originUrl = new URL(origin);
 				const allowedOrigins = config.CORS_ORIGINS?.split(",") ?? [];
 				const isAllowed =
-					config.NODE_ENV === "production"
+					config.NODE_ENV === "production" && !allowedOrigins.length
 						? originUrl.host === host
 						: allowedOrigins.includes(originUrl.origin);
 				if (!isAllowed) {

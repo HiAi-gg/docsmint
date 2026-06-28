@@ -266,12 +266,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				chunks.push(chunk as Buffer);
 			}
 			const buffer = Buffer.concat(chunks);
-
-			set.headers = {
-				"Content-Type": row.mimeType,
-				"Cache-Control": "public, max-age=31536000, immutable",
-			};
-			return buffer;
+			return new Response(buffer, {
+				headers: {
+					"Content-Type": row.mimeType,
+					"Cache-Control": "public, max-age=31536000, immutable",
+				},
+			});
 		} catch (err) {
 			logger.error({ err }, "Failed to stream attachment");
 			set.status = 500;

@@ -6,6 +6,7 @@ export interface Document {
 	content?: string;
 	folderId: string | null;
 	folderName: string;
+	categoryId?: string | null;
 	tags: string[];
 	createdAt: string; // ISO 8601
 	updatedAt: string; // ISO 8601
@@ -16,6 +17,9 @@ export interface Folder {
 	id: string;
 	name: string;
 	parentId: string | null;
+	/** Optional category assignment. `null` for unassigned folders. */
+	categoryId?: string | null;
+	order: number;
 	documentCount: number;
 	children: Folder[];
 	documents: Document[];
@@ -36,9 +40,12 @@ export type SortDirection = "asc" | "desc";
 export interface CreateFolderData {
 	name: string;
 	parentId?: string | null;
+	categoryId?: string | null;
 }
 
 export interface UpdateFolderData {
 	name?: string;
 	parentId?: string | null;
+	categoryId?: string | null;
+	order?: number;
 }

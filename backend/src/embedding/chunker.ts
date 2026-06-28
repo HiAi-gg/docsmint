@@ -4,9 +4,11 @@
  * Token estimation: 1 token ≈ 4 chars (rough heuristic).
  */
 
+import { config } from "../lib/config";
+
 const CHARS_PER_TOKEN = 4;
-const TARGET_TOKENS = 500;
-const OVERLAP_TOKENS = 50;
+const TARGET_TOKENS = config.CHUNK_TARGET_TOKENS;
+const OVERLAP_TOKENS = config.CHUNK_OVERLAP_TOKENS;
 
 const TARGET_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN; // 2000
 const OVERLAP_CHARS = OVERLAP_TOKENS * CHARS_PER_TOKEN; // 200

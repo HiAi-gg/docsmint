@@ -6,7 +6,6 @@ import {
 	FileText,
 	Loader2,
 	Plus,
-	Tag,
 	Upload,
 } from "lucide-svelte";
 import { onDestroy } from "svelte";
@@ -15,9 +14,12 @@ import {
 	createDocument,
 	type Document,
 	getDocument,
-	importDocument,
+	importDocuments,
 	listDocuments,
 } from "$lib/api/documents";
+import ImportProgress, {
+	type ImportItem,
+} from "$lib/components/ImportProgress.svelte";
 import SearchBar from "$lib/components/SearchBar.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import {
@@ -35,6 +37,14 @@ let importInput = $state<HTMLInputElement | undefined>(undefined);
 let copiedDocId = $state<string | null>(null);
 let copyLoadingDocId = $state<string | null>(null);
 let copyTimer: ReturnType<typeof setTimeout> | null = null;
+
+// --- Import progress (multi-file) -------------------------------------------
+// `importItems` is the source of truth for the ImportProgress overlay.
+// We seed one entry per picked file in `uploading`, then flip them to
+// `processing` while the network request is in flight, finally to
+// `done` / `error` based on the backend's per-file result.
+let importOpen = $state(false);
+let importItems = $state<ImportItem[]>([]);
 
 async function loadDocs(tagId: string | null = getSelectedTag()) {
 	loading = true;
@@ -112,20 +122,76 @@ async function handleNewDocument() {
 
 async function handleImportFile(e: Event) {
 	const input = e.target as HTMLInputElement;
-	const file = input.files?.[0];
-	if (!file) return;
+	const files = input.files ? Array.from(input.files) : [];
+	if (files.length === 0) return;
+
+	// Seed the progress overlay. The component will re-render as we
+	// transition each item through uploading → processing → done/error.
+	importItems = files.map((f) => ({
+		filename: f.name,
+		status: "uploading",
+	}));
+	importOpen = true;
+
+	// Move the entire batch into "processing" once the request is in
+	// flight. The backend's import endpoint does parsing server-side
+	// so we can show that as a single intermediate state.
+	for (const item of importItems) {
+		item.status = "processing";
+	}
+	// Svelte 5 deep-update via reassign so the list re-renders.
+	importItems = [...importItems];
+
 	try {
-		await importDocument(file);
-		await loadDocs();
+		const res = await importDocuments(files);
+		// Reconcile the per-file results from the response back into the
+		// local list. Match by filename (the backend echoes it back in
+		// the ImportResult).
+		importItems = importItems.map((item) => {
+			const r = res.items.find((x) => x.filename === item.filename);
+			if (!r) {
+				return { ...item, status: "error", error: "No result for file" };
+			}
+			if (r.status === "ok" && r.document) {
+				return {
+					...item,
+					status: "done",
+					documentId: r.document.id,
+				};
+			}
+			return {
+				...item,
+				status: "error",
+				error: r.error ?? "Import failed",
+			};
+		});
 		// Nudge sidebar components (RecentDocs, FolderTree) to refetch
 		// their document lists. They subscribe to the doc refresh nonce
-		// via $effect and re-load on change, so the imported document
-		// appears immediately without a page reload.
+		// via $effect and re-load on change, so the imported documents
+		// appear immediately without a page reload.
 		refreshDocs();
+		await loadDocs();
 	} catch (err) {
+		// Network / unknown failure: mark every still-pending item as
+		// failed and surface the error in the top-level error banner.
+		importItems = importItems.map((item) => ({
+			...item,
+			status: "error",
+			error: err instanceof Error ? err.message : m.error_generic(),
+		}));
 		error = err instanceof Error ? err.message : m.error_generic();
+	} finally {
+		input.value = "";
 	}
-	input.value = "";
+}
+
+function closeImport() {
+	importOpen = false;
+	// Give the modal's exit transition a moment before clearing state
+	// so a re-open with the same files doesn't flicker.
+	setTimeout(() => {
+		importItems = [];
+	}, 200);
 }
 
 function relativeTime(iso: string): string {
@@ -141,10 +207,14 @@ const hasDocs = $derived(recentDocs.length > 0);
 
 const availableTags = $derived(
 	(() => {
-		const seen = new Map<string, { id: string; name: string }>();
+		const seen = new Map<
+			string,
+			{ id: string; name: string; color?: string | null }
+		>();
 		for (const doc of recentDocs) {
 			for (const t of doc.tags ?? []) {
-				if (!seen.has(t.id)) seen.set(t.id, { id: t.id, name: t.name });
+				if (!seen.has(t.id))
+					seen.set(t.id, { id: t.id, name: t.name, color: t.color });
 			}
 		}
 		return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -169,7 +239,7 @@ function selectTag(tagId: string | null) {
           <p class="text-sm text-muted-foreground">{m.dashboard_subtitle()}</p>
         </div>
         <div class="flex items-center gap-2">
-          <input type="file" accept=".md,.txt,.json,.markdown" class="hidden" bind:this={importInput} onchange={handleImportFile} />
+          <input type="file" accept=".md,.txt,.json,.markdown,.docx" multiple class="hidden" bind:this={importInput} onchange={handleImportFile} />
           <button onclick={triggerImport} class="inline-flex items-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground">
             <Upload class="size-4" />
             {m.dashboard_import()}
@@ -200,10 +270,10 @@ function selectTag(tagId: string | null) {
             <button
               type="button"
               onclick={() => selectTag(tag.id)}
-              class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors {getSelectedTag() === tag.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
+              class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors {getSelectedTag() === tag.id ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground hover:bg-accent hover:text-accent-foreground'}"
               aria-pressed={getSelectedTag() === tag.id}
             >
-              <Tag class="size-3" />
+              <span class="size-2 rounded-full" style="background-color: {tag.color || '#cccccc'}"></span>
               {tag.name}
             </button>
           {/each}
@@ -301,3 +371,5 @@ function selectTag(tagId: string | null) {
         </div>
       {/if}
     </div>
+
+<ImportProgress open={importOpen} items={importItems} onClose={closeImport} />

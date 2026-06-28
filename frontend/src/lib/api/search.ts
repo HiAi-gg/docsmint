@@ -30,6 +30,7 @@ export interface SearchSuggestion {
 export interface FilterOptions {
 	folders: string[];
 	tags: Array<{ id: string; name: string; color: string | null }>;
+	categories: Array<{ id: string; name: string }>;
 }
 
 // --- Public API --------------------------------------------------------------
@@ -43,6 +44,11 @@ export type SearchSort =
 
 /**
  * Full hybrid search (text + semantic).
+ *
+ * `category` is an optional UUID that, when supplied, narrows results to
+ * documents whose own `category_id` matches OR whose folder's
+ * `category_id` matches. The two scopes are unioned by the backend so a
+ * single category can classify both direct documents and folder members.
  */
 export async function search(
 	query: string,
@@ -52,6 +58,7 @@ export async function search(
 	filters?: {
 		folder?: string;
 		tags?: string[];
+		category?: string;
 		dateFrom?: string;
 		dateTo?: string;
 	},
@@ -68,6 +75,7 @@ export async function search(
 	if (filters?.folder) params.set("folder", filters.folder);
 	if (filters?.tags && filters.tags.length > 0)
 		params.set("tags", filters.tags.join(","));
+	if (filters?.category) params.set("category", filters.category);
 	if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
 	if (filters?.dateTo) params.set("dateTo", filters.dateTo);
 	return apiFetch(`/api/search?${params}`);
@@ -86,23 +94,27 @@ export async function searchSuggest(
 }
 
 /**
- * Get available filter options (folders and tags for the current user).
+ * Get available filter options (folders, tags, and categories for the
+ * current user). Each call returns the bare minimum needed by the search
+ * sidebar — a missing endpoint does not break the others; an empty list is
+ * returned in that case so the sidebar section simply renders nothing.
  */
 export async function getFilterOptions(): Promise<FilterOptions> {
-	try {
-		const [folders, tags] = await Promise.all([
-			apiFetch<Array<{ id: string; name: string }>>("/api/folders"),
-			apiFetch<Array<{ id: string; name: string; color: string | null }>>(
-				"/api/tags",
-			),
-		]);
-		return {
-			folders: folders.map((f) => f.name),
-			tags,
-		};
-	} catch {
-		return { folders: [], tags: [] };
-	}
+	const [foldersRes, tagsRes, categoriesRes] = await Promise.allSettled([
+		apiFetch<Array<{ id: string; name: string }>>("/api/folders"),
+		apiFetch<Array<{ id: string; name: string; color: string | null }>>(
+			"/api/tags",
+		),
+		apiFetch<Array<{ id: string; name: string }>>("/api/categories"),
+	]);
+	return {
+		folders:
+			foldersRes.status === "fulfilled"
+				? foldersRes.value.map((f) => f.name)
+				: [],
+		tags: tagsRes.status === "fulfilled" ? tagsRes.value : [],
+		categories: categoriesRes.status === "fulfilled" ? categoriesRes.value : [],
+	};
 }
 
 // --- Text helpers (exported for component use) ------------------------------
