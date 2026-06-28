@@ -5,8 +5,8 @@ import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
 import { invalidateDocListCache } from "../../lib/doc-cache";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
+import { reembedDocsInFolder } from "../../lib/reembed";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
 const createFolderSchema = z.object({
@@ -314,8 +314,8 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// to bound the cost spike from a rename. Subsequent batches can
 			// be flushed by an explicit reindex job or a follow-up edit.
 			if (parsed.data.name !== undefined) {
-				await reembedDocumentsInFolder(params.id, userId).catch((err) =>
-					logger.error(
+				reembedDocsInFolder(params.id, userId).catch((err: unknown) =>
+					logger.warn(
 						{ err, folderId: params.id },
 						"Failed to enqueue re-embedding for folder rename",
 					),
@@ -358,6 +358,16 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			await db
 				.delete(folders)
 				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)));
+
+			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
+			// Re-embed affected docs so the "Folder: <old-name>" preamble
+			// stops appearing in their embedding context.
+			reembedDocsInFolder(params.id, userId).catch((err: unknown) =>
+				logger.warn(
+					{ err, folderId: params.id },
+					"Failed to re-embed documents after folder delete",
+				),
+			);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete folder");
@@ -365,33 +375,3 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			return { error: "Failed to delete folder" };
 		}
 	});
-
-/**
- * Enqueue re-embedding for up to `FOLDER_REEMBED_BATCH_SIZE` documents in a
- * folder. The batch limit protects against API cost spikes when a folder
- * with many documents is renamed; remaining documents will be re-embedded on
- * their next content edit.
- */
-const FOLDER_REEMBED_BATCH_SIZE = 100;
-
-async function reembedDocumentsInFolder(
-	folderId: string,
-	ownerId: string,
-): Promise<number> {
-	const docIds = await db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(
-			and(eq(documents.folderId, folderId), eq(documents.ownerId, ownerId)),
-		)
-		.limit(FOLDER_REEMBED_BATCH_SIZE);
-
-	for (const { id } of docIds) {
-		enqueueEmbedding(id);
-	}
-	logger.info(
-		{ folderId, enqueued: docIds.length, limit: FOLDER_REEMBED_BATCH_SIZE },
-		"Re-embedding documents after folder change",
-	);
-	return docIds.length;
-}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { chunkText } from "../embedding/chunker";
+import { chunkHash } from "../lib/chunk-hash";
 
 describe("chunkText", () => {
 	it("returns empty array for empty string", () => {
@@ -13,7 +14,7 @@ describe("chunkText", () => {
 	it("returns single chunk for short text", () => {
 		const result = chunkText("Hello world");
 		expect(result).toHaveLength(1);
-		expect(result[0]).toBe("Hello world");
+		expect(result[0]?.text).toBe("Hello world");
 	});
 
 	it("splits long text with paragraphs into multiple chunks", () => {
@@ -30,7 +31,7 @@ describe("chunkText", () => {
 		const result = chunkText(text);
 		expect(result.length).toBeGreaterThanOrEqual(1);
 		// All content should be preserved
-		const combined = result.join("\n\n");
+		const combined = result.map((c) => c.text).join("\n\n");
 		expect(combined).toContain("First paragraph");
 		expect(combined).toContain("Second paragraph");
 		expect(combined).toContain("Third paragraph");
@@ -43,7 +44,7 @@ describe("chunkText", () => {
 		expect(result.length).toBeGreaterThan(1);
 		// Each chunk should be non-empty
 		for (const chunk of result) {
-			expect(chunk.trim().length).toBeGreaterThan(0);
+			expect(chunk.text.trim().length).toBeGreaterThan(0);
 		}
 	});
 
@@ -57,9 +58,51 @@ describe("chunkText", () => {
 	it("preserves content across chunks", () => {
 		const text = `${"A".repeat(1000)}\n\n${"B".repeat(1000)}\n\n${"C".repeat(1000)}`;
 		const result = chunkText(text);
-		const combined = result.join("");
+		const combined = result.map((c) => c.text).join("");
 		expect(combined).toContain("A");
 		expect(combined).toContain("B");
 		expect(combined).toContain("C");
+	});
+});
+
+describe("chunkText hash field", () => {
+	it("returns hash equal to chunkHash(text)", () => {
+		const result = chunkText("Hello world");
+		expect(result).toHaveLength(1);
+		const chunk = result[0];
+		expect(chunk).toBeDefined();
+		expect(chunk?.hash).toBe(chunkHash(chunk?.text ?? ""));
+	});
+
+	it("produces stable hashes for identical input", () => {
+		const a = chunkText("Stable input text for hashing");
+		const b = chunkText("Stable input text for hashing");
+		expect(a).toHaveLength(1);
+		expect(b).toHaveLength(1);
+		expect(a[0]?.hash).toBe(b[0]?.hash);
+	});
+
+	it("produces different hashes for different input", () => {
+		const a = chunkText("Alpha content");
+		const b = chunkText("Beta content");
+		expect(a[0]?.hash).not.toBe(b[0]?.hash);
+	});
+
+	it("returns hex-formatted SHA-256 hash (64 chars)", () => {
+		const result = chunkText("Hello world");
+		const hash = result[0]?.hash ?? "";
+		expect(hash).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it("per-chunk hash matches chunkHash of just that chunk text", () => {
+		// Create multi-chunk text and verify each chunk's hash is consistent
+		// with calling chunkHash() directly on the chunk text.
+		const para = "word ".repeat(200);
+		const longText = [para, para, para, para].join("\n\n");
+		const result = chunkText(longText);
+		expect(result.length).toBeGreaterThan(1);
+		for (const chunk of result) {
+			expect(chunk.hash).toBe(chunkHash(chunk.text));
+		}
 	});
 });

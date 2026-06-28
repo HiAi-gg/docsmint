@@ -22,6 +22,7 @@ import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { markdownToDocJson } from "../../lib/markdown-to-doc";
+import { enqueueReembed } from "../../lib/reembed";
 import { maybePruneVersions } from "../../lib/version-prune";
 import {
 	documentRateLimiter,
@@ -621,7 +622,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			if (shouldReembed) {
-				enqueueEmbedding(params.id);
+				// Use enqueueReembed for Redis SET-NX dedup so rapid PATCHes on the same doc
+				// (auto-save) coalesce into a single worker tick. Direct enqueueEmbedding
+				// would queue the same doc id once per PATCH.
+				enqueueReembed([params.id]);
 			}
 			invalidateDocCache(params.id);
 			invalidateDocListCache(userId);

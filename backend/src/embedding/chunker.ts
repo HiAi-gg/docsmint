@@ -4,6 +4,7 @@
  * Token estimation: 1 token ≈ 4 chars (rough heuristic).
  */
 
+import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 
 const CHARS_PER_TOKEN = 4;
@@ -14,11 +15,23 @@ const TARGET_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN; // 2000
 const OVERLAP_CHARS = OVERLAP_TOKENS * CHARS_PER_TOKEN; // 200
 
 /**
+ * Result of chunking: a chunk's text paired with its SHA-256 hash.
+ *
+ * The hash lets the worker decide whether a chunk changed between embeddings
+ * without re-comparing the full text byte-by-byte. Stored alongside the
+ * embedding so future re-embeds can skip unchanged chunks entirely.
+ */
+export interface ChunkResult {
+	text: string;
+	hash: string;
+}
+
+/**
  * Split text into chunks suitable for embedding.
  * Each chunk is approximately 500 tokens (~2000 characters).
  * Adjacent chunks overlap by ~50 tokens (~200 characters).
  */
-export function chunkText(text: string): string[] {
+export function chunkText(text: string): ChunkResult[] {
 	if (!text || text.trim().length === 0) {
 		return [];
 	}
@@ -42,7 +55,7 @@ export function chunkText(text: string): string[] {
 		}
 	}
 
-	const chunks: string[] = [];
+	const strings: string[] = [];
 	let currentChunk = "";
 
 	for (const paragraph of normalizedParagraphs) {
@@ -55,7 +68,7 @@ export function chunkText(text: string): string[] {
 		} else {
 			// Flush current chunk if non-empty
 			if (currentChunk.length > 0) {
-				chunks.push(currentChunk.trim());
+				strings.push(currentChunk.trim());
 			}
 			// Start new chunk with overlap from end of previous chunk
 			if (OVERLAP_CHARS > 0 && currentChunk.length > 0) {
@@ -69,8 +82,8 @@ export function chunkText(text: string): string[] {
 
 	// Flush remaining chunk
 	if (currentChunk.trim().length > 0) {
-		chunks.push(currentChunk.trim());
+		strings.push(currentChunk.trim());
 	}
 
-	return chunks;
+	return strings.map((text) => ({ text, hash: chunkHash(text) }));
 }

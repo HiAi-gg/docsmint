@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
+import { reembedDocsInCategory } from "../../lib/reembed";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
 /**
@@ -198,6 +199,20 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 				set.status = 404;
 				return { error: "Category not found" };
 			}
+
+			// Re-embed every document whose category_id matches, plus every
+			// document in a folder whose category_id matches. The category
+			// name is part of the embedding preamble, so a rename leaves the
+			// existing vectors stale until the worker refreshes them.
+			if (parsed.data.name !== undefined) {
+				reembedDocsInCategory(params.id, userId).catch((err: unknown) =>
+					logger.warn(
+						{ err, categoryId: params.id },
+						"Failed to re-embed documents after category rename",
+					),
+				);
+			}
+
 			return updated;
 		} catch (err) {
 			logger.error({ err }, "Failed to update category");
@@ -233,6 +248,14 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			}
 			// ON DELETE SET NULL on folders.category_id / documents.category_id
 			// automatically detaches the category from any owned folders/docs.
+			// We re-embed those docs/folders so their preamble no longer mentions
+			// the (now-gone) category name.
+			reembedDocsInCategory(params.id, userId).catch((err: unknown) =>
+				logger.warn(
+					{ err, categoryId: params.id },
+					"Failed to re-embed documents after category delete",
+				),
+			);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete category");

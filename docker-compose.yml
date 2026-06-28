@@ -84,33 +84,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-  # Apache AGE (GraphRAG) — separate PostgreSQL instance with AGE extension
-  # for graph-based entity extraction and graph-aware search expansion.
-  age-postgres:
-    image: apache/age:pg17
-    restart: unless-stopped
-    ports:
-      - "${AGE_DB_PORT:-5438}:5432"
-    volumes:
-      - age_pgdata:/var/lib/postgresql
-    environment:
-      POSTGRES_DB: ${AGE_DB_NAME:-hiai_docs_graph}
-      POSTGRES_USER: ${DB_USER:-aiuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${AGE_DB_NAME:-hiai_docs_graph}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hiai-docs-net
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1"
-
-  redis:
+      redis:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -148,6 +122,32 @@ services:
       EMBEDDING_FALLBACK_PROVIDER: ${EMBEDDING_FALLBACK_PROVIDER:-}
       NODE_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      - hiai-docs-net
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1"
+
+  # Apache AGE (GraphRAG) — separate PostgreSQL instance with AGE extension
+  # for graph-based entity extraction and graph-aware search expansion.
+  age-postgres:
+    image: apache/age:release_PG18_1.7.0
+    restart: unless-stopped
+    ports:
+      - "${AGE_DB_PORT:-5438}:5432"
+    volumes:
+      - age_pgdata:/var/lib/postgresql
+    environment:
+      POSTGRES_DB: ${AGE_DB_NAME:-hiai_docs_graph}
+      POSTGRES_USER: ${DB_USER:-aiuser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${AGE_DB_NAME:-hiai_docs_graph}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - hiai-docs-net
     deploy:

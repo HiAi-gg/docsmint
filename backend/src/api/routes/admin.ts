@@ -9,14 +9,24 @@
  * own bucket when a valid API key is presented, so a healthy ops pipeline
  * is never throttled but a misconfigured caller still gets 429s.
  */
-import { documentEmbeddings, documents } from "@hiai-docs/db/schema";
-import { count, eq, sql } from "drizzle-orm";
+import {
+	documentEmbeddings,
+	documents,
+	documentTags,
+} from "@hiai-docs/db/schema";
+import { count, eq, ne, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { getEmbedding } from "../../embedding";
 import { config } from "../../lib/config";
 import { db } from "../../lib/db";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
+import { getGraphDb } from "../../lib/graph/init";
 import { logger } from "../../lib/logger";
+import {
+	enqueueReembed,
+	reembedDocsByTag,
+	reembedDocsInFolderAdmin,
+} from "../../lib/reembed";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
 
 /**
@@ -261,5 +271,235 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 						? err.message
 						: "Unknown embedding provider error",
 			};
+		}
+	})
+	/**
+	 * POST /api/admin/reindex/model
+	 *
+	 * Targeted re-embedding for documents whose stored embedding_model
+	 * does not match the currently-configured EMBEDDING_MODEL. Use this
+	 * after changing EMBEDDING_MODEL in .env (and restarting) to refresh
+	 * only the docs that actually need it, instead of running a full
+	 * reindex across every document.
+	 *
+	 * Optional query param `?dryRun=true` returns the count of affected
+	 * docs without enqueuing anything - cheap preview for operators.
+	 */
+	.post("/reindex/model", async ({ query, set, request }) => {
+		const ip = clientIp(request);
+		const rl = await searchRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
+
+		if (!verifyAdminKey(request)) {
+			set.status = 401;
+			return { error: "Invalid or missing admin API key" };
+		}
+
+		const currentModel = config.EMBEDDING_MODEL ?? "";
+		const dryRun = query?.dryRun === "true" || query?.dryRun === true;
+
+		try {
+			// Find every doc id whose latest stored embedding_model does not
+			// match the current one. We DISTINCT ON (document_id, embedding_model)
+			// then filter to docs whose embedding_model is stale.
+			const rows = await db
+				.selectDistinct({ documentId: documentEmbeddings.documentId })
+				.from(documentEmbeddings)
+				.where(ne(documentEmbeddings.embeddingModel, currentModel));
+
+			const docIds = rows
+				.map((r) => r.documentId)
+				.filter((id): id is string => typeof id === "string");
+
+			if (dryRun) {
+				return {
+					dryRun: true,
+					currentModel,
+					affectedDocs: docIds.length,
+				};
+			}
+
+			const enqueued = await enqueueReembed(docIds);
+			logger.info(
+				{ currentModel, affectedDocs: docIds.length, enqueued },
+				"Targeted reindex by embedding model mismatch",
+			);
+			return {
+				success: true,
+				currentModel,
+				affectedDocs: docIds.length,
+				enqueued,
+			};
+		} catch (err) {
+			logger.error({ err, currentModel }, "Admin reindex by model failed");
+			set.status = 500;
+			return { error: "Failed to compute affected docs" };
+		}
+	})
+	/**
+	 * GET /api/admin/graph/stats
+	 *
+	 * GraphRAG inventory - returns counts of entities (per label)
+	 * and relations (per type) currently stored in AGE. Returns
+	 * `available: false` when AGE is not configured so the endpoint
+	 * stays safe to call without graph infrastructure running.
+	 */
+	.get("/graph/stats", async ({ set, request }) => {
+		const ip = clientIp(request);
+		const rl = await searchRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
+
+		if (!verifyAdminKey(request)) {
+			set.status = 401;
+			return { error: "Invalid or missing admin API key" };
+		}
+
+		if (!config.GRAPH_SEARCH_ENABLED && !config.GRAPH_EXTRACT_ENABLED) {
+			return { available: false, reason: "GraphRAG disabled" };
+		}
+		if (!config.AGE_DATABASE_URL) {
+			return { available: false, reason: "AGE_DATABASE_URL not set" };
+		}
+
+		const sql = await getGraphDb();
+		if (!sql) {
+			return { available: false, reason: "AGE unreachable" };
+		}
+
+		try {
+			// Two cheap COUNT queries - one over the whole graph, one for
+			// relations. AGE does not expose label histograms cheaply, so
+			// per-label / per-type counts are omitted. Operators who need
+			// the breakdown can run MATCH (n:Label) RETURN count(n) directly.
+			const nodesResult = await sql<Array<{ count: string }>>`
+				SELECT count(*) AS count FROM cypher('docs_graph', '' '' MATCH (n) RETURN count(n) '' '') AS (count agtype)
+			`;
+			const edgesResult = await sql<Array<{ count: string }>>`
+				SELECT count(*) AS count FROM cypher('docs_graph', '' '' MATCH ()-[r]->() RETURN count(r) '' '') AS (count agtype)
+			`;
+			const nodes = Number(nodesResult[0]?.count ?? 0);
+			const edges = Number(edgesResult[0]?.count ?? 0);
+			return { available: true, nodes, edges };
+		} catch (err) {
+			logger.warn({ err }, "Admin graph/stats failed");
+			return { available: false, reason: "Cypher query failed" };
+		}
+	})
+
+	/**
+	 * POST /api/admin/reindex/folder/:folderId
+	 *
+	 * Bulk re-embed every document in a folder. Operator-scoped:
+	 * this endpoint intentionally crosses tenant boundaries because
+	 * it is the path an admin uses after a model upgrade or other
+	 * corpus-wide event that falls outside the targeted reindex.
+	 * The matching user-scoped trigger is the same helper invoked by
+	 * the PATCH/DELETE /api/folders/:id handlers (those still use
+	 * the owner-scoped variant and are NOT replaced by this endpoint).
+	 *
+	 * Optional ?ownerId=<uuid> narrows both the dryRun preview and
+	 * the re-embed to a single tenant. Default (no ownerId) is
+	 * cross-tenant. Optional ?dryRun=true returns the affected count
+	 * without enqueuing. Bounded by FOLDER_REEMBED_BATCH_SIZE (default 100).
+	 */
+	.post(
+		"/reindex/folder/:folderId",
+		async ({ params, query, set, request }) => {
+			const ip = clientIp(request);
+			const rl = await searchRateLimiter(ip, request);
+			if (!rl.allowed) {
+				set.status = 429;
+				set.headers = rateLimitHeaders(0, rl.retryAfter);
+				return { error: "Too many requests" };
+			}
+			set.headers = rateLimitHeaders(rl.remaining);
+
+			if (!verifyAdminKey(request)) {
+				set.status = 401;
+				return { error: "Invalid or missing admin API key" };
+			}
+
+			const dryRun = query?.dryRun === "true" || query?.dryRun === true;
+			try {
+				if (dryRun) {
+					const rows = await db
+						.select({ id: documents.id })
+						.from(documents)
+						.where(eq(documents.folderId, params.folderId));
+					return {
+						dryRun: true,
+						affectedDocs: rows.length,
+						folderId: params.folderId,
+					};
+				}
+				// Use the same helper the rename/delete path uses so behavior stays
+				// consistent: same batch cap, same Redis dedup, same logging.
+				const affected = await reembedDocsInFolderAdmin(params.folderId);
+				logger.info(
+					{ folderId: params.folderId, affected },
+					"Admin reindex by folder",
+				);
+				return { success: true, folderId: params.folderId, affected };
+			} catch (err) {
+				logger.error(
+					{ err, folderId: params.folderId },
+					"Admin reindex/folder failed",
+				);
+				set.status = 500;
+				return { error: "Failed to reindex folder" };
+			}
+		},
+	)
+
+	/**
+	 * POST /api/admin/reindex/tag/:tagId
+	 *
+	 * Bulk re-embed every document carrying a tag. Mirrors
+	 * POST /api/admin/reindex/folder/:folderId but for tags.
+	 *
+	 * Optional `?dryRun=true` returns the affected count. Bounded by
+	 * TAG_REEMBED_BATCH_SIZE (default 500).
+	 */
+	.post("/reindex/tag/:tagId", async ({ params, query, set, request }) => {
+		const ip = clientIp(request);
+		const rl = await searchRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
+
+		if (!verifyAdminKey(request)) {
+			set.status = 401;
+			return { error: "Invalid or missing admin API key" };
+		}
+
+		const dryRun = query?.dryRun === "true" || query?.dryRun === true;
+		try {
+			if (dryRun) {
+				const rows = await db
+					.selectDistinct({ id: documentTags.documentId })
+					.from(documentTags)
+					.where(eq(documentTags.tagId, params.tagId));
+				return { dryRun: true, affectedDocs: rows.length, tagId: params.tagId };
+			}
+			const affected = await reembedDocsByTag(params.tagId);
+			logger.info({ tagId: params.tagId, affected }, "Admin reindex by tag");
+			return { success: true, tagId: params.tagId, affected };
+		} catch (err) {
+			logger.error({ err, tagId: params.tagId }, "Admin reindex/tag failed");
+			set.status = 500;
+			return { error: "Failed to reindex tag" };
 		}
 	});

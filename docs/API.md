@@ -461,3 +461,158 @@ hiai-docs folders                      # List folders
 | 410  | Share link expired |
 | 429  | Rate limited (check `retry-after` header) |
 | 500  | Internal server error |
+
+## Admin
+
+All admin endpoints require the static `HIAI_DOCS_API_KEY` via the `x-api-key` header (or `Authorization: Bearer`). These routes are intentionally operator-scoped — they are NOT per-user. When `HIAI_DOCS_API_KEY` is unset, the routes are open (dev convenience only).
+
+### `POST /api/admin/reindex/:docId`
+
+Force re-embed a single document. Drops existing chunks and enqueues the id so the worker picks it up on the next tick. Returns 404 when the document does not exist.
+
+```bash
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  http://localhost:50700/api/admin/reindex/$DOC_ID
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "documentId": "...",
+  "message": "Existing embeddings cleared and document re-queued"
+}
+```
+
+### `GET /api/admin/embedding-stats`
+
+Pipeline observability: documents with embeddings, total chunks, and zero-vector (provider-failed) chunks.
+
+```bash
+curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  http://localhost:50700/api/admin/embedding-stats
+```
+
+Response:
+
+```json
+{
+  "stats": {
+    "docsWithEmbeddings": 142,
+    "totalChunks": 873,
+    "emptyChunks": 0
+  }
+}
+```
+
+A non-zero `emptyChunks` count is a strong signal that `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` / `EMBEDDING_API_KEY` are missing or wrong.
+
+### `GET /api/admin/health/embeddings`
+
+Live probe of the configured embedding provider. Status is one of:
+
+- `ok` — provider returned a non-zero vector.
+- `degraded` — provider returned a zero vector (auth failure or wrong model name) OR the provider raised and the fallback also failed. Pipeline runs but produces useless vectors.
+- `not-configured` — `EMBEDDING_BASE_URL` or `EMBEDDING_MODEL` is unset; semantic search degrades to text-only.
+
+```bash
+curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  http://localhost:50700/api/admin/health/embeddings
+```
+
+Response (healthy):
+
+```json
+{
+  "status": "ok",
+  "provider": {
+    "baseUrl": "https://api.openai.com/v1",
+    "model": "text-embedding-3-small"
+  },
+  "latencyMs": 124,
+  "dimensions": 1536
+}
+```
+
+### `POST /api/admin/reindex/model?dryRun=true`
+
+Targeted re-embed for documents whose stored `embedding_model` does not match the currently configured `EMBEDDING_MODEL`. Use this after changing `EMBEDDING_MODEL` in `.env` and restarting.
+
+**Always run with `?dryRun=true` first** to preview the affected count.
+
+```bash
+# Preview
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/model?dryRun=true"
+# {"dryRun": true, "currentModel": "text-embedding-3-small", "affectedDocs": 142}
+
+# Commit
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/model"
+# {"success": true, "currentModel": "text-embedding-3-small", "affectedDocs": 142, "enqueued": 142}
+```
+
+Dedup is handled by the shared `enqueueReembed` helper (Redis `SET NX EX 5`), so a rapid re-trigger coalesces into a single worker tick.
+
+### `GET /api/admin/graph/stats`
+
+Apache AGE inventory — total node and edge counts. Returns `{ available: false, reason: "..." }` when GraphRAG is disabled, when `AGE_DATABASE_URL` is unset, or when AGE is unreachable.
+
+```bash
+curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  http://localhost:50700/api/admin/graph/stats
+```
+
+Response:
+
+```json
+{ "available": true, "nodes": 312, "edges": 547 }
+```
+
+### `POST /api/admin/reindex/folder/:folderId?dryRun=true`
+
+Bulk re-embed every document in a folder. Operator-scoped (cross-user). Bounded by `FOLDER_REEMBED_BATCH_SIZE` (default `100`). Set `?dryRun=true` to preview the count without enqueuing.
+
+
+```bash
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/folder/$FOLDER_ID?dryRun=true"
+```
+
+### `POST /api/admin/reindex/tag/:tagId?dryRun=true`
+
+Bulk re-embed every document carrying a tag. Cross-user operator scope. Bounded by `TAG_REEMBED_BATCH_SIZE` (default `500`).
+
+```bash
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/tag/$TAG_ID?dryRun=true"
+```
+
+## Search Graph Parameters
+
+`GET /api/search` accepts three optional graph parameters, all gated by the `GRAPH_SEARCH_ENABLED` feature flag. When `GRAPH_SEARCH_ENABLED=false`, passing `graph=true` is a no-op (results are returned as if `graph=false`).
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `graph` | boolean | `false` | When `true`, expand the merged result list with related documents discovered through the AGE graph. |
+| `graphHops` | int (1-3) | `2` | Maximum graph traversal depth from each seed document. Higher hops surface more neighbors but with diminishing signal and `O(branching^hops)` cost in AGE. |
+| `graphBoost` | float (0-2) | `GRAPH_EXPANSION_BOOST` | Override for the graph-neighbor score multiplier. When omitted, falls back to the operator-configured env var (default `0.3`). |
+
+Example (graph-augmented search, 2-hop, default boost):
+
+```bash
+curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/search?q=GraphRAG+architecture&graph=true&graphHops=2"
+```
+
+Graph expansion is best-effort: a graph outage logs a warning and returns the non-graph result list. Search never breaks because the graph is unavailable.
+
+## Admin API Errors
+
+| Code | Meaning |
+|------|---------|
+| 401 | Missing or invalid `x-api-key` |
+| 404 | Resource not found (e.g. `/reindex/:docId` for unknown doc id) |
+| 429 | Rate limited (admin endpoints share `searchRateLimiter` — a valid API key bypasses the bucket but a misconfigured caller still gets 429s) |
+| 500 | Internal server error (see server logs) |

@@ -38,6 +38,7 @@ let activeCategoryId = $state("");
 let dateFrom = $state("");
 let dateTo = $state("");
 let currentPage = $state(1);
+let pageSize = $state(5);
 let sortOrder = $state<
 	"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc"
 >("relevance");
@@ -59,6 +60,7 @@ $effect(() => {
 	dateFrom = data.filters?.dateFrom ?? "";
 	dateTo = data.filters?.dateTo ?? "";
 	currentPage = data.page ?? 1;
+	pageSize = data.limit ?? 5;
 });
 
 let searchResponse = $state<SearchResponse | null>(null);
@@ -71,11 +73,9 @@ let tags = $state<Array<{ id: string; name: string; color: string | null }>>(
 );
 let categories = $state<Array<{ id: string; name: string }>>([]);
 
-const PAGE_SIZE = 5;
-
 // --- Derived -----------------------------------------------------------------
 const totalPages = $derived(
-	searchResponse ? Math.ceil(searchResponse.total / PAGE_SIZE) : 0,
+	searchResponse ? Math.ceil(searchResponse.total / pageSize) : 0,
 );
 
 const hasActiveFilters = $derived(
@@ -154,7 +154,7 @@ $effect(() => {
 
 	loading = true;
 
-	search(q, p, PAGE_SIZE, sort, {
+	search(q, p, pageSize, sort, {
 		folder: folder || undefined,
 		tags: effectiveTags.length > 0 ? effectiveTags : undefined,
 		category: category || undefined,
@@ -178,6 +178,7 @@ function buildUrl(overrides: Record<string, string | undefined>) {
 	const df = "dateFrom" in overrides ? overrides.dateFrom : dateFrom;
 	const dt = "dateTo" in overrides ? overrides.dateTo : dateTo;
 	const p = "page" in overrides ? overrides.page : String(currentPage);
+	const l = "limit" in overrides ? overrides.limit : String(pageSize);
 
 	if (q) params.set("q", q);
 	if (folder) params.set("folder", folder);
@@ -186,6 +187,7 @@ function buildUrl(overrides: Record<string, string | undefined>) {
 	if (df) params.set("dateFrom", df);
 	if (dt) params.set("dateTo", dt);
 	if (p && p !== "1") params.set("page", p);
+	if (l && l !== "5") params.set("limit", l);
 
 	return `/search?${params.toString()}`;
 }
@@ -652,17 +654,38 @@ function goToPage(page: number) {
           "<span class="font-medium text-foreground">{data.query}</span>"
         </p>
       </div>
-      <select
-        bind:value={sortOrder}
-        class="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={m.search_filter_label_aria()}
-      >
-        <option value="relevance">{m.sort_relevance()}</option>
-        <option value="date_desc">{m.sort_date_newest()}</option>
-        <option value="date_asc">{m.sort_date_oldest()}</option>
-        <option value="name_asc">{m.sort_name_asc()}</option>
-        <option value="name_desc">{m.sort_name_desc()}</option>
-      </select>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <span>Results per page:</span>
+          <select
+            value={pageSize}
+            onchange={(e) => {
+              const val = Number((e.target as HTMLSelectElement).value);
+              pageSize = val;
+              currentPage = 1;
+              goto(buildUrl({ page: "1", limit: String(val) }), { replaceState: true });
+            }}
+            class="rounded-md border border-input bg-background px-2.5 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
+
+        <select
+          bind:value={sortOrder}
+          class="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={m.search_filter_label_aria()}
+        >
+          <option value="relevance">{m.sort_relevance()}</option>
+          <option value="date_desc">{m.sort_date_newest()}</option>
+          <option value="date_asc">{m.sort_date_oldest()}</option>
+          <option value="name_asc">{m.sort_name_asc()}</option>
+          <option value="name_desc">{m.sort_name_desc()}</option>
+        </select>
+      </div>
     </div>
 
     <div class="space-y-3">

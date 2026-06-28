@@ -43,6 +43,13 @@
       "when": 1782148854464,
       "tag": "0005_certain_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782676723557,
+      "tag": "embedding_model_column",
+      "breakpoints": true
     }
   ]
 }

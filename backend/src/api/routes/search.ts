@@ -36,6 +36,18 @@ const searchQuerySchema = z.object({
 	 * is a no-op when graph search is disabled.
 	 */
 	graph: z.coerce.boolean().optional().default(false),
+	/**
+	 * Maximum graph traversal depth (1-3). Default 2 hops. Higher hops
+	 * surface more related documents but with diminishing signal and
+	 * O(branching^hops) cost in AGE.
+	 */
+	graphHops: z.coerce.number().int().min(1).max(3).optional(),
+	/**
+	 * Override for the graph boost weight. Range [0, 2]. When absent,
+	 * falls back to the operator-configured GRAPH_EXPANSION_BOOST
+	 * env var (default 0.3).
+	 */
+	graphBoost: z.coerce.number().min(0).max(2).optional(),
 });
 
 const suggestQuerySchema = z.object({
@@ -52,7 +64,8 @@ const suggestQuerySchema = z.object({
  * (so a doc that matches both semantically AND by graph edges ranks
  * proportionally higher than either signal alone).
  */
-const GRAPH_WEIGHT = 0.3;
+// Graph boost defaults to config.GRAPH_EXPANSION_BOOST and can be
+// overridden per-request via ?graphBoost=N. Read inside the handler.
 
 type RawSearchResult = {
 	id: string;
@@ -117,6 +130,8 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				dateFrom,
 				dateTo,
 				graph,
+				graphHops,
+				graphBoost,
 			} = parsed.data;
 			const q = rawQ ?? "";
 			const offset = (page - 1) * limit;
@@ -175,7 +190,10 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			// search.
 			if (graph) {
 				try {
-					await applyGraphExpansion(userId, merged);
+					await applyGraphExpansion(userId, merged, {
+						maxHops: graphHops ?? 2,
+						boost: graphBoost ?? config.GRAPH_EXPANSION_BOOST,
+					});
 				} catch (err) {
 					logger.warn(
 						{ err },
@@ -323,11 +341,17 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 async function applyGraphExpansion(
 	userId: string,
 	merged: Map<string, SearchResult>,
+	opts: { maxHops?: number; boost?: number } = {},
 ): Promise<void> {
 	const seedIds = Array.from(merged.keys());
 	if (seedIds.length === 0) return;
 
-	const expansion = await expandResults(seedIds, 2);
+	// Per-request boost overrides the env default. Used for both
+	// boosting existing docs and seeding new neighbor scores so the
+	// ranking stays consistent.
+	const boost = opts.boost ?? config.GRAPH_EXPANSION_BOOST;
+
+	const expansion = await expandResults(seedIds, opts.maxHops ?? 2);
 	if (expansion.size === 0) return;
 
 	const newNeighborIds = new Set<string>();
@@ -342,7 +366,7 @@ async function applyGraphExpansion(
 		for (const n of neighbors) {
 			const existing = merged.get(n.docId);
 			if (existing) {
-				existing.score += GRAPH_WEIGHT * existing.score;
+				existing.score += boost * existing.score;
 			}
 		}
 	}
@@ -380,7 +404,7 @@ async function applyGraphExpansion(
 			id: row.id,
 			title: row.title,
 			snippet: content.slice(0, 200),
-			score: GRAPH_WEIGHT,
+			score: boost,
 			folder_id: row.folderId,
 			folder_name: row.folderName,
 			created_at:

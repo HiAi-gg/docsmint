@@ -81,11 +81,36 @@ const envSchema = z.object({
 	GRAPH_EXTRACT_FALLBACK_BASE_URL: z.string().optional(),
 	GRAPH_EXTRACT_FALLBACK_API_KEY: z.string().optional(),
 	GRAPH_EXTRACT_FALLBACK_MODEL: z.string().optional(),
+	// Minimum confidence (0.0–1.0) for entities to be persisted. Entities
+	// extracted by the LLM with confidence strictly below this threshold are
+	// dropped during parsing — they still count as cache misses but never
+	// reach AGE. Default 0.5 keeps moderate-confidence extractions while
+	// discarding speculative ones.
+	GRAPH_EXTRACT_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.5),
 	// Hybrid search weights — applied to the merged text + semantic score.
 	// Both must be in [0, 1]; defaults preserve the historical 0.4 text /
 	// 0.6 semantic balance from the README contract.
+	// Graph-augmented search boost. Multiplier applied to graph-derived
+	// documents when they are merged into a search result list (existing
+	// documents get this same fraction as a multiplicative boost on their
+	// own score, new neighbors get this as their initial score). Default
+	// 0.3 keeps the ranking honest - a graph neighbor scores BELOW a
+	// single semantic match but ABOVE the noise floor. Tune up for
+	// graph-heavy corpora, tune down if graph results crowd out semantic
+	// hits. Range [0, 2]; 0 disables graph boost entirely.
+	GRAPH_EXPANSION_BOOST: z.coerce.number().min(0).max(2).default(0.3),
 	HYBRID_TEXT_WEIGHT: z.coerce.number().min(0).max(1).default(0.4),
 	HYBRID_SEMANTIC_WEIGHT: z.coerce.number().min(0).max(1).default(0.6),
+	// Metadata-triggered re-embed batch caps. When a folder / category /
+	// tag is renamed or deleted, every affected document needs a fresh
+	// embedding because the preamble includes those names. The cap
+	// bounds how many docs can be re-embedded in a single tick so a
+	// rename of a mega-folder doesn't spike embedding costs. Set to 0
+	// to disable the cap (process everything in one go - not recommended
+	// for production with >10k docs per folder).
+	FOLDER_REEMBED_BATCH_SIZE: z.coerce.number().int().min(0).default(100),
+	CATEGORY_REEMBED_BATCH_SIZE: z.coerce.number().int().min(0).default(100),
+	TAG_REEMBED_BATCH_SIZE: z.coerce.number().int().min(0).default(500),
 });
 
 let config: z.infer<typeof envSchema>;

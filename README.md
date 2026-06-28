@@ -14,7 +14,7 @@
 [![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-hiai-docs is a lightweight **self-hosted knowledge base** built for users who want speed, full data ownership, and strong AI capabilities without heavy enterprise overhead. 
+hiai-docs is a lightweight **self-hosted knowledge base** built for users who want speed, full data ownership, and strong AI capabilities without heavy enterprise overhead.
 
 If you are looking for a **local LLM knowledge base** or a **lightweight Outline alternative** / **Docmost alternative**, hiai-docs offers an elegant, **RAG-ready knowledge vault** that automatically generates vector embeddings on every save, supports hybrid semantic search, and provides a clean REST API for AI agent integration.
 
@@ -24,12 +24,15 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 
 - [Features](#features)
 - [Screenshots](#screenshots)
+- [GraphRAG (optional)](#graphrag-optional)
 - [Quick Start](#quick-start)
 - [Stack](#stack)
-- [Comparison](#comparison)
+- [Comparison](#comparison-with-other-self-hosted-solutions)
 - [Project Structure](#project-structure)
 - [Configuration](#configuration)
+- [Embedding Lifecycle](#embedding-lifecycle)
 - [API Documentation](#api-documentation)
+- [Admin API](#admin-api)
 - [Contributing](#contributing)
 - [License](#license)
 - [Related Projects](#related-projects)
@@ -42,26 +45,54 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 ## Features
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
-- **AI-native** — automatic chunking + vector embeddings on every save, with
-  folder / tag / category metadata enriched into the chunk text for sharper
-  semantic recall
-- **Hybrid search** — full-text + pgvector combined with an optional
-  title-first boost (3x multiplier for documents whose title strongly
-  matches the query) and category-aware filtering
-- **Categories** — collapsible sidebar groups that classify folders and
-  documents independently of the folder hierarchy, filterable from the
-  search page
+- **AI-native** — automatic chunking + vector embeddings on every save, with folder / tag / category metadata enriched into the chunk text for sharper semantic recall
+- **System-wide re-embed** — every metadata mutation (tag / folder / category rename or delete) automatically refreshes affected vectors, with Redis-coalesced PATCH-storm dedup so rapid edits never spike embedding costs
+- **Hybrid search** — full-text + pgvector combined with an optional title-first boost (3x multiplier for documents whose title strongly matches the query) and category-aware filtering
+- **GraphRAG (optional)** — entity extraction + AGE graph expansion surfaces related documents beyond vector similarity, gated by feature flags and fully off by default
+- **Categories** — collapsible sidebar groups that classify folders and documents independently of the folder hierarchy, filterable from the search page
 - **Folder hierarchy** — nested folders to organize your documents
-- **Keyboard-first** — `⌘K` QuickSearch, `?` ShortcutHelp, editor shortcuts
-  (`⌘⇧7` toggle markdown, `⌘⇧E` export), and `Esc` to close any dialog
+- **Keyboard-first** — `Ctrl+K` QuickSearch, `?` ShortcutHelp, editor shortcuts (`Ctrl+Shift+7` toggle markdown, `Ctrl+Shift+E` export), and `Esc` to close any dialog
 - **Sharing** — token-protected links with password, expiration, and guest access
-- **Multi-file import** — drag in many `.md` / `.txt` / `.markdown` / `.json`
-  / `.docx` files at once with a per-file progress overlay
-- **Agent-ready** — clean REST API for AI agents (Mastra compatible and others)
+- **Multi-file import** — drag in many `.md` / `.txt` / `.markdown` / `.json` / `.docx` files at once with a per-file progress overlay
+- **Agent-ready** — clean REST API for AI agents (Mastra compatible and others) plus an MCP server
+- **Operator tooling** — admin endpoints for embedding-stats, provider health, targeted reindex, and AGE inventory
 - **Self-hosted** — full data ownership with minimal resource usage
 
 ## Screenshots
 <img width="999" height="594" alt="docs_screenshot" src="https://github.com/user-attachments/assets/1ba409e7-32cf-40d3-ae30-f8369e48cb53" />
+
+---
+
+## GraphRAG (optional)
+
+GraphRAG layers a knowledge graph over the existing vector search. It is optional and off by default — the rest of hiai-docs works exactly the same when GraphRAG is disabled.
+
+### When to enable it
+
+- Your corpus is small but rich in entity relationships (people, projects, concepts cross-referenced across documents).
+- You want search results to surface *related* documents, not just exact and near-exact matches.
+- You are willing to operate an additional PostgreSQL 17 instance with the Apache AGE extension.
+
+### How it works
+
+1. **Extraction** — when `GRAPH_EXTRACT_ENABLED=true`, the embedding worker calls an OpenAI-compatible chat-completion API after every successful embed. The LLM extracts entities and relations from each chunk; entities with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE` (default `0.5`) are persisted to Apache AGE as graph nodes and edges.
+2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, `GET /api/search?graph=true` walks the graph from each merged seed document (1-3 hops, controlled by `?graphHops=N`). Discovered neighbors are merged into the result list with a multiplicative boost of `GRAPH_EXPANSION_BOOST` (default `0.3`).
+3. **Operator tooling** — `GET /api/admin/graph/stats` reports current AGE inventory (node and edge counts).
+
+### Required env vars
+
+```
+GRAPH_EXTRACT_ENABLED=false   # default — set to true to enable extraction
+GRAPH_SEARCH_ENABLED=false    # default — set to true to enable graph search
+GRAPH_EXPANSION_BOOST=0.3      # graph-neighbor boost (0..2)
+GRAPH_EXTRACT_BASE_URL=        # OpenAI-compatible chat-completion URL (REQUIRED — do not rely on EMBEDDING_BASE_URL fallback)
+GRAPH_EXTRACT_API_KEY=
+GRAPH_EXTRACT_MODEL=           # defaults to EMBEDDING_MODEL when unset
+GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
+AGE_DATABASE_URL=              # connection string for the AGE Postgres instance
+```
+
+See [`.env.example`](.env.example) for the full set, including optional `GRAPH_EXTRACT_FALLBACK_*` mirrors.
 
 ---
 
@@ -121,8 +152,8 @@ bun run db:push
 
 # 4. Start api + web on the host, with live reload
 bun run dev
-# vite dev → http://localhost:50701
-# api      → http://localhost:50700
+# vite dev -> http://localhost:50701
+# api      -> http://localhost:50700
 ```
 
 Stop the infra when done: `bun run stop`
@@ -162,6 +193,7 @@ Then verify: `docker ps` should work without `sudo`.
 - **Changes not showing up** — `bun run dev` already wires HMR. If running via Docker, confirm the bind mount is in `docker-compose.dev.yml` (not the prod `docker-compose.yml`, which builds an immutable image).
 - **`bun install` complains about the lockfile** — ensure `bun.lock` is in sync: `bun install`.
 - **Docker `web` build works without paraglide patches** — As of `@inlang/paraglide-js@2.x`, the `@inlang/sdk@2.x` rewrite no longer emits the `data:` URLs that triggered Bun's `NameTooLong` error. The old `sed` patch on `frontend/Dockerfile` was removed. i18n is now driven by `@inlang/paraglide-js@2.x` directly (the SvelteKit adapter is deprecated) via `paraglideVitePlugin` in `vite.config.ts` and `paraglideMiddleware` in `src/hooks.server.ts`.
+- **GraphRAG queries return `available: false`** — confirm `GRAPH_EXTRACT_ENABLED` or `GRAPH_SEARCH_ENABLED` is `true` AND `AGE_DATABASE_URL` is set AND the AGE container is reachable on port 5438.
 
 ---
 
@@ -173,6 +205,7 @@ Then verify: `docker ps` should work without `sudo`.
 | Backend | [Elysia](https://elysiajs.com) 1.4.28+ |
 | ORM | [Drizzle ORM](https://orm.drizzle.team) 0.45.2+ |
 | Database | [PostgreSQL](https://postgresql.org) 18 + [pgvector](https://github.com/pgvector/pgvector) |
+| Graph database (optional) | [Apache AGE](https://age.apache.org) on PostgreSQL 17 |
 | Cache | [Redis](https://redis.io) 8.6+ |
 | Auth | [Better Auth](https://better-auth.com) |
 | Frontend | [SvelteKit](https://kit.svelte.dev) 2.60+ |
@@ -207,7 +240,7 @@ hiai-docs/
 ├── backend/              # Elysia REST API
 │   ├── src/
 │   │   ├── api/          # Routes + middleware
-│   │   ├── lib/          # Shared utilities
+│   │   ├── lib/          # Shared utilities (includes reembed.ts)
 │   │   ├── embedding/    # Embedding pipeline
 │   │   └── index.ts      # Entry point
 │   ├── package.json
@@ -251,8 +284,71 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `EMBEDDING_API_KEY` | — | API key for embedding service (leave empty for local inference) |
 | `EMBEDDING_MODEL` | — | Embedding model name |
 | `CORS_ORIGINS` | http://localhost:50701 | Comma-separated allowed origins (required for local dev) |
+| `GRAPH_EXTRACT_ENABLED` | false | Enable LLM entity extraction into AGE |
+| `GRAPH_SEARCH_ENABLED` | false | Enable graph-neighbor expansion in search |
+| `GRAPH_EXPANSION_BOOST` | 0.3 | Multiplier on graph-neighbor scores (0..2) |
+| `FOLDER_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per folder mutation |
+| `CATEGORY_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per category mutation |
+| `TAG_REEMBED_BATCH_SIZE` | 500 | Cap on docs re-embedded per tag mutation |
 
-See `.env.example` for full list of all configuration variables.
+See [`.env.example`](.env.example) for the full list with comments and defaults.
+
+---
+
+## Embedding Lifecycle
+
+Every document save triggers an embedding pipeline that produces chunk-level vectors and (optionally) graph entities. The pipeline is best-effort — failures never block document saves, but they do leave stale vectors that the operator must refresh explicitly.
+
+### When re-embed fires automatically
+
+| Trigger | Behavior |
+|---------|----------|
+| Document create / update (content or title change) | Hash-aware incremental re-embed via `enqueueReembed`; changed chunks and their overlap neighbors are re-embedded, unchanged chunks keep their vectors |
+| Tag rename | All documents carrying the tag re-embed via `reembedDocsByTag` |
+| Tag delete | All documents carrying the tag re-embed |
+| Tag added / removed from a document | That document re-embeds |
+| Folder rename / delete | All documents in the folder re-embed via `reembedDocsInFolder` |
+| Category rename / delete | All documents directly attached to the category, plus documents in folders attached to it, re-embed via `reembedDocsInCategory` |
+
+The single entry point is `backend/src/lib/reembed.ts`. All helpers coalesce rapid PATCH / auto-save / toggle storms via a Redis `SET NX EX 5` dedup slot — a burst of rapid PATCHes on the same document results in a single worker tick.
+
+### Batch caps
+
+Each metadata-triggered re-embed is bounded by an env var so a rename of a mega-folder cannot spike embedding costs in a single tick. Remaining documents are refreshed on their next edit.
+
+| Env var | Default | Scope |
+|---------|---------|-------|
+| `FOLDER_REEMBED_BATCH_SIZE` | `100` | `reembedDocsInFolder` |
+| `CATEGORY_REEMBED_BATCH_SIZE` | `100` | `reembedDocsInCategory` |
+| `TAG_REEMBED_BATCH_SIZE` | `500` | `reembedDocsByTag` |
+
+Set any of these to `0` to disable the cap (re-embed everything in a single tick — not recommended for production with more than 10k documents per folder).
+
+### Manual reindex (operator)
+
+Use the admin endpoints for bulk re-embed that does not fit the metadata-trigger surface:
+
+```bash
+# Preview affected docs before committing (always do this first)
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/model?dryRun=true"
+
+# Commit: re-embed every doc whose stored embedding_model does not match the current EMBEDDING_MODEL
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/model"
+
+# Bulk re-embed a folder or tag
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/folder/$FOLDER_ID"
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/tag/$TAG_ID"
+
+# Force re-embed a single doc
+curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
+  "http://localhost:50700/api/admin/reindex/$DOC_ID"
+```
+
+All admin endpoints support `?dryRun=true` to return the affected count without enqueuing. See [docs/API.md](docs/API.md#admin) for the full surface.
 
 ---
 
@@ -264,6 +360,7 @@ Key endpoints:
 - `POST /api/documents` — Create document
 - `GET /api/documents/:id` — Get document with tags
 - `GET /api/search?q=query` — Hybrid full-text + semantic search
+- `GET /api/search?graph=true&graphHops=2&graphBoost=0.3` — Graph-augmented search (requires `GRAPH_SEARCH_ENABLED=true`)
 - `POST /api/share` — Create share link
 - `GET /api/share/:token` — Access shared content (public)
 - `POST /api/documents/:id/attachments` — Upload image
@@ -273,11 +370,39 @@ Full API documentation available in [docs/API.md](docs/API.md).
 
 ---
 
+## Admin API
+
+The admin surface at `/api/admin` provides operator-only endpoints for embedding pipeline observability, bulk reindex, and graph inventory. All endpoints require the static `HIAI_DOCS_API_KEY` via the `x-api-key` header (or `Authorization: Bearer`).
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/admin/embedding-stats` | Total chunks, distinct docs with embeddings, zero-vector (provider-failed) chunks |
+| `GET /api/admin/health/embeddings` | Live probe of the configured embedding provider (returns `ok` / `degraded` / `not-configured`) |
+| `POST /api/admin/reindex/:docId` | Force re-embed one document |
+| `POST /api/admin/reindex/model?dryRun=true` | Targeted re-embed for embedding-model mismatch |
+| `POST /api/admin/reindex/folder/:folderId?dryRun=true` | Bulk re-embed a folder (cross-user, operator scope) |
+| `POST /api/admin/reindex/tag/:tagId?dryRun=true` | Bulk re-embed a tag (cross-user, operator scope) |
+| `GET /api/admin/graph/stats` | Apache AGE inventory (node and edge counts) |
+
+Full request/response schemas in [docs/API.md](docs/API.md#admin).
+
+### Quick health check
+
+```bash
+# Pipeline observability
+curl -H "x-api-key: $HIAI_DOCS_API_KEY" http://localhost:50700/api/admin/embedding-stats
+
+# Live provider probe (returns ok / degraded / not-configured)
+curl -H "x-api-key: $HIAI_DOCS_API_KEY" http://localhost:50700/api/admin/health/embeddings
+```
+
+---
+
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'feat: add amazing feature'`)
+3. Commit changes (`git commit -m "feat: add amazing feature"`)
 4. Push to branch (`git push origin feature/amazing`)
 5. Open a Pull Request
 
@@ -288,6 +413,7 @@ Full API documentation available in [docs/API.md](docs/API.md).
 - **TypeScript strict** — no `any`
 - **English only** — code, comments, docs, commits
 - **No Playwright** — use agent-browser for E2E
+- **Re-embed invariant** — metadata mutations route through `backend/src/lib/reembed.ts`
 
 ---
 

@@ -168,10 +168,12 @@ export async function embedDocument(
 	const results: EmbeddingChunk[] = [];
 	for (let i = 0; i < chunks.length; i += 5) {
 		const batch = chunks.slice(i, i + 5);
-		const batchEmbeddings = await Promise.all(batch.map(getEmbedding));
+		const batchEmbeddings = await Promise.all(
+			batch.map((chunk) => getEmbedding(chunk.text)),
+		);
 		for (let j = 0; j < batchEmbeddings.length; j++) {
 			results.push({
-				chunkText: batch[j]!,
+				chunkText: batch[j]!.text,
 				embedding: batchEmbeddings[j]!,
 			});
 		}

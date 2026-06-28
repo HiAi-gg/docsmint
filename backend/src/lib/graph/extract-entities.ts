@@ -43,11 +43,15 @@ export type RelationType = (typeof RELATION_TYPES)[number];
 export interface ExtractedRelationship {
 	targetName: string;
 	relationType: RelationType;
+	/** Confidence score 0.0–1.0 returned by the LLM. Optional for back-compat. */
+	confidence?: number;
 }
 
 export interface ExtractedEntity {
 	name: string;
 	type: EntityType;
+	/** Confidence score 0.0–1.0 returned by the LLM. Optional for back-compat. */
+	confidence?: number;
 	relationships: ExtractedRelationship[];
 }
 
@@ -69,6 +73,83 @@ export interface ExtractEntitiesOptions {
 const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_TEMPERATURE = 0;
 const CHAT_TIMEOUT_MS = 30_000;
+
+/**
+ * Global deduplication: TTL'd cache of recently extracted entities.
+ * Skips LLM call for entity names seen recently with high confidence (>= 0.7).
+ *
+ * This is a process-local cache (Map). Across processes / restarts the cache
+ * is cold — which is fine because extraction is idempotent and AGE MERGEs
+ * are safe to re-run. The cache bounds repeated chunks within a single
+ * embedding batch (the same paragraph quoted in two consecutive chunks)
+ * from triggering redundant LLM calls.
+ */
+const gDedupCache = new Map<string, { confidence: number; ts: number }>();
+const GDEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const GDEDUP_MIN_CONFIDENCE = 0.7;
+
+function getCachedEntity(name: string, type: string): ExtractedEntity | null {
+	const key = `${type}:${name.toLowerCase()}`;
+	const cached = gDedupCache.get(key);
+	if (cached && Date.now() - cached.ts < GDEDUP_TTL_MS) {
+		return {
+			name,
+			type: type as EntityType,
+			confidence: cached.confidence,
+			relationships: [],
+		};
+	}
+	return null;
+}
+
+function setCachedEntity(name: string, type: string, confidence: number): void {
+	const key = `${type}:${name.toLowerCase()}`;
+	gDedupCache.set(key, { confidence, ts: Date.now() });
+	// Soft-bound the cache size: when it grows past the cap, evict everything
+	// past TTL. Cheaper than per-write LRU bookkeeping and good enough for
+	// the expected scale (a few thousand entities per process lifetime).
+	if (gDedupCache.size > 10_000) {
+		const now = Date.now();
+		for (const [k, v] of gDedupCache) {
+			if (now - v.ts > GDEDUP_TTL_MS) gDedupCache.delete(k);
+		}
+	}
+}
+
+/**
+ * Test-only: drop all cached entries. Tests that import this module
+ * after a previous extraction may want a clean cache to assert behavior
+ * deterministically. Not part of the public API.
+ */
+export function _resetDedupCacheForTests(): void {
+	gDedupCache.clear();
+}
+
+/**
+ * Test-only: look up an entity in the dedup cache. Used by unit tests
+ * to assert the cache was populated correctly. Returns the cached
+ * confidence (or undefined if absent / expired). Not part of the
+ * public API.
+ */
+export function _peekCachedEntityForTests(
+	name: string,
+	type: string,
+): { confidence: number; ts: number } | undefined {
+	const key = `${type}:${name.toLowerCase()}`;
+	return gDedupCache.get(key);
+}
+
+/**
+ * Test-only: parse a raw LLM response into typed entities. Mirrors the
+ * behavior of the private parser used during extraction so unit tests
+ * can assert confidence-filtering and cache-writing logic without
+ * standing up a live LLM endpoint. Not part of the public API.
+ */
+export function _parseExtractionResponseForTests(
+	raw: string,
+): ExtractedEntity[] {
+	return parseExtractionResponse(raw);
+}
 
 /**
  * Extract entities from a single document chunk and persist them to AGE.
@@ -152,11 +233,27 @@ const SYSTEM_PROMPT = [
 	"Allowed entity types: Person, Organization, Concept, Location, Topic.",
 	"Allowed relationship types: MENTIONS, REFERENCES, RELATED_TO, AUTHORED_BY.",
 	"",
+	"For each entity AND relationship, assign a confidence score from 0.0 (unsure) to 1.0 (certain):",
+	"  - 1.0: Explicitly named in text, unambiguous.",
+	"  - 0.7-0.9: Clearly implied by context.",
+	"  - 0.4-0.6: Reasonable inference but could be wrong.",
+	"  - 0.0-0.3: Speculative — omit unless no other entities exist.",
+	"",
 	'Return ONLY a JSON object of the form {"entities":[...]} — no prose, no markdown fences.',
-	'Each entity: {"name": string, "type": <one of the allowed types>, "relationships": [...]}',
-	'Each relationship: {"targetName": string, "relationType": <one of the allowed types>}',
+	'Each entity: {"name": string, "type": <one of the allowed types>, "confidence": number, "relationships": [...]}',
+	'Each relationship: {"targetName": string, "relationType": <one of the allowed types>, "confidence": number}',
 	"Skip entities you cannot classify into the allowed types. Skip relationships whose target you cannot name.",
 	"Limit to at most 10 entities and 20 relationships per chunk to keep the response compact.",
+	"",
+	'Example — for the text "Apple Inc. released the iPhone 15 in 2023, led by CEO Tim Cook":',
+	'{"entities":[',
+	'  {"name":"Apple Inc.","type":"Organization","confidence":1.0,"relationships":[',
+	'    {"targetName":"iPhone 15","relationType":"REFERENCES","confidence":1.0},',
+	'    {"targetName":"Tim Cook","relationType":"AUTHORED_BY","confidence":0.8}',
+	"  ]},",
+	'  {"name":"iPhone 15","type":"Product","confidence":1.0,"relationships":[]},',
+	'  {"name":"Tim Cook","type":"Person","confidence":1.0,"relationships":[]}',
+	"]}",
 ].join("\n");
 
 /**
@@ -315,6 +412,7 @@ function parseExtractionResponse(raw: string): ExtractedEntity[] {
 
 	const out: ExtractedEntity[] = [];
 	const seen = new Set<string>();
+	const minConf = config.GRAPH_EXTRACT_MIN_CONFIDENCE;
 	for (const entry of entities) {
 		if (!entry || typeof entry !== "object") continue;
 		const e = entry as Record<string, unknown>;
@@ -328,11 +426,27 @@ function parseExtractionResponse(raw: string): ExtractedEntity[] {
 		if (seen.has(key)) continue;
 		seen.add(key);
 
+		// Clamp confidence into [0, 1] and drop entries below the configured
+		// threshold. Undefined (LLM didn't supply a score) is kept — we don't
+		// know enough to discard it, and the AGE writer handles undefined by
+		// omitting the confidence property.
+		const confidence =
+			typeof e.confidence === "number"
+				? Math.max(0, Math.min(1, e.confidence))
+				: undefined;
+		if (confidence !== undefined && confidence < minConf) continue;
+
 		out.push({
 			name,
 			type,
+			confidence,
 			relationships: parseRelationships(e.relationships),
 		});
+
+		// Cache entity for dedup when confidence is high enough.
+		if (confidence !== undefined && confidence >= GDEDUP_MIN_CONFIDENCE) {
+			setCachedEntity(name, type, confidence);
+		}
 	}
 	return out;
 }
@@ -349,7 +463,11 @@ function parseRelationships(value: unknown): ExtractedRelationship[] {
 			typeof rec.relationType === "string" ? rec.relationType : "";
 		if (!targetName) continue;
 		if (!isRelationType(relationType)) continue;
-		out.push({ targetName, relationType });
+		const confidence =
+			typeof rec.confidence === "number"
+				? Math.max(0, Math.min(1, rec.confidence))
+				: undefined;
+		out.push({ targetName, relationType, confidence });
 	}
 	return out;
 }
@@ -419,12 +537,13 @@ async function persistEntities(
 	for (const ent of entities) {
 		const label = ent.type;
 		const name = ent.name;
+		const conf = ent.confidence;
 		await sql`
-			SELECT * FROM cypher('docs_graph', ${entityUpsertCypher(label, name, nowIso)}) AS (result agtype)
+			SELECT * FROM cypher('docs_graph', ${entityUpsertCypher(documentId, label, name, nowIso, conf)}) AS (result agtype)
 		`;
 
 		await sql`
-			SELECT * FROM cypher('docs_graph', ${documentEntityEdgeCypher(documentId, label, name)}) AS (result agtype)
+			SELECT * FROM cypher('docs_graph', ${documentEntityEdgeCypher(documentId, label, name, conf)}) AS (result agtype)
 		`;
 	}
 
@@ -437,6 +556,7 @@ async function persistEntities(
 				ent.name,
 				rel.targetName,
 				rel.relationType,
+				rel.confidence,
 			);
 			await sql`
 				SELECT * FROM cypher('docs_graph', ${cypher}) AS (result agtype)
@@ -450,41 +570,59 @@ async function persistEntities(
  * The label is inlined from a fixed enum (safe from injection); the name and
  * timestamp are passed as Cypher `$param` placeholders because AGE's
  * parameterized Cypher substitutes them safely.
+ *
+ * `confidence` (0.0–1.0) is stored on the vertex:
+ *   - on CREATE we set the initial score
+ *   - on MATCH we keep the highest observed score via GREATEST so repeated
+ *     sightings can't dilute a strong extraction with a weak one
  */
 function entityUpsertCypher(
+	docId: string,
+
 	label: string,
 	name: string,
 	nowIso: string,
+	confidence: number | undefined,
 ): string {
+	const confLiteral =
+		typeof confidence === "number" ? JSON.stringify(confidence) : "null";
 	return `
 		MERGE (e:\`${label}\` {name: $name})
-		ON CREATE SET e.created_at = $now, e.first_seen_doc = $docId
-		ON MATCH SET e.last_seen_doc = $docId
+		ON CREATE SET e.created_at = $now, e.first_seen_doc = $docId, e.confidence = $conf
+		ON MATCH SET e.last_seen_doc = $docId, e.confidence = GREATEST(COALESCE(e.confidence, 0), $conf)
 		RETURN e.name
 	`
 		.replace("$name", JSON.stringify(name))
 		.replace("$now", JSON.stringify(nowIso))
-		.replace("$docId", JSON.stringify("")); // placeholder, unused
+		.replace("$docId", JSON.stringify(docId))
+		.replace("$conf", confLiteral);
 }
 
 /**
- * Connect a Document to an entity via a MENTIONS edge.
+ * Connect a Document to an entity via a MENTIONS edge. The edge stores
+ * the source confidence (if provided) so downstream graph expansion can
+ * weight high-confidence MENTIONS edges higher.
  */
 function documentEntityEdgeCypher(
 	docId: string,
 	label: string,
 	name: string,
+	confidence: number | undefined,
 ): string {
+	const confLiteral =
+		typeof confidence === "number" ? JSON.stringify(confidence) : "null";
 	return `
 		MATCH (d:Document {id: $docId})
 		MATCH (e:\`${label}\` {name: $name})
 		MERGE (d)-[r:MENTIONS]->(e)
-		ON CREATE SET r.created_at = $now
+		ON CREATE SET r.created_at = $now, r.confidence = $conf
+		ON MATCH SET r.confidence = GREATEST(COALESCE(r.confidence, 0), $conf)
 		RETURN r
 	`
 		.replace("$docId", JSON.stringify(docId))
 		.replace("$name", JSON.stringify(name))
-		.replace("$now", JSON.stringify(new Date().toISOString()));
+		.replace("$now", JSON.stringify(new Date().toISOString()))
+		.replace("$conf", confLiteral);
 }
 
 /**
@@ -493,13 +631,19 @@ function documentEntityEdgeCypher(
  * labels. If the target doesn't exist, the MATCH returns no rows and the
  * MERGE is a no-op — callers shouldn't assume all declared relationships
  * will materialize.
+ *
+ * Edge confidence is propagated from the LLM-extracted relationship score,
+ * using GREATEST on re-sightings so the edge keeps the strongest signal.
  */
 function entityRelationCypher(
 	sourceLabel: string,
 	sourceName: string,
 	targetName: string,
 	relationType: string,
+	confidence: number | undefined,
 ): string {
+	const confLiteral =
+		typeof confidence === "number" ? JSON.stringify(confidence) : "null";
 	return `
 		MATCH (a:\`${sourceLabel}\` {name: $source})
 		MATCH (b)
@@ -509,10 +653,12 @@ function entityRelationCypher(
 		   OR (b:Location {name: $target}) IS NOT NULL
 		   OR (b:Topic {name: $target}) IS NOT NULL
 		MERGE (a)-[r:\`${relationType}\`]->(b)
-		ON CREATE SET r.created_at = $now
+		ON CREATE SET r.created_at = $now, r.confidence = $conf
+		ON MATCH SET r.confidence = GREATEST(COALESCE(r.confidence, 0), $conf)
 		RETURN r
 	`
 		.replace("$source", JSON.stringify(sourceName))
 		.replace("$target", JSON.stringify(targetName))
-		.replace("$now", JSON.stringify(new Date().toISOString()));
+		.replace("$now", JSON.stringify(new Date().toISOString()))
+		.replace("$conf", confLiteral);
 }

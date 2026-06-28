@@ -5,8 +5,8 @@ import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
 import { invalidateDocCache } from "../../lib/doc-cache";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
+import { enqueueReembed, reembedDocsByTag } from "../../lib/reembed";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
 const createTagSchema = z.object({
@@ -130,6 +130,18 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				set.status = 404;
 				return { error: "Tag not found" };
 			}
+
+			// Re-embed every document linked to this tag if its name changed
+			// (the tag name is part of the embedding preamble).
+			if (body.data.name !== undefined) {
+				reembedDocsByTag(params.id).catch((err: unknown) =>
+					logger.warn(
+						{ err, tagId: params.id },
+						"Failed to re-embed documents after tag rename",
+					),
+				);
+			}
+
 			return updated;
 		} catch (err) {
 			logger.error({ err }, "Failed to update tag");
@@ -153,9 +165,29 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Unauthorized" };
 		}
 		try {
+			// Resolve affected doc ids BEFORE the tag is deleted. We re-embed
+			// after a successful delete so the removed tag stops appearing in
+			// the embedding preamble of every document it was on.
+			const affectedDocs = await db
+				.select({ documentId: documentTags.documentId })
+				.from(documentTags)
+				.where(eq(documentTags.tagId, params.id));
+
 			await db
 				.delete(tags)
 				.where(and(eq(tags.id, params.id), eq(tags.ownerId, userId)));
+
+			{
+				const ids = Array.from(new Set(affectedDocs.map((r) => r.documentId)));
+				const enqueued = await enqueueReembed(ids);
+				if (enqueued > 0) {
+					logger.info(
+						{ tagId: params.id, enqueued },
+						"Tag deleted - re-embedding affected documents",
+					);
+				}
+			}
+
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete tag");
@@ -199,7 +231,9 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				tagId: body.data.tagId,
 			});
 			// Re-embed so the new tag name appears in the embedding preamble.
-			enqueueEmbedding(params.id);
+			// enqueueReembed gives us per-doc Redis SET-NX dedup shared
+			// with the rest of the metadata-driven re-embed triggers.
+			enqueueReembed([params.id]);
 			invalidateDocCache(params.id);
 			set.status = 201;
 			return { success: true };
@@ -244,7 +278,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 					),
 				);
 			// Re-embed so the removed tag is no longer in the preamble.
-			enqueueEmbedding(params.id);
+			// enqueueReembed gives us per-doc Redis SET-NX dedup.
+			enqueueReembed([params.id]);
 			invalidateDocCache(params.id);
 			return { success: true };
 		} catch (err) {

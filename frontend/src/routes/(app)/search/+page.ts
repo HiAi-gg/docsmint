@@ -30,6 +30,10 @@ export const load: PageLoad = async ({ url }) => {
 		1,
 		Number.parseInt(url.searchParams.get("page") ?? "1", 10),
 	);
+	const limit = Math.max(
+		1,
+		Number.parseInt(url.searchParams.get("limit") ?? "5", 10),
+	);
 
 	return {
 		query: q,
@@ -41,5 +45,6 @@ export const load: PageLoad = async ({ url }) => {
 			dateTo: dateTo || undefined,
 		},
 		page,
+		limit,
 	};
 };

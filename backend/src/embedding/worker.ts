@@ -6,7 +6,8 @@ import {
 	folders,
 	tags,
 } from "@hiai-docs/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
 import { db } from "../lib/db";
@@ -91,19 +92,121 @@ async function processDocument(documentId: string): Promise<void> {
 			return;
 		}
 
-		await db.transaction(async (tx) => {
-			await tx
-				.delete(documentEmbeddings)
-				.where(eq(documentEmbeddings.documentId, documentId));
+		// Incremental re-embed: fetch existing chunk hashes, decide which
+		// chunks changed (hash mismatch), expand to neighbor chunks so the
+		// overlap regions stay consistent with their neighbors, then delete
+		// + reinsert only the affected slice. Unchanged chunks stay put and
+		// keep their original embeddings — full re-embed was O(N) embeddings
+		// per document save, this is O(changed + 2·changed).
+		const existing = await db
+			.select({
+				chunkIndex: documentEmbeddings.chunkIndex,
+				chunkHash: documentEmbeddings.chunkHash,
+			})
+			.from(documentEmbeddings)
+			.where(eq(documentEmbeddings.documentId, documentId));
 
-			const rows = embeddings.map(({ chunkText, embedding }, index) => ({
+		const existingByIndex = new Map(
+			existing.map((e) => [e.chunkIndex, e.chunkHash]),
+		);
+
+		// A chunk "changed" when its hash differs from the stored hash at
+		// the same index. New chunks have no stored hash yet (treat as
+		// changed), chunks missing from the new set (orphan indices) are
+		// handled separately below.
+		const changedIndices = new Set<number>();
+		for (let i = 0; i < embeddings.length; i++) {
+			const chunk = embeddings[i];
+			if (!chunk) continue;
+			const newHash = chunkHash(chunk.chunkText);
+			const oldHash = existingByIndex.get(i);
+			if (oldHash !== newHash) changedIndices.add(i);
+		}
+
+		// Include the immediate neighbors of each changed chunk so the
+		// overlap tail stays semantically consistent with both sides of the
+		// boundary. Without this, an unchanged chunk that shares overlap
+		// text with a changed chunk would still hold a stale embedding.
+		const affectedIndices = new Set<number>();
+		for (const idx of changedIndices) {
+			affectedIndices.add(idx);
+			if (idx > 0) affectedIndices.add(idx - 1);
+			if (idx < embeddings.length - 1) affectedIndices.add(idx + 1);
+		}
+
+		logger.info(
+			{
 				documentId,
-				chunkIndex: index,
-				chunkText,
-				embedding,
-			}));
+				totalChunks: embeddings.length,
+				changed: changedIndices.size,
+				affected: affectedIndices.size,
+			},
+			"Incremental re-embed",
+		);
 
-			await tx.insert(documentEmbeddings).values(rows);
+		await db.transaction(async (tx) => {
+			// Orphan cleanup: if the new chunk count is smaller than the
+			// stored count, the trailing old chunks point at text that no
+			// longer exists. Delete them so they don't leak into search
+			// results or inflate the embedding count.
+			const orphanIndices = existing
+				.map((e) => e.chunkIndex)
+				.filter((idx) => idx >= embeddings.length);
+			if (orphanIndices.length > 0) {
+				await tx
+					.delete(documentEmbeddings)
+					.where(
+						and(
+							eq(documentEmbeddings.documentId, documentId),
+							inArray(documentEmbeddings.chunkIndex, orphanIndices),
+						),
+					);
+			}
+
+			// Delete affected slices in place. We delete by (documentId,
+			// chunkIndex) rather than by a wide WHERE because the
+			// unique index makes this O(1) per row.
+			for (const idx of affectedIndices) {
+				await tx
+					.delete(documentEmbeddings)
+					.where(
+						and(
+							eq(documentEmbeddings.documentId, documentId),
+							eq(documentEmbeddings.chunkIndex, idx),
+						),
+					);
+			}
+
+			// Reinsert only the affected slices. Skip indices that don't
+			// exist in the new chunk set (those are handled by the orphan
+			// cleanup above — they were deleted and should not reappear).
+			const rows: Array<{
+				documentId: string;
+				chunkIndex: number;
+				chunkText: string;
+				chunkHash: string;
+				embedding: number[];
+				embeddingModel: string;
+			}> = [];
+			for (const idx of affectedIndices) {
+				const chunk = embeddings[idx];
+				if (!chunk) continue;
+				rows.push({
+					documentId,
+					chunkIndex: idx,
+					chunkText: chunk.chunkText,
+					chunkHash: chunkHash(chunk.chunkText),
+					embedding: chunk.embedding,
+					// Record which embedding model produced this vector. Empty string
+					// means EMBEDDING_MODEL was not configured when this row was
+					// written (semantic search was disabled) - those rows are also
+					// candidates for targeted reindex once a model becomes available.
+					embeddingModel: config.EMBEDDING_MODEL ?? "",
+				});
+			}
+			if (rows.length > 0) {
+				await tx.insert(documentEmbeddings).values(rows);
+			}
 		});
 
 		// Bump the chunks counter AFTER the transaction commits so the

@@ -395,7 +395,15 @@ export const documentEmbeddings = pgTable(
       .references(() => documents.id, { onDelete: "cascade" }),
     chunkIndex: bigint("chunk_index", { mode: "number" }).notNull(),
     chunkText: text("chunk_text").notNull(),
+    chunkHash: text("chunk_hash"),
     embedding: vector("embedding"),
+    // Identifier of the embedding model that produced the vector above.
+    // Empty string ("") means "unknown / legacy row" (pre-v1 rows that
+    // existed before this column was introduced). The targeted reindex
+    // endpoint at POST /api/admin/reindex/model filters on this column
+    // to refresh only docs whose stored model does not match the
+    // currently-configured EMBEDDING_MODEL.
+    embeddingModel: text("embedding_model").notNull().default(""),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
