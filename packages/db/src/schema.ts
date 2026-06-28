@@ -151,6 +151,7 @@ export const documents = pgTable(
     content: text("content").default(""),
     contentJson: jsonb("content_json"),
     metadata: jsonb("metadata"),
+    contentHash: text("content_hash"),  // SHA-256 of title+content for smart re-embed
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
     ),

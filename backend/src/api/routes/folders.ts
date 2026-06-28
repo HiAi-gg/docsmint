@@ -4,6 +4,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
+import { invalidateDocListCache } from "../../lib/doc-cache";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { writeRateLimiter } from "../middleware/rate-limit";
@@ -319,6 +320,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						"Failed to enqueue re-embedding for folder rename",
 					),
 				);
+				invalidateDocListCache(userId);
 			}
 
 			return updated;

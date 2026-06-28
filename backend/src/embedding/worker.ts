@@ -7,6 +7,7 @@ import {
 	tags,
 } from "@hiai-docs/db/schema";
 import { eq } from "drizzle-orm";
+import { contentHash } from "../lib/content-hash";
 import { db } from "../lib/db";
 import { logger } from "../lib/logger";
 import { redis } from "../lib/redis";
@@ -95,6 +96,13 @@ async function processDocument(documentId: string): Promise<void> {
 
 			await tx.insert(documentEmbeddings).values(rows);
 		});
+
+		// Update content hash so future edits can skip re-embed if content unchanged
+		const hash = contentHash(doc.title, content);
+		await db
+			.update(documents)
+			.set({ contentHash: hash })
+			.where(eq(documents.id, documentId));
 
 		logger.info(
 			{

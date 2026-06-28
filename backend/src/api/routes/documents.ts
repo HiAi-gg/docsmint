@@ -9,7 +9,15 @@ import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getSessionUserId } from "../../lib/auth-helpers";
+import { contentHash } from "../../lib/content-hash";
 import { db } from "../../lib/db";
+import {
+	cacheGetOrSet,
+	docListKey,
+	docSingleKey,
+	invalidateDocCache,
+	invalidateDocListCache,
+} from "../../lib/doc-cache";
 import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
@@ -195,17 +203,57 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const { folderId, tag, page, limit } = parsed.data;
 		const offset = (page - 1) * limit;
+		const cacheKey = docListKey(userId, folderId, tag, page, limit);
 		try {
-			const conditions = [eq(documents.ownerId, userId)];
-			if (folderId) conditions.push(eq(documents.folderId, folderId));
+			return await cacheGetOrSet(cacheKey, 30, async () => {
+				const conditions = [eq(documents.ownerId, userId)];
+				if (folderId) conditions.push(eq(documents.folderId, folderId));
 
-			if (tag) {
+				if (tag) {
+					const [countResult, rows] = await Promise.all([
+						db
+							.select({ total: count() })
+							.from(documents)
+							.innerJoin(
+								documentTags,
+								eq(documents.id, documentTags.documentId),
+							)
+							.where(and(eq(documentTags.tagId, tag), ...conditions)),
+						db
+							.select({
+								id: documents.id,
+								title: documents.title,
+								content: sql<string>`LEFT(${documents.content}, 200)`.as(
+									"content",
+								),
+								folderId: documents.folderId,
+								categoryId: documents.categoryId,
+								createdAt: documents.createdAt,
+								updatedAt: documents.updatedAt,
+							})
+							.from(documents)
+							.innerJoin(
+								documentTags,
+								eq(documents.id, documentTags.documentId),
+							)
+							.where(and(eq(documentTags.tagId, tag), ...conditions))
+							.orderBy(desc(documents.updatedAt))
+							.limit(limit)
+							.offset(offset),
+					]);
+					return {
+						items: await withTags(rows),
+						total: countResult[0]?.total ?? 0,
+						page,
+						limit,
+					};
+				}
+
 				const [countResult, rows] = await Promise.all([
 					db
 						.select({ total: count() })
 						.from(documents)
-						.innerJoin(documentTags, eq(documents.id, documentTags.documentId))
-						.where(and(eq(documentTags.tagId, tag), ...conditions)),
+						.where(and(...conditions)),
 					db
 						.select({
 							id: documents.id,
@@ -219,8 +267,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							updatedAt: documents.updatedAt,
 						})
 						.from(documents)
-						.innerJoin(documentTags, eq(documents.id, documentTags.documentId))
-						.where(and(eq(documentTags.tagId, tag), ...conditions))
+						.where(and(...conditions))
 						.orderBy(desc(documents.updatedAt))
 						.limit(limit)
 						.offset(offset),
@@ -231,35 +278,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					page,
 					limit,
 				};
-			}
-
-			const [countResult, rows] = await Promise.all([
-				db
-					.select({ total: count() })
-					.from(documents)
-					.where(and(...conditions)),
-				db
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
-						folderId: documents.folderId,
-						categoryId: documents.categoryId,
-						createdAt: documents.createdAt,
-						updatedAt: documents.updatedAt,
-					})
-					.from(documents)
-					.where(and(...conditions))
-					.orderBy(desc(documents.updatedAt))
-					.limit(limit)
-					.offset(offset),
-			]);
-			return {
-				items: await withTags(rows),
-				total: countResult[0]?.total ?? 0,
-				page,
-				limit,
-			};
+			});
 		} catch (err) {
 			logger.error({ err }, "Failed to list documents");
 			set.status = 500;
@@ -297,13 +316,15 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// editor), generate the JSON server-side so the editor opens
 			// with formatted content rather than the raw markdown source
 			// the next time the document is opened. `markdownToDocJson`
-			// returns `null` for empty input or on parse failure, in which
-			// case we simply persist the markdown without a JSON view — the
-			// frontend's `markdownToJson` helper will recover on load.
+			// is CPU-intensive (marked.parse + generateJSON), so we defer
+			// it to a background microtask — the POST response returns
+			// immediately with `contentJson: null` and the frontend
+			// falls back to markdown rendering until the background update
+			// lands. The eventual update only writes the JSON view; the
+			// markdown `content` is the source of truth.
 			const initialContent = body.data.content ?? "";
-			const initialDocJson = initialContent
-				? await markdownToDocJson(initialContent)
-				: null;
+			// Defer TipTap JSON generation — return response first, generate in background
+			const initialDocJson = null;
 			const folderId = body.data.folderId ?? null;
 			let categoryId = body.data.categoryId ?? null;
 			if (folderId && !categoryId) {
@@ -326,14 +347,44 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Failed to create document" };
 			}
 
+			// Fire-and-forget: generate TipTap JSON in the background.
+			// Mirrors the `maybePruneVersions(...).catch(...)` pattern used
+			// in the PATCH handler — the response returns immediately with
+			// `contentJson: null`, and a follow-up UPDATE writes the JSON
+			// view once `markdownToDocJson` resolves. Errors are logged but
+			// never surface to the client; the markdown `content` is the
+			// authoritative source and the frontend's `markdownToJson`
+			// helper can reconstruct the JSON view on demand.
+			if (initialContent) {
+				const capturedDocId = created.id;
+				const capturedContent = initialContent;
+				Promise.resolve().then(async () => {
+					try {
+						const json = await markdownToDocJson(capturedContent);
+						if (json) {
+							await db
+								.update(documents)
+								.set({ contentJson: json })
+								.where(eq(documents.id, capturedDocId));
+						}
+					} catch (err) {
+						logger.warn(
+							{ err, docId: capturedDocId },
+							"Background TipTap JSON generation failed",
+						);
+					}
+				});
+			}
+
 			await db.insert(versions).values({
 				documentId: created.id,
 				content: initialContent,
-				contentJson: initialDocJson,
+				contentJson: null,
 				createdBy: userId,
 			});
 
 			enqueueEmbedding(created.id);
+			invalidateDocListCache(userId);
 			set.status = 201;
 			return created;
 		} catch (err) {
@@ -363,38 +414,42 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Unauthorized" };
 		}
 		try {
-			const rows = await db
-				.select({
-					id: documents.id,
-					ownerId: documents.ownerId,
-					folderId: documents.folderId,
-					folderName: folders.name,
-					categoryId: documents.categoryId,
-					title: documents.title,
-					content: documents.content,
-					contentJson: documents.contentJson,
-					metadata: documents.metadata,
-					createdAt: documents.createdAt,
-					updatedAt: documents.updatedAt,
-				})
-				.from(documents)
-				.leftJoin(folders, eq(folders.id, documents.folderId))
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			return await cacheGetOrSet(docSingleKey(params.id), 60, async () => {
+				const rows = await db
+					.select({
+						id: documents.id,
+						ownerId: documents.ownerId,
+						folderId: documents.folderId,
+						folderName: folders.name,
+						categoryId: documents.categoryId,
+						title: documents.title,
+						content: documents.content,
+						contentJson: documents.contentJson,
+						metadata: documents.metadata,
+						createdAt: documents.createdAt,
+						updatedAt: documents.updatedAt,
+					})
+					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			const doc = rows[0];
-			if (!doc) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
+				const doc = rows[0];
+				if (!doc) {
+					set.status = 404;
+					return { error: "Document not found" };
+				}
 
-			const docTags = await db
-				.select({ id: tags.id, name: tags.name, color: tags.color })
-				.from(tags)
-				.innerJoin(documentTags, eq(tags.id, documentTags.tagId))
-				.where(eq(documentTags.documentId, doc.id));
+				const docTags = await db
+					.select({ id: tags.id, name: tags.name, color: tags.color })
+					.from(tags)
+					.innerJoin(documentTags, eq(tags.id, documentTags.tagId))
+					.where(eq(documentTags.documentId, doc.id));
 
-			return { ...doc, tags: docTags };
+				return { ...doc, tags: docTags };
+			});
 		} catch (err) {
 			logger.error({ err }, "Failed to get document");
 			set.status = 500;
@@ -441,10 +496,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const existing = await db
 				.select({
 					id: documents.id,
+					title: documents.title,
 					content: documents.content,
 					contentJson: documents.contentJson,
 					folderId: documents.folderId,
 					categoryId: documents.categoryId,
+					contentHash: documents.contentHash,
 				})
 				.from(documents)
 				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
@@ -474,12 +531,43 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// formatted content on the next open. When the client sends
 			// both fields (the editor's normal save path), prefer the
 			// client-supplied JSON — it reflects the user's live edits.
-			let resolvedDocJson: unknown | undefined = body.data.contentJson;
-			if (resolvedDocJson === undefined && body.data.content !== undefined) {
-				resolvedDocJson = body.data.content
-					? await markdownToDocJson(body.data.content)
-					: null;
+			//
+			// `markdownToDocJson` is CPU-intensive (marked.parse +
+			// generateJSON), so when only `content` is supplied we defer
+			// the conversion to a background microtask. The PATCH
+			// response returns immediately with `contentJson` left at
+			// its existing value, and a follow-up UPDATE writes the JSON
+			// view once `markdownToDocJson` resolves. Errors are logged
+			// but never surface to the client; the frontend can fall
+			// back to markdown rendering until the background update
+			// lands.
+			const resolvedDocJson: unknown | undefined = body.data.contentJson;
+			// Fire-and-forget: generate TipTap JSON in background if only content was sent
+			if (
+				resolvedDocJson === undefined &&
+				body.data.content !== undefined &&
+				body.data.content
+			) {
+				const markdownForJson = body.data.content;
+				const docId = params.id;
+				Promise.resolve().then(async () => {
+					try {
+						const json = await markdownToDocJson(markdownForJson);
+						if (json) {
+							await db
+								.update(documents)
+								.set({ contentJson: json })
+								.where(eq(documents.id, docId));
+						}
+					} catch (err) {
+						logger.warn(
+							{ err, docId },
+							"Background TipTap JSON generation failed",
+						);
+					}
+				});
 			}
+			// If the client sent contentJson directly, use it (normal editor save path)
 
 			const [updated] = await db
 				.update(documents)
@@ -515,11 +603,28 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const categoryChanged =
 				body.data.categoryId !== undefined &&
 				body.data.categoryId !== existing[0]?.categoryId;
-			const contentChanged =
-				body.data.content !== undefined || body.data.title !== undefined;
-			if (contentChanged || folderChanged || categoryChanged) {
+
+			let shouldReembed = folderChanged || categoryChanged;
+
+			if (
+				!shouldReembed &&
+				(body.data.content !== undefined || body.data.title !== undefined)
+			) {
+				// Only re-embed if content actually changed (not an auto-save of same content)
+				const titleToHash = body.data.title ?? existing[0]?.title ?? "";
+				const contentToHash = body.data.content ?? existing[0]?.content ?? "";
+				const newHash = contentHash(titleToHash, contentToHash);
+
+				if (existing[0]?.contentHash !== newHash) {
+					shouldReembed = true;
+				}
+			}
+
+			if (shouldReembed) {
 				enqueueEmbedding(params.id);
 			}
+			invalidateDocCache(params.id);
+			invalidateDocListCache(userId);
 			return updated;
 		} catch (err) {
 			logger.error({ err }, "Failed to update document");
@@ -583,6 +688,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			});
 
 			enqueueEmbedding(copy.id);
+			invalidateDocListCache(userId);
 			set.status = 201;
 			return copy;
 		} catch (err) {
@@ -624,6 +730,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			await db
 				.delete(documents)
 				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)));
+			invalidateDocCache(params.id);
+			invalidateDocListCache(userId);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete document");
