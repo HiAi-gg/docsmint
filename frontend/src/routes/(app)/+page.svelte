@@ -1,18 +1,4 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge";
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
-import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
-import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
-import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
-import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import {
 	ArrowLeft,
 	Calendar,
@@ -35,6 +21,20 @@ import {
 	Upload,
 	X,
 } from "lucide-svelte";
+import { Badge } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
+import { Label } from "$lib/components/ui/label";
+import SelectRoot from "$lib/components/ui/select/select.svelte";
+import SelectContent from "$lib/components/ui/select/select-content.svelte";
+import SelectItem from "$lib/components/ui/select/select-item.svelte";
+import SelectTrigger from "$lib/components/ui/select/select-trigger.svelte";
+import SelectValue from "$lib/components/ui/select/select-value.svelte";
 
 const Select = {
 	Root: SelectRoot,
