@@ -11,28 +11,38 @@ import { enqueueEmbedding } from "../lib/embedding-queue";
 import { logger } from "../lib/logger";
 
 async function main() {
-  const dryRun = process.argv.includes("--dry-run");
+	const dryRun = process.argv.includes("--dry-run");
 
-  const allDocs = await db.select({ id: documents.id, title: documents.title })
-    .from(documents);
+	const allDocs = await db
+		.select({ id: documents.id, title: documents.title })
+		.from(documents);
 
-  logger.info({ count: allDocs.length }, dryRun ? "DRY RUN: would re-index N documents" : "Starting re-index");
+	logger.info(
+		{ count: allDocs.length },
+		dryRun ? "DRY RUN: would re-index N documents" : "Starting re-index",
+	);
 
-  for (const doc of allDocs) {
-    if (!dryRun) {
-      // Delete old embeddings (they were all zero-vectors or empty chunk_text)
-      await db.delete(documentEmbeddings)
-        .where(eq(documentEmbeddings.documentId, doc.id));
-      // Enqueue for fresh embedding via the worker
-      enqueueEmbedding(doc.id);
-    }
-  }
+	for (const doc of allDocs) {
+		if (!dryRun) {
+			// Delete old embeddings (they were all zero-vectors or empty chunk_text)
+			await db
+				.delete(documentEmbeddings)
+				.where(eq(documentEmbeddings.documentId, doc.id));
+			// Enqueue for fresh embedding via the worker
+			enqueueEmbedding(doc.id);
+		}
+	}
 
-  logger.info({ count: allDocs.length }, dryRun ? "DRY RUN complete (no changes made)" : "All documents enqueued for re-embedding");
-  process.exit(0);
+	logger.info(
+		{ count: allDocs.length },
+		dryRun
+			? "DRY RUN complete (no changes made)"
+			: "All documents enqueued for re-embedding",
+	);
+	process.exit(0);
 }
 
 main().catch((err) => {
-  logger.error({ err }, "Re-index failed");
-  process.exit(1);
+	logger.error({ err }, "Re-index failed");
+	process.exit(1);
 });

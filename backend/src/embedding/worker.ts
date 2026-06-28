@@ -7,8 +7,10 @@ import {
 	tags,
 } from "@hiai-docs/db/schema";
 import { eq } from "drizzle-orm";
+import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
 import { db } from "../lib/db";
+import { extractEntities } from "../lib/graph/extract-entities";
 import { logger } from "../lib/logger";
 import { redis } from "../lib/redis";
 import { type EmbeddingMetadata, embedDocument } from "./index";
@@ -104,6 +106,15 @@ async function processDocument(documentId: string): Promise<void> {
 			.set({ contentHash: hash })
 			.where(eq(documents.id, documentId));
 
+		// GraphRAG entity extraction. Best-effort — failures are logged
+		// inside `extractEntities` and MUST NOT break the embedding
+		// pipeline (the document is already queryable via vector search at
+		// this point). Runs per-chunk so each chunk contributes its own
+		// entity set to the graph.
+		if (config.GRAPH_EXTRACT_ENABLED) {
+			await runEntityExtraction(embeddings, documentId);
+		}
+
 		logger.info(
 			{
 				documentId,
@@ -178,4 +189,31 @@ async function loadEmbeddingMetadata(doc: {
 	if (categoryName && categoryName.length > 0)
 		metadata.categoryName = categoryName;
 	return metadata;
+}
+
+/**
+ * Run GraphRAG entity extraction across all chunks of a freshly-embedded
+ * document. Sequential: chunks per document are typically few (<10) and
+ * serial keeps the AGE connection pool pressure predictable. Each call
+ * to `extractEntities` is fully self-contained — it returns `[]` on any
+ * failure and never throws, so the embedding pipeline is robust to graph
+ * outages.
+ */
+async function runEntityExtraction(
+	embeddings: Array<{ chunkText: string; embedding: number[] }>,
+	documentId: string,
+): Promise<void> {
+	for (const chunk of embeddings) {
+		try {
+			await extractEntities(chunk.chunkText, documentId);
+		} catch (err) {
+			// Defense-in-depth: extractEntities already catches its own
+			// errors, but if anything ever escapes we still don't want it
+			// to bubble up and undo the embedding pipeline work.
+			logger.warn(
+				{ err, documentId, chunkLen: chunk.chunkText.length },
+				"Entity extraction threw — continuing without graph enrichment",
+			);
+		}
+	}
 }

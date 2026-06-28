@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getEmbedding } from "../../embedding";
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { db } from "../../lib/db";
+import { expandResults } from "../../lib/graph/search-expansion";
 import { logger } from "../../lib/logger";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
 
@@ -26,11 +27,54 @@ const searchQuerySchema = z.object({
 	category: z.string().uuid().optional(),
 	dateFrom: z.string().optional(),
 	dateTo: z.string().optional(),
+	/**
+	 * When `true`, expand the merged result list with related documents
+	 * discovered through the AGE graph. Disabled by default because the
+	 * extra AGE round-trip adds latency to every search. Feature-flagged
+	 * separately by `GRAPH_SEARCH_ENABLED` — calling with `graph=true`
+	 * is a no-op when graph search is disabled.
+	 */
+	graph: z.coerce.boolean().optional().default(false),
 });
 
 const suggestQuerySchema = z.object({
 	q: z.string().optional(),
 });
+
+/**
+ * Weight applied to graph-discovered documents when merging them into the
+ * result list. Tuned so that a graph neighbor scores BELOW a single
+ * semantic match (0.6 weight) but above a noisy zero — this keeps the
+ * original ranking honest while broadening the visible surface area.
+ *
+ * Existing documents receive this same fraction as a multiplicative boost
+ * (so a doc that matches both semantically AND by graph edges ranks
+ * proportionally higher than either signal alone).
+ */
+const GRAPH_WEIGHT = 0.3;
+
+type RawSearchResult = {
+	id: string;
+	title: string;
+	snippet: string;
+	score: number;
+	folder_id: string | null;
+	folder_name: string | null;
+	created_at: string;
+	updated_at: string;
+};
+
+type SearchResult = {
+	id: string;
+	title: string;
+	snippet: string;
+	score: number;
+	folder_id: string | null;
+	folder_name: string | null;
+	created_at: string;
+	updated_at: string;
+	tags?: Array<{ id: string; name: string; color: string | null }>;
+};
 
 /**
  * Hybrid search: combines full-text (tsvector) + semantic (pgvector cosine).
@@ -71,6 +115,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				category,
 				dateFrom,
 				dateTo,
+				graph,
 			} = parsed.data;
 			const q = rawQ ?? "";
 			const offset = (page - 1) * limit;
@@ -87,27 +132,6 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			// When title-first boosting is active, ids in `boostedTitles` get a
 			// 3x multiplier and are tagged with `titleMatch: true` so the
 			// frontend can badge them.
-			type RawSearchResult = {
-				id: string;
-				title: string;
-				snippet: string;
-				score: number;
-				folder_id: string | null;
-				folder_name: string | null;
-				created_at: string;
-				updated_at: string;
-			};
-			type SearchResult = {
-				id: string;
-				title: string;
-				snippet: string;
-				score: number;
-				folder_id: string | null;
-				folder_name: string | null;
-				created_at: string;
-				updated_at: string;
-				tags?: Array<{ id: string; name: string; color: string | null }>;
-			};
 			const merged = new Map<string, SearchResult>();
 
 			function mapResult(row: RawSearchResult): SearchResult {
@@ -137,6 +161,25 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 					const mapped = mapResult(row);
 					mapped.score = row.score * 0.6;
 					merged.set(row.id, mapped);
+				}
+			}
+
+			// GraphRAG expansion. If the caller asked for graph-augmented
+			// results AND graph search is enabled, walk 1-2 hops in AGE from
+			// the merged seed docs. Discovered neighbors are merged in with
+			// `graph_weight` * base relevance; already-present docs receive a
+			// small boost so a document that's both semantically relevant
+			// AND graph-related ranks higher than one that's only one of
+			// those. Wrapped in try/catch — graph outages must NOT break
+			// search.
+			if (graph) {
+				try {
+					await applyGraphExpansion(userId, merged);
+				} catch (err) {
+					logger.warn(
+						{ err },
+						"Graph expansion failed — returning non-graph results",
+					);
 				}
 			}
 
@@ -260,6 +303,96 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			return { error: "Suggest failed" };
 		}
 	});
+
+/**
+ * Graph-augmented merge step. Given the current `merged` Map of search
+ * results, walk the AGE graph from each seed document, and:
+ *
+ *   - Boost the score of any seed that ALSO shows up as a graph neighbor
+ *     (multiplicative — `score += GRAPH_WEIGHT * score`).
+ *   - Insert any new (non-seed) graph neighbor with a fixed
+ *     `GRAPH_WEIGHT` score. We hydrate its display fields from Postgres
+ *     so the row matches the shape of the rest of the merged set, and
+ *     we constrain the lookup to the current user so cross-tenant data
+ *     never leaks into the result list.
+ *
+ * Empty map and disabled feature flag both short-circuit to a no-op via
+ * `expandResults` — this function never has to defend against those cases.
+ */
+async function applyGraphExpansion(
+	userId: string,
+	merged: Map<string, SearchResult>,
+): Promise<void> {
+	const seedIds = Array.from(merged.keys());
+	if (seedIds.length === 0) return;
+
+	const expansion = await expandResults(seedIds, 2);
+	if (expansion.size === 0) return;
+
+	const newNeighborIds = new Set<string>();
+	for (const neighbors of expansion.values()) {
+		for (const n of neighbors) {
+			if (!merged.has(n.docId)) newNeighborIds.add(n.docId);
+		}
+	}
+
+	// Boost already-merged docs that the graph also surfaced.
+	for (const neighbors of expansion.values()) {
+		for (const n of neighbors) {
+			const existing = merged.get(n.docId);
+			if (existing) {
+				existing.score += GRAPH_WEIGHT * existing.score;
+			}
+		}
+	}
+
+	if (newNeighborIds.size === 0) return;
+
+	// Hydrate new neighbor rows from Postgres so they look like the rest
+	// of the merged set. `owner_id` is enforced in the WHERE clause — a
+	// graph hit on another user's document is silently dropped here so we
+	// never expose cross-tenant data.
+	const { documents, folders } = await import("@hiai-docs/db/schema");
+	const rows = await db
+		.select({
+			id: documents.id,
+			title: documents.title,
+			folderId: documents.folderId,
+			folderName: folders.name,
+			createdAt: documents.createdAt,
+			updatedAt: documents.updatedAt,
+			content: documents.content,
+		})
+		.from(documents)
+		.leftJoin(folders, eq(folders.id, documents.folderId))
+		.where(
+			and(
+				eq(documents.ownerId, userId),
+				inArray(documents.id, Array.from(newNeighborIds)),
+			),
+		);
+
+	for (const row of rows) {
+		if (!row.id || merged.has(row.id)) continue;
+		const content = row.content ?? "";
+		merged.set(row.id, {
+			id: row.id,
+			title: row.title,
+			snippet: content.slice(0, 200),
+			score: GRAPH_WEIGHT,
+			folder_id: row.folderId,
+			folder_name: row.folderName,
+			created_at:
+				row.createdAt instanceof Date
+					? row.createdAt.toISOString()
+					: String(row.createdAt ?? ""),
+			updated_at:
+				row.updatedAt instanceof Date
+					? row.updatedAt.toISOString()
+					: String(row.updatedAt ?? ""),
+		});
+	}
+}
 
 /**
  * Title-match search used by the title-first hybrid stage.

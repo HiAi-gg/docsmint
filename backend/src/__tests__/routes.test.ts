@@ -35,4 +35,9 @@ describe("API route modules", () => {
 		const mod = await import("../api/routes/auth");
 		expect(mod.authRoutes).toBeDefined();
 	});
+
+	test("graphRoutes loads without error", async () => {
+		const mod = await import("../api/routes/graph");
+		expect(mod.graphRoutes).toBeDefined();
+	});
 });

@@ -49,6 +49,25 @@ const envSchema = z.object({
 	// Chunking (optional, defaults: 500 tokens, 50 overlap)
 	CHUNK_TARGET_TOKENS: z.coerce.number().int().min(100).max(2000).default(500),
 	CHUNK_OVERLAP_TOKENS: z.coerce.number().int().min(0).max(500).default(50),
+	// Apache AGE (GraphRAG) — separate PostgreSQL instance with the AGE
+	// extension. Optional; when absent, graph features degrade gracefully.
+	AGE_DATABASE_URL: z.string().optional(),
+	// GraphRAG feature flags. Both default to `false` so graph code paths
+	// stay dormant until the operator explicitly enables them.
+	GRAPH_EXTRACT_ENABLED: z
+		.string()
+		.optional()
+		.default("false")
+		.transform((v) => v === "true"),
+	GRAPH_SEARCH_ENABLED: z
+		.string()
+		.optional()
+		.default("false")
+		.transform((v) => v === "true"),
+	// LLM used by entity extraction. Defaults to `EMBEDDING_MODEL` so the
+	// GraphRAG extractor reuses the configured embedding provider's model
+	// name where possible; falls back to `gpt-4o-mini` if neither is set.
+	GRAPH_EXTRACT_MODEL: z.string().optional(),
 });
 
 let config: z.infer<typeof envSchema>;

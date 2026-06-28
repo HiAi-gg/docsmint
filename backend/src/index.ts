@@ -13,6 +13,7 @@ import { categoryRoutes } from "./api/routes/categories";
 import { collaborationRoutes } from "./api/routes/collaboration";
 import { documentRoutes } from "./api/routes/documents";
 import { folderRoutes } from "./api/routes/folders";
+import { graphRoutes } from "./api/routes/graph";
 import { searchRoutes } from "./api/routes/search";
 import { shareRoutes } from "./api/routes/share";
 import { tagRoutes } from "./api/routes/tags";
@@ -88,6 +89,10 @@ const swaggerConfig = {
 			{ name: "Versions", description: "Document version history" },
 			{ name: "Share", description: "Sharing and guest access" },
 			{ name: "Search", description: "Hybrid full-text + semantic search" },
+			{
+				name: "Graph",
+				description: "GraphRAG entity and relationship queries (AGE)",
+			},
 		],
 	},
 };
@@ -136,6 +141,7 @@ const app = new Elysia()
 	.use(versionRoutes)
 	.use(webhookRoutes)
 	.use(collaborationRoutes)
+	.use(graphRoutes)
 	.listen(config.API_PORT);
 
 logger.info({ port: config.API_PORT }, "hiai-docs API started");

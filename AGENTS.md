@@ -271,7 +271,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code style, testing, an
 
 | Container | Image | Port | Purpose |
 |-----------|-------|------|---------|
-| postgres | pgvector/pgvector:pg18 | 5433:5432 | Database |
+| postgres | pgvector/pgvector:pg18 | 5433:5432 | Database (pgvector + pg_trgm) |
+| age-postgres | apache/age:pg17 | 5438:5432 | Graph database (Apache AGE for GraphRAG) |
 | redis | redis:8-alpine | 6384:6379 | Cache/queue |
 | minio | minio/minio:latest | 9000:9000, 9001:9021 | File storage |
 | api | custom | 50700:50700 | Elysia backend |
