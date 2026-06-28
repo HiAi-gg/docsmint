@@ -4,18 +4,18 @@
      `onSuccess` callback fires so the parent can refresh the version
      list or re-render the editor. -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Loader2 } from "lucide-svelte";
+import { ApiError, apiFetch } from "$lib/api/client";
+import { Button } from "$lib/components/ui/button";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Textarea } from "@hiai-gg/hiai-ui/components/ui/textarea";
-import { Loader2 } from "lucide-svelte";
-import { ApiError, apiFetch } from "$lib/api/client";
+} from "$lib/components/ui/dialog";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
 import * as m from "$lib/paraglide/messages.js";
 
 interface SnapshotResponse {

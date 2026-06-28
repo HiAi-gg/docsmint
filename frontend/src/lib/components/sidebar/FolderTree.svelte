@@ -16,22 +16,6 @@
      top of the Uncategorized group so users can drag documents out of a
      folder to detach them. -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import {
-	Dialog,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
 import {
 	Check,
 	ChevronDown,
@@ -73,7 +57,23 @@ import {
 } from "$lib/api/folders";
 import CategoryDialog from "$lib/components/sidebar/CategoryDialog.svelte";
 import FolderNode from "$lib/components/sidebar/FolderNode.svelte";
+import { Button } from "$lib/components/ui/button";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+import {
+	Dialog,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "$lib/components/ui/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,

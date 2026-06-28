@@ -1,14 +1,14 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import * as Dialog from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import * as Tabs from "@hiai-gg/hiai-ui/components/ui/tabs";
 import { Loader2, LogOut, Save } from "lucide-svelte";
 import { onMount } from "svelte";
 import { goto } from "$app/navigation";
 import { getProfile, updateProfile } from "$lib/api/settings";
 import { authClient, signOut } from "$lib/auth-client";
+import { Button } from "$lib/components/ui/button";
+import * as Dialog from "$lib/components/ui/dialog";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
+import * as Tabs from "$lib/components/ui/tabs";
 import * as m from "$lib/paraglide/messages.js";
 import { type Theme, themeStore } from "$lib/stores/theme.svelte";
 

@@ -1,16 +1,16 @@
 <!-- FolderDialog.svelte — Modal dialog for creating and renaming folders. -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Loader2 } from "lucide-svelte";
+import { Button } from "$lib/components/ui/button";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import { Loader2 } from "lucide-svelte";
+} from "$lib/components/ui/dialog";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
 import * as m from "$lib/paraglide/messages.js";
 
 let {

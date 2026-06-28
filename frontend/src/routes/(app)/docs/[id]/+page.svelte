@@ -1,12 +1,5 @@
 <!-- Document editor page -->
 <script lang="ts">
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
 import { getSchema } from "@tiptap/core";
 import { Node } from "@tiptap/pm/model";
 import { Packer } from "docx";
@@ -52,6 +45,13 @@ import SaveAsDialog from "$lib/components/SaveAsDialog.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import { ConfirmDialog } from "$lib/components/ui/confirm-dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";

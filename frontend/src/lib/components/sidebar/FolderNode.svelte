@@ -21,12 +21,6 @@
          tree keeps ownership of the existing dialog state. -->
 
 <script lang="ts">
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
 import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";
@@ -35,6 +29,12 @@ import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import type { Document } from "$lib/api/documents";
 import { listFolders } from "$lib/api/folders";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,

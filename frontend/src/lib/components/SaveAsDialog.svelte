@@ -1,18 +1,18 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "$lib/components/ui/button";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
-import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
-import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
-import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
-import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
+} from "$lib/components/ui/dialog";
+import { Label } from "$lib/components/ui/label";
+import SelectRoot from "$lib/components/ui/select/select.svelte";
+import SelectContent from "$lib/components/ui/select/select-content.svelte";
+import SelectItem from "$lib/components/ui/select/select-item.svelte";
+import SelectTrigger from "$lib/components/ui/select/select-trigger.svelte";
+import SelectValue from "$lib/components/ui/select/select-value.svelte";
 
 const Select = {
 	Root: SelectRoot,

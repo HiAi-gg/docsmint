@@ -1,17 +1,4 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-} from "@hiai-gg/hiai-ui/components/ui/card";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
 import {
 	ArrowUpRight,
 	Check,
@@ -26,6 +13,15 @@ import {
 import { goto, invalidateAll } from "$app/navigation";
 import { getDocument, updateDocument } from "$lib/api/documents";
 import MoveDialog from "$lib/components/MoveDialog.svelte";
+import { Badge } from "$lib/components/ui/badge";
+import { Card, CardContent, CardHeader } from "$lib/components/ui/card";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "$lib/components/ui/dropdown-menu";
 import * as m from "$lib/paraglide/messages.js";
 import type { Document } from "$lib/types.js";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
