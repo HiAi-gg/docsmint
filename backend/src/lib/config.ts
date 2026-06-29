@@ -46,12 +46,29 @@ const envSchema = z.object({
 	// Number of auto-saved (non-snapshot) versions to retain per document.
 	// Snapshots are never pruned. Default 50.
 	VERSION_RETENTION_COUNT: z.coerce.number().default(50),
+	// Maximum attachment (image) size in MB enforced by the presigned-upload
+	// endpoints. Default 25 MB — well above the legacy 10 MB ceiling but
+	// still small enough to bound MinIO storage exposure from a single
+	// authenticated user. The legacy POST /documents/:id/attachments route
+	// keeps its own 10 MB cap to preserve backwards compatibility.
+	ATTACHMENT_MAX_SIZE_MB: z.coerce.number().int().min(1).max(500).default(25),
+	// Presigned PUT URL lifetime in seconds. Default 15 min — enough for a
+	// slow residential upload of a 25 MB image but short enough that a
+	// leaked URL becomes useless quickly.
+	ATTACHMENT_PRESIGN_EXPIRY_SECONDS: z.coerce
+		.number()
+		.int()
+		.min(60)
+		.max(3600)
+		.default(900),
 	// Chunking (optional, defaults: 500 tokens, 50 overlap)
 	CHUNK_TARGET_TOKENS: z.coerce.number().int().min(100).max(2000).default(500),
 	CHUNK_OVERLAP_TOKENS: z.coerce.number().int().min(0).max(500).default(50),
-	// Apache AGE (GraphRAG) — separate PostgreSQL instance with the AGE
-	// extension. Optional; when absent, graph features degrade gracefully.
-	AGE_DATABASE_URL: z.string().optional(),
+	// Apache AGE (GraphRAG) lives in the same database as the rest of
+	// the data, so there is no separate AGE connection string. The
+	// presence of the `age` extension in the shared database is
+	// detected at runtime by `lib/graph/init.ts` and graph features
+	// degrade gracefully if the extension is missing.
 	// GraphRAG feature flags. Both default to `false` so graph code paths
 	// stay dormant until the operator explicitly enables them.
 	GRAPH_EXTRACT_ENABLED: z

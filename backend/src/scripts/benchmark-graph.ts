@@ -246,7 +246,7 @@ Requires:
   - A running hiai-docs backend at --base-url
   - Admin API key configured via HIAI_DOCS_API_KEY on the backend
   - GRAPH_SEARCH_ENABLED=true on the backend for graph tests
-  - AGE running on port 5438 (or configured AGE_DATABASE_URL) for graph expansion
+  - AGE running in the shared database (no separate connection required)
 `);
 }
 
@@ -551,7 +551,7 @@ async function main(): Promise<void> {
 		`   ${ANSI.yellow}•${ANSI.reset} GRAPH_SEARCH_ENABLED=true for graph-augmented tests`,
 	);
 	console.log(
-		`   ${ANSI.yellow}•${ANSI.reset} AGE must be running on port 5438 (or configured) for graph expansion`,
+		`   ${ANSI.yellow}.${ANSI.reset} AGE must be running in the shared database (no separate connection required)`,
 	);
 	console.log();
 
@@ -593,7 +593,7 @@ async function main(): Promise<void> {
 	const graphAvailable = graphStatus?.available === true;
 	if (!graphAvailable) {
 		console.log(
-			`${ANSI.yellow}⚠  Graph features appear to be disabled (GRAPH_SEARCH_ENABLED=false or AGE not connected).${ANSI.reset}`,
+			`${ANSI.yellow}⚠  Graph features appear to be disabled (GRAPH_SEARCH_ENABLED=false or AGE extension not reachable).${ANSI.reset}`,
 		);
 		console.log(
 			`   ${ANSI.yellow}  Graph comparison will still run but graph expansion will be a no-op, so recall@k will be identical.${ANSI.reset}`,

@@ -3,12 +3,29 @@ import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { getSessionUserId } from "../../lib/auth-helpers";
+import { config } from "../../lib/config";
 import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
-import { BUCKET, minio } from "../../lib/minio";
+import { BUCKET, minio, minioPublic } from "../../lib/minio";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+/**
+ * Legacy upload limit — kept as a safety net for the in-process
+ * POST /documents/:id/attachments endpoint that buffers the file in
+ * memory. New uploads go through the presigned-URL flow (see below) which
+ * is bounded by `ATTACHMENT_MAX_SIZE_BYTES` instead.
+ */
+const LEGACY_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+/**
+ * Hard cap for presigned uploads — configurable via
+ * `ATTACHMENT_MAX_SIZE_MB` (default 25 MB). Computed once at module
+ * load so per-request checks stay cheap.
+ */
+const ATTACHMENT_MAX_SIZE_BYTES = config.ATTACHMENT_MAX_SIZE_MB * 1024 * 1024;
+
+const PRESIGN_EXPIRY_SECONDS = config.ATTACHMENT_PRESIGN_EXPIRY_SECONDS;
+
 const INTEGRITY_PROBE_BYTES = 8;
 
 /**
@@ -70,9 +87,259 @@ async function getClientIp(request: Request): Promise<string> {
 	);
 }
 
+/**
+ * Verify that the authenticated user owns the document at `documentId`.
+ * Returns the doc row on success, or null on missing/forbidden.
+ */
+async function ownedDocumentOrNull(
+	documentId: string,
+	userId: string,
+): Promise<{ id: string } | null> {
+	const doc = await db
+		.select({ id: documents.id })
+		.from(documents)
+		.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
+		.limit(1);
+	return doc[0] ?? null;
+}
+
 export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
-	// POST /api/documents/:id/attachments — Upload image attachment
+	// POST /api/documents/:id/attachments/presign
+	//
+	// Returns a presigned MinIO PUT URL that the browser can upload to
+	// directly. The actual file bytes never traverse this API process,
+	// so the global body-size limit is irrelevant for attachment uploads.
+	//
+	// Request body (JSON):
+	//   { filename: string, contentType: string, size: number }
+	//
+	// Response:
+	//   { url: string, key: string, maxSize: number, expiresIn: number }
+	.post(
+		"/documents/:id/attachments/presign",
+		async ({ params, request, body, set }) => {
+			const ip = await getClientIp(request);
+			const rl = await writeRateLimiter(ip);
+			if (!rl.allowed) {
+				set.status = 429;
+				set.headers = rateLimitHeaders(0, rl.retryAfter);
+				return { error: "Too many requests" };
+			}
+			set.headers = rateLimitHeaders(rl.remaining);
+
+			const userId = await getSessionUserId(request.headers);
+			if (!userId) {
+				set.status = 401;
+				return { error: "Unauthorized" };
+			}
+
+			const documentId = params.id;
+			const doc = await ownedDocumentOrNull(documentId, userId);
+			if (!doc) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+
+			const payload = body as
+				| { filename?: unknown; contentType?: unknown; size?: unknown }
+				| undefined;
+			const filename =
+				typeof payload?.filename === "string" ? payload.filename : "";
+			const contentType =
+				typeof payload?.contentType === "string" ? payload.contentType : "";
+			const size = typeof payload?.size === "number" ? payload.size : -1;
+
+			if (!filename || filename.length > 255) {
+				set.status = 400;
+				return { error: "filename must be a non-empty string ≤ 255 chars" };
+			}
+			if (!contentType.startsWith("image/")) {
+				set.status = 415;
+				return { error: "Only image files are allowed" };
+			}
+			if (!Number.isFinite(size) || size <= 0) {
+				set.status = 400;
+				return { error: "size must be a positive number" };
+			}
+			if (size > ATTACHMENT_MAX_SIZE_BYTES) {
+				set.status = 413;
+				return {
+					error: `File too large. Maximum size: ${ATTACHMENT_MAX_SIZE_BYTES / 1024 / 1024}MB`,
+				};
+			}
+
+			// Generate MinIO key. Reuse the existing naming shape so the
+			// download route (GET /attachments/:id/raw) keeps working for
+			// any old records created before presign was introduced.
+			const ext = filename.split(".").pop() ?? "bin";
+			const key = `${userId}/${documentId}/${nanoid()}.${ext}`;
+
+			try {
+				const url = await minioPublic.presignedPutObject(
+					BUCKET,
+					key,
+					PRESIGN_EXPIRY_SECONDS,
+				);
+				return {
+					url,
+					key,
+					maxSize: ATTACHMENT_MAX_SIZE_BYTES,
+					expiresIn: PRESIGN_EXPIRY_SECONDS,
+				};
+			} catch (err) {
+				logger.error({ err, key }, "Failed to presign attachment upload");
+				set.status = 500;
+				return { error: "Failed to generate upload URL" };
+			}
+		},
+	)
+
+	// POST /api/documents/:id/attachments/confirm
+	//
+	// Called by the client AFTER the PUT to the presigned URL succeeds.
+	// Verifies the object exists in MinIO with the expected size before
+	// inserting the database row, so we never record a row for an upload
+	// that didn't actually land.
+	//
+	// Request body (JSON):
+	//   { key: string, filename: string, contentType: string, size: number }
+	.post(
+		"/documents/:id/attachments/confirm",
+		async ({ params, request, body, set }) => {
+			const ip = await getClientIp(request);
+			const rl = await writeRateLimiter(ip);
+			if (!rl.allowed) {
+				set.status = 429;
+				set.headers = rateLimitHeaders(0, rl.retryAfter);
+				return { error: "Too many requests" };
+			}
+			set.headers = rateLimitHeaders(rl.remaining);
+
+			const userId = await getSessionUserId(request.headers);
+			if (!userId) {
+				set.status = 401;
+				return { error: "Unauthorized" };
+			}
+
+			const documentId = params.id;
+			const doc = await ownedDocumentOrNull(documentId, userId);
+			if (!doc) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+
+			const payload = body as
+				| {
+						key?: unknown;
+						filename?: unknown;
+						contentType?: unknown;
+						size?: unknown;
+				  }
+				| undefined;
+			const key = typeof payload?.key === "string" ? payload.key : "";
+			const filename =
+				typeof payload?.filename === "string" ? payload.filename : "";
+			const contentType =
+				typeof payload?.contentType === "string" ? payload.contentType : "";
+			const size = typeof payload?.size === "number" ? payload.size : -1;
+
+			if (!key) {
+				set.status = 400;
+				return { error: "key is required" };
+			}
+			// Scope check: the key MUST start with `${userId}/${documentId}/`
+			// so a caller cannot confirm an upload that belongs to a
+			// different user or document. The presign endpoint always
+			// generates keys in that shape; rejecting mismatches here is a
+			// belt-and-braces guard against a hand-crafted request.
+			const expectedPrefix = `${userId}/${documentId}/`;
+			if (!key.startsWith(expectedPrefix)) {
+				set.status = 400;
+				return { error: "key does not match this document/user" };
+			}
+			if (!filename || filename.length > 255) {
+				set.status = 400;
+				return { error: "filename must be a non-empty string ≤ 255 chars" };
+			}
+			if (!contentType.startsWith("image/")) {
+				set.status = 415;
+				return { error: "Only image files are allowed" };
+			}
+			if (!Number.isFinite(size) || size <= 0) {
+				set.status = 400;
+				return { error: "size must be a positive number" };
+			}
+			if (size > ATTACHMENT_MAX_SIZE_BYTES) {
+				set.status = 413;
+				return {
+					error: `File too large. Maximum size: ${ATTACHMENT_MAX_SIZE_BYTES / 1024 / 1024}MB`,
+				};
+			}
+
+			// Verify the object actually exists in MinIO before we record
+			// a row for it. A successful presign + failed PUT (network
+			// blip, user closed tab) should not become a dangling DB row.
+			let stat: Awaited<ReturnType<typeof minio.statObject>>;
+			try {
+				stat = await minio.statObject(BUCKET, key);
+			} catch (err) {
+				logger.warn({ err, key }, "Confirm failed: object not in MinIO");
+				set.status = 409;
+				return { error: "Upload not found in storage — please retry upload" };
+			}
+
+			// Sanity-check the size we recorded against the size MinIO
+			// observed. A client that lies about size gets corrected
+			// here so the DB row reflects what was actually stored.
+			const storedSize =
+				typeof stat.size === "number"
+					? stat.size
+					: Number((stat as { size?: number }).size ?? size);
+
+			try {
+				const [created] = await db
+					.insert(attachments)
+					.values({
+						documentId,
+						filename,
+						mimeType: contentType,
+						size: storedSize,
+						minioKey: key,
+					})
+					.returning();
+
+				if (!created) {
+					set.status = 500;
+					return { error: "Failed to save attachment record" };
+				}
+
+				// Same stable same-origin URL the legacy POST returns, so
+				// the editor can drop it into `setImage({ src })` without
+				// caring which path the upload took.
+				set.status = 201;
+				return {
+					id: created.id,
+					filename: created.filename,
+					mimeType: created.mimeType,
+					size: created.size,
+					url: `/api/attachments/${created.id}/raw`,
+				};
+			} catch (err) {
+				logger.error({ err, key }, "Confirm failed: DB insert error");
+				set.status = 500;
+				return { error: "Failed to save attachment record" };
+			}
+		},
+	)
+
+	// POST /api/documents/:id/attachments — Legacy in-process upload
+	//
+	// Kept for backward compatibility (e.g. CLI / API-key clients that
+	// can't reach MinIO directly). New uploads from the editor go through
+	// the presigned flow above; this endpoint caps at 10 MB to match its
+	// historical behavior and to keep the per-request memory footprint
+	// bounded.
 	.post("/documents/:id/attachments", async ({ params, request, set }) => {
 		const ip = await getClientIp(request);
 		const rl = await writeRateLimiter(ip);
@@ -92,13 +359,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		const documentId = params.id;
 
 		// Verify document exists and user owns it
-		const doc = await db
-			.select({ id: documents.id })
-			.from(documents)
-			.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
-			.limit(1);
-
-		if (!doc.length) {
+		const doc = await ownedDocumentOrNull(documentId, userId);
+		if (!doc) {
 			set.status = 404;
 			return { error: "Document not found" };
 		}
@@ -123,10 +385,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Only image files are allowed" };
 		}
 
-		if (file.size > MAX_FILE_SIZE) {
+		if (file.size > LEGACY_MAX_FILE_SIZE) {
 			set.status = 413;
 			return {
-				error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+				error: `File too large. Maximum size: ${LEGACY_MAX_FILE_SIZE / 1024 / 1024}MB. New uploads should use the presigned URL flow.`,
 			};
 		}
 
@@ -211,13 +473,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		const documentId = params.id;
 
 		// Verify document exists and user owns it
-		const doc = await db
-			.select({ id: documents.id })
-			.from(documents)
-			.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
-			.limit(1);
-
-		if (!doc.length) {
+		const doc = await ownedDocumentOrNull(documentId, userId);
+		if (!doc) {
 			set.status = 404;
 			return { error: "Document not found" };
 		}

@@ -21,7 +21,6 @@ import {
 import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
-import { markdownToDocJson } from "../../lib/markdown-to-doc";
 import { enqueueReembed } from "../../lib/reembed";
 import { maybePruneVersions } from "../../lib/version-prune";
 import {
@@ -312,19 +311,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Invalid input", details: body.error.flatten() };
 		}
 		try {
-			// If the client posts raw markdown without the TipTap JSON view
-			// (e.g. an import, a script, or any path that bypasses the
-			// editor), generate the JSON server-side so the editor opens
-			// with formatted content rather than the raw markdown source
-			// the next time the document is opened. `markdownToDocJson`
-			// is CPU-intensive (marked.parse + generateJSON), so we defer
-			// it to a background microtask — the POST response returns
-			// immediately with `contentJson: null` and the frontend
-			// falls back to markdown rendering until the background update
-			// lands. The eventual update only writes the JSON view; the
-			// markdown `content` is the source of truth.
+			// `contentJson` is the editor's JSON cache of the markdown
+			// `content`. It is populated by the client (the editor sends
+			// it on every save); the server never generates it. The
+			// markdown `content` is the source of truth — see the
+			// `initialDocJson = null` initialiser below. Callers that
+			// bypass the editor (imports, scripts) intentionally leave
+			// `contentJson` null so the frontend's `markdownToJson`
+			// helper can rehydrate the JSON view from the authoritative
+			// markdown on the next open.
 			const initialContent = body.data.content ?? "";
-			// Defer TipTap JSON generation — return response first, generate in background
 			const initialDocJson = null;
 			const folderId = body.data.folderId ?? null;
 			let categoryId = body.data.categoryId ?? null;
@@ -346,35 +342,6 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			if (!created) {
 				set.status = 500;
 				return { error: "Failed to create document" };
-			}
-
-			// Fire-and-forget: generate TipTap JSON in the background.
-			// Mirrors the `maybePruneVersions(...).catch(...)` pattern used
-			// in the PATCH handler — the response returns immediately with
-			// `contentJson: null`, and a follow-up UPDATE writes the JSON
-			// view once `markdownToDocJson` resolves. Errors are logged but
-			// never surface to the client; the markdown `content` is the
-			// authoritative source and the frontend's `markdownToJson`
-			// helper can reconstruct the JSON view on demand.
-			if (initialContent) {
-				const capturedDocId = created.id;
-				const capturedContent = initialContent;
-				Promise.resolve().then(async () => {
-					try {
-						const json = await markdownToDocJson(capturedContent);
-						if (json) {
-							await db
-								.update(documents)
-								.set({ contentJson: json })
-								.where(eq(documents.id, capturedDocId));
-						}
-					} catch (err) {
-						logger.warn(
-							{ err, docId: capturedDocId },
-							"Background TipTap JSON generation failed",
-						);
-					}
-				});
 			}
 
 			await db.insert(versions).values({
@@ -527,48 +494,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				logger.error({ err, docId: params.id }, "Background prune failed"),
 			);
 
-			// When the client sends new `content` but no `contentJson`,
-			// generate the JSON view server-side so the editor can render
-			// formatted content on the next open. When the client sends
-			// both fields (the editor's normal save path), prefer the
-			// client-supplied JSON — it reflects the user's live edits.
-			//
-			// `markdownToDocJson` is CPU-intensive (marked.parse +
-			// generateJSON), so when only `content` is supplied we defer
-			// the conversion to a background microtask. The PATCH
-			// response returns immediately with `contentJson` left at
-			// its existing value, and a follow-up UPDATE writes the JSON
-			// view once `markdownToDocJson` resolves. Errors are logged
-			// but never surface to the client; the frontend can fall
-			// back to markdown rendering until the background update
-			// lands.
+			// `contentJson` is the editor's JSON cache of the markdown
+			// `content`. It is populated by the client (the editor sends
+			// it on every save); the server never generates it. When the
+			// client supplies only `content` (e.g. an import, a script,
+			// the markdown-toggle path that bypasses the editor), the
+			// JSON is left null — the frontend's `markdownToJson`
+			// helper rehydrates it from the authoritative markdown on
+			// the next open. The markdown `content` is the source of
+			// truth.
 			const resolvedDocJson: unknown | undefined = body.data.contentJson;
-			// Fire-and-forget: generate TipTap JSON in background if only content was sent
-			if (
-				resolvedDocJson === undefined &&
-				body.data.content !== undefined &&
-				body.data.content
-			) {
-				const markdownForJson = body.data.content;
-				const docId = params.id;
-				Promise.resolve().then(async () => {
-					try {
-						const json = await markdownToDocJson(markdownForJson);
-						if (json) {
-							await db
-								.update(documents)
-								.set({ contentJson: json })
-								.where(eq(documents.id, docId));
-						}
-					} catch (err) {
-						logger.warn(
-							{ err, docId },
-							"Background TipTap JSON generation failed",
-						);
-					}
-				});
-			}
-			// If the client sent contentJson directly, use it (normal editor save path)
 
 			const [updated] = await db
 				.update(documents)

@@ -172,9 +172,18 @@ export async function embedDocument(
 			batch.map((chunk) => getEmbedding(chunk.text)),
 		);
 		for (let j = 0; j < batchEmbeddings.length; j++) {
+			// `j < batch.length` and `j < batchEmbeddings.length` are both
+			// guaranteed by the outer loop bounds and the parallel Promise.all
+			// above, but the index-access through `noUncheckedIndexedAccess`
+			// widens these to `T | undefined`. The optional chain short-
+			// circuits cleanly if a future refactor breaks the invariant
+			// instead of crashing on `undefined.text`.
+			const chunk = batch[j];
+			const embedding = batchEmbeddings[j];
+			if (!chunk || !embedding) continue;
 			results.push({
-				chunkText: batch[j]!.text,
-				embedding: batchEmbeddings[j]!,
+				chunkText: chunk.text,
+				embedding,
 			});
 		}
 	}

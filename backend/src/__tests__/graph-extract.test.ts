@@ -65,27 +65,17 @@ describe("graph extract-entities module", () => {
 		// fetch to return a controlled chat completions response that
 		// includes confidence values on entities and relationships.
 		const prevExtract = process.env.GRAPH_EXTRACT_ENABLED;
-		const prevAge = process.env.AGE_DATABASE_URL;
 		process.env.GRAPH_EXTRACT_ENABLED = "true";
-		// AGE_DATABASE_URL must be set for the early-return gate to clear,
 		// but getGraphDb() will fail (no real DB) and return null, which
 		// also early-returns []. So we need a different approach: stub
-		// fetch + make AGE_DATABASE_URL invalid so we never hit the DB
-		// path. Better: keep AGE_DATABASE_URL absent and rely on the
-		// no-AGE_DATABASE_URL early-return to be bypassed by enabling
 		// extraction-only path. Looking at the code, the AGE gate is
-		// independent of the LLM gate: if AGE_DATABASE_URL is missing,
 		// extractEntities returns [] BEFORE the LLM call. To exercise
-		// the LLM path we need a working AGE_DATABASE_URL OR we need
-		// to mock fetch BEFORE the LLM call. Since AGE_DATABASE_URL is
 		// absent in the default test env, the only path that reaches
 		// fetch is via the worker / manual caller — and the test below
 		// verifies the response shape by directly invoking fetch against
 		// a stubbed endpoint.
 		if (prevExtract === undefined) delete process.env.GRAPH_EXTRACT_ENABLED;
 		else process.env.GRAPH_EXTRACT_ENABLED = prevExtract;
-		if (prevAge === undefined) delete process.env.AGE_DATABASE_URL;
-		else process.env.AGE_DATABASE_URL = prevAge;
 
 		// Stub fetch to return a known response and verify the call shape.
 		const fetchMock = mock(async (_input: RequestInfo | URL) =>
@@ -123,9 +113,9 @@ describe("graph extract-entities module", () => {
 			body: JSON.stringify({ model: "test", messages: [] }),
 		});
 		const body = (await resp.json()) as {
-			choices: Array<{ message: { content: string } }>;
+			choices?: Array<{ message?: { content?: string } }>;
 		};
-		const parsed = JSON.parse(body.choices[0].message.content) as {
+		const parsed = JSON.parse(body.choices?.[0]?.message?.content ?? "{}") as {
 			entities: Array<{
 				name: string;
 				confidence: number;
@@ -330,7 +320,6 @@ describe("graph extract-entities module", () => {
 		const out = _parseExtractionResponseForTests(
 			JSON.stringify({
 				entities: [
-					// @ts-expect-error intentionally invalid type
 					{
 						name: "BadType",
 						type: "Product",
@@ -344,7 +333,6 @@ describe("graph extract-entities module", () => {
 						relationships: [
 							{
 								targetName: "X",
-								// @ts-expect-error intentionally invalid type
 								relationType: "INVALID_REL",
 								confidence: 0.9,
 							},

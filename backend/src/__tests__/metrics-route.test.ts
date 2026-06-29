@@ -2,18 +2,18 @@
  * Behavioural tests for `GET /api/admin/metrics`.
  *
  * Boots the metrics route on a free port with `app.listen(0)`, then
- * drives it through real HTTP requests to validate the auth gate, the
- * response shape, and the rate-limiter integration. We do NOT stand up
- * a Redis dependency — `searchRateLimiter` short-circuits to allowed when
- * a valid `x-api-key` is presented (the same trick the admin route uses),
- * so the test path stays in-process.
+ * drives it through real HTTP requests to validate the auth gate and
+ * the response shape. The rate-limiter middleware is mocked so the
+ * test path stays in-process and independent of any shared Redis state
+ * (the test focuses on the auth-gate contract, not on rate-limiter
+ * semantics — those are covered by `rate-limit.test.ts`).
  *
  * `config.HIAI_DOCS_API_KEY` is parsed at module-load time and cached as
  * a plain object — we mutate it directly here so the route picks up our
  * test key without needing a fresh process. The original value is
  * restored in cleanup so other test files are not affected.
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
 	getMetrics,
 	incrementCounter,
@@ -22,7 +22,23 @@ import {
 	resetMetrics,
 } from "../lib/metrics";
 
+// Stub the rate-limit middleware so every request in this file is allowed
+// regardless of Redis state or bucket count. Registered BEFORE the route
+// module is imported so the route picks up the stubbed `searchRateLimiter`.
+mock.module("../api/middleware/rate-limit", () => ({
+	searchRateLimiter: async () => ({ allowed: true, remaining: 999 }),
+	rateLimitHeaders: () => ({}),
+	documentRateLimiter: async () => ({ allowed: true, remaining: 999 }),
+	writeRateLimiter: async () => ({ allowed: true, remaining: 999 }),
+	shareRateLimiter: async () => ({ allowed: true, remaining: 999 }),
+	healthRateLimiter: async () => ({ allowed: true, remaining: 999 }),
+}));
+
 const TEST_API_KEY = "test-admin-metrics-key";
+
+afterEach(() => {
+	resetMetrics();
+});
 
 describe("GET /api/admin/metrics", () => {
 	let baseUrl: string;

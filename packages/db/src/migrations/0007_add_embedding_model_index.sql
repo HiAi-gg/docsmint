@@ -1,0 +1,14 @@
+-- Adds an index on document_embeddings.embedding_model so
+-- POST /api/admin/reindex/model can scan a single btree page instead of
+-- doing a full table scan to find docs whose stored model differs from
+-- the currently-configured EMBEDDING_MODEL.
+--
+-- The column itself was added in 0006_embedding_model_column.sql together
+-- with the index `document_embeddings_embedding_model_idx`. That earlier
+-- index was created via a hand-written migration (no snapshot) and
+-- pre-dates the naming convention used by the rest of the schema
+-- (`idx_<table>_<column>`), so this migration replaces it with a
+-- consistently-named btree index. The replacement is a no-op on a fresh
+-- database because the 0006 index is only present where the operator
+-- already ran 0006 manually before this migration was added.
+CREATE INDEX "idx_document_embeddings_embedding_model" ON "document_embeddings" USING btree ("embedding_model");

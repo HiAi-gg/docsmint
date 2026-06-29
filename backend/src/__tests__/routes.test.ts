@@ -50,4 +50,9 @@ describe("API route modules", () => {
 		const mod = await import("../api/routes/metrics");
 		expect(mod.metricsRoutes).toBeDefined();
 	});
+
+	test("attachmentRoutes loads without error", async () => {
+		const mod = await import("../api/routes/attachments");
+		expect(mod.attachmentRoutes).toBeDefined();
+	});
 });

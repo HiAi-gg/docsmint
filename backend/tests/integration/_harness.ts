@@ -598,6 +598,34 @@ mock.module("../../src/lib/config.js", () => ({
 		CORS_ORIGINS: undefined,
 		NODE_ENV: "test",
 		LOG_LEVEL: "fatal",
+		// Mirror the real config surface so unit tests in src/__tests__ that
+		// share this process can read these fields without seeing `undefined`.
+		// The reembed unit tests rely on FOLDER_REEMBED_BATCH_SIZE being
+		// non-zero (otherwise the helper skips .limit() and returns the
+		// query-builder instead of rows); graph-extract unit tests rely on
+		// GRAPH_EXTRACT_MIN_CONFIDENCE to filter low-confidence entities.
+		VERSION_RETENTION_COUNT: 50,
+		CHUNK_TARGET_TOKENS: 500,
+		CHUNK_OVERLAP_TOKENS: 50,
+		AGE_DATABASE_URL: undefined,
+		GRAPH_EXTRACT_ENABLED: false,
+		GRAPH_SEARCH_ENABLED: false,
+		GRAPH_EXTRACT_MODEL: undefined,
+		GRAPH_EXTRACT_BASE_URL: undefined,
+		GRAPH_EXTRACT_API_KEY: undefined,
+		GRAPH_EXTRACT_FALLBACK_BASE_URL: undefined,
+		GRAPH_EXTRACT_FALLBACK_API_KEY: undefined,
+		GRAPH_EXTRACT_FALLBACK_MODEL: undefined,
+		GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5,
+		GRAPH_EXPANSION_BOOST: 0.3,
+		ADMIN_CROSS_TENANT: true,
+		HYBRID_TEXT_WEIGHT: 0.4,
+		HYBRID_SEMANTIC_WEIGHT: 0.6,
+		FOLDER_REEMBED_BATCH_SIZE: 100,
+		CATEGORY_REEMBED_BATCH_SIZE: 100,
+		TAG_REEMBED_BATCH_SIZE: 500,
+		ATTACHMENT_MAX_SIZE_MB: 25,
+		ATTACHMENT_PRESIGN_EXPIRY_SECONDS: 900,
 	},
 }));
 
@@ -614,6 +642,12 @@ mock.module("../../src/lib/auth.js", () => ({
 
 mock.module("../../src/lib/db.js", () => ({
 	db: mockDb,
+	// Stub raw postgres-js client. Routes that transitively import
+	// lib/graph/init.ts need this export to exist at module load; the
+	// graph module is mocked separately, so this stub is never invoked.
+	client: (() => {
+		throw new Error("db.client stub invoked in tests — graph code should be mocked");
+	}) as any,
 	withTransaction: (fn: any) => fn(mockDb),
 }));
 
@@ -648,10 +682,74 @@ mock.module("../../src/lib/logger.js", () => ({
 	}),
 }));
 
+// Mutable flags for the minio mock. Tests can flip these to simulate
+// transient failures (e.g. an upload that didn't actually land in
+// MinIO). Defaults reflect the "happy path" — statObject returns a
+// plausible result so confirm-attachments tests pass without setup.
+const minioMockState: {
+	statObjectShouldThrow: boolean;
+	presignedPutObjectFailNext: boolean;
+	storedSizes: Map<string, number>;
+} = {
+	statObjectShouldThrow: false,
+	presignedPutObjectFailNext: false,
+	storedSizes: new Map(),
+};
+// Tests can read this object directly to flip behavior, e.g.
+//   getMinioMockState().statObjectShouldThrow = true;
+// The object reference is stable; mutating its properties works even
+// after the route module has already imported its top-level `minio`
+// binding because the mock's statObject CLOSURE reads the property
+// each call.
+export function getMinioMockState() {
+	return minioMockState;
+}
+
 mock.module("../../src/lib/minio.js", () => ({
 	minio: {
-		putObject: async () => "etag",
+		putObject: async (
+			_bucket: string,
+			key: string,
+			_body: Buffer | string,
+			size?: number,
+		) => {
+			// Record the size so a subsequent statObject returns the
+			// same value the route's confirm step will read.
+			const recordSize =
+				typeof size === "number"
+					? size
+					: Buffer.isBuffer(_body)
+						? _body.length
+						: _body.length;
+			minioMockState.storedSizes.set(key, recordSize);
+			return "etag";
+		},
 		removeObject: async () => {},
+		statObject: async (_bucket: string, key: string) => {
+			if (minioMockState.statObjectShouldThrow) {
+				throw Object.assign(new Error("Not Found"), { code: "NoSuchKey" });
+			}
+			return {
+				size: minioMockState.storedSizes.get(key) ?? 1024,
+				etag: "mock-etag",
+				metaData: {},
+				lastModified: new Date(),
+				key,
+			};
+		},
+	},
+	minioPublic: {
+		presignedPutObject: async (
+			_bucket: string,
+			key: string,
+			_expiry: number,
+		) => {
+			if (minioMockState.presignedPutObjectFailNext) {
+				minioMockState.presignedPutObjectFailNext = false;
+				throw new Error("Simulated presign failure");
+			}
+			return `http://minio.local/hiai-docs/${key}?X-Amz-Signature=mock`;
+		},
 	},
 	BUCKET: "hiai-docs",
 }));
@@ -708,6 +806,9 @@ export async function setupHarness(): Promise<BuiltApp> {
 	const { versionRoutes } = await import("../../src/api/routes/versions");
 	const { webhookRoutes } = await import("../../src/api/routes/webhooks");
 	const { categoryRoutes } = await import("../../src/api/routes/categories");
+	const { attachmentRoutes } = await import(
+		"../../src/api/routes/attachments"
+	);
 
 	const app = new Elysia()
 		.use(csrfMiddleware)
@@ -719,7 +820,8 @@ export async function setupHarness(): Promise<BuiltApp> {
 		.use(documentRoutes)
 		.use(versionRoutes)
 		.use(webhookRoutes)
-		.use(categoryRoutes);
+		.use(categoryRoutes)
+		.use(attachmentRoutes);
 
 	const { createHmac, randomBytes } = await import("node:crypto");
 	function signToken(token: string): string {

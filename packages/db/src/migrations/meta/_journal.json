@@ -50,6 +50,20 @@
       "when": 1782676723557,
       "tag": "embedding_model_column",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782685511592,
+      "tag": "0007_add_embedding_model_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782762123306,
+      "tag": "0008_streaming_diskann_index",
+      "breakpoints": true
     }
   ]
 }

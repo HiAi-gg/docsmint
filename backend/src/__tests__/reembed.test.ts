@@ -224,8 +224,10 @@ describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
 		expect(fakeEnqueue.mock.calls.length).toBe(0);
 
 		// Restore for the next test in the suite.
-		dbChain.limit =
-			originalLimit ??
-			(mock(() => Promise.resolve(adminMockRows)) as ReturnType<typeof mock>);
+		// The cast widens the union (Mock | raw function | undefined) into
+		// the Mock type expected by the `dbChain.limit` slot — without it
+		// TypeScript narrows the union and rejects the raw-function branch.
+		dbChain.limit = (originalLimit ??
+			mock(() => Promise.resolve(adminMockRows))) as ReturnType<typeof mock>;
 	});
 });

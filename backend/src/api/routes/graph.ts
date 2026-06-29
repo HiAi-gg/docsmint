@@ -97,6 +97,10 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 				return { error: "Invalid query", details: parsed.error.flatten() };
 			}
 
+			if (!config.GRAPH_SEARCH_ENABLED) {
+				return { entities: [] };
+			}
+
 			try {
 				const entities = await fetchDocumentEntities(parsed.data.docId);
 				return { entities };
@@ -455,4 +459,4 @@ function stripQuotes(value: string): string {
  * Test-only type alias re-export so consumers can type their helpers
  * without reaching into `init.ts`.
  */
-export type { GraphSqlClient, RelatedDoc };
+export type { RelatedDoc };

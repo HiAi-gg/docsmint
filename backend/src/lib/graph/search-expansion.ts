@@ -14,7 +14,7 @@
 
 import { config } from "../config";
 import { logger } from "../logger";
-import { type GraphSqlClient, getGraphDb } from "./init";
+import { getGraphDb } from "./init";
 
 const DEFAULT_MAX_HOPS = 2;
 
@@ -39,11 +39,6 @@ export async function expandResults(
 	const out = new Map<string, RelatedDoc[]>();
 
 	if (!config.GRAPH_SEARCH_ENABLED) return out;
-	if (!config.AGE_DATABASE_URL) {
-		logger.debug("AGE_DATABASE_URL not set — skipping graph expansion");
-		return out;
-	}
-	const seeds = dedupe(docIds);
 	if (seeds.length === 0) return out;
 
 	const clampedHops = Math.max(1, Math.min(Math.floor(maxHops), 3));

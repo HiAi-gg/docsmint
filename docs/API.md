@@ -557,7 +557,7 @@ Dedup is handled by the shared `enqueueReembed` helper (Redis `SET NX EX 5`), so
 
 ### `GET /api/admin/graph/stats`
 
-Apache AGE inventory — total node and edge counts. Returns `{ available: false, reason: "..." }` when GraphRAG is disabled, when `AGE_DATABASE_URL` is unset, or when AGE is unreachable.
+Apache AGE inventory — total node and edge counts. Returns `{ available: false, reason: "..." }` when GraphRAG is disabled, when AGE is unreachable or the extension is not installed in the shared database.
 
 ```bash
 curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
@@ -607,6 +607,21 @@ curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
 ```
 
 Graph expansion is best-effort: a graph outage logs a warning and returns the non-graph result list. Search never breaks because the graph is unavailable.
+
+## Smart Re-embed System
+
+Metadata mutations (tags, folders, categories) automatically trigger vector refresh to keep embeddings consistent. This system uses:
+
+- **Incremental updates** — chunk hashing compares new vs. existing chunks; only changed slices are re-embedded
+- **Neighbor expansion** — overlap regions are preserved across chunk boundaries
+- **Redis deduplication** — rapid PATCH storms coalesce into a single worker tick (5-second TTL)
+- **Batch caps** — prevent spikes: `FOLDER_REEMBED_BATCH_SIZE`, `CATEGORY_REEMBED_BATCH_SIZE`, `TAG_REEMBED_BATCH_SIZE`
+
+Triggers:
+- Tag rename/delete → `reembedDocsByTag(tagId)`
+- Folder rename/delete → `reembedDocsInFolder(folderId, ownerId)`
+- Category rename/delete → `reembedDocsInCategory(categoryId, ownerId)`
+- Document update → `enqueueReembed([docId])`
 
 ## Admin API Errors
 

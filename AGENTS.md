@@ -2,8 +2,7 @@
 
 > **Role:** Document module, mountable into hosts (first consumer: `hiai-amigo`); **design-token source** for the ecosystem. Standalone open-source AI-native knowledge base (Markdown-first, auto-embeddings, self-hostable).
 > **Status:** ready
-> **Ecosystem entry point:** [`projects/HIAI_INDEX.md`](../../projects/HIAI_INDEX.md)
-> **Canonical rules:** [`docs/hiai-ecosystem/CONVENTIONS.md`](../../docs/hiai-ecosystem/CONVENTIONS.md)
+> Project documentation lives in README.md, docs/, and AGENTS.md.
 
 ## Cheat-sheet — Conventions
 
@@ -16,7 +15,7 @@
 - **Auth:** Better Auth
 - **Validation:** Zod (every route validated)
 - **DB:** PostgreSQL 18.4 + pgvector (user-scoped via `owner_id`, `tenant_id` reserved)
-- **Graph DB (optional):** Apache AGE on PostgreSQL 17 for GraphRAG (port 5438)
+- **Vector index (optional):** pgvectorscale StreamingDiskANN with SbqCompression, loaded in the unified PostgreSQL image (see `postgres/Dockerfile`)
 - **Cache:** Redis 8.6+
 - **Storage:** MinIO (S3-compatible)
 - **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; hybrid search `HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine`
@@ -29,7 +28,7 @@
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
 - **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
 - **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
-- **Ports:** API `50700` · frontend dev `50701` · Postgres `5433` · Redis `6384` · MinIO `9000/9001` · Caddy `50708/50709` · AGE Postgres `5438`
+- **Ports:** API `50700` · frontend dev `50701` · Postgres `5433` · Redis `6384` · MinIO `9000/9001` · Caddy `50708/50709`
 - **No Playwright** — use `agent-browser` for E2E
 - **English only** in code, comments, docs, README, AGENTS.md (zero Cyrillic)
 
@@ -39,20 +38,11 @@
 
 - `README.md` — project overview, quick start, configuration
 - `AGENTS.md` — this file: rules + canonical-document pointer + document index
-- `todo.md` — live task status (active backlog)
 - `CONTRIBUTING.md` — code style, testing, PR workflow
 - `CODE_OF_CONDUCT.md` — community standards
 - `SECURITY.md` — vulnerability reporting
 - `CHANGELOG.md` — release notes and breaking-change narrative
-
-### Canonical references (read first)
-
-- [`projects/HIAI_INDEX.md`](../../projects/HIAI_INDEX.md) — single entry point for ecosystem strategy and rules
-- [`docs/hiai-ecosystem/CONVENTIONS.md`](../../docs/hiai-ecosystem/CONVENTIONS.md) — **rules and topology** (§1 stack, §2 structure, §3 ports, §4 design tokens, §5 auth/RBAC, §6 plugin/embed contract)
-- [`docs/hiai-ecosystem/ARCHITECTURE.md`](../../docs/hiai-ecosystem/ARCHITECTURE.md) — architecture (host/module roles, integration map)
-- [`docs/hiai-ecosystem/PORTS.md`](../../docs/hiai-ecosystem/PORTS.md) — port registry (docs = 50700/50701)
-- [`docs/hiai-ecosystem/DESIGN_SYSTEM.md`](../../docs/hiai-ecosystem/DESIGN_SYSTEM.md) — design tokens and `@hiai/ui` contract (hiai-docs is the source of tokens)
-- [`docs/hiai-ecosystem/PLUGIN_CONTRACT.md`](../../docs/hiai-ecosystem/PLUGIN_CONTRACT.md) — plugin/embed contract (how hosts connect docs)
+- `LICENSE` — MIT license
 
 ### Project-specific
 
@@ -76,7 +66,6 @@
 | **Editor** | svelte-tiptap + TipTap v3 |
 | **ORM** | Drizzle ORM 0.45.2+ |
 | **Database** | PostgreSQL 18.4 + pgvector |
-| **Graph database (optional)** | Apache AGE on PostgreSQL 17 (port 5438) |
 | **Cache** | Redis 8.6+ |
 | **Auth** | Better Auth |
 | **Storage** | MinIO (S3-compatible) |
@@ -155,9 +144,9 @@ The worker does **incremental** re-embed on every save: it hashes each new chunk
 
 The worker also stamps each row with the producing model (`embedding_model` column, migration `0006_embedding_model_column.sql`). This makes `POST /api/admin/reindex/model` a precise targeted operation rather than a full reindex.
 
-### Re-embed invariant (system-wide)
+### Smart Re-embed System
 
-**Every metadata mutation that changes text prepended to chunk embeddings MUST trigger a re-embed of every affected document.** The chunk preamble includes folder name, tag names, and category name — so renaming or deleting any of those leaves stale vectors that still reference the old name in semantic search.
+The smart re-embed system ensures vector embeddings stay consistent with metadata changes. Every metadata mutation that changes text prepended to chunk embeddings automatically triggers a re-embed of affected documents. The chunk preamble includes folder name, tag names, and category name — so renaming or deleting any of those leaves stale vectors that reference old names.
 
 The single entry point for metadata-triggered re-embed is `backend/src/lib/reembed.ts`:
 
@@ -169,23 +158,61 @@ The single entry point for metadata-triggered re-embed is `backend/src/lib/reemb
 | Tag add / remove from document | `enqueueReembed([docId])` |
 | Document PATCH (content edit) | `enqueueReembed([docId])` |
 
-All helpers use a Redis `SET NX EX 5` dedup slot so a rapid PATCH / auto-save / toggle storm coalesces into a single worker tick. Direct `enqueueEmbedding` calls remain valid for content edits where dedup-by-id is not desirable, and for admin reindex paths.
+#### Incremental Chunk Updates
 
-Each helper is bounded by a `*_REEMBED_BATCH_SIZE` env var (defaults 100 / 100 / 500) so a rename of a mega-folder does not spike embedding costs in a single tick. Set to `0` to disable the cap.
+The embedding worker performs incremental updates using chunk hashing:
+- Hashes each new chunk and compares against stored `chunkHash`
+- Deletes and reinserts only changed slices (plus immediate neighbors to maintain overlap consistency)
+- Unchanged chunks retain their original embeddings
+- The `embedding_model` column tracks which model produced each vector, enabling targeted reindex operations
 
-### GraphRAG (optional)
+#### Redis Deduplication
 
-GraphRAG is opt-in via feature flags. Off by default.
+All helpers use a Redis `SET NX EX 5` dedup slot so rapid PATCH / auto-save / toggle storms coalesce into a single worker tick. Direct `enqueueEmbedding` calls remain valid for content edits where dedup-by-id is not desirable.
 
-- **`GRAPH_EXTRACT_ENABLED=true`** — after every embedding, the worker calls an LLM to extract entities (with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE`, default `0.5`) and persists them as nodes and edges in Apache AGE.
-- **`GRAPH_SEARCH_ENABLED=true`** — `GET /api/search?graph=true&graphHops=N&graphBoost=N` walks the AGE graph from each merged seed doc and merges discovered neighbors into the result list.
-- **`GRAPH_EXPANSION_BOOST`** (default `0.3`) — multiplier on graph-discovered neighbor scores; also applied as a multiplicative boost to already-present docs that the graph also surfaces.
+#### Batch Caps
 
-Both the extraction LLM and the embedding provider must be OpenAI-compatible (`POST {url}/chat/completions` and `POST {url}/embeddings` respectively). `GRAPH_EXTRACT_BASE_URL` MUST be set explicitly in production — falling back to `EMBEDDING_BASE_URL` is almost always wrong because the chat endpoint differs from the embedding endpoint.
+Each helper is bounded by a `*_REEMBED_BATCH_SIZE` env var to prevent spikes in embedding costs:
+- `FOLDER_REEMBED_BATCH_SIZE` (default: 100)
+- `CATEGORY_REEMBED_BATCH_SIZE` (default: 100)
+- `TAG_REEMBED_BATCH_SIZE` (default: 500)
 
-### Search
+Set any to `0` to disable the cap (not recommended for production with large datasets).
 
-Hybrid search: `HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine` (defaults `0.4 / 0.6`). When graph expansion is enabled and requested, the merged list is broadened with AGE-walked neighbors; existing docs receive a multiplicative `GRAPH_EXPANSION_BOOST` boost if they also show up as a graph neighbor.
+### GraphRAG with Apache AGE
+
+GraphRAG layers a knowledge graph over vector search to surface related documents beyond semantic similarity. Both feature flags default to `false` — the graph code paths remain dormant until explicitly enabled.
+
+#### Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `GRAPH_EXTRACT_ENABLED` | `false` | Enable LLM entity extraction after embeddings |
+| `GRAPH_SEARCH_ENABLED` | `false` | Enable graph-neighbor expansion in search |
+| `GRAPH_EXPANSION_BOOST` | `0.3` | Multiplier on graph-discovered neighbor scores (range: 0–2) |
+| `GRAPH_EXTRACT_MIN_CONFIDENCE` | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
+| `GRAPH_EXTRACT_BASE_URL` | — | OpenAI-compatible chat-completion URL (REQUIRED for extraction) |
+| `GRAPH_EXTRACT_API_KEY` | — | API key for extraction LLM |
+| `GRAPH_EXTRACT_MODEL` | `EMBEDDING_MODEL` | Extraction model name |
+
+**Important:** `GRAPH_EXTRACT_BASE_URL` must be set explicitly in production. Falling back to `EMBEDDING_BASE_URL` is incorrect because extraction uses chat-completion endpoints while embeddings use embedding endpoints.
+
+#### Entity Extraction
+
+When enabled, the embedding worker calls the extraction LLM after each successful embedding. Entities with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE` are persisted to Apache AGE as nodes and edges.
+
+#### Graph-Enhanced Search
+
+When `GRAPH_SEARCH_ENABLED=true`, search queries with `?graph=true&graphHops=N` walk the AGE graph from seed documents (1–3 hops controlled by `graphHops`). Discovered neighbors are merged into results with multiplicative boost of `GRAPH_EXPANSION_BOOST`. Documents already in results receive the same boost if they appear as graph neighbors.
+
+#### Search Configuration
+
+Hybrid search combines full-text and semantic signals:
+```
+HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine
+```
+
+Defaults: `HYBRID_TEXT_WEIGHT=0.4`, `HYBRID_SEMANTIC_WEIGHT=0.6`. When graph expansion is enabled via query parameters, neighbors are merged and boosted according to `GRAPH_EXPANSION_BOOST`.
 
 ### CORS
 
@@ -197,21 +224,39 @@ CORS_ORIGINS=http://localhost:50701,http://127.0.0.1:50701
 
 In production, set to your frontend URL(s).
 
-### Admin endpoints
+### Admin Tools & Security Model
 
-All operator tooling lives under `/api/admin` and is gated by a static `HIAI_DOCS_API_KEY` supplied via the `x-api-key` header. See `docs/API.md` for the full surface. Notable endpoints:
+All operator tooling lives under `/api/admin` and is gated by a static `HIAI_DOCS_API_KEY` supplied via the `x-api-key` header or `Authorization: Bearer <key>`. See `docs/API.md` for the full surface.
 
-#### Tenant scoping
+#### Tenant Scoping
 
-The `ADMIN_CROSS_TENANT` env var (default `true`, backward-compatible) controls whether admin reindex endpoints accept cross-tenant operations without an explicit `?ownerId=`. When set to `false`, both folder and tag reindex endpoints require the caller to specify `?ownerId=<uuid>`. This is useful when the admin API key is shared across operators but your data model is multi-tenant.
+The `ADMIN_CROSS_TENANT` env var (default `true`, backward-compatible) controls cross-tenant behavior for admin reindex endpoints:
 
-- `POST /api/admin/reindex/:docId` — force re-embed one document
-- `POST /api/admin/reindex/model?dryRun=true` — targeted re-embed for embedding-model mismatch
-- `POST /api/admin/reindex/folder/:folderId?dryRun=true&ownerId=<uuid>` — bulk re-embed a folder. When `ownerId` is provided, calls `reembedDocsInFolder(folderId, ownerId)` (owner-scoped from `backend/src/lib/reembed.ts`). When omitted and `ADMIN_CROSS_TENANT=true`, calls `reembedDocsInFolderAdmin(folderId)` (operator-scope, bypasses `owner_id` filter). When omitted and `ADMIN_CROSS_TENANT=false`, returns 400.
-- `POST /api/admin/reindex/tag/:tagId?dryRun=true&ownerId=<uuid>` — bulk re-embed a tag. When `ownerId` is provided, filters through `documentTags JOIN documents WHERE documents.owner_id = :ownerId` and calls `enqueueReembed(ids)`. When omitted and `ADMIN_CROSS_TENANT=true`, calls `reembedDocsByTag(tagId)` as before. When omitted and `ADMIN_CROSS_TENANT=false`, returns 400.
-- `GET /api/admin/embedding-stats` — chunk counts and zero-vector detection
-- `GET /api/admin/health/embeddings` — live provider probe
-- `GET /api/admin/graph/stats` — AGE inventory
+- **`ADMIN_CROSS_TENANT=true`** (default): Folder and tag reindex endpoints operate in operator scope, bypassing per-user `owner_id` filters. This allows bulk operations across all tenants when the admin API key is trusted.
+- **`ADMIN_CROSS_TENANT=false`**: Admin endpoints require explicit `?ownerId=<uuid>` parameter. Useful when the admin API key is shared but data is multi-tenant.
+
+#### Admin Endpoints
+
+- `POST /api/admin/reindex/:docId` — Force re-embed a single document
+- `POST /api/admin/reindex/model?dryRun=true` — Targeted re-embed for embedding-model mismatch
+- `POST /api/admin/reindex/folder/:folderId?dryRun=true&ownerId=<uuid>` — Bulk re-embed a folder
+  - With `ownerId`: owner-scoped operation
+  - Without `ownerId` and `ADMIN_CROSS_TENANT=true`: operator-scope via `reembedDocsInFolderAdmin`
+  - Without `ownerId` and `ADMIN_CROSS_TENANT=false`: returns 400
+- `POST /api/admin/reindex/tag/:tagId?dryRun=true&ownerId=<uuid>` — Bulk re-embed a tag
+  - With `ownerId`: owner-scoped via `documentTags JOIN documents`
+  - Without `ownerId` and `ADMIN_CROSS_TENANT=true`: operator-scope via `reembedDocsByTag`
+  - Without `ownerId` and `ADMIN_CROSS_TENANT=false`: returns 400
+- `GET /api/admin/embedding-stats` — Total chunks, documents with embeddings, zero-vector detection
+- `GET /api/admin/health/embeddings` — Live embedding provider probe
+- `GET /api/admin/graph/stats` — Apache AGE inventory (node and edge counts)
+
+#### Query-Based Access Control
+
+The `?ownerId=<uuid>` query parameter allows:
+- Cross-tenant admin operations when `ADMIN_CROSS_TENANT=true`
+- Tenant-scoped bulk operations without exposing internal `owner_id` columns
+- Fine-grained access control for shared admin credentials
 
 ## Configuration
 
@@ -223,7 +268,7 @@ Notable groups:
 - **Hybrid search weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`)
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
-- **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`), `AGE_DATABASE_URL`
+- **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
 - **Auth secrets:** `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `MINIO_SECRET_KEY` — each must be unique and set explicitly in production
 
 Full list with defaults: see `.env.example`.
@@ -297,7 +342,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code style, testing, an
 | Container | Image | Port | Purpose |
 |-----------|-------|------|---------|
 | postgres | pgvector/pgvector:pg18 | 5433:5432 | Database (pgvector + pg_trgm) |
-| age-postgres | apache/age:pg17 | 5438:5432 | Graph database (Apache AGE for GraphRAG) |
 | redis | redis:8-alpine | 6384:6379 | Cache/queue |
 | minio | minio/minio:latest | 9000:9000, 9001:9021 | File storage |
 | api | custom | 50700:50700 | Elysia backend |

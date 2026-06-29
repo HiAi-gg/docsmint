@@ -42,12 +42,22 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 <img width="1920" height="974" alt="docs" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
 
+## Key Features
+
+- **Smart Re-embed System** — automatic vector refresh on metadata changes (tags, folders, categories) with Redis-deduplicated batch processing to prevent embedding storms
+- **Incremental Chunk Updates** — hash-based chunk comparison ensures only changed content is re-embedded; overlap regions maintain semantic continuity
+- **GraphRAG with Apache AGE** — optional entity extraction and graph-based search expansion for discovering related documents beyond vector similarity
+- **Hybrid Search** — configurable full-text + semantic search with tunable weights (`HYBRID_TEXT_WEIGHT`, `HYBRID_SEMANTIC_WEIGHT`)
+- **Chunk Versioning** — `embedding_model` column tracks which model produced each vector, enabling targeted reindex operations when models change
+- **Admin Tooling** — `/api/admin/*` endpoints for reindexing, embedding stats, provider health checks, and AGE inventory queries
+- **Operator Controls** — `ADMIN_CROSS_TENANT` flag and `?ownerId=` parameter for multi-tenant deployments
+
 ## Features
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
 - **AI-native** — automatic chunking + vector embeddings on every save, with folder / tag / category metadata enriched into the chunk text for sharper semantic recall
+- **Unified search stack** — `pgvector` for dense embeddings, `pgvectorscale` StreamingDiskANN with binary quantization for index speed and recall, and Apache AGE for graph expansion, all living in a single PostgreSQL 18 database. Hybrid ranking = full-text + semantic + graph-neighbor boost
 - **System-wide re-embed** — every metadata mutation (tag / folder / category rename or delete) automatically refreshes affected vectors, with Redis-coalesced PATCH-storm dedup so rapid edits never spike embedding costs
-- **Hybrid search** — full-text + pgvector combined with an optional title-first boost (3x multiplier for documents whose title strongly matches the query) and category-aware filtering
 - **GraphRAG (optional)** — entity extraction + AGE graph expansion surfaces related documents beyond vector similarity, gated by feature flags and fully off by default
 - **Categories** — collapsible sidebar groups that classify folders and documents independently of the folder hierarchy, filterable from the search page
 - **Folder hierarchy** — nested folders to organize your documents
@@ -55,11 +65,45 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 - **Sharing** — token-protected links with password, expiration, and guest access
 - **Multi-file import** — drag in many `.md` / `.txt` / `.markdown` / `.json` / `.docx` files at once with a per-file progress overlay
 - **Agent-ready** — clean REST API for AI agents (Mastra compatible and others) plus an MCP server
-- **Operator tooling** — admin endpoints for embedding-stats, provider health, targeted reindex, and AGE inventory
+- **Operator tooling** — admin endpoints for embedding-stats, provider health, targeted reindex, AGE inventory, and graph index introspection
 - **Self-hosted** — full data ownership with minimal resource usage
 
 ## Screenshots
 <img width="999" height="594" alt="docs_screenshot" src="https://github.com/user-attachments/assets/1ba409e7-32cf-40d3-ae30-f8369e48cb53" />
+
+---
+
+## Search stack
+
+Three indexes on the same `document_embeddings` table, all in one database. Pick the right one for the workload.
+
+| Access method | Extension | When to use |
+|---|---|---|
+| `hnsw` | `pgvector` (default) | < 100k rows, low latency, simple ops |
+| `ivfflat` | `pgvector` | < 10k rows, training cost amortized, very small memory |
+| `diskann` | `pgvectorscale` (StreamingDiskANN) | 100k+ rows, larger-than-RAM, SbqCompression for ~10x storage reduction |
+
+The current Docker image ships with all three pre-installed. To switch, replace the `USING` clause in your index DDL:
+
+```sql
+-- HNSW (default)
+CREATE INDEX ON document_embeddings
+  USING hnsw (embedding vector_cosine_ops);
+
+-- DiskANN (StreamingDiskANN with binary quantization)
+CREATE INDEX ON document_embeddings
+  USING diskann (embedding vector_cosine_ops);
+```
+
+**Search ranking** is a weighted sum of the three signals:
+
+```
+score = HYBRID_TEXT_WEIGHT * full_text_score
+      + HYBRID_SEMANTIC_WEIGHT * semantic_cosine
+      + (graph_neighbors) * GRAPH_EXPANSION_BOOST
+```
+
+Defaults: `0.4` text, `0.6` semantic, `0.3` graph boost. With `?graph=true&graphHops=N` (1-3), graph neighbors that aren't in the merged set are inserted with a fixed `GRAPH_EXPANSION_BOOST * 1.0` score; neighbors that are already present get the same factor multiplied onto their existing score.
 
 ---
 
@@ -71,13 +115,16 @@ GraphRAG layers a knowledge graph over the existing vector search. It is optiona
 
 - Your corpus is small but rich in entity relationships (people, projects, concepts cross-referenced across documents).
 - You want search results to surface *related* documents, not just exact and near-exact matches.
-- You are willing to operate an additional PostgreSQL 17 instance with the Apache AGE extension.
 
 ### How it works
 
 1. **Extraction** — when `GRAPH_EXTRACT_ENABLED=true`, the embedding worker calls an OpenAI-compatible chat-completion API after every successful embed. The LLM extracts entities and relations from each chunk; entities with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE` (default `0.5`) are persisted to Apache AGE as graph nodes and edges.
 2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, `GET /api/search?graph=true` walks the graph from each merged seed document (1-3 hops, controlled by `?graphHops=N`). Discovered neighbors are merged into the result list with a multiplicative boost of `GRAPH_EXPANSION_BOOST` (default `0.3`).
 3. **Operator tooling** — `GET /api/admin/graph/stats` reports current AGE inventory (node and edge counts).
+
+### Where AGE lives
+
+Apache AGE runs in the **same PostgreSQL database** as the rest of the application. There is no separate container or connection string — the embedding worker and search route share the Drizzle client from `lib/db.ts` and dispatch `cypher()` queries against the shared `docs_graph` property graph. See `postgres/Dockerfile` for the unified image.
 
 ### Required env vars
 
@@ -89,13 +136,9 @@ GRAPH_EXTRACT_BASE_URL=        # OpenAI-compatible chat-completion URL (REQUIRED
 GRAPH_EXTRACT_API_KEY=
 GRAPH_EXTRACT_MODEL=           # defaults to EMBEDDING_MODEL when unset
 GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
-AGE_DATABASE_URL=              # connection string for the AGE Postgres instance
 ```
 
 See [`.env.example`](.env.example) for the full set, including optional `GRAPH_EXTRACT_FALLBACK_*` mirrors.
-
----
-
 ## Quick Start
 
 ### Docker (Production-style)
@@ -193,7 +236,7 @@ Then verify: `docker ps` should work without `sudo`.
 - **Changes not showing up** — `bun run dev` already wires HMR. If running via Docker, confirm the bind mount is in `docker-compose.dev.yml` (not the prod `docker-compose.yml`, which builds an immutable image).
 - **`bun install` complains about the lockfile** — ensure `bun.lock` is in sync: `bun install`.
 - **Docker `web` build works without paraglide patches** — As of `@inlang/paraglide-js@2.x`, the `@inlang/sdk@2.x` rewrite no longer emits the `data:` URLs that triggered Bun's `NameTooLong` error. The old `sed` patch on `frontend/Dockerfile` was removed. i18n is now driven by `@inlang/paraglide-js@2.x` directly (the SvelteKit adapter is deprecated) via `paraglideVitePlugin` in `vite.config.ts` and `paraglideMiddleware` in `src/hooks.server.ts`.
-- **GraphRAG queries return `available: false`** — confirm `GRAPH_EXTRACT_ENABLED` or `GRAPH_SEARCH_ENABLED` is `true` AND `AGE_DATABASE_URL` is set AND the AGE container is reachable on port 5438.
+- **GraphRAG queries return `available: false`** — confirm `GRAPH_EXTRACT_ENABLED` or `GRAPH_SEARCH_ENABLED` is `true` AND the `age` extension is installed in the shared PostgreSQL database (the unified `hiai-postgres` image ships with it; check `SELECT extname, extversion FROM pg_extension` to verify).
 
 ---
 
@@ -205,7 +248,8 @@ Then verify: `docker ps` should work without `sudo`.
 | Backend | [Elysia](https://elysiajs.com) 1.4.28+ |
 | ORM | [Drizzle ORM](https://orm.drizzle.team) 0.45.2+ |
 | Database | [PostgreSQL](https://postgresql.org) 18 + [pgvector](https://github.com/pgvector/pgvector) |
-| Graph database (optional) | [Apache AGE](https://age.apache.org) on PostgreSQL 17 |
+| Graph database (optional) | [Apache AGE](https://age.apache.org) 1.7.0 (lives in the same PostgreSQL 18 instance) |
+| Vector index (optional) | [pgvectorscale](https://github.com/timescale/pgvectorscale) 0.9.0 — StreamingDiskANN with SbqCompression |
 | Cache | [Redis](https://redis.io) 8.6+ |
 | Auth | [Better Auth](https://better-auth.com) |
 | Frontend | [SvelteKit](https://kit.svelte.dev) 2.60+ |
@@ -258,6 +302,7 @@ hiai-docs/
 │   │   ├── migrations/   # SQL migrations
 │   │   └── index.ts      # DB client
 │   └── package.json
+├── postgres/             # Custom PostgreSQL image (pgvector + vectorscale + age) — see postgres/Dockerfile
 ├── docker-compose.yml    # Production Docker setup
 ├── .env.example          # Environment template
 ├── AGENTS.md             # Agent instructions

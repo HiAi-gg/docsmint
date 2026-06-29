@@ -31,7 +31,6 @@ import {
 } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
 import { flip } from "svelte/animate";
-import { type DndEvent, dndzone } from "svelte-dnd-action";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import {
@@ -90,6 +89,7 @@ import {
 } from "$lib/stores/tag-store.svelte";
 import { cn } from "$lib/utils";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
+import { type DndEvent, dndzone } from "$lib/utils/dndzone";
 
 // Rename/delete target shared by folders and documents in the tree.
 type EntityKind = "folder" | "doc";

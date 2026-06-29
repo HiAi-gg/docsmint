@@ -1,0 +1,11 @@
+-- Adds a StreamingDiskANN index on document_embeddings.embedding for ANN
+-- queries over the >100K row regime. DiskANN ships with the pgvectorscale
+-- extension (enabled in postgres/init.sql alongside vector + age + pg_trgm).
+--
+-- StreamingDiskANN stores compressed vectors on disk and is preferred over
+-- HNSW once the table exceeds RAM or when ANN recall/throughput trade-offs
+-- matter; HNSW (created in 0001_w2_3_test.sql) is still kept because it
+-- serves small (in-RAM) tables with lower latency.
+--
+-- This migration is idempotent: rerunning it is a no-op.
+CREATE INDEX IF NOT EXISTS "idx_document_embeddings_diskann" ON "document_embeddings" USING diskann ("embedding" vector_cosine_ops);--> statement-breakpoint

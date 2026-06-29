@@ -409,6 +409,9 @@ export const documentEmbeddings = pgTable(
   (table) => [
     index("document_embeddings_doc_id_idx").on(table.documentId),
     uniqueIndex("document_embeddings_doc_chunk_idx").on(table.documentId, table.chunkIndex),
+    // Backs POST /api/admin/reindex/model which selects docs whose stored
+    // embedding model differs from the currently-configured EMBEDDING_MODEL.
+    index("idx_document_embeddings_embedding_model").on(table.embeddingModel),
     index("idx_document_embeddings_hnsw").using(
       "hnsw",
       sql`${table.embedding} vector_cosine_ops`

@@ -3,13 +3,15 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    build:
+      context: ./postgres
+    image: hiai-postgres:18-custom
     restart: unless-stopped
     ports:
       - "${DB_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+ # init.sql now inside the build image
     environment:
       POSTGRES_DB: ${DB_NAME:-hiai_docs}
       POSTGRES_USER: ${DB_USER:-aiuser}
@@ -50,7 +52,7 @@ services:
   minio:
     image: minio/minio:latest
     restart: unless-stopped
-    # 9021 host: avoids conflict with webs-minio (9001) and ai-shared-minio (9011)
+    # Console port mapped to 9021 to avoid common local port conflicts.
     ports:
       - "${MINIO_PORT:-9000}:9000"
       - "9021:9001"
@@ -60,6 +62,11 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      # Allow the browser to PUT directly to MinIO for presigned uploads.
+      # Comma-separated list of origins; use `*` for development if you
+      # don't want to pin a specific host. Default mirrors the
+      # CORS_ORIGINS fallback so the same frontend origin works.
+      MINIO_API_CORS_ALLOW_ORIGIN: ${MINIO_API_CORS_ALLOW_ORIGIN:-http://localhost:50701,http://127.0.0.1:50701}
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -120,6 +127,23 @@ services:
       OWNER_ID: ${OWNER_ID}
       EMBEDDING_OLLAMA_URL: ${EMBEDDING_OLLAMA_URL:-}
       EMBEDDING_FALLBACK_PROVIDER: ${EMBEDDING_FALLBACK_PROVIDER:-}
+      GRAPH_EXTRACT_ENABLED: ${GRAPH_EXTRACT_ENABLED:-false}
+      GRAPH_SEARCH_ENABLED: ${GRAPH_SEARCH_ENABLED:-false}
+      GRAPH_EXTRACT_BASE_URL: ${GRAPH_EXTRACT_BASE_URL:-}
+      GRAPH_EXTRACT_API_KEY: ${GRAPH_EXTRACT_API_KEY:-}
+      GRAPH_EXTRACT_MODEL: ${GRAPH_EXTRACT_MODEL:-}
+      GRAPH_EXTRACT_FALLBACK_BASE_URL: ${GRAPH_EXTRACT_FALLBACK_BASE_URL:-}
+      GRAPH_EXTRACT_FALLBACK_API_KEY: ${GRAPH_EXTRACT_FALLBACK_API_KEY:-}
+      GRAPH_EXTRACT_FALLBACK_MODEL: ${GRAPH_EXTRACT_FALLBACK_MODEL:-}
+      GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5
+      GRAPH_EXPANSION_BOOST: 0.3
+      HYBRID_TEXT_WEIGHT: 0.4
+      HYBRID_SEMANTIC_WEIGHT: 0.6
+      CHUNK_TARGET_TOKENS: 500
+      CHUNK_OVERLAP_TOKENS: 50
+      FOLDER_REEMBED_BATCH_SIZE: 100
+      CATEGORY_REEMBED_BATCH_SIZE: 100
+      TAG_REEMBED_BATCH_SIZE: 500
       NODE_ENV: development
       LOG_LEVEL: ${LOG_LEVEL:-info}
     networks:
@@ -128,33 +152,6 @@ services:
       resources:
         limits:
           memory: 512M
-          cpus: "1"
-
-  # Apache AGE (GraphRAG) — separate PostgreSQL instance with AGE extension
-  # for graph-based entity extraction and graph-aware search expansion.
-  age-postgres:
-    image: apache/age:release_PG18_1.7.0
-    restart: unless-stopped
-    ports:
-      - "${AGE_DB_PORT:-5438}:5432"
-    volumes:
-      - age_pgdata:/var/lib/postgresql
-    environment:
-      POSTGRES_DB: ${AGE_DB_NAME:-hiai_docs_graph}
-      POSTGRES_USER: ${DB_USER:-aiuser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${AGE_DB_NAME:-hiai_docs_graph}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - hiai-docs-net
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1"
 
   web:
     build:
@@ -217,7 +214,7 @@ networks:
 
 volumes:
   pgdata:
-  age_pgdata:
+ # AGE graph now lives in the unified postgres database
   redis_data:
   minio_data:
   caddy_data:

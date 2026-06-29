@@ -3,7 +3,7 @@
   "info": {
     "title": "hiai-docs API",
     "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
-    "version": "0.0.9",
+    "version": "0.1.0",
     "contact": {
       "name": "hiai-gg",
       "url": "https://github.com/hiai-gg/hiai-docs"
@@ -41,6 +41,10 @@
     {
       "name": "Search",
       "description": "Hybrid full-text + semantic search"
+    },
+    {
+      "name": "Admin",
+      "description": "Admin maintenance endpoints (require x-api-key)"
     }
   ],
   "paths": {
@@ -301,6 +305,36 @@
     "/api/search/": {
       "get": {
         "operationId": "getApiSearch",
+        "parameters": [
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "graph",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            },
+            "in": "query",
+            "name": "graphHops",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "in": "query",
+            "name": "graphBoost",
+            "required": false
+          }
+        ],
         "responses": {
           "200": {}
         }
@@ -597,9 +631,220 @@
           "200": {}
         }
       }
+    },
+    "/api/admin/reindex/{docId}": {
+      "post": {
+        "operationId": "postApiAdminReindexByDocId",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "docId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {},
+          "401": {},
+          "404": {},
+          "429": {}
+        }
+      }
+    },
+    "/api/admin/embedding-stats": {
+      "get": {
+        "operationId": "getApiAdminEmbedding-stats",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {},
+          "401": {},
+          "429": {}
+        }
+      }
+    },
+    "/api/admin/health/embeddings": {
+      "get": {
+        "operationId": "getApiAdminHealthEmbeddings",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {},
+          "401": {},
+          "429": {}
+        }
+      }
+    },
+    "/api/admin/reindex/model": {
+      "post": {
+        "operationId": "postApiAdminReindexModel",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "dryRun",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {},
+          "401": {},
+          "429": {},
+          "500": {}
+        }
+      }
+    },
+    "/api/admin/reindex/folder/{folderId}": {
+      "post": {
+        "operationId": "postApiAdminReindexFolderByFolderId",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "folderId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "dryRun",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "ownerId",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {},
+          "400": {},
+          "401": {},
+          "429": {},
+          "500": {}
+        }
+      }
+    },
+    "/api/admin/reindex/tag/{tagId}": {
+      "post": {
+        "operationId": "postApiAdminReindexTagByTagId",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "tagId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "boolean"
+            },
+            "in": "query",
+            "name": "dryRun",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "query",
+            "name": "ownerId",
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {},
+          "400": {},
+          "401": {},
+          "429": {},
+          "500": {}
+        }
+      }
+    },
+    "/api/admin/graph/stats": {
+      "get": {
+        "operationId": "getApiAdminGraphStats",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {},
+          "401": {},
+          "429": {}
+        }
+      }
     }
   },
   "components": {
-    "schemas": {}
+    "schemas": {},
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key"
+      }
+    }
   }
 }

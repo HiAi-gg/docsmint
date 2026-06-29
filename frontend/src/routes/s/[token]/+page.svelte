@@ -843,12 +843,17 @@ function renderViewedDocContent(): string {
   .shared-doc-body :global(p) {
     margin: 0.5rem 0;
   }
-  .shared-doc-body :global(ul),
+  /* Lists. Tailwind v4 preflight sets `list-style: none` on `ol, ul, menu`;
+     the `ul:not([data-type="taskList"])` form below lifts our specificity
+     above that reset so the disc / decimal markers reappear in the share
+     view. Mirrors the rules in HiAiEditor.svelte so the editor and the
+     share view render the same list shapes. */
+  .shared-doc-body :global(ul:not([data-type="taskList"])),
   .shared-doc-body :global(ol) {
     padding-left: 1.5rem;
     margin: 0.5rem 0;
   }
-  .shared-doc-body :global(ul) {
+  .shared-doc-body :global(ul:not([data-type="taskList"])) {
     list-style-type: disc;
   }
   .shared-doc-body :global(ol) {

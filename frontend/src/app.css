@@ -4,3 +4,28 @@
  * of truth lives in @hiai-gg/hiai-ui. This file is intentionally minimal: docs-specific
  * additions only. To change tokens, edit packages/hiai-ui/src/styles/tokens.css. */
 @import "@hiai-gg/hiai-ui/styles/tokens.css";
+
+/* Tailwind v4 preflight resets `list-style: none` on `ol, ul, menu`, which
+ * hides the default bullet/number markers everywhere on the page — including
+ * the TipTap editor and the shared-document view. Restore them globally on
+ * lists that haven't explicitly opted out (e.g. task lists). The selector
+ * is scoped to `.tiptap` because that's the class TipTap prepends to the
+ * editor root (added in @tiptap/core `prependClass()`); list markers are
+ * only meaningful inside rich-text content, so we don't re-introduce them
+ * on plain document chrome. The share view scopes its lists under
+ * `.shared-doc-body` in +page.svelte (HTML emitted via `{@html}` may
+ * render lists outside any `.tiptap` container). */
+.tiptap ul:not([data-type="taskList"]),
+.tiptap ol {
+	padding-left: 1.5rem;
+}
+.tiptap ul:not([data-type="taskList"]) {
+	list-style-type: disc;
+}
+.tiptap ol {
+	list-style-type: decimal;
+}
+.tiptap ul[data-type="taskList"] {
+	list-style: none;
+	padding-left: 0.25rem;
+}

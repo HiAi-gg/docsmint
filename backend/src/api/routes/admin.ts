@@ -367,10 +367,6 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 		if (!config.GRAPH_SEARCH_ENABLED && !config.GRAPH_EXTRACT_ENABLED) {
 			return { available: false, reason: "GraphRAG disabled" };
 		}
-		if (!config.AGE_DATABASE_URL) {
-			return { available: false, reason: "AGE_DATABASE_URL not set" };
-		}
-
 		const sql = await getGraphDb();
 		if (!sql) {
 			return { available: false, reason: "AGE unreachable" };
@@ -382,10 +378,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// per-label / per-type counts are omitted. Operators who need
 			// the breakdown can run MATCH (n:Label) RETURN count(n) directly.
 			const nodesResult = await sql<Array<{ count: string }>>`
-				SELECT count(*) AS count FROM cypher('docs_graph', '' '' MATCH (n) RETURN count(n) '' '') AS (count agtype)
+				SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH (n) RETURN count(n) $$) AS (count agtype)
 			`;
 			const edgesResult = await sql<Array<{ count: string }>>`
-				SELECT count(*) AS count FROM cypher('docs_graph', '' '' MATCH ()-[r]->() RETURN count(r) '' '') AS (count agtype)
+				SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH ()-[r]->() RETURN count(r) $$) AS (count agtype)
 			`;
 			const nodes = Number(nodesResult[0]?.count ?? 0);
 			const edges = Number(edgesResult[0]?.count ?? 0);

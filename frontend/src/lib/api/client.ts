@@ -1,4 +1,9 @@
-interface FetchOptions extends RequestInit {
+interface FetchOptions extends Omit<RequestInit, "body"> {
+	// Override `body` so callers can pass plain JSON objects. `apiFetch`
+	// JSON-serializes them below; the `RequestInit.body` type only
+	// accepts binary-ish payloads which doesn't reflect how the helper
+	// is actually used.
+	body?: BodyInit | null | object;
 	timeout?: number;
 	// Max number of retries on 429 (Too Many Requests). Defaults to 2 —
 	// up to 3 total attempts before propagating the last 429. Set to 0 to
@@ -132,6 +137,27 @@ export async function apiFetch<T>(
 	}
 
 	const headers: Record<string, string> = {};
+	// Serialize plain JS objects to JSON. FormData, Blobs, ArrayBuffers,
+	// ReadableStreams, and other BodyInit-compatible values pass through
+	// unchanged so multipart uploads (FormData with files) and binary
+	// PUTs keep working. We intentionally do NOT stringify anything that
+	// already implements BodyInit — calling JSON.stringify on a Blob
+	// would discard it and produce the useless literal string `"{}"`.
+	const isPlainObject =
+		typeof body === "object" &&
+		body !== null &&
+		!(body instanceof FormData) &&
+		!(body instanceof Blob) &&
+		!(body instanceof ArrayBuffer) &&
+		!(body instanceof ReadableStream) &&
+		!(body instanceof URLSearchParams) &&
+		!ArrayBuffer.isView(body);
+	const serializedBody: BodyInit | null | undefined =
+		body == null
+			? (body as null | undefined)
+			: isPlainObject
+				? (JSON.stringify(body) as string)
+				: (body as BodyInit);
 	if (body && !(body instanceof FormData)) {
 		headers["Content-Type"] = "application/json";
 	}
@@ -145,7 +171,7 @@ export async function apiFetch<T>(
 		const attemptFetch = async (): Promise<T> => {
 			const response = await fetcher(path, {
 				...fetchOptions,
-				body,
+				body: serializedBody,
 				signal: controller.signal,
 				headers: {
 					...headers,

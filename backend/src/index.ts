@@ -33,14 +33,19 @@ ensureBucket(minio, BUCKET).catch((err) => {
 	logger.error({ err }, "Failed to ensure MinIO bucket");
 });
 
-const MAX_BODY_SIZE_BYTES = 10 * 1024 * 1024;
+// Global body-size cap. Large attachment uploads NO LONGER pass through
+// this process — they go to MinIO directly via presigned URLs (see
+// /api/documents/:id/attachments/presign) — so this only needs to be big
+// enough for the remaining endpoints (markdown imports, document
+// updates, etc.) while still blocking obviously malicious payloads.
+const MAX_BODY_SIZE_BYTES = 100 * 1024 * 1024;
 
 const CSP_POLICY = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
 	"img-src 'self' data: blob: http://localhost:9020 http://localhost:9000 http://minio:9000",
-	"connect-src 'self' http://localhost:50700 ws://localhost:50700",
+	"connect-src 'self' http://localhost:50700 ws://localhost:50700 http://localhost:9000 http://localhost:9020",
 	"font-src 'self' data:",
 	"frame-ancestors 'none'",
 	"form-action 'self'",
@@ -56,24 +61,26 @@ const bodySizeLimit = new Elysia().onBeforeHandle(({ request, set }) => {
 			set.status = 413;
 			set.headers["X-Content-Type-Options"] = "nosniff";
 			set.headers["X-Frame-Options"] = "DENY";
-			return { error: "Request body too large (max 10MB)" };
+			return { error: "Request body too large (max 100MB)" };
 		}
 	}
 });
 
-const securityHeaders = new Elysia().onAfterHandle(({ set }) => {
-	set.headers["Content-Security-Policy"] = CSP_POLICY;
-	set.headers["Strict-Transport-Security"] = HSTS_POLICY;
-	set.headers["X-Content-Type-Options"] = "nosniff";
-	set.headers["X-Frame-Options"] = "DENY";
-});
+// Security-headers hook is chained directly on the parent app instance.
+// In Elysia 1.4.x, `.onAfterHandle()` registered on a plugin (`new
+// Elysia({...}).onAfterHandle(...)`) is local to the plugin's own routes
+// and does NOT propagate to the parent's existing or future routes — only
+// handler-local `set.headers` (e.g. csrf-token in csrf.ts) reaches the
+// wire. Chaining directly on the parent before route registration makes
+// the hook part of the parent's event array so all subsequent routes
+// inherit it.
 
 const swaggerConfig = {
 	path: "/api/docs",
 	documentation: {
 		info: {
 			title: "hiai-docs API",
-			version: "0.0.9",
+			version: "0.1.0",
 			description:
 				"Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
 			contact: { name: "hiai-gg", url: "https://github.com/hiai-gg/hiai-docs" },
@@ -106,7 +113,12 @@ const swaggerConfig = {
 
 const app = new Elysia()
 	.use(bodySizeLimit)
-	.use(securityHeaders)
+	.onAfterHandle(({ set }) => {
+		set.headers["Content-Security-Policy"] = CSP_POLICY;
+		set.headers["Strict-Transport-Security"] = HSTS_POLICY;
+		set.headers["X-Content-Type-Options"] = "nosniff";
+		set.headers["X-Frame-Options"] = "DENY";
+	})
 	.use(
 		cors({
 			origin: config.CORS_ORIGINS?.split(",") ?? [config.BETTER_AUTH_URL],

@@ -336,7 +336,17 @@ function handleWrapperClick(event: MouseEvent) {
     margin: 0.5rem 0;
   }
 
-  .editor-content :global(.tiptap ul) {
+  /* Lists.
+     Tailwind v4 preflight sets `list-style: none` on `ol, ul, menu` so the
+     default `<ul>` / `<ol>` markers are wiped out everywhere on the page.
+     Re-assert them here with a higher-specificity selector — the
+     `:not([data-type="taskList"])` attribute selector adds one to the
+     classes column on top of Svelte's own scoping class so the rule is
+     unambiguously heavier than the preflight reset, and the rendered
+     default `<ul>` / `<ol>` markers come back. The selectors are written
+     through `:global()` so only the `.editor-content` wrapper is scoped;
+     the rest walks the rendered TipTap DOM unchanged. */
+  .editor-content :global(.tiptap ul):not([data-type="taskList"]) {
     padding-left: 1.5rem;
     margin: 0.5rem 0;
     list-style-type: disc;

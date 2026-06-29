@@ -1,8 +1,6 @@
 import { logger } from "./logger";
 import { redis } from "./redis";
 
-const DOC_SINGLE_TTL = 60; // seconds
-const DOC_LIST_TTL = 30; // seconds
 const LIST_PREFIX = "hiai-docs:cache:docs:list:";
 const SINGLE_PREFIX = "hiai-docs:cache:docs:single:";
 

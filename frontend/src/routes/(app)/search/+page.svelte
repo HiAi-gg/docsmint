@@ -22,9 +22,22 @@ import { getFilterOptions, type SearchResponse, search } from "$lib/api/search";
 import DatePicker from "$lib/components/DatePicker.svelte";
 import SearchResult from "$lib/components/SearchResult.svelte";
 import { Badge } from "$lib/components/ui/badge";
+import SelectRoot from "$lib/components/ui/select/select.svelte";
+import SelectContent from "$lib/components/ui/select/select-content.svelte";
+import SelectItem from "$lib/components/ui/select/select-item.svelte";
+import SelectTrigger from "$lib/components/ui/select/select-trigger.svelte";
+import SelectValue from "$lib/components/ui/select/select-value.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { getSelectedTagName } from "$lib/stores/tag-store.svelte";
 import type { Folder as FolderType } from "$lib/types.js";
+
+const Select = {
+	Root: SelectRoot,
+	Content: SelectContent,
+	Item: SelectItem,
+	Trigger: SelectTrigger,
+	Value: SelectValue,
+};
 
 const { data } = $props();
 
@@ -657,34 +670,69 @@ function goToPage(page: number) {
       <div class="flex items-center gap-4">
         <div class="flex items-center gap-1.5 text-sm text-muted-foreground">
           <span>Results per page:</span>
-          <select
-            value={pageSize}
-            onchange={(e) => {
-              const val = Number((e.target as HTMLSelectElement).value);
-              pageSize = val;
-              currentPage = 1;
-              goto(buildUrl({ page: "1", limit: String(val) }), { replaceState: true });
+          <Select.Root
+            type="single"
+            value={String(pageSize)}
+            onValueChange={(val: string) => {
+              if (val) {
+                const numVal = Number(val);
+                pageSize = numVal;
+                currentPage = 1;
+                goto(buildUrl({ page: "1", limit: val }), { replaceState: true });
+              }
             }}
-            class="rounded-md border border-input bg-background px-2.5 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-          </select>
+            <Select.Trigger class="h-9 w-[70px] text-foreground flex items-center justify-between bg-background border border-input px-3 py-2 text-sm rounded-md shadow-sm">
+              <Select.Value placeholder={String(pageSize)}>
+                {pageSize}
+              </Select.Value>
+            </Select.Trigger>
+            <Select.Content class="w-[70px]">
+              <Select.Item value="5">5</Select.Item>
+              <Select.Item value="10">10</Select.Item>
+              <Select.Item value="20">20</Select.Item>
+              <Select.Item value="50">50</Select.Item>
+            </Select.Content>
+          </Select.Root>
         </div>
 
-        <select
-          bind:value={sortOrder}
-          class="rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={m.search_filter_label_aria()}
+        <Select.Root
+          type="single"
+          value={sortOrder}
+          onValueChange={(val: string) => {
+            if (val) {
+              const prev = sortOrder;
+              sortOrder = val as any;
+              if (prev !== val) {
+                currentPage = 1;
+                goto(buildUrl({ page: "1" }), { replaceState: true });
+              }
+            }
+          }}
         >
-          <option value="relevance">{m.sort_relevance()}</option>
-          <option value="date_desc">{m.sort_date_newest()}</option>
-          <option value="date_asc">{m.sort_date_oldest()}</option>
-          <option value="name_asc">{m.sort_name_asc()}</option>
-          <option value="name_desc">{m.sort_name_desc()}</option>
-        </select>
+          <Select.Trigger class="h-9 w-[180px] text-foreground flex items-center justify-between bg-background border border-input px-3 py-2 text-sm rounded-md shadow-sm">
+            <Select.Value placeholder={m.sort_relevance()}>
+              {#if sortOrder === "relevance"}
+                {m.sort_relevance()}
+              {:else if sortOrder === "date_desc"}
+                {m.sort_date_newest()}
+              {:else if sortOrder === "date_asc"}
+                {m.sort_date_oldest()}
+              {:else if sortOrder === "name_asc"}
+                {m.sort_name_asc()}
+              {:else if sortOrder === "name_desc"}
+                {m.sort_name_desc()}
+              {/if}
+            </Select.Value>
+          </Select.Trigger>
+          <Select.Content class="w-[180px]">
+            <Select.Item value="relevance">{m.sort_relevance()}</Select.Item>
+            <Select.Item value="date_desc">{m.sort_date_newest()}</Select.Item>
+            <Select.Item value="date_asc">{m.sort_date_oldest()}</Select.Item>
+            <Select.Item value="name_asc">{m.sort_name_asc()}</Select.Item>
+            <Select.Item value="name_desc">{m.sort_name_desc()}</Select.Item>
+          </Select.Content>
+        </Select.Root>
       </div>
     </div>
 

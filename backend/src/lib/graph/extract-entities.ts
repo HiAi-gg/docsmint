@@ -21,7 +21,7 @@
 
 import { config } from "../config";
 import { logger } from "../logger";
-import { closeGraph, type GraphSqlClient, getGraphDb } from "./init";
+import { getGraphDb } from "./init";
 
 const ENTITY_TYPES = [
 	"Person",
@@ -88,20 +88,6 @@ const gDedupCache = new Map<string, { confidence: number; ts: number }>();
 const GDEDUP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const GDEDUP_MIN_CONFIDENCE = 0.7;
 
-function getCachedEntity(name: string, type: string): ExtractedEntity | null {
-	const key = `${type}:${name.toLowerCase()}`;
-	const cached = gDedupCache.get(key);
-	if (cached && Date.now() - cached.ts < GDEDUP_TTL_MS) {
-		return {
-			name,
-			type: type as EntityType,
-			confidence: cached.confidence,
-			relationships: [],
-		};
-	}
-	return null;
-}
-
 function setCachedEntity(name: string, type: string, confidence: number): void {
 	const key = `${type}:${name.toLowerCase()}`;
 	gDedupCache.set(key, { confidence, ts: Date.now() });
@@ -163,14 +149,6 @@ export async function extractEntities(
 	options: ExtractEntitiesOptions = {},
 ): Promise<ExtractedEntity[]> {
 	if (!config.GRAPH_EXTRACT_ENABLED) return [];
-	if (!config.AGE_DATABASE_URL) {
-		logger.debug(
-			{ documentId },
-			"AGE_DATABASE_URL not set — skipping entity extraction",
-		);
-		return [];
-	}
-	const text = chunkText.trim();
 	if (!text) return [];
 
 	const sql = await getGraphDb();

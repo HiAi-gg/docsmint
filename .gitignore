@@ -59,6 +59,7 @@ backup/
 
 # SvelteKit backup
 .svelte-kit.bak/
+.svelte-kit.old/
 
 # Internal dev artifacts (not part of the public release)
 todo.md

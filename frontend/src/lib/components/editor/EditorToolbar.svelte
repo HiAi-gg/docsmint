@@ -126,6 +126,20 @@ let alignDropdownRoot = $state<HTMLDivElement | null>(null);
 let copyConfirmation = $state(false);
 let snapshotDialogOpen = $state(false);
 
+// Popover direction states
+let headingOpenUp = $state(false);
+let listOpenUp = $state(false);
+let alignOpenUp = $state(false);
+let highlightOpenUp = $state(false);
+let emojiOpenUp = $state(false);
+let tableOpenUp = $state(false);
+
+function checkOpenUp(element: HTMLElement | null): boolean {
+	if (!element) return false;
+	const rect = element.getBoundingClientRect();
+	return rect.top > window.innerHeight / 2;
+}
+
 // TipTap mutates its internal state during transactions but doesn't bump
 // Svelte's reactive graph, so template calls to `editor.isActive(...)` would
 // only re-evaluate when something *else* in the script changes. We track a
@@ -223,6 +237,9 @@ function isDisabled(): boolean {
 
 function toggleHighlightPicker() {
 	highlightPickerOpen = !highlightPickerOpen;
+	if (highlightPickerOpen) {
+		highlightOpenUp = checkOpenUp(highlightPickerRoot);
+	}
 }
 
 function applyHighlight(color: HighlightColor) {
@@ -239,6 +256,9 @@ function clearHighlight() {
 
 function toggleEmojiPicker() {
 	emojiPickerOpen = !emojiPickerOpen;
+	if (emojiPickerOpen) {
+		emojiOpenUp = checkOpenUp(emojiPickerRoot);
+	}
 }
 
 function insertEmoji(emoji: string) {
@@ -255,6 +275,9 @@ function toggleTablePicker() {
 	tablePickerOpen = !tablePickerOpen;
 	tableHoverRows = 0;
 	tableHoverCols = 0;
+	if (tablePickerOpen) {
+		tableOpenUp = checkOpenUp(tablePickerRoot);
+	}
 }
 
 function insertTable(rows: number, cols: number) {
@@ -265,6 +288,9 @@ function insertTable(rows: number, cols: number) {
 
 function toggleHeadingDropdown() {
 	headingDropdownOpen = !headingDropdownOpen;
+	if (headingDropdownOpen) {
+		headingOpenUp = checkOpenUp(headingDropdownRoot);
+	}
 }
 
 function applyHeading(level: 1 | 2 | 3 | null) {
@@ -279,6 +305,9 @@ function applyHeading(level: 1 | 2 | 3 | null) {
 
 function toggleListDropdown() {
 	listDropdownOpen = !listDropdownOpen;
+	if (listDropdownOpen) {
+		listOpenUp = checkOpenUp(listDropdownRoot);
+	}
 }
 
 function applyList(kind: "bullet" | "ordered" | "task") {
@@ -305,6 +334,9 @@ function insertHorizontalRule() {
 
 function toggleAlignDropdown() {
 	alignDropdownOpen = !alignDropdownOpen;
+	if (alignDropdownOpen) {
+		alignOpenUp = checkOpenUp(alignDropdownRoot);
+	}
 }
 
 function applyAlignment(value: TextAlignValue) {
@@ -632,7 +664,7 @@ $effect(() => {
 		</button>
 
 		{#if headingDropdownOpen}
-			<div class="dropdown-popover" role="menu" aria-label={m.editor_toolbar_heading()}>
+			<div class="dropdown-popover" class:open-up={headingOpenUp} role="menu" aria-label={m.editor_toolbar_heading()}>
 				<button
 					type="button"
 					class="dropdown-item"
@@ -697,7 +729,7 @@ $effect(() => {
 		</button>
 
 		{#if listDropdownOpen}
-			<div class="dropdown-popover" role="menu" aria-label={m.editor_toolbar_list()}>
+			<div class="dropdown-popover" class:open-up={listOpenUp} role="menu" aria-label={m.editor_toolbar_list()}>
 				<button
 					type="button"
 					class="dropdown-item"
@@ -760,7 +792,7 @@ $effect(() => {
 		</button>
 
 		{#if alignDropdownOpen}
-			<div class="dropdown-popover" role="menu" aria-label={m.editor_toolbar_align()}>
+			<div class="dropdown-popover" class:open-up={alignOpenUp} role="menu" aria-label={m.editor_toolbar_align()}>
 				<button
 					type="button"
 					class="dropdown-item"
@@ -884,7 +916,7 @@ $effect(() => {
 		</button>
 
 		{#if highlightPickerOpen}
-			<div class="highlight-popover" role="menu" aria-label={m.editor_toolbar_highlight()}>
+			<div class="highlight-popover" class:open-up={highlightOpenUp} role="menu" aria-label={m.editor_toolbar_highlight()}>
 				<div class="highlight-swatch-grid">
 					{#each HIGHLIGHT_COLORS as color (color.value)}
 						<button
@@ -930,7 +962,7 @@ $effect(() => {
 		</button>
 
 		{#if emojiPickerOpen}
-			<div class="emoji-popover" role="menu" aria-label={m.editor_toolbar_emoji()}>
+			<div class="emoji-popover" class:open-up={emojiOpenUp} role="menu" aria-label={m.editor_toolbar_emoji()}>
 				<div class="emoji-grid">
 					{#each EMOJIS as emoji (emoji)}
 						<button
@@ -965,7 +997,7 @@ $effect(() => {
 		</button>
 
 		{#if tablePickerOpen}
-			<div class="table-popover" role="menu" aria-label="Insert table">
+			<div class="table-popover" class:open-up={tableOpenUp} role="menu" aria-label="Insert table">
 				<div class="table-grid" role="presentation">
 					{#each Array(TABLE_GRID_MAX) as _, r}
 						{#each Array(TABLE_GRID_MAX) as _, c}
@@ -1562,7 +1594,15 @@ $effect(() => {
 		animation: floatUp 0.2s ease-out;
 		width: max-content;
 		max-width: 90vw;
-		overflow-x: auto;
+		overflow: visible;
+	}
+
+	.dropdown-popover.open-up,
+	.highlight-popover.open-up,
+	.emoji-popover.open-up,
+	.table-popover.open-up {
+		top: auto;
+		bottom: calc(100% + 6px);
 	}
 
 	@keyframes floatUp {

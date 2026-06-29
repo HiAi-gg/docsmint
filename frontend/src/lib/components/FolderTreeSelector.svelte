@@ -57,7 +57,7 @@ const hierarchicalFolders = $derived.by(() => {
 		if (!byParent.has(pId)) {
 			byParent.set(pId, []);
 		}
-		byParent.get(pId)!.push(f);
+		byParent.get(pId)?.push(f);
 	}
 	for (const [_, list] of byParent.entries()) {
 		list.sort((a, b) => a.name.localeCompare(b.name));

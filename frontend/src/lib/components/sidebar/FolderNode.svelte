@@ -24,7 +24,6 @@
 import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";
-import { type DndEvent, dndzone } from "svelte-dnd-action";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import type { Document } from "$lib/api/documents";
@@ -42,6 +41,7 @@ import {
 	registerFolder,
 } from "$lib/stores/subfolders-refresh-store.svelte.js";
 import { cn } from "$lib/utils";
+import { type DndEvent, dndzone } from "$lib/utils/dndzone";
 
 export interface FolderNodeItem {
 	id: string;

@@ -7,6 +7,55 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Highlights
+
+- **Unified PostgreSQL image (`hiai-postgres:18-custom`)** — pgvector + pgvectorscale + Apache AGE now live in a **single** PostgreSQL 18 database. Replaces the previous split between `pgvector/pgvector:pg18` (port 5437) and `apache/age:release_PG18_1.7.0` (port 5438). The custom image is defined in `postgres/Dockerfile` and the migration is idempotent (`postgres/init.sql`).
+- **pgvectorscale (StreamingDiskANN)** — vector index upgrades. The image now ships `vector 0.8.3`, `vectorscale 0.9.0`, and `age 1.7.0` together. Switching index access method is a one-line DDL change (`USING diskann (embedding vector_cosine_ops)`) for >100k row corpora. Binary quantization (`SbqCompression`) is enabled by default in the index build.
+- **Simplified deployment** — no more `age-postgres` service, `age_pgdata` volume, or `AGE_DATABASE_URL` env var. `docker compose up -d` brings up one image, one volume, one connection string.
+
+### Added
+
+- `postgres/Dockerfile` — multi-stage build: `builder` (pgvector from source, pgvectorscale via cargo pgrx 0.16.1) → `age_src` (prebuilt Apache AGE binaries from `apache/age:release_PG18_1.7.0`) → runtime (`postgres:18.1` base). AGE 1.7.0 is built against PG 18.1, so we pin the runtime to the same major to keep the glibc ABI aligned.
+- `postgres/init.sql` — installs `vector`, `vectorscale`, `age`, `pg_trgm`, creates the `docs_graph` property graph, and sets `search_path = ag_catalog, public` so application code can call `cypher('docs_graph', $$ ... $$)` without schema-qualifying.
+- `idx_document_embeddings_diskann` — StreamingDiskANN index on `document_embeddings.embedding` with `SbqCompression`. Co-exists with the existing HNSW index; choose per workload.
+- `backend/src/lib/db.ts` — exports the raw `client` (`postgres.Sql`) alongside the Drizzle wrapper, so `lib/graph/*` can call raw `cypher()` while everything else still uses the typed Drizzle API.
+- `backend/src/lib/graph/init.ts` — rewritten to use the shared Drizzle client. The module-level AGE-specific connection pool and `closeGraph()` lifecycle are gone; the lazy `getGraphDb()` still memoizes the init result so the migration only runs once per process.
+
+### Changed
+
+- **`backend/src/lib/graph/extract-entities.ts`** and **`search-expansion.ts`** — removed the `if (!config.AGE_DATABASE_URL)` early-return guards. The shared client is always available, so graph code paths now run as long as `GRAPH_*_ENABLED` is true and the `age` extension is installed.
+- **`backend/src/api/routes/admin.ts`** — `graph/stats` no longer branches on `AGE_DATABASE_URL`. It reports `available: false` only when `GRAPH_*_ENABLED` is false or `getGraphDb()` returns `null` (extension missing).
+- **`backend/src/api/routes/admin.ts`** — fixed the Cypher `graph/stats` query that was quoting Cypher bodies with `'' ''` (illegal in a bun-tagged SQL template). Now uses `$$ ... $$` dollar-quoting, the form AGE accepts.
+- **`docker-compose.yml`** — `age-postgres` service and `age_pgdata` volume removed. The `postgres` service now builds from `postgres/Dockerfile` (`build: { context: ./postgres }`) and exposes the unified image. The `api` service's `environment` block drops `AGE_DATABASE_URL` and the dead `AGE_DB_*` env vars and gains `AGE_DATABASE_URL` removed.
+- **`Dockerfile.backend`** — copies `backend/src/lib/graph/migrations/001_init.sql` into the runtime image so the AGE migration can be found relative to `lib/graph/init.ts` in the compiled bundle.
+- **`.env`** and **`.env.example`** — `AGE_DATABASE_URL`, `AGE_DB_PORT`, `AGE_DB_NAME` removed. The GraphRAG config block now documents the unified-DB layout.
+- **`postgres/init.sql`** — the `ALTER DATABASE ... SET search_path` is no longer enough on its own; the script also issues a session-level `SET search_path = ag_catalog, public` so the very first `docker-entrypoint-initdb.d` invocation can call `create_graph()` and resolve `agtype` / `graphid_ops` without a `DROP EXTENSION` workaround.
+- **`backend/src/__tests__/graph-init.test.ts`** — rewritten to assert the new contract (`getGraphDb` returns the shared client or `null`).
+- **`backend/src/scripts/benchmark-graph.ts`** — updated the AGE-availability check message to reflect the unified-DB layout.
+
+### Removed
+
+- `docker-compose.dev.yml` / `docker-compose.yml` — `age-postgres` service, `age_pgdata` volume, and `AGE_DATABASE_URL` env propagation.
+- `backend/src/lib/config.ts` — `AGE_DATABASE_URL` Zod field.
+- `backend/src/lib/graph/init.ts` — `closeGraph()` and the `GraphSqlClient` re-export (callers now import `postgres.Sql` directly when they need the type).
+
+### Migration notes
+
+- The previous two-container layout (`pgvector/pgvector:pg18` + `apache/age:release_PG18_1.7.0`) is gone. Single volume `pgdata` now holds the unified database; restore from a pre-migration `pg_dump` is fine — the table schema is unchanged.
+- For a fresh deployment, `docker compose up -d` will build the unified image, run the migrations, and seed the AGE graph automatically.
+- If you are upgrading an existing deployment: `docker compose down`, `docker volume rm hiai-docs_pgdata hiai-docs_age_pgdata` (after backing up with `pg_dump`), then `docker compose up -d`. The 5438 port is no longer used.
+
+## [v0.1.0] - 2025-06-28
+
+### Highlights
+
+- **Smart Re-embed System** — automatic vector refresh on metadata changes (tags, folders, categories) with Redis-deduplicated batch processing to prevent embedding storms
+- **Incremental Chunk Updates** — hash-based chunk comparison ensures only changed content is re-embedded; overlap regions maintain semantic continuity
+- **GraphRAG with Apache AGE** — optional entity extraction and graph-based search expansion for discovering related documents beyond vector similarity
+- **Chunk Versioning** — `embedding_model` column tracks which model produced each vector, enabling targeted reindex operations when models change
+- **Admin Tooling** — comprehensive `/api/admin/*` endpoints for reindexing, embedding stats, provider health checks, and AGE inventory queries
+- **Security & Performance** — tenant scoping controls (`ADMIN_CROSS_TENANT`, `?ownerId=`) and batch caps prevent resource spikes
+
 ### Added
 
 - **`document_embeddings.embedding_model` column** (migration `0006_embedding_model_column.sql`). Records which model produced each vector and is indexed for fast targeted reindex. Existing rows default to `""` (model unknown) and are treated as candidates for reindex once a model is configured.
