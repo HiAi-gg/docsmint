@@ -377,12 +377,17 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// relations. AGE does not expose label histograms cheaply, so
 			// per-label / per-type counts are omitted. Operators who need
 			// the breakdown can run MATCH (n:Label) RETURN count(n) directly.
-			const nodesResult = await sql<Array<{ count: string }>>`
-				SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH (n) RETURN count(n) $$) AS (count agtype)
-			`;
-			const edgesResult = await sql<Array<{ count: string }>>`
-				SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH ()-[r]->() RETURN count(r) $$) AS (count agtype)
-			`;
+			// AGE's `cypher()` requires a literal dollar-quoted string constant
+			// (its parser inspects the second argument lexically) and rejects
+			// bind parameters. We therefore use sql.unsafe() to pass the raw
+			// SQL through. The cypher strings are hard-coded constants and
+			// never include user input, so this is safe.
+			const nodesResult = (await sql.unsafe(
+				"SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH (n) RETURN count(n) $$) AS (count agtype)",
+			)) as Array<{ count: string }>;
+			const edgesResult = (await sql.unsafe(
+				"SELECT count(*) AS count FROM cypher('docs_graph', $$ MATCH ()-[r]->() RETURN count(r) $$) AS (count agtype)",
+			)) as Array<{ count: string }>;
 			const nodes = Number(nodesResult[0]?.count ?? 0);
 			const edges = Number(edgesResult[0]?.count ?? 0);
 			return { available: true, nodes, edges };
