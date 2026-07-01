@@ -37,7 +37,7 @@ COPY packages/mcp-server/package.json ./packages/mcp-server/
 COPY packages/sdk/package.json ./packages/sdk/
 # Production-only deps — smaller image, smaller attack surface
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-    cd /app && bun install --production --frozen-lockfile --no-verify
+    cd /app && bun install --production --no-frozen-lockfile --no-verify
 COPY --from=build /app/frontend/build /app/frontend/build
 
 ENV NODE_ENV=production
