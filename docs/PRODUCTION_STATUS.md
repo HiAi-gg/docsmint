@@ -10,7 +10,7 @@
 | Check | Status |
 |-------|--------|
 | Typecheck | ✅ PASS — 0 errors across all packages (pending full re-run) |
-| Tests | ✅ PASS — 178/178 passing |
+| Tests | ✅ PASS — 451/451 passing |
 | Build | ✅ PASS — Docker multi-stage builds |
 | Health checks | ✅ PASS |
 
@@ -42,7 +42,7 @@ docker compose exec api bun run db:migrate
 
 ## 4. Testing
 
-178 tests passing. Run: `bun test`, `cd backend && bun test`, `cd frontend && bun test`.
+451 tests passing (backend). Run: `cd backend && bun test`, `cd frontend && bun test`.
 
 ## 5. Security Checklist
 
