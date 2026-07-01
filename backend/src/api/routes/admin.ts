@@ -18,7 +18,6 @@ import { and, count, eq, ne, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { getEmbedding } from "../../embedding";
 import { config } from "../../lib/config";
-import { db } from "../../lib/db";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { getGraphDb } from "../../lib/graph/init";
 import { logger } from "../../lib/logger";
@@ -28,7 +27,9 @@ import {
 	reembedDocsInFolder,
 	reembedDocsInFolderAdmin,
 } from "../../lib/reembed";
+import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
+import { adminTenantContext } from "../middleware/tenant";
 
 /**
  * Verify the caller presented the configured admin API key. Returns
@@ -90,12 +91,15 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 		}
 
 		try {
-			const existing = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(eq(documents.id, params.docId))
-				.limit(1);
-			if (existing.length === 0) {
+			const existing = await withTenant(adminTenantContext(), async (tx) => {
+				const rows = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(eq(documents.id, params.docId))
+					.limit(1);
+				return rows.length > 0;
+			});
+			if (!existing) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
@@ -107,9 +111,11 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// accurate "previous chunks removed" count in the response if
 			// we ever need it, and avoids a brief window where the
 			// document has 2x chunks visible to search.
-			await db
-				.delete(documentEmbeddings)
-				.where(eq(documentEmbeddings.documentId, params.docId));
+			await withTenant(adminTenantContext(), async (tx) => {
+				await tx
+					.delete(documentEmbeddings)
+					.where(eq(documentEmbeddings.documentId, params.docId));
+			});
 
 			enqueueEmbedding(params.docId);
 
@@ -156,19 +162,21 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// over `document_embeddings` (the smallest relevant table)
 			// plus one over `documents` for the "with embeddings" count.
 			const [docsWithEmbeddingsRow, totalChunksRow, emptyChunksRow] =
-				await Promise.all([
-					db
-						.select({
-							value: sql<number>`COUNT(DISTINCT ${documentEmbeddings.documentId})::int`,
-						})
-						.from(documentEmbeddings),
-					db.select({ value: count() }).from(documentEmbeddings),
-					db
-						.select({
-							value: sql<number>`SUM(CASE WHEN ${documentEmbeddings.embedding} IS NULL THEN 1 ELSE 0 END)::int`,
-						})
-						.from(documentEmbeddings),
-				]);
+				await withTenant(adminTenantContext(), async (tx) => {
+					return Promise.all([
+						tx
+							.select({
+								value: sql<number>`COUNT(DISTINCT ${documentEmbeddings.documentId})::int`,
+							})
+							.from(documentEmbeddings),
+						tx.select({ value: count() }).from(documentEmbeddings),
+						tx
+							.select({
+								value: sql<number>`SUM(CASE WHEN ${documentEmbeddings.embedding} IS NULL THEN 1 ELSE 0 END)::int`,
+							})
+							.from(documentEmbeddings),
+					]);
+				});
 
 			return {
 				stats: {
@@ -307,10 +315,12 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// Find every doc id whose latest stored embedding_model does not
 			// match the current one. We DISTINCT ON (document_id, embedding_model)
 			// then filter to docs whose embedding_model is stale.
-			const rows = await db
-				.selectDistinct({ documentId: documentEmbeddings.documentId })
-				.from(documentEmbeddings)
-				.where(ne(documentEmbeddings.embeddingModel, currentModel));
+			const rows = await withTenant(adminTenantContext(), async (tx) => {
+				return tx
+					.selectDistinct({ documentId: documentEmbeddings.documentId })
+					.from(documentEmbeddings)
+					.where(ne(documentEmbeddings.embeddingModel, currentModel));
+			});
 
 			const docIds = rows
 				.map((r) => r.documentId)
@@ -438,15 +448,17 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			try {
 				if (ownerId) {
 					if (dryRun) {
-						const rows = await db
-							.select({ id: documents.id })
-							.from(documents)
-							.where(
-								and(
-									eq(documents.folderId, params.folderId),
-									eq(documents.ownerId, ownerId),
-								),
-							);
+						const rows = await withTenant(adminTenantContext(), async (tx) => {
+							return tx
+								.select({ id: documents.id })
+								.from(documents)
+								.where(
+									and(
+										eq(documents.folderId, params.folderId),
+										eq(documents.ownerId, ownerId),
+									),
+								);
+						});
 						return {
 							dryRun: true,
 							affectedDocs: rows.length,
@@ -476,10 +488,12 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 				}
 
 				if (dryRun) {
-					const rows = await db
-						.select({ id: documents.id })
-						.from(documents)
-						.where(eq(documents.folderId, params.folderId));
+					const rows = await withTenant(adminTenantContext(), async (tx) => {
+						return tx
+							.select({ id: documents.id })
+							.from(documents)
+							.where(eq(documents.folderId, params.folderId));
+					});
 					return {
 						dryRun: true,
 						affectedDocs: rows.length,
@@ -543,11 +557,13 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 					eq(documentTags.tagId, params.tagId),
 					eq(documents.ownerId, ownerId),
 				);
-				const rows = await db
-					.selectDistinct({ documentId: documentTags.documentId })
-					.from(documentTags)
-					.innerJoin(documents, eq(documentTags.documentId, documents.id))
-					.where(whereClause);
+				const rows = await withTenant(adminTenantContext(), async (tx) => {
+					return tx
+						.selectDistinct({ documentId: documentTags.documentId })
+						.from(documentTags)
+						.innerJoin(documents, eq(documentTags.documentId, documents.id))
+						.where(whereClause);
+				});
 				const docIds = rows.map((r) => r.documentId);
 
 				if (dryRun) {
@@ -575,10 +591,12 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			}
 
 			if (dryRun) {
-				const rows = await db
-					.selectDistinct({ id: documentTags.documentId })
-					.from(documentTags)
-					.where(eq(documentTags.tagId, params.tagId));
+				const rows = await withTenant(adminTenantContext(), async (tx) => {
+					return tx
+						.selectDistinct({ id: documentTags.documentId })
+						.from(documentTags)
+						.where(eq(documentTags.tagId, params.tagId));
+				});
 				return { dryRun: true, affectedDocs: rows.length, tagId: params.tagId };
 			}
 			const affected = await reembedDocsByTag(params.tagId);

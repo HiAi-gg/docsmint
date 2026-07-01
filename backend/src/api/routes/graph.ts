@@ -28,16 +28,16 @@ import { documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
-import { db } from "../../lib/db";
-import { type GraphSqlClient, getGraphDb } from "../../lib/graph/init";
+import { getGraphDb } from "../../lib/graph/init";
 import {
 	expandResults,
 	type RelatedDoc,
 } from "../../lib/graph/search-expansion";
 import { logger } from "../../lib/logger";
+import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 const entitiesQuerySchema = z.object({
 	docId: z.string().min(1),
@@ -86,8 +86,8 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const userId = await getSessionUserId(request.headers);
-			if (!userId) {
+			const ctx = await buildTenantContext(request);
+			if (ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
@@ -125,8 +125,8 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const userId = await getSessionUserId(request.headers);
-			if (!userId) {
+			const ctx = await buildTenantContext(request);
+			if (ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
@@ -141,7 +141,7 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			}
 
 			try {
-				const related = await fetchRelatedDocuments(parsed.data.docId, userId);
+				const related = await fetchRelatedDocuments(ctx, parsed.data.docId);
 				return { related };
 			} catch (err) {
 				logger.warn(
@@ -164,8 +164,8 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const userId = await getSessionUserId(request.headers);
-			if (!userId) {
+			const ctx = await buildTenantContext(request);
+			if (ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
@@ -182,7 +182,7 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			}
 
 			try {
-				const result = await graphRagLookup(userId, docIds, maxResults);
+				const result = await graphRagLookup(ctx, docIds, maxResults);
 				return { query, ...result };
 			} catch (err) {
 				logger.warn(
@@ -280,11 +280,12 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
  * Look up related documents for a single seed doc. Returns neighbors
  * reachable in 1-2 hops with their edge type and hop distance. Hydrates
  * titles/snippets from Postgres so callers receive display-ready rows.
- * Cross-tenant docs are filtered out via `owner_id`.
+ * Cross-tenant docs are filtered out via the RLS policy under the
+ * caller's tenant context.
  */
 async function fetchRelatedDocuments(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	docId: string,
-	userId: string,
 ): Promise<DocumentNeighbor[]> {
 	const expansion = await expandResults([docId], 2);
 	const all = expansion.get(docId) ?? [];
@@ -293,7 +294,7 @@ async function fetchRelatedDocuments(
 	const neighborIds = Array.from(new Set(all.map((r) => r.docId)));
 	if (neighborIds.length === 0) return [];
 
-	const allowedIds = await filterToOwnedDocuments(userId, neighborIds);
+	const allowedIds = await filterToOwnedDocuments(ctx, neighborIds);
 	return all.filter((r) => allowedIds.has(r.docId));
 }
 
@@ -304,7 +305,7 @@ async function fetchRelatedDocuments(
  * are small per document).
  */
 async function graphRagLookup(
-	userId: string,
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	docIds: string[],
 	maxResults: number | undefined,
 ): Promise<{
@@ -339,13 +340,13 @@ async function graphRagLookup(
 		return { entities: Array.from(entityMap.values()), relatedDocs: [] };
 	}
 
-	const allowedIds = await filterToOwnedDocuments(userId, neighborIds);
+	const allowedIds = await filterToOwnedDocuments(ctx, neighborIds);
 	const ownedNeighborIds = neighborIds.filter((id) => allowedIds.has(id));
 	if (ownedNeighborIds.length === 0) {
 		return { entities: Array.from(entityMap.values()), relatedDocs: [] };
 	}
 
-	const rows = await loadDocumentSummaries(ownedNeighborIds);
+	const rows = await loadDocumentSummaries(ctx, ownedNeighborIds);
 	const byId = new Map<string, DocumentRow>();
 	for (const r of rows) byId.set(r.id, r);
 
@@ -375,19 +376,24 @@ async function graphRagLookup(
 // ---------------------------------------------------------------------
 
 /**
- * Return the subset of `docIds` that are owned by `userId`. Used as a
- * guard before returning any graph-derived row — AGE knows nothing about
- * per-user data isolation, so the SQL filter is the safety boundary.
+ * Return the subset of `docIds` that are owned by the current user. Used
+ * as a guard before returning any graph-derived row — AGE knows nothing
+ * about per-user data isolation, so the RLS policy under the tenant
+ * context is the safety boundary.
  */
 async function filterToOwnedDocuments(
-	userId: string,
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	docIds: string[],
 ): Promise<Set<string>> {
 	if (docIds.length === 0) return new Set();
-	const rows = await db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(and(eq(documents.ownerId, userId), inArray(documents.id, docIds)));
+	const rows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({ id: documents.id })
+			.from(documents)
+			.where(
+				and(eq(documents.ownerId, ctx.userId), inArray(documents.id, docIds)),
+			);
+	});
 	return new Set(rows.map((r) => r.id));
 }
 
@@ -397,21 +403,26 @@ async function filterToOwnedDocuments(
  * callers receive enough information to render the result without an
  * additional fetch.
  */
-async function loadDocumentSummaries(docIds: string[]): Promise<DocumentRow[]> {
+async function loadDocumentSummaries(
+	ctx: import("../../api/middleware/tenant").TenantContext,
+	docIds: string[],
+): Promise<DocumentRow[]> {
 	if (docIds.length === 0) return [];
-	return db
-		.select({
-			id: documents.id,
-			title: documents.title,
-			content: documents.content,
-			folderId: documents.folderId,
-			folderName: folders.name,
-			createdAt: documents.createdAt,
-			updatedAt: documents.updatedAt,
-		})
-		.from(documents)
-		.leftJoin(folders, eq(folders.id, documents.folderId))
-		.where(inArray(documents.id, docIds));
+	return withTenant(ctx, async (tx) => {
+		return tx
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				folderId: documents.folderId,
+				folderName: folders.name,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+			})
+			.from(documents)
+			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.where(inArray(documents.id, docIds));
+	});
 }
 
 // ---------------------------------------------------------------------

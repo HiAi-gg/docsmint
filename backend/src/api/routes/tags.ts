@@ -2,12 +2,12 @@ import { documents, documentTags, tags } from "@hiai-docs/db/schema";
 import { and, count, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
-import { db } from "../../lib/db";
 import { invalidateDocCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import { enqueueReembed, reembedDocsByTag } from "../../lib/reembed";
+import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 const createTagSchema = z.object({
 	name: z.string().min(1).max(100),
@@ -25,25 +25,28 @@ const addTagToDocSchema = z.object({
 
 export const tagRoutes = new Elysia({ prefix: "/api" })
 	.get("/tags", async ({ set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const rows = await db
-				.select({
-					id: tags.id,
-					name: tags.name,
-					color: tags.color,
-					createdAt: tags.createdAt,
-					documentCount: count(documentTags.documentId),
-				})
-				.from(tags)
-				.leftJoin(documentTags, eq(tags.id, documentTags.tagId))
-				.where(eq(tags.ownerId, userId))
-				.groupBy(tags.id, tags.name, tags.color, tags.createdAt)
-				.orderBy(tags.name);
+			const rows = await withTenant(ctx, async (tx) => {
+				return tx
+					.select({
+						id: tags.id,
+						name: tags.name,
+						color: tags.color,
+						createdAt: tags.createdAt,
+						documentCount: count(documentTags.documentId),
+					})
+					.from(tags)
+					.leftJoin(documentTags, eq(tags.id, documentTags.tagId))
+					.where(eq(tags.ownerId, userId))
+					.groupBy(tags.id, tags.name, tags.color, tags.createdAt)
+					.orderBy(tags.name);
+			});
 			return rows;
 		} catch (err) {
 			logger.error({ err }, "Failed to list tags");
@@ -61,36 +64,43 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const body = createTagSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
 			return { error: "Invalid input", details: body.error.flatten() };
 		}
 		try {
-			const existing = await db
-				.select({ id: tags.id })
-				.from(tags)
-				.where(and(eq(tags.ownerId, userId), eq(tags.name, body.data.name)))
-				.limit(1);
-			if (existing.length > 0) {
+			const created = await withTenant(ctx, async (tx) => {
+				const existing = await tx
+					.select({ id: tags.id })
+					.from(tags)
+					.where(and(eq(tags.ownerId, userId), eq(tags.name, body.data.name)))
+					.limit(1);
+				if (existing.length > 0) {
+					return { conflict: true as const };
+				}
+				const [row] = await tx
+					.insert(tags)
+					.values({
+						ownerId: userId,
+						name: body.data.name,
+						color: body.data.color ?? null,
+					})
+					.returning();
+				return { row };
+			});
+			if ("conflict" in created) {
 				set.status = 409;
 				return { error: "Tag with this name already exists" };
 			}
-			const [created] = await db
-				.insert(tags)
-				.values({
-					ownerId: userId,
-					name: body.data.name,
-					color: body.data.color ?? null,
-				})
-				.returning();
 			set.status = 201;
-			return created;
+			return created.row;
 		} catch (err) {
 			logger.error({ err }, "Failed to create tag");
 			set.status = 500;
@@ -107,25 +117,29 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const body = updateTagSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
 			return { error: "Invalid input", details: body.error.flatten() };
 		}
 		try {
-			const [updated] = await db
-				.update(tags)
-				.set({
-					...(body.data.name !== undefined && { name: body.data.name }),
-					...(body.data.color !== undefined && { color: body.data.color }),
-				})
-				.where(and(eq(tags.id, params.id), eq(tags.ownerId, userId)))
-				.returning();
+			const updated = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.update(tags)
+					.set({
+						...(body.data.name !== undefined && { name: body.data.name }),
+						...(body.data.color !== undefined && { color: body.data.color }),
+					})
+					.where(and(eq(tags.id, params.id), eq(tags.ownerId, userId)))
+					.returning();
+				return row ?? null;
+			});
 			if (!updated) {
 				set.status = 404;
 				return { error: "Tag not found" };
@@ -159,26 +173,33 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			// Resolve affected doc ids BEFORE the tag is deleted. We re-embed
-			// after a successful delete so the removed tag stops appearing in
-			// the embedding preamble of every document it was on.
-			const affectedDocs = await db
-				.select({ documentId: documentTags.documentId })
-				.from(documentTags)
-				.where(eq(documentTags.tagId, params.id));
+			const result = await withTenant(ctx, async (tx) => {
+				// Resolve affected doc ids BEFORE the tag is deleted. We re-embed
+				// after a successful delete so the removed tag stops appearing in
+				// the embedding preamble of every document it was on.
+				const affectedDocs = await tx
+					.select({ documentId: documentTags.documentId })
+					.from(documentTags)
+					.where(eq(documentTags.tagId, params.id));
 
-			await db
-				.delete(tags)
-				.where(and(eq(tags.id, params.id), eq(tags.ownerId, userId)));
+				await tx
+					.delete(tags)
+					.where(and(eq(tags.id, params.id), eq(tags.ownerId, userId)));
+
+				return { affectedDocs };
+			});
 
 			{
-				const ids = Array.from(new Set(affectedDocs.map((r) => r.documentId)));
+				const ids = Array.from(
+					new Set(result.affectedDocs.map((r) => r.documentId)),
+				);
 				const enqueued = await enqueueReembed(ids);
 				if (enqueued > 0) {
 					logger.info(
@@ -205,31 +226,40 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const body = addTagToDocSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
 			return { error: "Invalid input" };
 		}
 		try {
-			const [doc] = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (!doc) {
+			const ok = await withTenant(ctx, async (tx) => {
+				const [doc] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				if (!doc) {
+					return false;
+				}
+
+				await tx.insert(documentTags).values({
+					documentId: params.id,
+					tagId: body.data.tagId,
+				});
+				return true;
+			});
+			if (!ok) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			await db.insert(documentTags).values({
-				documentId: params.id,
-				tagId: body.data.tagId,
-			});
 			// Re-embed so the new tag name appears in the embedding preamble.
 			// enqueueReembed gives us per-doc Redis SET-NX dedup shared
 			// with the rest of the metadata-driven re-embed triggers.
@@ -253,30 +283,39 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const [doc] = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (!doc) {
+			const ok = await withTenant(ctx, async (tx) => {
+				const [doc] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				if (!doc) {
+					return false;
+				}
+
+				await tx
+					.delete(documentTags)
+					.where(
+						and(
+							eq(documentTags.documentId, params.id),
+							eq(documentTags.tagId, params.tagId),
+						),
+					);
+				return true;
+			});
+			if (!ok) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			await db
-				.delete(documentTags)
-				.where(
-					and(
-						eq(documentTags.documentId, params.id),
-						eq(documentTags.tagId, params.tagId),
-					),
-				);
 			// Re-embed so the removed tag is no longer in the preamble.
 			// enqueueReembed gives us per-doc Redis SET-NX dedup.
 			enqueueReembed([params.id]);

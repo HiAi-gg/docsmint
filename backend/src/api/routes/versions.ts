@@ -2,11 +2,11 @@ import { documents, versions } from "@hiai-docs/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
-import { db } from "../../lib/db";
 import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
+import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 /**
  * Whole-file line-based diff. For two strings `a` and `b`, returns a
@@ -175,11 +175,12 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const parsed = listQuerySchema.safeParse(query);
 		if (!parsed.success) {
@@ -189,39 +190,49 @@ export const versionRoutes = new Elysia({
 		const { onlySnapshots, limit } = parsed.data;
 
 		try {
-			const doc = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			const rows = await withTenant(ctx, async (tx) => {
+				const doc = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			if (doc.length === 0) {
+				if (doc.length === 0) {
+					return null;
+				}
+
+				const whereClause = onlySnapshots
+					? and(
+							eq(versions.documentId, params.id),
+							eq(versions.isSnapshot, true),
+						)
+					: eq(versions.documentId, params.id);
+
+				return tx
+					.select({
+						id: versions.id,
+						documentId: versions.documentId,
+						content: versions.content,
+						contentJson: versions.contentJson,
+						createdBy: versions.createdBy,
+						createdAt: versions.createdAt,
+						label: versions.label,
+						description: versions.description,
+						isSnapshot: versions.isSnapshot,
+						restoredFrom: versions.restoredFrom,
+					})
+					.from(versions)
+					.where(whereClause)
+					.orderBy(desc(versions.createdAt))
+					.limit(limit);
+			});
+
+			if (!rows) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			const whereClause = onlySnapshots
-				? and(eq(versions.documentId, params.id), eq(versions.isSnapshot, true))
-				: eq(versions.documentId, params.id);
-
-			const rows = await db
-				.select({
-					id: versions.id,
-					documentId: versions.documentId,
-					content: versions.content,
-					contentJson: versions.contentJson,
-					createdBy: versions.createdBy,
-					createdAt: versions.createdAt,
-					label: versions.label,
-					description: versions.description,
-					isSnapshot: versions.isSnapshot,
-					restoredFrom: versions.restoredFrom,
-				})
-				.from(versions)
-				.where(whereClause)
-				.orderBy(desc(versions.createdAt))
-				.limit(limit);
-
 			return rows;
 		} catch (err) {
 			logger.error({ err, docId: params.id }, "Failed to list versions");
@@ -243,11 +254,12 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const body = createSnapshotSchema.safeParse(await request.json());
 		if (!body.success) {
@@ -256,44 +268,43 @@ export const versionRoutes = new Elysia({
 		}
 
 		try {
-			const docRows = await db
-				.select({
-					id: documents.id,
-					content: documents.content,
-					contentJson: documents.contentJson,
-				})
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			const snapshot = await withTenant(ctx, async (tx) => {
+				const docRows = await tx
+					.select({
+						id: documents.id,
+						content: documents.content,
+						contentJson: documents.contentJson,
+					})
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			if (docRows.length === 0) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
-			const doc = docRows[0];
-			if (!doc) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
+				if (docRows.length === 0) {
+					return null;
+				}
+				const doc = docRows[0];
 
-			const [snapshot] = await db
-				.insert(versions)
-				.values({
-					documentId: doc.id,
-					content: doc.content ?? "",
-					contentJson: doc.contentJson,
-					createdBy: userId,
-					label: body.data.label,
-					description: body.data.description,
-					isSnapshot: true,
-				})
-				.returning();
+				const [row] = await tx
+					.insert(versions)
+					.values({
+						documentId: doc?.id as string,
+						content: doc?.content ?? "",
+						contentJson: doc?.contentJson,
+						createdBy: userId,
+						label: body.data.label,
+						description: body.data.description,
+						isSnapshot: true,
+					})
+					.returning();
+				return row ?? null;
+			});
 
 			if (!snapshot) {
-				set.status = 500;
-				return { error: "Failed to create snapshot" };
+				set.status = 404;
+				return { error: "Document not found" };
 			}
-
 			set.status = 201;
 			return snapshot;
 		} catch (err) {
@@ -305,48 +316,59 @@ export const versionRoutes = new Elysia({
 
 	// GET /api/documents/:id/versions/:vid — get specific version
 	.get("/:vid", async ({ params, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const doc = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			const result = await withTenant(ctx, async (tx) => {
+				const doc = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			if (doc.length === 0) {
+				if (doc.length === 0) {
+					return { docMissing: true as const };
+				}
+
+				const rows = await tx
+					.select({
+						id: versions.id,
+						documentId: versions.documentId,
+						content: versions.content,
+						contentJson: versions.contentJson,
+						createdBy: versions.createdBy,
+						createdAt: versions.createdAt,
+						label: versions.label,
+						description: versions.description,
+						isSnapshot: versions.isSnapshot,
+						restoredFrom: versions.restoredFrom,
+					})
+					.from(versions)
+					.where(
+						and(
+							eq(versions.id, params.vid),
+							eq(versions.documentId, params.id),
+						),
+					)
+					.limit(1);
+				return { row: rows[0] ?? null };
+			});
+
+			if ("docMissing" in result) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			const rows = await db
-				.select({
-					id: versions.id,
-					documentId: versions.documentId,
-					content: versions.content,
-					contentJson: versions.contentJson,
-					createdBy: versions.createdBy,
-					createdAt: versions.createdAt,
-					label: versions.label,
-					description: versions.description,
-					isSnapshot: versions.isSnapshot,
-					restoredFrom: versions.restoredFrom,
-				})
-				.from(versions)
-				.where(
-					and(eq(versions.id, params.vid), eq(versions.documentId, params.id)),
-				)
-				.limit(1);
-
-			if (rows.length === 0) {
+			if (!result.row) {
 				set.status = 404;
 				return { error: "Version not found" };
 			}
-
-			return rows[0];
+			return result.row;
 		} catch (err) {
 			logger.error(
 				{ err, docId: params.id, vid: params.vid },
@@ -371,84 +393,92 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const docRows = await db
-				.select({
-					id: documents.id,
-					content: documents.content,
-					contentJson: documents.contentJson,
-				})
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			const updated = await withTenant(ctx, async (tx) => {
+				const docRows = await tx
+					.select({
+						id: documents.id,
+						content: documents.content,
+						contentJson: documents.contentJson,
+					})
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			if (docRows.length === 0) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
-			const doc = docRows[0];
-			if (!doc) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
+				if (docRows.length === 0) {
+					return null;
+				}
+				const doc = docRows[0];
 
-			const versionRows = await db
-				.select({
-					id: versions.id,
-					content: versions.content,
-					contentJson: versions.contentJson,
-				})
-				.from(versions)
-				.where(
-					and(eq(versions.id, params.vid), eq(versions.documentId, params.id)),
-				)
-				.limit(1);
+				const versionRows = await tx
+					.select({
+						id: versions.id,
+						content: versions.content,
+						contentJson: versions.contentJson,
+					})
+					.from(versions)
+					.where(
+						and(
+							eq(versions.id, params.vid),
+							eq(versions.documentId, params.id),
+						),
+					)
+					.limit(1);
 
-			const target = versionRows[0];
-			if (!target) {
-				set.status = 404;
-				return { error: "Version not found" };
-			}
+				const target = versionRows[0];
+				if (!target) {
+					return null;
+				}
 
-			// 1. Auto-backup current content as a fresh version BEFORE
-			//    overwriting. This makes the restore reversible: the
-			//    user can restore the pre-restore state by restoring
-			//    this auto-backup later.
-			await db.insert(versions).values({
-				documentId: doc.id,
-				content: doc.content ?? "",
-				contentJson: doc.contentJson,
-				createdBy: userId,
-			});
+				// 1. Auto-backup current content as a fresh version BEFORE
+				//    overwriting. This makes the restore reversible: the
+				//    user can restore the pre-restore state by restoring
+				//    this auto-backup later.
+				const docId = doc?.id as string;
+				await tx.insert(versions).values({
+					documentId: docId,
+					content: doc?.content ?? "",
+					contentJson: doc?.contentJson,
+					createdBy: userId,
+				});
 
-			// 2. Overwrite the live document with the target version's
-			//    content + JSON view, then 3. record a marker version
-			//    pointing back at the source of the restore.
-			const [updated] = await db
-				.update(documents)
-				.set({
+				// 2. Overwrite the live document with the target version's
+				//    content + JSON view, then 3. record a marker version
+				//    pointing back at the source of the restore.
+				const [row] = await tx
+					.update(documents)
+					.set({
+						content: target.content,
+						contentJson: target.contentJson,
+						updatedAt: new Date(),
+					})
+					.where(and(eq(documents.id, docId), eq(documents.ownerId, userId)))
+					.returning();
+
+				await tx.insert(versions).values({
+					documentId: docId,
 					content: target.content,
 					contentJson: target.contentJson,
-					updatedAt: new Date(),
-				})
-				.where(and(eq(documents.id, doc.id), eq(documents.ownerId, userId)))
-				.returning();
+					createdBy: userId,
+					restoredFrom: target.id,
+				});
 
-			await db.insert(versions).values({
-				documentId: doc.id,
-				content: target.content,
-				contentJson: target.contentJson,
-				createdBy: userId,
-				restoredFrom: target.id,
+				return row ?? null;
 			});
 
-			enqueueEmbedding(doc.id);
-
+			if (!updated) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+			enqueueEmbedding(params.id);
 			return updated;
 		} catch (err) {
 			logger.error(
@@ -472,11 +502,12 @@ export const versionRoutes = new Elysia({
 	// path branch — `/:from` would collide with the `:vid` parameter on
 	// the sibling `/:vid` and `/:vid/restore` routes.
 	.get("/diff", async ({ params, query, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const fromId = query.from;
 		const toId = query.to;
 		if (typeof fromId !== "string" || typeof toId !== "string") {
@@ -484,43 +515,51 @@ export const versionRoutes = new Elysia({
 			return { error: "Missing required query params: from, to" };
 		}
 		try {
-			const doc = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
+			const diff = await withTenant(ctx, async (tx) => {
+				const doc = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
 
-			if (doc.length === 0) {
+				if (doc.length === 0) {
+					return null;
+				}
+
+				const bothVersions = await tx
+					.select({
+						id: versions.id,
+						label: versions.label,
+						createdAt: versions.createdAt,
+						content: versions.content,
+					})
+					.from(versions)
+					.where(eq(versions.documentId, params.id));
+
+				const v1 = bothVersions.find((v) => v.id === fromId);
+				const v2 = bothVersions.find((v) => v.id === toId);
+				if (!v1 || !v2) {
+					return null;
+				}
+
+				const hunks = diffLines(v1.content, v2.content);
+				const changes = summarize(hunks);
+
+				return {
+					v1: { id: v1.id, label: v1.label, createdAt: v1.createdAt },
+					v2: { id: v2.id, label: v2.label, createdAt: v2.createdAt },
+					changes,
+					hunks,
+				};
+			});
+
+			if (!diff) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			const bothVersions = await db
-				.select({
-					id: versions.id,
-					label: versions.label,
-					createdAt: versions.createdAt,
-					content: versions.content,
-				})
-				.from(versions)
-				.where(eq(versions.documentId, params.id));
-
-			const v1 = bothVersions.find((v) => v.id === fromId);
-			const v2 = bothVersions.find((v) => v.id === toId);
-			if (!v1 || !v2) {
-				set.status = 404;
-				return { error: "Version not found" };
-			}
-
-			const hunks = diffLines(v1.content, v2.content);
-			const changes = summarize(hunks);
-
-			return {
-				v1: { id: v1.id, label: v1.label, createdAt: v1.createdAt },
-				v2: { id: v2.id, label: v2.label, createdAt: v2.createdAt },
-				changes,
-				hunks,
-			};
+			return diff;
 		} catch (err) {
 			logger.error(
 				{ err, docId: params.id, from: fromId, to: toId },

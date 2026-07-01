@@ -152,6 +152,16 @@ export const documents = pgTable(
     contentJson: jsonb("content_json"),
     metadata: jsonb("metadata"),
     contentHash: text("content_hash"),  // SHA-256 of title+content for smart re-embed
+    // Smart-reembed fields (added by migration 0009_lying_hardball.sql).
+    // These four columns are required by `backend/src/lib/reembed.ts` and
+    // `backend/src/lib/reembed-cron.ts`; the TypeScript schema must stay in
+    // sync with the migration or Drizzle queries fail at compile time.
+    lastSignificantHash: text("last_significant_hash"),
+    lastSignificantUpdateAt: timestamp("last_significant_update_at"),
+    pendingMinorChanges: boolean("pending_minor_changes")
+      .default(false)
+      .notNull(),
+    metadataChangedAt: timestamp("metadata_changed_at"),
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
     ),

@@ -1,0 +1,2 @@
+ALTER TABLE "sessions" ADD COLUMN "revoked_at" timestamp;--> statement-breakpoint
+CREATE INDEX "sessions_revoked_at_idx" ON "sessions" USING btree ("revoked_at") WHERE "sessions"."revoked_at" IS NOT NULL;

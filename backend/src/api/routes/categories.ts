@@ -2,11 +2,11 @@ import { categories, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
-import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
 import { reembedDocsInCategory } from "../../lib/reembed";
+import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 /**
  * Zod schemas for categories.
@@ -48,46 +48,49 @@ export const categorySchemas = {
  */
 export const categoryRoutes = new Elysia({ prefix: "/api" })
 	.get("/categories", async ({ set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const rows = await db
-				.select({
-					id: categories.id,
-					name: categories.name,
-					order: categories.order,
-					createdAt: categories.createdAt,
-					updatedAt: categories.updatedAt,
-					documentCount: sql<number>`(
-						WITH RECURSIVE cat_folders AS (
-							SELECT id FROM ${folders} WHERE category_id = "categories"."id" AND owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM ${folders} f
-							JOIN cat_folders cf ON f.parent_id = cf.id
-						)
-						SELECT COUNT(*)::int
-						FROM ${documents}
-						WHERE (
-							${documents.categoryId} = "categories"."id"
-							OR ${documents.folderId} IN (SELECT id FROM cat_folders)
-						) AND ${documents.ownerId} = ${userId}
-					)`,
-					folderCount: sql<number>`(
-						WITH RECURSIVE cat_folders AS (
-							SELECT id FROM ${folders} WHERE category_id = "categories"."id" AND owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM ${folders} f
-							JOIN cat_folders cf ON f.parent_id = cf.id
-						)
-						SELECT COUNT(*)::int FROM cat_folders
-					)`,
-				})
-				.from(categories)
-				.where(eq(categories.ownerId, userId))
-				.orderBy(categories.order, categories.name);
+			const rows = await withTenant(ctx, async (tx) => {
+				return tx
+					.select({
+						id: categories.id,
+						name: categories.name,
+						order: categories.order,
+						createdAt: categories.createdAt,
+						updatedAt: categories.updatedAt,
+						documentCount: sql<number>`(
+							WITH RECURSIVE cat_folders AS (
+								SELECT id FROM ${folders} WHERE category_id = "categories"."id" AND owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM ${folders} f
+								JOIN cat_folders cf ON f.parent_id = cf.id
+							)
+							SELECT COUNT(*)::int
+							FROM ${documents}
+							WHERE (
+								${documents.categoryId} = "categories"."id"
+								OR ${documents.folderId} IN (SELECT id FROM cat_folders)
+							) AND ${documents.ownerId} = ${userId}
+						)`,
+						folderCount: sql<number>`(
+							WITH RECURSIVE cat_folders AS (
+								SELECT id FROM ${folders} WHERE category_id = "categories"."id" AND owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM ${folders} f
+								JOIN cat_folders cf ON f.parent_id = cf.id
+							)
+							SELECT COUNT(*)::int FROM cat_folders
+						)`,
+					})
+					.from(categories)
+					.where(eq(categories.ownerId, userId))
+					.orderBy(categories.order, categories.name);
+			});
 			return rows;
 		} catch (err) {
 			logger.error({ err }, "Failed to list categories");
@@ -105,40 +108,47 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = createCategorySchema.safeParse(await request.json());
 		if (!parsed.success) {
 			set.status = 400;
 			return { error: "Invalid input", details: parsed.error.flatten() };
 		}
 		try {
-			const existing = await db
-				.select({ id: categories.id })
-				.from(categories)
-				.where(
-					and(
-						eq(categories.ownerId, userId),
-						eq(categories.name, parsed.data.name),
-					),
-				)
-				.limit(1);
-			if (existing.length > 0) {
+			const created = await withTenant(ctx, async (tx) => {
+				const existing = await tx
+					.select({ id: categories.id })
+					.from(categories)
+					.where(
+						and(
+							eq(categories.ownerId, userId),
+							eq(categories.name, parsed.data.name),
+						),
+					)
+					.limit(1);
+				if (existing.length > 0) {
+					return { conflict: true as const };
+				}
+				const [row] = await tx
+					.insert(categories)
+					.values({
+						ownerId: userId,
+						name: parsed.data.name,
+					})
+					.returning();
+				return { row };
+			});
+			if ("conflict" in created) {
 				set.status = 409;
 				return { error: "Category with this name already exists" };
 			}
-			const [created] = await db
-				.insert(categories)
-				.values({
-					ownerId: userId,
-					name: parsed.data.name,
-				})
-				.returning();
 			set.status = 201;
-			return created;
+			return created.row;
 		} catch (err) {
 			logger.error({ err }, "Failed to create category");
 			set.status = 500;
@@ -155,11 +165,12 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = updateCategorySchema.safeParse(await request.json());
 		if (!parsed.success) {
 			set.status = 400;
@@ -171,31 +182,39 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 		}
 		const newName = parsed.data.name;
 		try {
-			if (newName !== undefined) {
-				const existing = await db
-					.select({ id: categories.id })
-					.from(categories)
-					.where(
-						and(eq(categories.ownerId, userId), eq(categories.name, newName)),
-					)
-					.limit(1);
-				if (existing.length > 0 && existing[0]?.id !== params.id) {
-					set.status = 409;
-					return { error: "Category with this name already exists" };
+			const updated = await withTenant(ctx, async (tx) => {
+				if (newName !== undefined) {
+					const existing = await tx
+						.select({ id: categories.id })
+						.from(categories)
+						.where(
+							and(eq(categories.ownerId, userId), eq(categories.name, newName)),
+						)
+						.limit(1);
+					if (existing.length > 0 && existing[0]?.id !== params.id) {
+						return { conflict: true as const };
+					}
 				}
+				const [row] = await tx
+					.update(categories)
+					.set({
+						...(parsed.data.name !== undefined && { name: parsed.data.name }),
+						...(parsed.data.order !== undefined && {
+							order: parsed.data.order,
+						}),
+						updatedAt: new Date(),
+					})
+					.where(
+						and(eq(categories.id, params.id), eq(categories.ownerId, userId)),
+					)
+					.returning();
+				return { row: row ?? null };
+			});
+			if ("conflict" in updated) {
+				set.status = 409;
+				return { error: "Category with this name already exists" };
 			}
-			const [updated] = await db
-				.update(categories)
-				.set({
-					...(parsed.data.name !== undefined && { name: parsed.data.name }),
-					...(parsed.data.order !== undefined && { order: parsed.data.order }),
-					updatedAt: new Date(),
-				})
-				.where(
-					and(eq(categories.id, params.id), eq(categories.ownerId, userId)),
-				)
-				.returning();
-			if (!updated) {
+			if (!updated.row) {
 				set.status = 404;
 				return { error: "Category not found" };
 			}
@@ -213,7 +232,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 				);
 			}
 
-			return updated;
+			return updated.row;
 		} catch (err) {
 			logger.error({ err }, "Failed to update category");
 			set.status = 500;
@@ -230,18 +249,22 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const [deleted] = await db
-				.delete(categories)
-				.where(
-					and(eq(categories.id, params.id), eq(categories.ownerId, userId)),
-				)
-				.returning({ id: categories.id });
+			const deleted = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.delete(categories)
+					.where(
+						and(eq(categories.id, params.id), eq(categories.ownerId, userId)),
+					)
+					.returning({ id: categories.id });
+				return row ?? null;
+			});
 			if (!deleted) {
 				set.status = 404;
 				return { error: "Category not found" };

@@ -48,7 +48,7 @@
       "idx": 6,
       "version": "7",
       "when": 1782676723557,
-      "tag": "embedding_model_column",
+      "tag": "0006_embedding_model_column",
       "breakpoints": true
     },
     {
@@ -63,6 +63,34 @@
       "version": "7",
       "when": 1782762123306,
       "tag": "0008_streaming_diskann_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782769235043,
+      "tag": "0009_lying_hardball",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782857043775,
+      "tag": "0010_add_session_revoked_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782950400000,
+      "tag": "0011_enable_rls_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783000000000,
+      "tag": "0012_create_hiai_app_role",
       "breakpoints": true
     }
   ]

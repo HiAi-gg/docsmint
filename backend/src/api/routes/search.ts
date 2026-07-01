@@ -3,12 +3,12 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getEmbedding } from "../../embedding";
-import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
-import { db } from "../../lib/db";
 import { expandResults } from "../../lib/graph/search-expansion";
 import { logger } from "../../lib/logger";
+import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 const searchQuerySchema = z.object({
 	q: z.string().optional(),
@@ -108,8 +108,8 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
@@ -140,8 +140,8 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 
 			// Run full-text and semantic search in parallel
 			const [textResults, semanticResults] = await Promise.all([
-				fullTextSearch(userId, q, limit * 2),
-				semanticSearch(userId, q, limit * 2),
+				fullTextSearch(ctx, q, limit * 2),
+				semanticSearch(ctx, q, limit * 2),
 			]);
 
 			// Merge results with weighted scoring (0.4 text + 0.6 semantic).
@@ -190,7 +190,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			// search.
 			if (graph) {
 				try {
-					await applyGraphExpansion(userId, merged, {
+					await applyGraphExpansion(ctx, merged, {
 						maxHops: graphHops ?? 2,
 						boost: graphBoost ?? config.GRAPH_EXPANSION_BOOST,
 					});
@@ -215,7 +215,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				// (b) its folder's `category_id` matches. We resolve (b) by
 				// looking up folder→category for every folder id present in
 				// the result set, then build a Set for O(1) checks below.
-				const allowed = await categoryFilter(userId, category, filtered);
+				const allowed = await categoryFilter(ctx, category, filtered);
 				filtered = filtered.filter((r) => allowed.has(r.id));
 			}
 
@@ -241,7 +241,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 					.map((t) => t.trim())
 					.filter(Boolean);
 				if (tagList.length > 0) {
-					const allowedIds = await tagFilter(userId, tagList);
+					const allowedIds = await tagFilter(ctx, tagList);
 					filtered = filtered.filter((r) => allowedIds.has(r.id));
 				}
 			}
@@ -275,7 +275,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			const total = filtered.length;
 			const items = filtered.slice(offset, offset + limit);
 
-			const itemsWithTags = await withTags(items);
+			const itemsWithTags = await withTags(ctx, items);
 			return { items: itemsWithTags, total, page, limit };
 		} catch (err) {
 			logger.error({ err }, "Search failed");
@@ -296,11 +296,12 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = suggestQuerySchema.safeParse(query);
 		if (!parsed.success) {
 			set.status = 400;
@@ -309,12 +310,14 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 		try {
 			const q = parsed.data.q ?? "";
 			if (!q.trim()) return [];
-			const results = await db.execute(sql`
-        SELECT id, title, similarity(title, ${q}) as score
-        FROM documents
-        WHERE owner_id = ${userId} AND title % ${q}
-        ORDER BY score DESC LIMIT 5
-      `);
+			const results = await withTenant(ctx, async (tx) => {
+				return tx.execute(sql`
+					SELECT id, title, similarity(title, ${q}) as score
+					FROM documents
+					WHERE owner_id = ${userId} AND title % ${q}
+					ORDER BY score DESC LIMIT 5
+				`);
+			});
 			return results;
 		} catch (err) {
 			logger.error({ err }, "Suggest failed");
@@ -339,7 +342,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
  * `expandResults` — this function never has to defend against those cases.
  */
 async function applyGraphExpansion(
-	userId: string,
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	merged: Map<string, SearchResult>,
 	opts: { maxHops?: number; boost?: number } = {},
 ): Promise<void> {
@@ -374,28 +377,31 @@ async function applyGraphExpansion(
 	if (newNeighborIds.size === 0) return;
 
 	// Hydrate new neighbor rows from Postgres so they look like the rest
-	// of the merged set. `owner_id` is enforced in the WHERE clause — a
-	// graph hit on another user's document is silently dropped here so we
-	// never expose cross-tenant data.
+	// of the merged set. `owner_id` is enforced via the RLS policy under
+	// the current tenant context — a graph hit on another user's
+	// document is silently dropped here so we never expose cross-tenant
+	// data.
 	const { documents, folders } = await import("@hiai-docs/db/schema");
-	const rows = await db
-		.select({
-			id: documents.id,
-			title: documents.title,
-			folderId: documents.folderId,
-			folderName: folders.name,
-			createdAt: documents.createdAt,
-			updatedAt: documents.updatedAt,
-			content: documents.content,
-		})
-		.from(documents)
-		.leftJoin(folders, eq(folders.id, documents.folderId))
-		.where(
-			and(
-				eq(documents.ownerId, userId),
-				inArray(documents.id, Array.from(newNeighborIds)),
-			),
-		);
+	const rows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({
+				id: documents.id,
+				title: documents.title,
+				folderId: documents.folderId,
+				folderName: folders.name,
+				createdAt: documents.createdAt,
+				updatedAt: documents.updatedAt,
+				content: documents.content,
+			})
+			.from(documents)
+			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.where(
+				and(
+					eq(documents.ownerId, ctx.userId),
+					inArray(documents.id, Array.from(newNeighborIds)),
+				),
+			);
+	});
 
 	for (const row of rows) {
 		if (!row.id || merged.has(row.id)) continue;
@@ -425,27 +431,37 @@ async function applyGraphExpansion(
 /**
  * Full-text search using PostgreSQL tsvector + ts_rank.
  */
-async function fullTextSearch(userId: string, q: string, limit: number) {
+async function fullTextSearch(
+	ctx: import("../../api/middleware/tenant").TenantContext,
+	q: string,
+	limit: number,
+) {
 	const tsQuery = sql`plainto_tsquery('english', ${q})`;
 
-	return db.execute(sql`
-    SELECT d.id, d.title, LEFT(d.content, 200) as snippet,
-      ts_rank(d.search_vector, ${tsQuery}) as score,
-      d.folder_id, f.name as folder_name, d.created_at, d.updated_at
-    FROM documents d
-    LEFT JOIN folders f ON f.id = d.folder_id
-    WHERE d.owner_id = ${userId}
-      AND d.search_vector @@ ${tsQuery}
-    ORDER BY score DESC
-    LIMIT ${limit}
-  `);
+	return withTenant(ctx, async (tx) => {
+		return tx.execute(sql`
+			SELECT d.id, d.title, LEFT(d.content, 200) as snippet,
+				ts_rank(d.search_vector, ${tsQuery}) as score,
+				d.folder_id, f.name as folder_name, d.created_at, d.updated_at
+			FROM documents d
+			LEFT JOIN folders f ON f.id = d.folder_id
+			WHERE d.owner_id = ${ctx.userId}
+				AND d.search_vector @@ ${tsQuery}
+			ORDER BY score DESC
+			LIMIT ${limit}
+		`);
+	});
 }
 
 /**
  * Semantic search using pgvector cosine similarity.
  * Queries the document_embeddings table against the query embedding.
  */
-async function semanticSearch(userId: string, q: string, limit: number) {
+async function semanticSearch(
+	ctx: import("../../api/middleware/tenant").TenantContext,
+	q: string,
+	limit: number,
+) {
 	try {
 		const queryEmbedding = await getEmbedding(q);
 
@@ -456,19 +472,21 @@ async function semanticSearch(userId: string, q: string, limit: number) {
 
 		const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
-		return db.execute(sql`
-      SELECT DISTINCT ON (d.id)
-        d.id, d.title, LEFT(d.content, 200) as snippet,
-        1 - (de.embedding <=> ${embeddingStr}::vector) as score,
-        d.folder_id, f.name as folder_name, d.created_at, d.updated_at
-      FROM document_embeddings de
-      JOIN documents d ON d.id = de.document_id
-      LEFT JOIN folders f ON f.id = d.folder_id
-      WHERE d.owner_id = ${userId}
-        AND de.embedding IS NOT NULL
-      ORDER BY d.id, de.embedding <=> ${embeddingStr}::vector
-      LIMIT ${limit}
-    `);
+		return withTenant(ctx, async (tx) => {
+			return tx.execute(sql`
+				SELECT DISTINCT ON (d.id)
+					d.id, d.title, LEFT(d.content, 200) as snippet,
+					1 - (de.embedding <=> ${embeddingStr}::vector) as score,
+					d.folder_id, f.name as folder_name, d.created_at, d.updated_at
+				FROM document_embeddings de
+				JOIN documents d ON d.id = de.document_id
+				LEFT JOIN folders f ON f.id = d.folder_id
+				WHERE d.owner_id = ${ctx.userId}
+					AND de.embedding IS NOT NULL
+				ORDER BY d.id, de.embedding <=> ${embeddingStr}::vector
+				LIMIT ${limit}
+			`);
+		});
 	} catch (err) {
 		logger.warn({ err }, "Semantic search failed, falling back to text-only");
 		return [];
@@ -492,7 +510,7 @@ async function semanticSearch(userId: string, q: string, limit: number) {
  * to an empty filtered list without an extra DB call).
  */
 async function categoryFilter(
-	userId: string,
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	categoryId: string,
 	results: Array<{ id: string; folder_id: string | null }>,
 ): Promise<Set<string>> {
@@ -509,35 +527,42 @@ async function categoryFilter(
 	// (1) Documents whose own category_id matches — fetched directly from
 	// the DB because the merged result rows do not carry category_id.
 	const { documents, folders } = await import("@hiai-docs/db/schema");
-	const directRows = await db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(
-			and(eq(documents.ownerId, userId), eq(documents.categoryId, categoryId)),
-		);
+	const directRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({ id: documents.id })
+			.from(documents)
+			.where(
+				and(
+					eq(documents.ownerId, ctx.userId),
+					eq(documents.categoryId, categoryId),
+				),
+			);
+	});
 	const direct = new Set(directRows.map((r) => r.id));
 
 	// (2) Documents whose folder's category_id matches.
 	if (folderIds.length === 0) return direct;
 
-	const folderRows = await db
-		.select({ id: folders.id })
-		.from(folders)
-		.where(
-			and(
-				eq(folders.ownerId, userId),
-				sql`${folders.id} IN (
-					WITH RECURSIVE cat_folders AS (
-						SELECT id FROM ${folders} WHERE category_id = ${categoryId} AND owner_id = ${userId}
-						UNION ALL
-						SELECT f.id FROM ${folders} f
-						JOIN cat_folders cf ON f.parent_id = cf.id
-					)
-					SELECT id FROM cat_folders
-				)`,
-				inArray(folders.id, folderIds),
-			),
-		);
+	const folderRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({ id: folders.id })
+			.from(folders)
+			.where(
+				and(
+					eq(folders.ownerId, ctx.userId),
+					sql`${folders.id} IN (
+						WITH RECURSIVE cat_folders AS (
+							SELECT id FROM ${folders} WHERE category_id = ${categoryId} AND owner_id = ${ctx.userId}
+							UNION ALL
+							SELECT f.id FROM ${folders} f
+							JOIN cat_folders cf ON f.parent_id = cf.id
+						)
+						SELECT id FROM cat_folders
+					)`,
+					inArray(folders.id, folderIds),
+				),
+			);
+	});
 	const matchingFolderIds = new Set(folderRows.map((r) => r.id));
 	if (matchingFolderIds.size === 0) return direct;
 
@@ -549,52 +574,62 @@ async function categoryFilter(
 }
 
 /**
- * Return the set of document ids owned by `userId` that have at least one of
- * the supplied tag names (ANY semantics — a doc qualifies if it carries any
- * of the requested tags).
+ * Return the set of document ids owned by the current user that have at
+ * least one of the supplied tag names (ANY semantics — a doc qualifies
+ * if it carries any of the requested tags).
  */
 async function tagFilter(
-	userId: string,
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	tagNames: string[],
 ): Promise<Set<string>> {
 	if (tagNames.length === 0) return new Set();
 
 	// Look up tag ids by name (parameterised — safe against injection).
-	const tagRows = await db
-		.select({ id: tagsTable.id })
-		.from(tagsTable)
-		.where(
-			and(eq(tagsTable.ownerId, userId), inArray(tagsTable.name, tagNames)),
-		);
+	const tagRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({ id: tagsTable.id })
+			.from(tagsTable)
+			.where(
+				and(
+					eq(tagsTable.ownerId, ctx.userId),
+					inArray(tagsTable.name, tagNames),
+				),
+			);
+	});
 	if (tagRows.length === 0) return new Set();
 
 	const tagIds = tagRows.map((r) => r.id);
 
-	const docRows = await db
-		.selectDistinct({ documentId: documentTags.documentId })
-		.from(documentTags)
-		.where(inArray(documentTags.tagId, tagIds));
+	const docRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.selectDistinct({ documentId: documentTags.documentId })
+			.from(documentTags)
+			.where(inArray(documentTags.tagId, tagIds));
+	});
 
 	return new Set(docRows.map((r) => r.documentId));
 }
 
 async function withTags<T extends { id: string }>(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	rows: T[],
 ): Promise<
 	Array<T & { tags: Array<{ id: string; name: string; color: string | null }> }>
 > {
 	if (rows.length === 0) return [];
 	const ids = rows.map((r) => r.id);
-	const tagRows = await db
-		.select({
-			documentId: documentTags.documentId,
-			id: tagsTable.id,
-			name: tagsTable.name,
-			color: tagsTable.color,
-		})
-		.from(documentTags)
-		.innerJoin(tagsTable, eq(tagsTable.id, documentTags.tagId))
-		.where(inArray(documentTags.documentId, ids));
+	const tagRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({
+				documentId: documentTags.documentId,
+				id: tagsTable.id,
+				name: tagsTable.name,
+				color: tagsTable.color,
+			})
+			.from(documentTags)
+			.innerJoin(tagsTable, eq(tagsTable.id, documentTags.tagId))
+			.where(inArray(documentTags.documentId, ids));
+	});
 
 	const byDoc = new Map<
 		string,

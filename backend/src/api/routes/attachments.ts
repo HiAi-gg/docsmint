@@ -2,12 +2,13 @@ import { attachments, documents } from "@hiai-docs/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
-import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
-import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
 import { BUCKET, minio, minioPublic } from "../../lib/minio";
+import { shareTokenAccessForDocument } from "../../lib/share-access";
+import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 /**
  * Legacy upload limit — kept as a safety net for the in-process
@@ -87,22 +88,6 @@ async function getClientIp(request: Request): Promise<string> {
 	);
 }
 
-/**
- * Verify that the authenticated user owns the document at `documentId`.
- * Returns the doc row on success, or null on missing/forbidden.
- */
-async function ownedDocumentOrNull(
-	documentId: string,
-	userId: string,
-): Promise<{ id: string } | null> {
-	const doc = await db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
-		.limit(1);
-	return doc[0] ?? null;
-}
-
 export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 	// POST /api/documents/:id/attachments/presign
@@ -128,15 +113,25 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 			set.headers = rateLimitHeaders(rl.remaining);
 
-			const userId = await getSessionUserId(request.headers);
-			if (!userId) {
+			const ctx = await buildTenantContext(request);
+			if (ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
+			const userId = ctx.userId;
 
 			const documentId = params.id;
-			const doc = await ownedDocumentOrNull(documentId, userId);
-			if (!doc) {
+			const docExists = await withTenant(ctx, async (tx) => {
+				const [doc] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				return !!doc;
+			});
+			if (!docExists) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
@@ -216,15 +211,25 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 			set.headers = rateLimitHeaders(rl.remaining);
 
-			const userId = await getSessionUserId(request.headers);
-			if (!userId) {
+			const ctx = await buildTenantContext(request);
+			if (ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
+			const userId = ctx.userId;
 
 			const documentId = params.id;
-			const doc = await ownedDocumentOrNull(documentId, userId);
-			if (!doc) {
+			const docExists = await withTenant(ctx, async (tx) => {
+				const [doc] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				return !!doc;
+			});
+			if (!docExists) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
@@ -298,16 +303,19 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					: Number((stat as { size?: number }).size ?? size);
 
 			try {
-				const [created] = await db
-					.insert(attachments)
-					.values({
-						documentId,
-						filename,
-						mimeType: contentType,
-						size: storedSize,
-						minioKey: key,
-					})
-					.returning();
+				const created = await withTenant(ctx, async (tx) => {
+					const [row] = await tx
+						.insert(attachments)
+						.values({
+							documentId,
+							filename,
+							mimeType: contentType,
+							size: storedSize,
+							minioKey: key,
+						})
+						.returning();
+					return row ?? null;
+				});
 
 				if (!created) {
 					set.status = 500;
@@ -350,17 +358,25 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const documentId = params.id;
 
 		// Verify document exists and user owns it
-		const doc = await ownedDocumentOrNull(documentId, userId);
-		if (!doc) {
+		const docExists = await withTenant(ctx, async (tx) => {
+			const [doc] = await tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
+				.limit(1);
+			return !!doc;
+		});
+		if (!docExists) {
 			set.status = 404;
 			return { error: "Document not found" };
 		}
@@ -426,16 +442,19 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			// Insert attachment row
-			const [created] = await db
-				.insert(attachments)
-				.values({
-					documentId,
-					filename: file.name,
-					mimeType: file.type,
-					size: file.size,
-					minioKey: key,
-				})
-				.returning();
+			const created = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.insert(attachments)
+					.values({
+						documentId,
+						filename: file.name,
+						mimeType: file.type,
+						size: file.size,
+						minioKey: key,
+					})
+					.returning();
+				return row ?? null;
+			});
 
 			if (!created) {
 				set.status = 500;
@@ -464,57 +483,230 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 	// GET /api/documents/:id/attachments — List attachments for a document
 	.get("/documents/:id/attachments", async ({ params, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const documentId = params.id;
 
 		// Verify document exists and user owns it
-		const doc = await ownedDocumentOrNull(documentId, userId);
-		if (!doc) {
-			set.status = 404;
-			return { error: "Document not found" };
-		}
-
-		try {
-			const rows = await db
+		const result = await withTenant(ctx, async (tx) => {
+			const [doc] = await tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
+				.limit(1);
+			if (!doc) {
+				return null;
+			}
+			const rows = await tx
 				.select()
 				.from(attachments)
 				.where(eq(attachments.documentId, documentId));
 
 			// Stable same-origin streaming URLs (see POST handler note).
-			const result = rows.map((row) => ({
+			return rows.map((row) => ({
 				id: row.id,
 				filename: row.filename,
 				mimeType: row.mimeType,
 				size: row.size,
 				url: `/api/attachments/${row.id}/raw`,
 			}));
+		});
 
-			return { items: result };
-		} catch (err) {
-			logger.error({ err }, "Failed to list attachments");
-			set.status = 500;
-			return { error: "Failed to list attachments" };
+		if (!result) {
+			set.status = 404;
+			return { error: "Document not found" };
 		}
+		return { items: result };
 	})
 
-	// GET /api/attachments/:id/raw — Stream attachment bytes (PUBLIC, no auth).
-	// Intentionally public so images embedded in shared documents load without
-	// a session. The attachment id is a UUID, so it is unguessable.
-	.get("/attachments/:id/raw", async ({ params, set }) => {
-		try {
-			const [row] = await db
-				.select()
+	// DELETE /api/attachments/:id — Remove an attachment
+	//
+	// Verifies the caller owns the document the attachment is attached to
+	// via an inner join, then removes the MinIO object and the DB row.
+	// Object removal is best-effort: a missing object (e.g. a row that
+	// was inserted by `confirm` after a partial PUT) still proceeds to
+	// delete the DB row so the user is not left with a phantom record.
+	//
+	// Response:
+	//   200 { success: true }
+	.delete("/attachments/:id", async ({ params, request, set }) => {
+		const ip = await getClientIp(request);
+		const rl = await writeRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
+
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		const userId = ctx.userId;
+
+		const attachmentId = params.id;
+
+		// Look up the attachment with its owning document so we can
+		// distinguish three cases:
+		//   - row missing entirely (404)
+		//   - row exists but caller is not the owner (403)
+		//   - row exists and caller owns it (proceed to delete)
+		// The inner join is intentional: a row whose `documentId` points
+		// at a deleted document is dropped from the result set, which is
+		// fine because the FK is `ON DELETE CASCADE` and the row should
+		// already be gone too.
+		const row = await withTenant(ctx, async (tx) => {
+			const [r] = await tx
+				.select({
+					id: attachments.id,
+					minioKey: attachments.minioKey,
+					ownerId: documents.ownerId,
+				})
 				.from(attachments)
-				.where(eq(attachments.id, params.id))
+				.innerJoin(documents, eq(documents.id, attachments.documentId))
+				.where(eq(attachments.id, attachmentId))
 				.limit(1);
+			return r ?? null;
+		});
+
+		if (!row) {
+			set.status = 404;
+			return { error: "Attachment not found" };
+		}
+		if (row.ownerId !== userId) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+
+		// Best-effort object removal. A failure here is logged but does
+		// NOT block the DB delete — orphaned storage is cheaper to clean
+		// up out-of-band than a phantom attachment row the user can't
+		// remove.
+		try {
+			await minio.removeObject(BUCKET, row.minioKey);
+		} catch (err) {
+			logger.warn(
+				{ err, key: row.minioKey, attachmentId },
+				"Failed to remove attachment object from MinIO; proceeding to delete DB row",
+			);
+		}
+
+		await withTenant(ctx, async (tx) => {
+			await tx.delete(attachments).where(eq(attachments.id, attachmentId));
+		});
+
+		return { success: true };
+	})
+
+	// GET /api/attachments/:id/raw — Stream attachment bytes (gated).
+	//
+	// Auth model: this endpoint was previously public (relying on UUID
+	// unguessability) so that images embedded inside shared documents
+	// would render in the anonymous share view. With UUIDs leaked via
+	// referer headers, browser caches, and external link previews, the
+	// pure-UUID model is not enough — a holder of any embedded URL gets
+	// permanent read access to that binary even after the share is
+	// revoked.
+	//
+	// The gate is therefore hybrid:
+	//   1. Authenticated caller (session cookie OR `Authorization:
+	//      Bearer <api-key>`) → ownership check via the joined document.
+	//      200 if owner, 403 if the attachment exists but belongs to a
+	//      different user, 404 if no such attachment.
+	//   2. Anonymous caller with `x-share-token: <token>` header → look
+	//      up the share link, check expiry, then check whether the
+	//      attachment's document is the shared doc or sits under the
+	//      shared folder. 200 on a match, 401 on a missing / expired /
+	//      mismatched token.
+	//   3. No session AND no share token → 401, regardless of whether
+	//      the attachment exists. Returning 404 here would let an
+	//      unauthenticated probe distinguish "unknown id" from "exists
+	//      but blocked", so the auth check runs before the row lookup.
+	//
+	// Streaming the bytes after the gate uses the same buffered path the
+	// original public endpoint used. We don't pipe directly into the
+	// Response stream so the existing `minio.getObject` mock in tests
+	// keeps working without needing a second streaming implementation.
+	.get("/attachments/:id/raw", async ({ params, request, set }) => {
+		try {
+			// Auth gate first — see comment above for why ordering
+			// matters here. We accept either an authenticated session
+			// OR a share-token header; the lookup below differs by
+			// which path we took.
+			const ctx = await buildTenantContext(request);
+			const shareToken =
+				ctx.role === "none" ? request.headers.get("x-share-token") : null;
+			if (ctx.role === "none" && !shareToken) {
+				set.status = 401;
+				return { error: "Authentication required" };
+			}
+
+			// Use admin context for the lookup so RLS lets us find any
+			// attachment row (the auth gate above is the security boundary,
+			// not the RLS policy). The owner-vs-anonymous decision is
+			// made after we know who the row belongs to.
+			const lookupCtx =
+				ctx.role === "admin"
+					? ctx
+					: { userId: ctx.userId, role: "admin" as const };
+			const row = await withTenant(lookupCtx, async (tx) => {
+				const [r] = await tx
+					.select({
+						id: attachments.id,
+						documentId: attachments.documentId,
+						mimeType: attachments.mimeType,
+						minioKey: attachments.minioKey,
+						ownerId: documents.ownerId,
+					})
+					.from(attachments)
+					.innerJoin(documents, eq(documents.id, attachments.documentId))
+					.where(eq(attachments.id, params.id))
+					.limit(1);
+				return r ?? null;
+			});
+
 			if (!row) {
 				set.status = 404;
 				return { error: "Attachment not found" };
+			}
+
+			if (ctx.role !== "none") {
+				if (row.ownerId !== ctx.userId) {
+					set.status = 403;
+					return { error: "Forbidden" };
+				}
+			} else if (shareToken) {
+				const verdict = await shareTokenAccessForDocument(
+					lookupCtx,
+					row.documentId,
+					shareToken,
+				);
+				if (verdict !== "granted") {
+					// "missing", "expired", and "no-access" all collapse
+					// to 401 with the same generic message — leaking
+					// which one fired would let an unauthenticated
+					// caller enumerate live share tokens by comparing
+					// 401 ("missing") vs 401 ("expired") vs 401
+					// ("no-access"). The internal log line below
+					// preserves the distinction for operators.
+					logger.warn(
+						{
+							attachmentId: row.id,
+							documentId: row.documentId,
+							verdict,
+						},
+						"Share-token access denied for attachment",
+					);
+					set.status = 401;
+					return { error: "Authentication required" };
+				}
 			}
 
 			const stream = await minio.getObject(BUCKET, row.minioKey);
@@ -526,7 +718,13 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			return new Response(buffer, {
 				headers: {
 					"Content-Type": row.mimeType,
-					"Cache-Control": "public, max-age=31536000, immutable",
+					// `private` so shared caches (CDNs, proxies) cannot
+					// serve the auth-gated bytes to a different user
+					// hitting the same URL. The UUID is unique per
+					// attachment so `immutable` would also be safe, but
+					// `private` first signals that the response varies
+					// per authenticated caller.
+					"Cache-Control": "private, max-age=3600, immutable",
 				},
 			});
 		} catch (err) {

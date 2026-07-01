@@ -2,12 +2,12 @@ import { documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
-import { db } from "../../lib/db";
 import { invalidateDocListCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import { reembedDocsInFolder } from "../../lib/reembed";
+import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 const createFolderSchema = z.object({
 	name: z.string().min(1).max(255),
@@ -26,97 +26,107 @@ const updateFolderSchema = z.object({
 
 export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 	.get("/:id", async ({ params, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const [row] = await db
-				.select({
-					id: folders.id,
-					ownerId: folders.ownerId,
-					parentId: folders.parentId,
-					categoryId: folders.categoryId,
-					name: folders.name,
-					order: folders.order,
-					createdAt: folders.createdAt,
-					updatedAt: folders.updatedAt,
-					documentCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int
-						FROM documents d
-						WHERE d.folder_id IN (SELECT id FROM sub_folders)
-							AND d.owner_id = ${userId}
-					)`,
-					subfolderCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int FROM sub_folders
-					)`,
-				})
-				.from(folders)
-				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
-				.limit(1);
-			if (!row) {
+			const result = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.select({
+						id: folders.id,
+						ownerId: folders.ownerId,
+						parentId: folders.parentId,
+						categoryId: folders.categoryId,
+						name: folders.name,
+						order: folders.order,
+						createdAt: folders.createdAt,
+						updatedAt: folders.updatedAt,
+						documentCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int
+							FROM documents d
+							WHERE d.folder_id IN (SELECT id FROM sub_folders)
+								AND d.owner_id = ${userId}
+						)`,
+						subfolderCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int FROM sub_folders
+						)`,
+					})
+					.from(folders)
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
+					.limit(1);
+				if (!row) {
+					return null;
+				}
+				// Fetch child folders and documents
+				const childFolders = await tx
+					.select({
+						id: folders.id,
+						ownerId: folders.ownerId,
+						parentId: folders.parentId,
+						categoryId: folders.categoryId,
+						name: folders.name,
+						order: folders.order,
+						createdAt: folders.createdAt,
+						updatedAt: folders.updatedAt,
+						documentCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int
+							FROM documents d
+							WHERE d.folder_id IN (SELECT id FROM sub_folders)
+								AND d.owner_id = ${userId}
+						)`,
+						subfolderCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int FROM sub_folders
+						)`,
+					})
+					.from(folders)
+					.where(
+						and(eq(folders.parentId, params.id), eq(folders.ownerId, userId)),
+					)
+					.orderBy(folders.order, folders.name);
+				const childDocs = await tx
+					.select()
+					.from(documents)
+					.where(
+						and(
+							eq(documents.folderId, params.id),
+							eq(documents.ownerId, userId),
+						),
+					)
+					.orderBy(documents.updatedAt);
+				return { ...row, children: childFolders, documents: childDocs };
+			});
+			if (!result) {
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
-			// Fetch child folders and documents
-			const childFolders = await db
-				.select({
-					id: folders.id,
-					ownerId: folders.ownerId,
-					parentId: folders.parentId,
-					categoryId: folders.categoryId,
-					name: folders.name,
-					order: folders.order,
-					createdAt: folders.createdAt,
-					updatedAt: folders.updatedAt,
-					documentCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int
-						FROM documents d
-						WHERE d.folder_id IN (SELECT id FROM sub_folders)
-							AND d.owner_id = ${userId}
-					)`,
-					subfolderCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int FROM sub_folders
-					)`,
-				})
-				.from(folders)
-				.where(
-					and(eq(folders.parentId, params.id), eq(folders.ownerId, userId)),
-				)
-				.orderBy(folders.order, folders.name);
-			const childDocs = await db
-				.select()
-				.from(documents)
-				.where(
-					and(eq(documents.folderId, params.id), eq(documents.ownerId, userId)),
-				)
-				.orderBy(documents.updatedAt);
-			return { ...row, children: childFolders, documents: childDocs };
+			return result;
 		} catch (err) {
 			logger.error({ err }, "Failed to get folder");
 			set.status = 500;
@@ -124,11 +134,12 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 	})
 	.get("/", async ({ query, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
 			const conditions = [eq(folders.ownerId, userId)];
 			if (query.all === "true") {
@@ -138,41 +149,43 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			} else {
 				conditions.push(isNull(folders.parentId));
 			}
-			const rows = await db
-				.select({
-					id: folders.id,
-					ownerId: folders.ownerId,
-					parentId: folders.parentId,
-					categoryId: folders.categoryId,
-					name: folders.name,
-					order: folders.order,
-					createdAt: folders.createdAt,
-					updatedAt: folders.updatedAt,
-					documentCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int
-						FROM documents d
-						WHERE d.folder_id IN (SELECT id FROM sub_folders)
-							AND d.owner_id = ${userId}
-					)`,
-					subfolderCount: sql<number>`(
-						WITH RECURSIVE sub_folders AS (
-							SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
-							UNION ALL
-							SELECT f.id FROM folders f
-							JOIN sub_folders sf ON f.parent_id = sf.id
-						)
-						SELECT COUNT(*)::int FROM sub_folders
-					)`,
-				})
-				.from(folders)
-				.where(and(...conditions))
-				.orderBy(folders.order, folders.name);
+			const rows = await withTenant(ctx, async (tx) => {
+				return tx
+					.select({
+						id: folders.id,
+						ownerId: folders.ownerId,
+						parentId: folders.parentId,
+						categoryId: folders.categoryId,
+						name: folders.name,
+						order: folders.order,
+						createdAt: folders.createdAt,
+						updatedAt: folders.updatedAt,
+						documentCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int
+							FROM documents d
+							WHERE d.folder_id IN (SELECT id FROM sub_folders)
+								AND d.owner_id = ${userId}
+						)`,
+						subfolderCount: sql<number>`(
+							WITH RECURSIVE sub_folders AS (
+								SELECT id FROM folders f2 WHERE f2.parent_id = "folders"."id" AND f2.owner_id = ${userId}
+								UNION ALL
+								SELECT f.id FROM folders f
+								JOIN sub_folders sf ON f.parent_id = sf.id
+							)
+							SELECT COUNT(*)::int FROM sub_folders
+						)`,
+					})
+					.from(folders)
+					.where(and(...conditions))
+					.orderBy(folders.order, folders.name);
+			});
 			return rows;
 		} catch (err) {
 			logger.error({ err }, "Failed to list folders");
@@ -190,43 +203,50 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = createFolderSchema.safeParse(await request.json());
 		if (!parsed.success) {
 			set.status = 400;
 			return { error: "Invalid input", details: parsed.error.flatten() };
 		}
 		try {
-			if (parsed.data.parentId) {
-				const parent = await db
-					.select({ id: folders.id })
-					.from(folders)
-					.where(
-						and(
-							eq(folders.id, parsed.data.parentId),
-							eq(folders.ownerId, userId),
-						),
-					)
-					.limit(1);
-				if (parent.length === 0) {
-					set.status = 404;
-					return { error: "Parent folder not found" };
+			const created = await withTenant(ctx, async (tx) => {
+				if (parsed.data.parentId) {
+					const parent = await tx
+						.select({ id: folders.id })
+						.from(folders)
+						.where(
+							and(
+								eq(folders.id, parsed.data.parentId),
+								eq(folders.ownerId, userId),
+							),
+						)
+						.limit(1);
+					if (parent.length === 0) {
+						return { notFound: true as const };
+					}
 				}
+				const [row] = await tx
+					.insert(folders)
+					.values({
+						ownerId: userId,
+						name: parsed.data.name,
+						parentId: parsed.data.parentId ?? null,
+					})
+					.returning();
+				return { row };
+			});
+			if ("notFound" in created) {
+				set.status = 404;
+				return { error: "Parent folder not found" };
 			}
-			const [created] = await db
-				.insert(folders)
-				.values({
-					ownerId: userId,
-					name: parsed.data.name,
-					parentId: parsed.data.parentId ?? null,
-				})
-				.returning();
 			set.status = 201;
-			return created;
+			return created.row;
 		} catch (err) {
 			logger.error({ err }, "Failed to create folder");
 			set.status = 500;
@@ -243,11 +263,12 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = updateFolderSchema.safeParse(await request.json());
 		if (!parsed.success) {
 			set.status = 400;
@@ -266,44 +287,58 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			};
 		}
 		try {
-			if (parsed.data.parentId) {
-				if (parsed.data.parentId === params.id) {
-					set.status = 400;
-					return { error: "Folder cannot be its own parent" };
+			const result = await withTenant(ctx, async (tx) => {
+				if (parsed.data.parentId) {
+					if (parsed.data.parentId === params.id) {
+						return { selfParent: true as const };
+					}
+					const parent = await tx
+						.select({ id: folders.id })
+						.from(folders)
+						.where(
+							and(
+								eq(folders.id, parsed.data.parentId),
+								eq(folders.ownerId, userId),
+							),
+						)
+						.limit(1);
+					if (parent.length === 0) {
+						return { parentMissing: true as const };
+					}
 				}
-				const parent = await db
-					.select({ id: folders.id })
-					.from(folders)
-					.where(
-						and(
-							eq(folders.id, parsed.data.parentId),
-							eq(folders.ownerId, userId),
-						),
-					)
-					.limit(1);
-				if (parent.length === 0) {
-					set.status = 404;
-					return { error: "Parent folder not found" };
+				const [updated] = await tx
+					.update(folders)
+					.set({
+						...(parsed.data.name !== undefined && { name: parsed.data.name }),
+						...(parsed.data.parentId !== undefined && {
+							parentId: parsed.data.parentId,
+						}),
+						...(parsed.data.categoryId !== undefined && {
+							categoryId: parsed.data.categoryId,
+						}),
+						// If parentId is set (not null), categoryId MUST be null
+						...(parsed.data.parentId ? { categoryId: null } : {}),
+						...(parsed.data.order !== undefined && {
+							order: parsed.data.order,
+						}),
+						updatedAt: new Date(),
+					})
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
+					.returning();
+				if (!updated) {
+					return { notFound: true as const };
 				}
+				return { updated };
+			});
+			if ("selfParent" in result) {
+				set.status = 400;
+				return { error: "Folder cannot be its own parent" };
 			}
-			const [updated] = await db
-				.update(folders)
-				.set({
-					...(parsed.data.name !== undefined && { name: parsed.data.name }),
-					...(parsed.data.parentId !== undefined && {
-						parentId: parsed.data.parentId,
-					}),
-					...(parsed.data.categoryId !== undefined && {
-						categoryId: parsed.data.categoryId,
-					}),
-					// If parentId is set (not null), categoryId MUST be null
-					...(parsed.data.parentId ? { categoryId: null } : {}),
-					...(parsed.data.order !== undefined && { order: parsed.data.order }),
-					updatedAt: new Date(),
-				})
-				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
-				.returning();
-			if (!updated) {
+			if ("parentMissing" in result) {
+				set.status = 404;
+				return { error: "Parent folder not found" };
+			}
+			if ("notFound" in result) {
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
@@ -323,7 +358,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				invalidateDocListCache(userId);
 			}
 
-			return updated;
+			return result.updated;
 		} catch (err) {
 			logger.error({ err }, "Failed to update folder");
 			set.status = 500;
@@ -340,24 +375,31 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const existing = await db
-				.select({ id: folders.id })
-				.from(folders)
-				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
-				.limit(1);
-			if (existing.length === 0) {
+			const deleted = await withTenant(ctx, async (tx) => {
+				const existing = await tx
+					.select({ id: folders.id })
+					.from(folders)
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
+					.limit(1);
+				if (existing.length === 0) {
+					return false;
+				}
+				await tx
+					.delete(folders)
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)));
+				return true;
+			});
+			if (!deleted) {
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
-			await db
-				.delete(folders)
-				.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)));
 
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble

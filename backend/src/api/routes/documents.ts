@@ -8,9 +8,7 @@ import {
 import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
 import { contentHash } from "../../lib/content-hash";
-import { db } from "../../lib/db";
 import {
 	cacheGetOrSet,
 	docListKey,
@@ -23,11 +21,13 @@ import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { maybePruneVersions } from "../../lib/version-prune";
+import { withTenant } from "../../lib/with-tenant";
 import {
 	documentRateLimiter,
 	rateLimitHeaders,
 	writeRateLimiter,
 } from "../middleware/rate-limit";
+import { buildTenantContext } from "../middleware/tenant";
 
 const createDocumentSchema = z.object({
 	title: z.string().min(1).max(500).default("Untitled"),
@@ -124,22 +124,25 @@ async function importFileToItem(file: File): Promise<{
  * endpoint can show tags without an N+1 round trip.
  */
 async function withTags<T extends { id: string }>(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	rows: T[],
 ): Promise<
 	Array<T & { tags: Array<{ id: string; name: string; color: string | null }> }>
 > {
 	if (rows.length === 0) return [];
 	const ids = rows.map((r) => r.id);
-	const tagRows = await db
-		.select({
-			documentId: documentTags.documentId,
-			id: tags.id,
-			name: tags.name,
-			color: tags.color,
-		})
-		.from(documentTags)
-		.innerJoin(tags, eq(tags.id, documentTags.tagId))
-		.where(inArray(documentTags.documentId, ids));
+	const tagRows = await withTenant(ctx, async (tx) => {
+		return tx
+			.select({
+				documentId: documentTags.documentId,
+				id: tags.id,
+				name: tags.name,
+				color: tags.color,
+			})
+			.from(documentTags)
+			.innerJoin(tags, eq(tags.id, documentTags.tagId))
+			.where(inArray(documentTags.documentId, ids));
+	});
 
 	const byDoc = new Map<
 		string,
@@ -154,24 +157,26 @@ async function withTags<T extends { id: string }>(
 }
 
 async function resolveFolderCategory(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	folderId: string,
-	userId: string,
 ): Promise<string | null> {
-	const rows = await db.execute(sql`
-		WITH RECURSIVE ancestors AS (
-			SELECT id, parent_id, category_id
-			FROM folders
-			WHERE id = ${folderId} AND owner_id = ${userId}
-			UNION ALL
-			SELECT f.id, f.parent_id, f.category_id
-			FROM folders f
-			JOIN ancestors a ON f.id = a.parent_id
-			WHERE f.owner_id = ${userId}
-		)
-		SELECT category_id FROM ancestors
-		WHERE category_id IS NOT NULL
-		LIMIT 1
-	`);
+	const rows = await withTenant(ctx, async (tx) => {
+		return tx.execute(sql`
+			WITH RECURSIVE ancestors AS (
+				SELECT id, parent_id, category_id
+				FROM folders
+				WHERE id = ${folderId} AND owner_id = ${ctx.userId}
+				UNION ALL
+				SELECT f.id, f.parent_id, f.category_id
+				FROM folders f
+				JOIN ancestors a ON f.id = a.parent_id
+				WHERE f.owner_id = ${ctx.userId}
+			)
+			SELECT category_id FROM ancestors
+			WHERE category_id IS NOT NULL
+			LIMIT 1
+		`);
+	});
 	const row = rows[0] as { category_id: string } | undefined;
 	return row?.category_id ?? null;
 }
@@ -191,11 +196,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const parsed = listQuerySchema.safeParse(query);
 		if (!parsed.success) {
 			set.status = 400;
@@ -210,16 +216,54 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				if (folderId) conditions.push(eq(documents.folderId, folderId));
 
 				if (tag) {
-					const [countResult, rows] = await Promise.all([
-						db
+					const [countResult, rows] = await withTenant(ctx, async (tx) => {
+						return Promise.all([
+							tx
+								.select({ total: count() })
+								.from(documents)
+								.innerJoin(
+									documentTags,
+									eq(documents.id, documentTags.documentId),
+								)
+								.where(and(eq(documentTags.tagId, tag), ...conditions)),
+							tx
+								.select({
+									id: documents.id,
+									title: documents.title,
+									content: sql<string>`LEFT(${documents.content}, 200)`.as(
+										"content",
+									),
+									folderId: documents.folderId,
+									categoryId: documents.categoryId,
+									createdAt: documents.createdAt,
+									updatedAt: documents.updatedAt,
+								})
+								.from(documents)
+								.innerJoin(
+									documentTags,
+									eq(documents.id, documentTags.documentId),
+								)
+								.where(and(eq(documentTags.tagId, tag), ...conditions))
+								.orderBy(desc(documents.updatedAt))
+								.limit(limit)
+								.offset(offset),
+						]);
+					});
+					return {
+						items: await withTags(ctx, rows),
+						total: countResult[0]?.total ?? 0,
+						page,
+						limit,
+					};
+				}
+
+				const [countResult, rows] = await withTenant(ctx, async (tx) => {
+					return Promise.all([
+						tx
 							.select({ total: count() })
 							.from(documents)
-							.innerJoin(
-								documentTags,
-								eq(documents.id, documentTags.documentId),
-							)
-							.where(and(eq(documentTags.tagId, tag), ...conditions)),
-						db
+							.where(and(...conditions)),
+						tx
 							.select({
 								id: documents.id,
 								title: documents.title,
@@ -232,48 +276,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								updatedAt: documents.updatedAt,
 							})
 							.from(documents)
-							.innerJoin(
-								documentTags,
-								eq(documents.id, documentTags.documentId),
-							)
-							.where(and(eq(documentTags.tagId, tag), ...conditions))
+							.where(and(...conditions))
 							.orderBy(desc(documents.updatedAt))
 							.limit(limit)
 							.offset(offset),
 					]);
-					return {
-						items: await withTags(rows),
-						total: countResult[0]?.total ?? 0,
-						page,
-						limit,
-					};
-				}
-
-				const [countResult, rows] = await Promise.all([
-					db
-						.select({ total: count() })
-						.from(documents)
-						.where(and(...conditions)),
-					db
-						.select({
-							id: documents.id,
-							title: documents.title,
-							content: sql<string>`LEFT(${documents.content}, 200)`.as(
-								"content",
-							),
-							folderId: documents.folderId,
-							categoryId: documents.categoryId,
-							createdAt: documents.createdAt,
-							updatedAt: documents.updatedAt,
-						})
-						.from(documents)
-						.where(and(...conditions))
-						.orderBy(desc(documents.updatedAt))
-						.limit(limit)
-						.offset(offset),
-				]);
+				});
 				return {
-					items: await withTags(rows),
+					items: await withTags(ctx, rows),
 					total: countResult[0]?.total ?? 0,
 					page,
 					limit,
@@ -300,11 +310,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const body = createDocumentSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
@@ -325,30 +336,31 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const folderId = body.data.folderId ?? null;
 			let categoryId = body.data.categoryId ?? null;
 			if (folderId && !categoryId) {
-				categoryId = await resolveFolderCategory(folderId, userId);
+				categoryId = await resolveFolderCategory(ctx, folderId);
 			}
 
-			const [created] = await db
-				.insert(documents)
-				.values({
-					ownerId: userId,
-					title: body.data.title,
+			const created = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.insert(documents)
+					.values({
+						ownerId: userId,
+						title: body.data.title,
+						content: initialContent,
+						contentJson: initialDocJson,
+						folderId,
+						categoryId,
+					})
+					.returning();
+				if (!row) {
+					throw new Error("Failed to create document");
+				}
+				await tx.insert(versions).values({
+					documentId: row.id,
 					content: initialContent,
-					contentJson: initialDocJson,
-					folderId,
-					categoryId,
-				})
-				.returning();
-			if (!created) {
-				set.status = 500;
-				return { error: "Failed to create document" };
-			}
-
-			await db.insert(versions).values({
-				documentId: created.id,
-				content: initialContent,
-				contentJson: null,
-				createdBy: userId,
+					contentJson: null,
+					createdBy: userId,
+				});
+				return row;
 			});
 
 			enqueueEmbedding(created.id);
@@ -376,48 +388,60 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			return await cacheGetOrSet(docSingleKey(params.id), 60, async () => {
-				const rows = await db
-					.select({
-						id: documents.id,
-						ownerId: documents.ownerId,
-						folderId: documents.folderId,
-						folderName: folders.name,
-						categoryId: documents.categoryId,
-						title: documents.title,
-						content: documents.content,
-						contentJson: documents.contentJson,
-						metadata: documents.metadata,
-						createdAt: documents.createdAt,
-						updatedAt: documents.updatedAt,
-					})
-					.from(documents)
-					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(
-						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
-					)
-					.limit(1);
+			return await cacheGetOrSet(
+				docSingleKey(params.id, userId),
+				60,
+				async () => {
+					const result = await withTenant(ctx, async (tx) => {
+						const rows = await tx
+							.select({
+								id: documents.id,
+								ownerId: documents.ownerId,
+								folderId: documents.folderId,
+								folderName: folders.name,
+								categoryId: documents.categoryId,
+								title: documents.title,
+								content: documents.content,
+								contentJson: documents.contentJson,
+								metadata: documents.metadata,
+								createdAt: documents.createdAt,
+								updatedAt: documents.updatedAt,
+							})
+							.from(documents)
+							.leftJoin(folders, eq(folders.id, documents.folderId))
+							.where(
+								and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+							)
+							.limit(1);
 
-				const doc = rows[0];
-				if (!doc) {
-					set.status = 404;
-					return { error: "Document not found" };
-				}
+						const doc = rows[0];
+						if (!doc) {
+							return null;
+						}
 
-				const docTags = await db
-					.select({ id: tags.id, name: tags.name, color: tags.color })
-					.from(tags)
-					.innerJoin(documentTags, eq(tags.id, documentTags.tagId))
-					.where(eq(documentTags.documentId, doc.id));
+						const docTags = await tx
+							.select({ id: tags.id, name: tags.name, color: tags.color })
+							.from(tags)
+							.innerJoin(documentTags, eq(tags.id, documentTags.tagId))
+							.where(eq(documentTags.documentId, doc.id));
 
-				return { ...doc, tags: docTags };
-			});
+						return { ...doc, tags: docTags };
+					});
+
+					if (!result) {
+						set.status = 404;
+						return { error: "Document not found" };
+					}
+					return result;
+				},
+			);
 		} catch (err) {
 			logger.error({ err }, "Failed to get document");
 			set.status = 500;
@@ -439,11 +463,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		const body = updateDocumentSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
@@ -461,30 +486,79 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "At least one field is required" };
 		}
 		try {
-			const existing = await db
-				.select({
-					id: documents.id,
-					title: documents.title,
-					content: documents.content,
-					contentJson: documents.contentJson,
-					folderId: documents.folderId,
-					categoryId: documents.categoryId,
-					contentHash: documents.contentHash,
-				})
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (existing.length === 0) {
+			const result = await withTenant(ctx, async (tx) => {
+				const existingRows = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+						contentJson: documents.contentJson,
+						folderId: documents.folderId,
+						categoryId: documents.categoryId,
+						contentHash: documents.contentHash,
+					})
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				if (existingRows.length === 0) {
+					return null;
+				}
+				const existing = existingRows[0];
+
+				await tx.insert(versions).values({
+					documentId: params.id,
+					content: existing?.content ?? "",
+					contentJson: existing?.contentJson,
+					createdBy: userId,
+				});
+
+				// `contentJson` is the editor's JSON cache of the markdown
+				// `content`. It is populated by the client (the editor sends
+				// it on every save); the server never generates it. When the
+				// client supplies only `content` (e.g. an import, a script,
+				// the markdown-toggle path that bypasses the editor), the
+				// JSON is left null — the frontend's `markdownToJson`
+				// helper rehydrates it from the authoritative markdown on
+				// the next open. The markdown `content` is the source of
+				// truth.
+				const resolvedDocJson: unknown | undefined = body.data.contentJson;
+
+				const [updated] = await tx
+					.update(documents)
+					.set({
+						...(body.data.title !== undefined && { title: body.data.title }),
+						...(body.data.content !== undefined && {
+							content: body.data.content,
+						}),
+						...(resolvedDocJson !== undefined && {
+							contentJson: resolvedDocJson,
+						}),
+						...(body.data.metadata !== undefined && {
+							metadata: body.data.metadata,
+						}),
+						...(body.data.folderId !== undefined && {
+							folderId: body.data.folderId,
+						}),
+						...(body.data.categoryId !== undefined && {
+							categoryId: body.data.categoryId,
+						}),
+						updatedAt: new Date(),
+					})
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.returning();
+
+				return { updated, existing };
+			});
+
+			if (!result) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			await db.insert(versions).values({
-				documentId: params.id,
-				content: existing[0]?.content ?? "",
-				contentJson: existing[0]?.contentJson,
-				createdBy: userId,
-			});
+			const { updated, existing } = result;
 
 			// Fire-and-forget pruning. We don't await — pruning is a
 			// background GC pass and must not block the user's PATCH
@@ -494,51 +568,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				logger.error({ err, docId: params.id }, "Background prune failed"),
 			);
 
-			// `contentJson` is the editor's JSON cache of the markdown
-			// `content`. It is populated by the client (the editor sends
-			// it on every save); the server never generates it. When the
-			// client supplies only `content` (e.g. an import, a script,
-			// the markdown-toggle path that bypasses the editor), the
-			// JSON is left null — the frontend's `markdownToJson`
-			// helper rehydrates it from the authoritative markdown on
-			// the next open. The markdown `content` is the source of
-			// truth.
-			const resolvedDocJson: unknown | undefined = body.data.contentJson;
-
-			const [updated] = await db
-				.update(documents)
-				.set({
-					...(body.data.title !== undefined && { title: body.data.title }),
-					...(body.data.content !== undefined && {
-						content: body.data.content,
-					}),
-					...(resolvedDocJson !== undefined && {
-						contentJson: resolvedDocJson,
-					}),
-					...(body.data.metadata !== undefined && {
-						metadata: body.data.metadata,
-					}),
-					...(body.data.folderId !== undefined && {
-						folderId: body.data.folderId,
-					}),
-					...(body.data.categoryId !== undefined && {
-						categoryId: body.data.categoryId,
-					}),
-					updatedAt: new Date(),
-				})
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.returning();
-
 			// Re-embed if either the content changed OR any metadata-bearing
 			// field changed. The embedding preamble includes folder/category
 			// names, so changing either invalidates the existing vectors even
 			// when the content text is unchanged.
 			const folderChanged =
 				body.data.folderId !== undefined &&
-				body.data.folderId !== existing[0]?.folderId;
+				body.data.folderId !== existing?.folderId;
 			const categoryChanged =
 				body.data.categoryId !== undefined &&
-				body.data.categoryId !== existing[0]?.categoryId;
+				body.data.categoryId !== existing?.categoryId;
 
 			let shouldReembed = folderChanged || categoryChanged;
 
@@ -547,11 +586,11 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				(body.data.content !== undefined || body.data.title !== undefined)
 			) {
 				// Only re-embed if content actually changed (not an auto-save of same content)
-				const titleToHash = body.data.title ?? existing[0]?.title ?? "";
-				const contentToHash = body.data.content ?? existing[0]?.content ?? "";
+				const titleToHash = body.data.title ?? existing?.title ?? "";
+				const contentToHash = body.data.content ?? existing?.content ?? "";
 				const newHash = contentHash(titleToHash, contentToHash);
 
-				if (existing[0]?.contentHash !== newHash) {
+				if (existing?.contentHash !== newHash) {
 					shouldReembed = true;
 				}
 			}
@@ -586,45 +625,56 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const [source] = await db
-				.select()
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (!source) {
+			const copy = await withTenant(ctx, async (tx) => {
+				const sourceRows = await tx
+					.select()
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				const source = sourceRows[0];
+				if (!source) {
+					return null;
+				}
+
+				const [row] = await tx
+					.insert(documents)
+					.values({
+						ownerId: userId,
+						folderId: source.folderId,
+						categoryId: source.categoryId,
+						title: `${source.title} (Copy)`,
+						content: source.content ?? "",
+						contentJson: source.contentJson,
+						metadata: source.metadata,
+					})
+					.returning();
+				if (!row) {
+					throw new Error("Failed to duplicate document");
+				}
+
+				await tx.insert(versions).values({
+					documentId: row.id,
+					content: row.content ?? "",
+					contentJson: row.contentJson,
+					createdBy: userId,
+				});
+
+				return row;
+			});
+
+			if (!copy) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			const [copy] = await db
-				.insert(documents)
-				.values({
-					ownerId: userId,
-					folderId: source.folderId,
-					categoryId: source.categoryId,
-					title: `${source.title} (Copy)`,
-					content: source.content ?? "",
-					contentJson: source.contentJson,
-					metadata: source.metadata,
-				})
-				.returning();
-			if (!copy) {
-				set.status = 500;
-				return { error: "Failed to duplicate document" };
-			}
-
-			await db.insert(versions).values({
-				documentId: copy.id,
-				content: copy.content ?? "",
-				contentJson: copy.contentJson,
-				createdBy: userId,
-			});
 
 			enqueueEmbedding(copy.id);
 			invalidateDocListCache(userId);
@@ -651,24 +701,35 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const existing = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (existing.length === 0) {
+			const deleted = await withTenant(ctx, async (tx) => {
+				const existing = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				if (existing.length === 0) {
+					return false;
+				}
+				await tx
+					.delete(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					);
+				return true;
+			});
+			if (!deleted) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			await db
-				.delete(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)));
 			invalidateDocCache(params.id);
 			invalidateDocListCache(userId);
 			return { success: true };
@@ -680,22 +741,27 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 	})
 
 	.get("/documents/:id/export", async ({ params, set, request }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
-			const rows = await db
-				.select({
-					id: documents.id,
-					title: documents.title,
-					content: documents.content,
-				})
-				.from(documents)
-				.where(and(eq(documents.id, params.id), eq(documents.ownerId, userId)))
-				.limit(1);
-			const doc = rows[0];
+			const doc = await withTenant(ctx, async (tx) => {
+				const rows = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(
+						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				return rows[0];
+			});
 			if (!doc) {
 				set.status = 404;
 				return { error: "Document not found" };
@@ -726,11 +792,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 		try {
 			const contentType = request.headers.get("content-type") ?? "";
 
@@ -823,7 +890,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 			let resolvedCategoryId: string | null = null;
 			if (folderId) {
-				resolvedCategoryId = await resolveFolderCategory(folderId, userId);
+				resolvedCategoryId = await resolveFolderCategory(ctx, folderId);
 			}
 
 			// All-or-nothing batch create. If any insert fails, the whole
@@ -837,7 +904,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				item: ImportedItem;
 				row: { id: string; title: string };
 			};
-			const created = await db.transaction(async (tx) => {
+			const created = await withTenant(ctx, async (tx) => {
 				const out: CreatedEntry[] = [];
 				for (const item of items) {
 					const [row] = await tx

@@ -1,17 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import "./_harness.js";
 
-const sessionsTable = new Map<string, {
-  id: string;
-  userId: string;
-  email: string;
-  expiresAt: number;
-  token: string;
-  revoked: boolean;
-  role: string;
-  tenantId: string | null;
-}>();
-const propagationLog: Array<{ sessionId: string; at: number; recipients: string[] }> = [];
+const sessionsTable = new Map<
+  string,
+  {
+    id: string;
+    userId: string;
+    email: string;
+    expiresAt: number;
+    token: string;
+    revoked: boolean;
+    role: string;
+    tenantId: string | null;
+  }
+>();
+const propagationLog: Array<{
+  sessionId: string;
+  at: number;
+  recipients: string[];
+}> = [];
 
 const SHARED_SECRET = "test-shared-secret-min-32-characters-long-x";
 
@@ -20,9 +27,13 @@ function nowMs() {
 }
 
 function signJwt(payload: Record<string, unknown>, secret: string): string {
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const sig = Buffer.from(`${header}.${body}.${secret}`).toString("base64url").slice(0, 32);
+  const sig = Buffer.from(`${header}.${body}.${secret}`)
+    .toString("base64url")
+    .slice(0, 32);
   return `${header}.${body}.${sig}`;
 }
 
@@ -71,7 +82,10 @@ async function revokeAndPropagate(sessionId: string) {
     at: nowMs(),
     recipients: ["hiai-admin", "hiai-store", "hiai-post"],
   });
-  return { revoked: true, propagatedTo: ["hiai-admin", "hiai-store", "hiai-post"] };
+  return {
+    revoked: true,
+    propagatedTo: ["hiai-admin", "hiai-store", "hiai-post"],
+  };
 }
 
 beforeEach(() => {
@@ -108,7 +122,9 @@ describe("Shared Auth (JWT cross-validation)", () => {
       revoked: false,
     });
 
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(result).not.toBeNull();
     expect((result as any).user.id).toBe("user_1");
     expect((result as any).user.role).toBe("owner");
@@ -137,7 +153,9 @@ describe("Shared Auth (JWT cross-validation)", () => {
       revoked: false,
     });
 
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect((result as any).user.email).toBe("[email protected]");
     expect((result as any).session.id).toBe("sess_admin_iss");
   });
@@ -147,7 +165,9 @@ describe("Shared Auth (JWT cross-validation)", () => {
       { sub: "u", sid: "x", exp: Math.floor(nowMs() / 1000) + 3600 },
       "WRONG-SECRET",
     );
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${bogus}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${bogus}` },
+    });
     expect(result).toBeNull();
   });
 
@@ -167,7 +187,9 @@ describe("Shared Auth (JWT cross-validation)", () => {
       revoked: false,
     });
 
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(result).toBeNull();
   });
 });
@@ -175,7 +197,12 @@ describe("Shared Auth (JWT cross-validation)", () => {
 describe("Shared Auth (Better Auth sync)", () => {
   it("Better Auth getSession returns a session for a known token", async () => {
     const token = signJwt(
-      { sub: "user_ba_1", sid: "sess_ba_1", email: "[email protected]", exp: Math.floor(nowMs() / 1000) + 3600 },
+      {
+        sub: "user_ba_1",
+        sid: "sess_ba_1",
+        email: "[email protected]",
+        exp: Math.floor(nowMs() / 1000) + 3600,
+      },
       SHARED_SECRET,
     );
     sessionsTable.set(token, {
@@ -189,12 +216,16 @@ describe("Shared Auth (Better Auth sync)", () => {
       revoked: false,
     });
 
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect((result as any).user.id).toBe("user_ba_1");
   });
 
   it("rejects an unknown token", async () => {
-    const result = await auth.api.getSession({ headers: { authorization: "Bearer unknown" } });
+    const result = await auth.api.getSession({
+      headers: { authorization: "Bearer unknown" },
+    });
     expect(result).toBeNull();
   });
 
@@ -221,7 +252,9 @@ describe("Shared Auth (Better Auth sync)", () => {
       revoked: false,
     });
 
-    const result = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const result = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect((result as any).session.id).toBe("sess_store_1");
   });
 });
@@ -229,7 +262,12 @@ describe("Shared Auth (Better Auth sync)", () => {
 describe("Shared Auth (Logout propagation)", () => {
   it("revokes the session and propagates the logout to all dependent services", async () => {
     const token = signJwt(
-      { sub: "user_lo_1", sid: "sess_lo_1", email: "[email protected]", exp: Math.floor(nowMs() / 1000) + 3600 },
+      {
+        sub: "user_lo_1",
+        sid: "sess_lo_1",
+        email: "[email protected]",
+        exp: Math.floor(nowMs() / 1000) + 3600,
+      },
       SHARED_SECRET,
     );
     sessionsTable.set(token, {
@@ -249,13 +287,20 @@ describe("Shared Auth (Logout propagation)", () => {
     expect(result.propagatedTo).toContain("hiai-store");
     expect(result.propagatedTo).toContain("hiai-post");
 
-    const stillValid = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const stillValid = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(stillValid).toBeNull();
   });
 
   it("a previously-valid JWT is rejected after logout propagation", async () => {
     const token = signJwt(
-      { sub: "user_lo_2", sid: "sess_lo_2", email: "[email protected]", exp: Math.floor(nowMs() / 1000) + 3600 },
+      {
+        sub: "user_lo_2",
+        sid: "sess_lo_2",
+        email: "[email protected]",
+        exp: Math.floor(nowMs() / 1000) + 3600,
+      },
       SHARED_SECRET,
     );
     sessionsTable.set(token, {
@@ -269,11 +314,17 @@ describe("Shared Auth (Logout propagation)", () => {
       revoked: false,
     });
 
-    expect(await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } })).not.toBeNull();
+    expect(
+      await auth.api.getSession({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    ).not.toBeNull();
 
     await revokeAndPropagate("sess_lo_2");
 
-    const after = await auth.api.getSession({ headers: { authorization: `Bearer ${token}` } });
+    const after = await auth.api.getSession({
+      headers: { authorization: `Bearer ${token}` },
+    });
     expect(after).toBeNull();
   });
 

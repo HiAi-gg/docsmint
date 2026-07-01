@@ -121,6 +121,7 @@ curl -X POST http://localhost:50700/api/documents/UUID/versions \
 ```
 
 Body:
+
 - `label` (required, 1-200 chars) — Snapshot name
 - `description` (optional, max 1000 chars) — Description
 
@@ -145,6 +146,7 @@ curl http://localhost:50700/api/documents/UUID/versions/VID1/diff/VID2
 ```
 
 Response:
+
 ```json
 {
   "v1": { "id": "...", "label": "...", "createdAt": "..." },
@@ -162,18 +164,20 @@ Response:
 
 The existing `GET /api/documents/:id/versions` endpoint now supports:
 
-| Param | Type | Description |
-|-------|------|-------------|
+| Param           | Type    | Description                          |
+| --------------- | ------- | ------------------------------------ |
 | `onlySnapshots` | boolean | If true, return only named snapshots |
-| `limit` | int | Max results (1-500, default 100) |
+| `limit`         | int     | Max results (1-500, default 100)     |
 
 Each version entry now includes: `label`, `description`, `isSnapshot`, `restoredFrom`.
 
 ## Document Attachments
 
 ```
-POST /api/documents/:id/attachments    # Upload image attachment
-GET  /api/documents/:id/attachments    # List attachments
+POST   /api/documents/:id/attachments             # Upload image attachment (auth required)
+GET    /api/documents/:id/attachments             # List attachments (auth required)
+GET    /api/attachments/:id/raw                  # Stream attachment bytes (gated, see below)
+DELETE /api/attachments/:id                       # Remove attachment (auth required)
 ```
 
 Image uploads are stored in MinIO with integrity verification. Max file size: 10 MB. Only `image/*` MIME types accepted.
@@ -183,7 +187,46 @@ curl -X POST http://localhost:50700/api/documents/UUID/attachments \
   -F "file=@screenshot.png"
 ```
 
-Response includes `id, filename, mimeType, size, url` (presigned S3 URL, 24h expiry).
+Response includes `id, filename, mimeType, size, url` (a stable same-origin
+streaming URL — see `GET /api/attachments/:id/raw` below).
+
+### Raw attachment streaming (gated)
+
+```
+GET /api/attachments/:id/raw
+```
+
+Returns the binary contents of the attachment. The response is a permanent
+same-origin URL (no expiry), but the endpoint is **gated** — previously it was
+public and relied on UUID unguessability, which leaked via referer headers,
+browser caches, and link previews. The current behavior:
+
+| Caller                                                                                                  | Outcome                         |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| Authenticated as the document owner (session cookie OR `Authorization: Bearer <api-key>`)               | `200` with the bytes            |
+| Authenticated as a different user                                                                       | `403` `Forbidden`               |
+| Anonymous with `x-share-token: <token>` matching the document directly, or matching an enclosing folder | `200` with the bytes            |
+| Anonymous with a missing / expired / mismatched share token                                             | `401` `Authentication required` |
+| Anonymous without any token                                                                             | `401` `Authentication required` |
+
+The response sets `Cache-Control: private, ...` so shared caches (CDNs,
+proxies) cannot serve the auth-gated bytes to a different user hitting the
+same URL.
+
+```bash
+# Owner
+curl http://localhost:50700/api/attachments/UUID/raw \
+  -H "Authorization: Bearer $API_KEY" -o image.png
+
+# Anonymous share viewer (the share-view page passes the token through)
+curl http://localhost:50700/api/attachments/UUID/raw \
+  -H "x-share-token: $SHARE_TOKEN" -o image.png
+```
+
+> **Note**: `<img src="/api/attachments/UUID/raw">` tags inside shared documents
+> must be rendered server-side with the share token attached, because browsers
+> cannot set custom headers on plain `<img>` requests. The share-view page is
+> responsible for that wiring; this endpoint only enforces the gate.
 
 ## Collaboration (WebSocket)
 
@@ -249,16 +292,16 @@ curl "http://localhost:50700/api/search?q=query&folder=UUID&tags=tag1,tag2&dateF
 
 Query parameters:
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `q` | string | Search query |
-| `folder` | UUID | Filter by folder |
-| `tags` | string | Comma-separated tag names (ANY match) |
-| `dateFrom` | ISO date | Filter docs created after |
-| `dateTo` | ISO date | Filter docs created before |
-| `sort` | enum | `relevance`, `date_desc`, `date_asc`, `name_asc`, `name_desc` |
-| `page` | int | Page number (default 1) |
-| `limit` | int | Per page (default 20, max 100) |
+| Param      | Type     | Description                                                   |
+| ---------- | -------- | ------------------------------------------------------------- |
+| `q`        | string   | Search query                                                  |
+| `folder`   | UUID     | Filter by folder                                              |
+| `tags`     | string   | Comma-separated tag names (ANY match)                         |
+| `dateFrom` | ISO date | Filter docs created after                                     |
+| `dateTo`   | ISO date | Filter docs created before                                    |
+| `sort`     | enum     | `relevance`, `date_desc`, `date_asc`, `name_asc`, `name_desc` |
+| `page`     | int      | Page number (default 1)                                       |
+| `limit`    | int      | Per page (default 20, max 100)                                |
 
 Response: `{ items: SearchResult[], total, page, limit }` where each item has `id, title, snippet, score, folderId, createdAt, updatedAt`.
 
@@ -370,7 +413,7 @@ const docsTool = {
   execute: async ({ query }) => {
     const res = await fetch(
       `http://localhost:50700/api/search?q=${encodeURIComponent(query)}`,
-      { headers: { Authorization: `Bearer ${process.env.HIAI_DOCS_API_KEY}` } }
+      { headers: { Authorization: `Bearer ${process.env.HIAI_DOCS_API_KEY}` } },
     );
     return res.json();
   },
@@ -406,18 +449,18 @@ cd packages/mcp-server && bun install
 
 ### Available Tools
 
-| Tool | Description |
-|------|-------------|
-| `search_documents` | Hybrid full-text + semantic search |
-| `get_document` | Read document by ID |
-| `create_document` | Create new document |
-| `update_document` | Update document content |
-| `list_documents` | List with filters/pagination |
-| `list_folders` | List folder tree |
-| `create_folder` | Create a folder |
-| `create_snapshot` | Create named version snapshot |
-| `get_version_history` | Version history for a document |
-| `export_document` | Export as markdown |
+| Tool                  | Description                        |
+| --------------------- | ---------------------------------- |
+| `search_documents`    | Hybrid full-text + semantic search |
+| `get_document`        | Read document by ID                |
+| `create_document`     | Create new document                |
+| `update_document`     | Update document content            |
+| `list_documents`      | List with filters/pagination       |
+| `list_folders`        | List folder tree                   |
+| `create_folder`       | Create a folder                    |
+| `create_snapshot`     | Create named version snapshot      |
+| `get_version_history` | Version history for a document     |
+| `export_document`     | Export as markdown                 |
 
 ## CLI
 
@@ -452,15 +495,15 @@ hiai-docs folders                      # List folders
 
 ## Error Codes
 
-| Code | Meaning |
-|------|---------|
-| 400  | Validation error (check `details`) |
-| 401  | Not authenticated |
-| 403  | Forbidden (not owner) |
-| 404  | Resource not found |
-| 410  | Share link expired |
+| Code | Meaning                                   |
+| ---- | ----------------------------------------- |
+| 400  | Validation error (check `details`)        |
+| 401  | Not authenticated                         |
+| 403  | Forbidden (not owner)                     |
+| 404  | Resource not found                        |
+| 410  | Share link expired                        |
 | 429  | Rate limited (check `retry-after` header) |
-| 500  | Internal server error |
+| 500  | Internal server error                     |
 
 ## Admin
 
@@ -574,7 +617,6 @@ Response:
 
 Bulk re-embed every document in a folder. Operator-scoped (cross-user). Bounded by `FOLDER_REEMBED_BATCH_SIZE` (default `100`). Set `?dryRun=true` to preview the count without enqueuing.
 
-
 ```bash
 curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/folder/$FOLDER_ID?dryRun=true"
@@ -593,11 +635,11 @@ curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
 
 `GET /api/search` accepts three optional graph parameters, all gated by the `GRAPH_SEARCH_ENABLED` feature flag. When `GRAPH_SEARCH_ENABLED=false`, passing `graph=true` is a no-op (results are returned as if `graph=false`).
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `graph` | boolean | `false` | When `true`, expand the merged result list with related documents discovered through the AGE graph. |
-| `graphHops` | int (1-3) | `2` | Maximum graph traversal depth from each seed document. Higher hops surface more neighbors but with diminishing signal and `O(branching^hops)` cost in AGE. |
-| `graphBoost` | float (0-2) | `GRAPH_EXPANSION_BOOST` | Override for the graph-neighbor score multiplier. When omitted, falls back to the operator-configured env var (default `0.3`). |
+| Param        | Type        | Default                 | Description                                                                                                                                                |
+| ------------ | ----------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `graph`      | boolean     | `false`                 | When `true`, expand the merged result list with related documents discovered through the AGE graph.                                                        |
+| `graphHops`  | int (1-3)   | `2`                     | Maximum graph traversal depth from each seed document. Higher hops surface more neighbors but with diminishing signal and `O(branching^hops)` cost in AGE. |
+| `graphBoost` | float (0-2) | `GRAPH_EXPANSION_BOOST` | Override for the graph-neighbor score multiplier. When omitted, falls back to the operator-configured env var (default `0.3`).                             |
 
 Example (graph-augmented search, 2-hop, default boost):
 
@@ -618,6 +660,7 @@ Metadata mutations (tags, folders, categories) automatically trigger vector refr
 - **Batch caps** — prevent spikes: `FOLDER_REEMBED_BATCH_SIZE`, `CATEGORY_REEMBED_BATCH_SIZE`, `TAG_REEMBED_BATCH_SIZE`
 
 Triggers:
+
 - Tag rename/delete → `reembedDocsByTag(tagId)`
 - Folder rename/delete → `reembedDocsInFolder(folderId, ownerId)`
 - Category rename/delete → `reembedDocsInCategory(categoryId, ownerId)`
@@ -625,9 +668,9 @@ Triggers:
 
 ## Admin API Errors
 
-| Code | Meaning |
-|------|---------|
-| 401 | Missing or invalid `x-api-key` |
-| 404 | Resource not found (e.g. `/reindex/:docId` for unknown doc id) |
-| 429 | Rate limited (admin endpoints share `searchRateLimiter` — a valid API key bypasses the bucket but a misconfigured caller still gets 429s) |
-| 500 | Internal server error (see server logs) |
+| Code | Meaning                                                                                                                                   |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 401  | Missing or invalid `x-api-key`                                                                                                            |
+| 404  | Resource not found (e.g. `/reindex/:docId` for unknown doc id)                                                                            |
+| 429  | Rate limited (admin endpoints share `searchRateLimiter` — a valid API key bypasses the bucket but a misconfigured caller still gets 429s) |
+| 500  | Internal server error (see server logs)                                                                                                   |

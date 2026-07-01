@@ -21,7 +21,8 @@
 
 import { config } from "../config";
 import { logger } from "../logger";
-import { getGraphDb } from "./init";
+import { redis } from "../redis";
+import { type GraphSqlClient, getGraphDb } from "./init";
 
 const ENTITY_TYPES = [
 	"Person",
@@ -68,6 +69,39 @@ export interface ExtractEntitiesOptions {
 	llmBaseUrl?: string;
 	llmApiKey?: string;
 	llmModel?: string;
+	/**
+	 * Per-chunk content hash. When paired with `chunkIndex` it triggers a
+	 * Redis-backed dedup gate that short-circuits redundant LLM calls for
+	 * identical (docId, chunkIndex, chunkHash) tuples already processed by
+	 * this process or any sibling process.
+	 *
+	 * The slot TTL is generous (24 h) so repeated re-embed runs within a
+	 * day never re-extract the same chunk. Redis errors fall through to
+	 * extraction (best-effort) — see `extractEntities` for the full flow.
+	 */
+	chunkHash?: string;
+	/**
+	 * Zero-based chunk index within the document. Required for Redis dedup
+	 * to fire; `chunkHash` alone is intentionally ignored so callers that
+	 * only know the hash never accidentally claim a slot under the wrong
+	 * index. The Redis key is `hiai-docs:extract:done:<docId>:<index>:<hash>`.
+	 */
+	chunkIndex?: number;
+}
+
+/**
+ * Redis dedup TTL for `extractEntities` chunk slots. 24 h matches the
+ * reembed pipeline's expected churn rate — anything older than a day is
+ * likely part of a re-embed pipeline that should re-extract anyway.
+ */
+const EXTRACT_DEDUP_TTL_SECONDS = 24 * 60 * 60;
+
+function extractDedupKey(
+	documentId: string,
+	chunkIndex: number,
+	chunkHash: string,
+): string {
+	return `hiai-docs:extract:done:${documentId}:${chunkIndex}:${chunkHash}`;
 }
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -142,6 +176,20 @@ export function _parseExtractionResponseForTests(
  *
  * Returns the array of extracted entities (possibly empty). Never throws.
  * If AGE is disabled, unreachable, or the LLM call fails, returns `[]`.
+ *
+ * Flow:
+ *   1. Short-circuit when GRAPH_EXTRACT_ENABLED is false.
+ *   2. Redis dedup gate — only when BOTH chunkHash AND chunkIndex are
+ *      supplied. SET NX EX claims a per-(docId,chunkIndex,chunkHash)
+ *      slot; a `null` reply means a sibling worker already processed
+ *      this chunk and we return [] immediately. Redis errors fall
+ *      through to extraction (best-effort).
+ *   3. AGE gate — getGraphDb() returns null if the extension is missing
+ *      or unreachable; we degrade gracefully.
+ *   4. Empty chunk short-circuit — whitespace-only text never reaches
+ *      the LLM.
+ *   5. LLM call + AGE persistence, both wrapped so a failure logs and
+ *      returns [] instead of throwing.
  */
 export async function extractEntities(
 	chunkText: string,
@@ -149,14 +197,44 @@ export async function extractEntities(
 	options: ExtractEntitiesOptions = {},
 ): Promise<ExtractedEntity[]> {
 	if (!config.GRAPH_EXTRACT_ENABLED) return [];
-	if (!text) return [];
+
+	// Redis dedup gate. Only fires when BOTH chunkHash and chunkIndex are
+	// supplied — see the ExtractEntitiesOptions docstring for the rationale.
+	if (options.chunkHash && options.chunkIndex !== undefined) {
+		const key = extractDedupKey(
+			documentId,
+			options.chunkIndex,
+			options.chunkHash,
+		);
+		let acquired = false;
+		try {
+			const result = await redis.set(
+				key,
+				"1",
+				"EX",
+				EXTRACT_DEDUP_TTL_SECONDS,
+				"NX",
+			);
+			acquired = result === "OK";
+		} catch (err) {
+			// Best-effort: Redis being down should NOT drop extraction work.
+			logger.warn(
+				{ err, documentId, chunkIndex: options.chunkIndex },
+				"Extract-dedup Redis SET failed — falling through to extraction",
+			);
+			acquired = true;
+		}
+		if (!acquired) return [];
+	}
 
 	const sql = await getGraphDb();
 	if (!sql) return [];
 
+	if (!chunkText) return [];
+
 	let entities: ExtractedEntity[];
 	try {
-		entities = await callEntityExtractionLLM(text, options);
+		entities = await callEntityExtractionLLM(chunkText, options);
 	} catch (err) {
 		logger.warn(
 			{ err, documentId },
@@ -174,9 +252,6 @@ export async function extractEntities(
 			{ err, documentId, count: entities.length },
 			"Failed to persist extracted entities to AGE — discarding",
 		);
-		// Reset the singleton so the next call retries with a fresh
-		// connection. Useful when AGE went down mid-process.
-		await closeGraph().catch(() => undefined);
 		return [];
 	}
 

@@ -313,20 +313,36 @@ async function loadEmbeddingMetadata(doc: {
  * to `extractEntities` is fully self-contained — it returns `[]` on any
  * failure and never throws, so the embedding pipeline is robust to graph
  * outages.
+ *
+ * When `changedIndices` is provided, only the chunks at those indices
+ * are processed (Phase 5.3 incremental-graph feature). Out-of-range
+ * indices are silently filtered out so callers don't need to bounds-check.
+ * Omitting `changedIndices` keeps the legacy "process every chunk"
+ * behavior — required by tests that exercise the bulk-embed path.
+ *
+ * Exported so unit tests can drive the function directly without
+ * starting the worker's redis BRPOP loop.
  */
-async function runEntityExtraction(
+export async function runEntityExtraction(
 	embeddings: Array<{ chunkText: string; embedding: number[] }>,
 	documentId: string,
+	changedIndices?: Set<number>,
 ): Promise<void> {
-	for (const chunk of embeddings) {
+	for (let i = 0; i < embeddings.length; i++) {
+		if (changedIndices && !changedIndices.has(i)) continue;
+		const chunk = embeddings[i];
+		if (!chunk) continue;
 		try {
-			await extractEntities(chunk.chunkText, documentId);
+			await extractEntities(chunk.chunkText, documentId, {
+				chunkIndex: i,
+				chunkHash: chunkHash(chunk.chunkText),
+			});
 		} catch (err) {
 			// Defense-in-depth: extractEntities already catches its own
 			// errors, but if anything ever escapes we still don't want it
 			// to bubble up and undo the embedding pipeline work.
 			logger.warn(
-				{ err, documentId, chunkLen: chunk.chunkText.length },
+				{ err, documentId, chunkIndex: i, chunkLen: chunk.chunkText.length },
 				"Entity extraction threw — continuing without graph enrichment",
 			);
 		}

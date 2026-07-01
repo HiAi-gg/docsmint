@@ -147,6 +147,14 @@ const app = new Elysia()
 			headers,
 		);
 	})
+	// Tenant context is resolved EXPLICITLY in each route handler via
+	// `buildTenantContext(request)` (see `api/middleware/tenant.ts`).
+	// Earlier designs used an Elysia plugin hook with AsyncLocalStorage
+	// propagation + a `Bun.serve({ fetch: wrappedFetch })` override of
+	// `app.fetch`; both layers were fragile and silently dropped the
+	// context for parent-app routes. The explicit approach makes every
+	// RLS-aware query visible at the call site and removes the
+	// dependency on plugin hook scope or Bun.serve internals.
 	.use(csrfMiddleware)
 	.use(authMiddleware)
 	.use(authRoutes)
@@ -162,15 +170,19 @@ const app = new Elysia()
 	.use(collaborationRoutes)
 	.use(graphRoutes)
 	.use(adminRoutes)
-	.use(metricsRoutes)
-	.listen(config.API_PORT);
+	.use(metricsRoutes);
 
+app.listen({
+	port: config.API_PORT,
+	development: config.NODE_ENV !== "production",
+	idleTimeout: 30,
+});
 logger.info({ port: config.API_PORT }, "hiai-docs API started");
 
 // Graceful shutdown
 const shutdown = async () => {
 	logger.info("Shutting down...");
-	app.stop();
+	await app.stop();
 	process.exit(0);
 };
 

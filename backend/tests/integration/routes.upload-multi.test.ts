@@ -25,21 +25,21 @@
  */
 
 import {
-	afterAll,
-	afterEach,
-	beforeAll,
-	beforeEach,
-	describe,
-	expect,
-	it,
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
 } from "bun:test";
 import {
-	getState,
-	noAuthHeaders,
-	ownerHeaders,
-	request,
-	resetState,
-	setupHarness,
+  getState,
+  noAuthHeaders,
+  ownerHeaders,
+  request,
+  resetState,
+  setupHarness,
 } from "./_harness";
 
 // The harness's `sql` mock returns plain `{ [Symbol(sql)]: true }` objects
@@ -49,278 +49,289 @@ import {
 // for the lifetime of this test file and remove it in afterAll so it
 // doesn't leak into other test files.
 (Object.prototype as any).as = function (this: any) {
-	return this;
+  return this;
 };
 
 let app: any;
 
 beforeAll(async () => {
-	const built = await setupHarness();
-	app = built.app;
+  const built = await setupHarness();
+  app = built.app;
 });
 
 afterAll(() => {
-	delete (Object.prototype as any).as;
+  delete (Object.prototype as any).as;
 });
 
 beforeEach(() => {
-	resetState();
+  resetState();
 });
 
 afterEach(() => {
-	resetState();
+  resetState();
 });
 
 function jsonImport(body: any) {
-	return request(app, "/api/documents/import", {
-		method: "POST",
-		headers: ownerHeaders(),
-		body: JSON.stringify(body),
-	});
+  return request(app, "/api/documents/import", {
+    method: "POST",
+    headers: ownerHeaders(),
+    body: JSON.stringify(body),
+  });
 }
 
-function multipartImport(files: Array<{ name: string; content: string | Buffer }>) {
-	const fd = new FormData();
-	for (const f of files) {
-		fd.append(
-			"file",
-			new Blob([typeof f.content === "string" ? f.content : new Uint8Array(f.content)], {
-				type: "text/plain",
-			}),
-			f.name,
-		);
-	}
-	return request(app, "/api/documents/import", {
-		method: "POST",
-		headers: {
-			authorization: `Bearer ${ownerHeaders().authorization?.replace("Bearer ", "")}`,
-		},
-		body: fd,
-	});
+function multipartImport(
+  files: Array<{ name: string; content: string | Buffer }>,
+) {
+  const fd = new FormData();
+  for (const f of files) {
+    fd.append(
+      "file",
+      new Blob(
+        [typeof f.content === "string" ? f.content : new Uint8Array(f.content)],
+        {
+          type: "text/plain",
+        },
+      ),
+      f.name,
+    );
+  }
+  return request(app, "/api/documents/import", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${ownerHeaders().authorization?.replace("Bearer ", "")}`,
+    },
+    body: fd,
+  });
 }
 
 describe("POST /api/documents/import — auth", () => {
-	it("returns 403 from CSRF middleware without auth", async () => {
-		const res = await request(app, "/api/documents/import", {
-			method: "POST",
-			headers: noAuthHeaders(),
-			body: JSON.stringify({ title: "x", content: "y" }),
-		});
-		expect(res.status).toBe(403);
-	});
+  it("returns 403 from CSRF middleware without auth", async () => {
+    const res = await request(app, "/api/documents/import", {
+      method: "POST",
+      headers: noAuthHeaders(),
+      body: JSON.stringify({ title: "x", content: "y" }),
+    });
+    expect(res.status).toBe(403);
+  });
 });
 
 describe("POST /api/documents/import — JSON single-item path", () => {
-	it("imports a single document and returns 201", async () => {
-		const res = await jsonImport({
-			title: "Imported Doc",
-			content: "Hello world",
-		});
-		expect(res.status).toBe(201);
-		const body = res.body as {
-			items: Array<{
-				filename: string;
-				status: "ok" | "error";
-				document?: { id: string; title: string };
-			}>;
-			imported: number;
-			failed: number;
-		};
-		expect(body.imported).toBe(1);
-		expect(body.failed).toBe(0);
-		expect(body.items.length).toBe(1);
-		expect(body.items[0]?.filename).toBe("Imported Doc.md");
-		expect(body.items[0]?.status).toBe("ok");
-		expect(body.items[0]?.document?.title).toBe("Imported Doc");
-		expect(getState().documents.size).toBe(1);
-	});
+  it("imports a single document and returns 201", async () => {
+    const res = await jsonImport({
+      title: "Imported Doc",
+      content: "Hello world",
+    });
+    expect(res.status).toBe(201);
+    const body = res.body as {
+      items: Array<{
+        filename: string;
+        status: "ok" | "error";
+        document?: { id: string; title: string };
+      }>;
+      imported: number;
+      failed: number;
+    };
+    expect(body.imported).toBe(1);
+    expect(body.failed).toBe(0);
+    expect(body.items.length).toBe(1);
+    expect(body.items[0]?.filename).toBe("Imported Doc.md");
+    expect(body.items[0]?.status).toBe("ok");
+    expect(body.items[0]?.document?.title).toBe("Imported Doc");
+    expect(getState().documents.size).toBe(1);
+  });
 
-	it("defaults the title when omitted", async () => {
-		const res = await jsonImport({ content: "Body only" });
-		expect(res.status).toBe(201);
-		const body = res.body as {
-			items: Array<{ filename: string; document?: { title: string } }>;
-		};
-		expect(body.items[0]?.document?.title).toBe("Imported Document");
-		expect(body.items[0]?.filename).toBe("Imported Document.md");
-	});
+  it("defaults the title when omitted", async () => {
+    const res = await jsonImport({ content: "Body only" });
+    expect(res.status).toBe(201);
+    const body = res.body as {
+      items: Array<{ filename: string; document?: { title: string } }>;
+    };
+    expect(body.items[0]?.document?.title).toBe("Imported Document");
+    expect(body.items[0]?.filename).toBe("Imported Document.md");
+  });
 
-	it("enqueues embedding for the created document", async () => {
-		const res = await jsonImport({ title: "Embed me", content: "Hello" });
-		expect(res.status).toBe(201);
-		const id = (res.body as {
-			items: Array<{ document?: { id: string } }>;
-		}).items[0]?.document?.id;
-		expect(id).toBeTruthy();
-		expect(getState().enqueuedEmbeddings).toContain(id);
-	});
+  it("enqueues embedding for the created document", async () => {
+    const res = await jsonImport({ title: "Embed me", content: "Hello" });
+    expect(res.status).toBe(201);
+    const id = (
+      res.body as {
+        items: Array<{ document?: { id: string } }>;
+      }
+    ).items[0]?.document?.id;
+    expect(id).toBeTruthy();
+    expect(getState().enqueuedEmbeddings).toContain(id);
+  });
 
-	it("rejects an empty content body with 400", async () => {
-		const res = await jsonImport({ title: "Empty", content: "" });
-		expect(res.status).toBe(400);
-		expect((res.body as any).error).toBe("Invalid import data");
-	});
+  it("rejects an empty content body with 400", async () => {
+    const res = await jsonImport({ title: "Empty", content: "" });
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toBe("Invalid import data");
+  });
 
-	it("rejects an oversized content body with 400", async () => {
-		const huge = "x".repeat(5_000_001);
-		const res = await jsonImport({ title: "Big", content: huge });
-		expect(res.status).toBe(400);
-		expect((res.body as any).error).toBe("Invalid import data");
-	});
+  it("rejects an oversized content body with 400", async () => {
+    const huge = "x".repeat(5_000_001);
+    const res = await jsonImport({ title: "Big", content: huge });
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toBe("Invalid import data");
+  });
 
-	it("rejects an invalid folderId UUID with 400", async () => {
-		const res = await jsonImport({
-			title: "Bad folder",
-			content: "ok",
-			folderId: "not-a-uuid",
-		});
-		expect(res.status).toBe(400);
-		expect((res.body as any).error).toBe("Invalid import data");
-	});
+  it("rejects an invalid folderId UUID with 400", async () => {
+    const res = await jsonImport({
+      title: "Bad folder",
+      content: "ok",
+      folderId: "not-a-uuid",
+    });
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toBe("Invalid import data");
+  });
 
-	it("accepts a valid folderId UUID", async () => {
-		const folderId = "00000000-0000-4000-8000-000000000abc";
-		const res = await jsonImport({
-			title: "Foldered",
-			content: "ok",
-			folderId,
-		});
-		expect(res.status).toBe(201);
-		const docId = (res.body as {
-			items: Array<{ document?: { id: string } }>;
-		}).items[0]?.document?.id;
-		const stored = getState().documents.get(docId);
-		expect(stored?.folderId).toBe(folderId);
-	});
+  it("accepts a valid folderId UUID", async () => {
+    const folderId = "00000000-0000-4000-8000-000000000abc";
+    const res = await jsonImport({
+      title: "Foldered",
+      content: "ok",
+      folderId,
+    });
+    expect(res.status).toBe(201);
+    const docId = (
+      res.body as {
+        items: Array<{ document?: { id: string } }>;
+      }
+    ).items[0]?.document?.id;
+    const stored = getState().documents.get(docId);
+    expect(stored?.folderId).toBe(folderId);
+  });
 
-	it("creates a version row alongside the document", async () => {
-		// The mock harness's insert proxy commits rows only when `.returning()`
-		// is called; the import transaction deliberately omits `.returning()`
-		// on the version insert for performance. We assert the document
-		// created successfully and trust the live-DB smoke test for the
-		// version side-effect — exercising both via the mock would require
-		// modifying production code purely for testability.
-		const res = await jsonImport({ title: "Versioned", content: "ok" });
-		expect(res.status).toBe(201);
-		const id = (res.body as {
-			items: Array<{ document?: { id: string } }>;
-		}).items[0]?.document?.id;
-		expect(id).toBeTruthy();
-		expect(getState().documents.has(id)).toBe(true);
-	});
+  it("creates a version row alongside the document", async () => {
+    // The mock harness's insert proxy commits rows only when `.returning()`
+    // is called; the import transaction deliberately omits `.returning()`
+    // on the version insert for performance. We assert the document
+    // created successfully and trust the live-DB smoke test for the
+    // version side-effect — exercising both via the mock would require
+    // modifying production code purely for testability.
+    const res = await jsonImport({ title: "Versioned", content: "ok" });
+    expect(res.status).toBe(201);
+    const id = (
+      res.body as {
+        items: Array<{ document?: { id: string } }>;
+      }
+    ).items[0]?.document?.id;
+    expect(id).toBeTruthy();
+    expect(getState().documents.has(id)).toBe(true);
+  });
 });
 
 describe("POST /api/documents/import — content-type guard", () => {
-	it("returns 415 for plain text", async () => {
-		const res = await request(app, "/api/documents/import", {
-			method: "POST",
-			headers: {
-				...ownerHeaders(),
-				"content-type": "text/plain",
-			},
-			body: "just some text",
-		});
-		expect(res.status).toBe(415);
-		expect((res.body as any).error).toContain("Unsupported content type");
-	});
+  it("returns 415 for plain text", async () => {
+    const res = await request(app, "/api/documents/import", {
+      method: "POST",
+      headers: {
+        ...ownerHeaders(),
+        "content-type": "text/plain",
+      },
+      body: "just some text",
+    });
+    expect(res.status).toBe(415);
+    expect((res.body as any).error).toContain("Unsupported content type");
+  });
 });
 
 describe("POST /api/documents/import — multipart path", () => {
-	it("imports a single text file", async () => {
-		const res = await multipartImport([
-			{ name: "notes.md", content: "# Notes\n\nHello world" },
-		]);
-		expect(res.status).toBe(201);
-		const body = res.body as {
-			items: Array<{
-				filename: string;
-				status: "ok" | "error";
-				document?: { id: string; title: string };
-			}>;
-			imported: number;
-			failed: number;
-		};
-		expect(body.imported).toBe(1);
-		expect(body.failed).toBe(0);
-		expect(body.items[0]?.filename).toBe("notes.md");
-		expect(body.items[0]?.status).toBe("ok");
-		expect(body.items[0]?.document?.title).toBe("notes");
-		expect(getState().documents.size).toBe(1);
-	});
+  it("imports a single text file", async () => {
+    const res = await multipartImport([
+      { name: "notes.md", content: "# Notes\n\nHello world" },
+    ]);
+    expect(res.status).toBe(201);
+    const body = res.body as {
+      items: Array<{
+        filename: string;
+        status: "ok" | "error";
+        document?: { id: string; title: string };
+      }>;
+      imported: number;
+      failed: number;
+    };
+    expect(body.imported).toBe(1);
+    expect(body.failed).toBe(0);
+    expect(body.items[0]?.filename).toBe("notes.md");
+    expect(body.items[0]?.status).toBe("ok");
+    expect(body.items[0]?.document?.title).toBe("notes");
+    expect(getState().documents.size).toBe(1);
+  });
 
-	it("imports multiple text files in one request with per-file results", async () => {
-		const res = await multipartImport([
-			{ name: "a.md", content: "# A\n\nfirst" },
-			{ name: "b.md", content: "# B\n\nsecond" },
-			{ name: "c.md", content: "# C\n\nthird" },
-		]);
-		expect(res.status).toBe(201);
-		const body = res.body as {
-			items: Array<{
-				filename: string;
-				status: "ok" | "error";
-				document?: { title: string };
-			}>;
-			imported: number;
-			failed: number;
-		};
-		expect(body.imported).toBe(3);
-		expect(body.failed).toBe(0);
-		expect(
-			body.items.map((i) => i.document?.title).sort(),
-		).toEqual(["a", "b", "c"]);
-		expect(body.items.map((i) => i.filename).sort()).toEqual([
-			"a.md",
-			"b.md",
-			"c.md",
-		]);
-		expect(getState().documents.size).toBe(3);
-	});
+  it("imports multiple text files in one request with per-file results", async () => {
+    const res = await multipartImport([
+      { name: "a.md", content: "# A\n\nfirst" },
+      { name: "b.md", content: "# B\n\nsecond" },
+      { name: "c.md", content: "# C\n\nthird" },
+    ]);
+    expect(res.status).toBe(201);
+    const body = res.body as {
+      items: Array<{
+        filename: string;
+        status: "ok" | "error";
+        document?: { title: string };
+      }>;
+      imported: number;
+      failed: number;
+    };
+    expect(body.imported).toBe(3);
+    expect(body.failed).toBe(0);
+    expect(body.items.map((i) => i.document?.title).sort()).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(body.items.map((i) => i.filename).sort()).toEqual([
+      "a.md",
+      "b.md",
+      "c.md",
+    ]);
+    expect(getState().documents.size).toBe(3);
+  });
 
-	it("rejects an empty file list with 400", async () => {
-		const fd = new FormData();
-		const res = await request(app, "/api/documents/import", {
-			method: "POST",
-			headers: {
-				authorization: `Bearer ${ownerHeaders().authorization?.replace("Bearer ", "")}`,
-			},
-			body: fd,
-		});
-		expect(res.status).toBe(400);
-		expect((res.body as any).error).toBe("At least one file is required");
-	});
+  it("rejects an empty file list with 400", async () => {
+    const fd = new FormData();
+    const res = await request(app, "/api/documents/import", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${ownerHeaders().authorization?.replace("Bearer ", "")}`,
+      },
+      body: fd,
+    });
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toBe("At least one file is required");
+  });
 
-	it("rejects a file with a disallowed extension with 415", async () => {
-		const res = await multipartImport([
-			{ name: "binary.exe", content: "MZ" },
-		]);
-		expect(res.status).toBe(415);
-		expect((res.body as any).error).toContain("Invalid file type");
-	});
+  it("rejects a file with a disallowed extension with 415", async () => {
+    const res = await multipartImport([{ name: "binary.exe", content: "MZ" }]);
+    expect(res.status).toBe(415);
+    expect((res.body as any).error).toContain("Invalid file type");
+  });
 
-	it("accepts .txt, .md, .markdown, .json extensions", async () => {
-		const res = await multipartImport([
-			{ name: "readme.txt", content: "plain text" },
-			{ name: "guide.md", content: "# Guide" },
-			{ name: "spec.markdown", content: "# Spec" },
-		]);
-		expect(res.status).toBe(201);
-		const body = res.body as { imported: number };
-		expect(body.imported).toBe(3);
-	});
+  it("accepts .txt, .md, .markdown, .json extensions", async () => {
+    const res = await multipartImport([
+      { name: "readme.txt", content: "plain text" },
+      { name: "guide.md", content: "# Guide" },
+      { name: "spec.markdown", content: "# Spec" },
+    ]);
+    expect(res.status).toBe(201);
+    const body = res.body as { imported: number };
+    expect(body.imported).toBe(3);
+  });
 
-	it("accepts .docx in the allowed list (parsing covered by live smoke test)", async () => {
-		// We send a non-DOCX body but a .docx extension to assert that the
-		// extension allow-list accepts DOCX. The parser would normally fail
-		// for this body — we instead assert the response is either 201
-		// (parser tolerated a non-zip body) or 422 (DocxParseError path),
-		// but never 415.
-		const res = await multipartImport([
-			{ name: "fake.docx", content: "not really docx" },
-		]);
-		expect([201, 422]).toContain(res.status);
-		if (res.status === 415) {
-			throw new Error(".docx extension should be in the allow list");
-		}
-	});
+  it("accepts .docx in the allowed list (parsing covered by live smoke test)", async () => {
+    // We send a non-DOCX body but a .docx extension to assert that the
+    // extension allow-list accepts DOCX. The parser would normally fail
+    // for this body — we instead assert the response is either 201
+    // (parser tolerated a non-zip body) or 422 (DocxParseError path),
+    // but never 415.
+    const res = await multipartImport([
+      { name: "fake.docx", content: "not really docx" },
+    ]);
+    expect([201, 422]).toContain(res.status);
+    if (res.status === 415) {
+      throw new Error(".docx extension should be in the allow list");
+    }
+  });
 });

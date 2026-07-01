@@ -14,7 +14,7 @@
 
 import { config } from "../config";
 import { logger } from "../logger";
-import { getGraphDb } from "./init";
+import { type GraphSqlClient, getGraphDb } from "./init";
 
 const DEFAULT_MAX_HOPS = 2;
 
@@ -37,6 +37,11 @@ export async function expandResults(
 	maxHops: number = DEFAULT_MAX_HOPS,
 ): Promise<Map<string, RelatedDoc[]>> {
 	const out = new Map<string, RelatedDoc[]>();
+
+	// Normalize the input — the caller-facing name is `docIds` (matches
+	// the upstream search-route contract) but inside the function we treat
+	// them as seeds for graph traversal.
+	const seeds = dedupe(docIds);
 
 	if (!config.GRAPH_SEARCH_ENABLED) return out;
 	if (seeds.length === 0) return out;

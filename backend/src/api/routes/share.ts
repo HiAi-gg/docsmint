@@ -8,10 +8,14 @@ import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { getSessionUserId } from "../../lib/auth-helpers";
-import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
 import { redis } from "../../lib/redis";
+import { withTenant } from "../../lib/with-tenant";
+import {
+	adminTenantContext,
+	buildTenantContext,
+	shareGuestTenantContext,
+} from "../middleware/tenant";
 
 // ============================================
 // Validation schemas
@@ -108,11 +112,12 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// POST /api/share — Create share link (auth required)
 	.post("/", async ({ request, set }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		let body: unknown;
 		try {
@@ -134,45 +139,59 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		const { documentId, folderId, password, expiresIn } = parsed.data;
 
 		// Verify ownership of the target document or folder
-		if (documentId) {
-			const [doc] = await db
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
-				.limit(1);
-			if (!doc) {
-				set.status = 404;
-				return { error: "Document not found" };
+		const ownerCheck = await withTenant(ctx, async (tx) => {
+			if (documentId) {
+				const [doc] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(
+						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
+					)
+					.limit(1);
+				if (!doc) {
+					return { notFound: "document" as const };
+				}
 			}
-		}
 
-		if (folderId) {
-			const [folder] = await db
-				.select({ id: folders.id })
-				.from(folders)
-				.where(and(eq(folders.id, folderId), eq(folders.ownerId, userId)))
-				.limit(1);
-			if (!folder) {
-				set.status = 404;
-				return { error: "Folder not found" };
+			if (folderId) {
+				const [folder] = await tx
+					.select({ id: folders.id })
+					.from(folders)
+					.where(and(eq(folders.id, folderId), eq(folders.ownerId, userId)))
+					.limit(1);
+				if (!folder) {
+					return { notFound: "folder" as const };
+				}
 			}
+			return null;
+		});
+		if (ownerCheck?.notFound === "document") {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+		if (ownerCheck?.notFound === "folder") {
+			set.status = 404;
+			return { error: "Folder not found" };
 		}
 
 		const token = nanoid(21);
 		const passwordHash = password ? await Bun.password.hash(password) : null;
 		const expiresAt = calculateExpiresAt(expiresIn);
 
-		const [link] = await db
-			.insert(shareLinks)
-			.values({
-				documentId: documentId ?? null,
-				folderId: folderId ?? null,
-				token,
-				passwordHash,
-				expiresAt,
-				createdBy: userId,
-			})
-			.returning();
+		const link = await withTenant(ctx, async (tx) => {
+			const [row] = await tx
+				.insert(shareLinks)
+				.values({
+					documentId: documentId ?? null,
+					folderId: folderId ?? null,
+					token,
+					passwordHash,
+					expiresAt,
+					createdBy: userId,
+				})
+				.returning();
+			return row ?? null;
+		});
 
 		if (!link) {
 			set.status = 500;
@@ -197,29 +216,32 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// GET /api/share — List share links for current user (auth required)
 	.get("/", async ({ request, set }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
-		const links = await db
-			.select({
-				id: shareLinks.id,
-				token: shareLinks.token,
-				documentId: shareLinks.documentId,
-				folderId: shareLinks.folderId,
-				hasPassword: sql<boolean>`${shareLinks.passwordHash} IS NOT NULL`,
-				expiresAt: shareLinks.expiresAt,
-				createdAt: shareLinks.createdAt,
-				documentTitle: documents.title,
-				folderName: folders.name,
-			})
-			.from(shareLinks)
-			.leftJoin(documents, eq(shareLinks.documentId, documents.id))
-			.leftJoin(folders, eq(shareLinks.folderId, folders.id))
-			.where(eq(shareLinks.createdBy, userId))
-			.orderBy(shareLinks.createdAt);
+		const links = await withTenant(ctx, async (tx) => {
+			return tx
+				.select({
+					id: shareLinks.id,
+					token: shareLinks.token,
+					documentId: shareLinks.documentId,
+					folderId: shareLinks.folderId,
+					hasPassword: sql<boolean>`${shareLinks.passwordHash} IS NOT NULL`,
+					expiresAt: shareLinks.expiresAt,
+					createdAt: shareLinks.createdAt,
+					documentTitle: documents.title,
+					folderName: folders.name,
+				})
+				.from(shareLinks)
+				.leftJoin(documents, eq(shareLinks.documentId, documents.id))
+				.leftJoin(folders, eq(shareLinks.folderId, folders.id))
+				.where(eq(shareLinks.createdBy, userId))
+				.orderBy(shareLinks.createdAt);
+		});
 
 		return {
 			links: links.map((link) => ({
@@ -248,12 +270,17 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			return { error: "Too many requests", retryAfter: rl.retryAfter };
 		}
 
-		// Find share link by token
-		const [link] = await db
-			.select()
-			.from(shareLinks)
-			.where(eq(shareLinks.token, token))
-			.limit(1);
+		// Find share link by token. Public share lookup uses an admin
+		// context so RLS lets us find the link by token alone; the token
+		// itself is the authorization credential.
+		const link = await withTenant(adminTenantContext(), async (tx) => {
+			const [row] = await tx
+				.select()
+				.from(shareLinks)
+				.where(eq(shareLinks.token, token))
+				.limit(1);
+			return row ?? null;
+		});
 
 		if (!link) {
 			set.status = 404;
@@ -280,21 +307,30 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			}
 		}
 
+		// Subsequent reads run with the link owner's identity so RLS
+		// policies on documents / folders evaluate to the same scope the
+		// owner would see.
+		const ownerCtx = shareGuestTenantContext(link.createdBy);
+
 		// Return document content
 		if (link.documentId) {
-			const [doc] = await db
-				.select({
-					id: documents.id,
-					title: documents.title,
-					content: documents.content,
-					contentJson: documents.contentJson,
-					metadata: documents.metadata,
-					createdAt: documents.createdAt,
-					updatedAt: documents.updatedAt,
-				})
-				.from(documents)
-				.where(eq(documents.id, link.documentId))
-				.limit(1);
+			const documentId = link.documentId;
+			const doc = await withTenant(ownerCtx, async (tx) => {
+				const [row] = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+						contentJson: documents.contentJson,
+						metadata: documents.metadata,
+						createdAt: documents.createdAt,
+						updatedAt: documents.updatedAt,
+					})
+					.from(documents)
+					.where(eq(documents.id, documentId))
+					.limit(1);
+				return row ?? null;
+			});
 
 			if (!doc) {
 				set.status = 404;
@@ -317,43 +353,51 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 		// Return folder content
 		if (link.folderId) {
-			const [folder] = await db
-				.select({
-					id: folders.id,
-					name: folders.name,
-					createdAt: folders.createdAt,
-					updatedAt: folders.updatedAt,
-				})
-				.from(folders)
-				.where(eq(folders.id, link.folderId))
-				.limit(1);
+			const folderId = link.folderId;
+			const folder = await withTenant(ownerCtx, async (tx) => {
+				const [row] = await tx
+					.select({
+						id: folders.id,
+						name: folders.name,
+						createdAt: folders.createdAt,
+						updatedAt: folders.updatedAt,
+					})
+					.from(folders)
+					.where(eq(folders.id, folderId))
+					.limit(1);
+				return row ?? null;
+			});
 
 			if (!folder) {
 				set.status = 404;
 				return { error: "Shared folder no longer exists" };
 			}
 
-			const childFolders = await db
-				.select({
-					id: folders.id,
-					name: folders.name,
-					createdAt: folders.createdAt,
-					updatedAt: folders.updatedAt,
-				})
-				.from(folders)
-				.where(eq(folders.parentId, link.folderId))
-				.orderBy(folders.name);
+			const childFolders = await withTenant(ownerCtx, async (tx) => {
+				return tx
+					.select({
+						id: folders.id,
+						name: folders.name,
+						createdAt: folders.createdAt,
+						updatedAt: folders.updatedAt,
+					})
+					.from(folders)
+					.where(eq(folders.parentId, folderId))
+					.orderBy(folders.name);
+			});
 
-			const folderDocs = await db
-				.select({
-					id: documents.id,
-					title: documents.title,
-					createdAt: documents.createdAt,
-					updatedAt: documents.updatedAt,
-				})
-				.from(documents)
-				.where(eq(documents.folderId, link.folderId))
-				.orderBy(documents.title);
+			const folderDocs = await withTenant(ownerCtx, async (tx) => {
+				return tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						createdAt: documents.createdAt,
+						updatedAt: documents.updatedAt,
+					})
+					.from(documents)
+					.where(eq(documents.folderId, folderId))
+					.orderBy(documents.title);
+			});
 
 			return {
 				type: "folder" as const,
@@ -384,19 +428,23 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// DELETE /api/share/:id — Revoke share link (auth required, owner only)
 	.delete("/:id", async ({ params, request, set }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const { id } = params;
 
-		const [link] = await db
-			.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
-			.from(shareLinks)
-			.where(eq(shareLinks.id, id))
-			.limit(1);
+		const link = await withTenant(ctx, async (tx) => {
+			const [row] = await tx
+				.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
+				.from(shareLinks)
+				.where(eq(shareLinks.id, id))
+				.limit(1);
+			return row ?? null;
+		});
 
 		if (!link) {
 			set.status = 404;
@@ -409,7 +457,9 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		}
 
 		// guest_access rows cascade via FK
-		await db.delete(shareLinks).where(eq(shareLinks.id, id));
+		await withTenant(ctx, async (tx) => {
+			await tx.delete(shareLinks).where(eq(shareLinks.id, id));
+		});
 
 		logger.info({ shareId: id, userId }, "Share link revoked");
 
@@ -418,20 +468,24 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// POST /api/share/:id/guests — Add guest email access (auth required)
 	.post("/:id/guests", async ({ params, request, set }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const { id } = params;
 
 		// Verify ownership
-		const [link] = await db
-			.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
-			.from(shareLinks)
-			.where(eq(shareLinks.id, id))
-			.limit(1);
+		const link = await withTenant(ctx, async (tx) => {
+			const [row] = await tx
+				.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
+				.from(shareLinks)
+				.where(eq(shareLinks.id, id))
+				.limit(1);
+			return row ?? null;
+		});
 
 		if (!link) {
 			set.status = 404;
@@ -462,11 +516,13 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			};
 		}
 
-		const rows = await db
-			.insert(guestAccess)
-			.values({ shareLinkId: id, guestEmail: parsed.data.email })
-			.onConflictDoNothing()
-			.returning();
+		const rows = await withTenant(ctx, async (tx) => {
+			return tx
+				.insert(guestAccess)
+				.values({ shareLinkId: id, guestEmail: parsed.data.email })
+				.onConflictDoNothing()
+				.returning();
+		});
 
 		const guest = rows[0];
 		if (!guest) {
@@ -490,20 +546,24 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// DELETE /api/share/:id/guests/:email — Remove guest access (auth required)
 	.delete("/:id/guests/:email", async ({ params, request, set }) => {
-		const userId = await getSessionUserId(request.headers);
-		if (!userId) {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		const userId = ctx.userId;
 
 		const { id, email } = params;
 
 		// Verify ownership
-		const [link] = await db
-			.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
-			.from(shareLinks)
-			.where(eq(shareLinks.id, id))
-			.limit(1);
+		const link = await withTenant(ctx, async (tx) => {
+			const [row] = await tx
+				.select({ id: shareLinks.id, createdBy: shareLinks.createdBy })
+				.from(shareLinks)
+				.where(eq(shareLinks.id, id))
+				.limit(1);
+			return row ?? null;
+		});
 
 		if (!link) {
 			set.status = 404;
@@ -517,12 +577,17 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			};
 		}
 
-		const deleted = await db
-			.delete(guestAccess)
-			.where(
-				and(eq(guestAccess.shareLinkId, id), eq(guestAccess.guestEmail, email)),
-			)
-			.returning();
+		const deleted = await withTenant(ctx, async (tx) => {
+			return tx
+				.delete(guestAccess)
+				.where(
+					and(
+						eq(guestAccess.shareLinkId, id),
+						eq(guestAccess.guestEmail, email),
+					),
+				)
+				.returning();
+		});
 
 		if (deleted.length === 0) {
 			set.status = 404;
@@ -548,11 +613,14 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			set.status = 429;
 			return { error: "Too many requests", retryAfter: rl.retryAfter };
 		}
-		const [link] = await db
-			.select()
-			.from(shareLinks)
-			.where(eq(shareLinks.token, token))
-			.limit(1);
+		const link = await withTenant(adminTenantContext(), async (tx) => {
+			const [row] = await tx
+				.select()
+				.from(shareLinks)
+				.where(eq(shareLinks.token, token))
+				.limit(1);
+			return row ?? null;
+		});
 		if (!link) {
 			set.status = 404;
 			return { error: "Share link not found" };
@@ -579,50 +647,62 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			set.status = 403;
 			return { error: "Access denied" };
 		}
-		const isDescendant = await isFolderDescendant(folderId, link.folderId);
+		const ownerCtx = shareGuestTenantContext(link.createdBy);
+		const isDescendant = await isFolderDescendant(
+			ownerCtx,
+			folderId,
+			link.folderId,
+		);
 		if (!isDescendant) {
 			set.status = 403;
 			return { error: "Access denied" };
 		}
 
 		// 3. Fetch subfolder data
-		const [folder] = await db
-			.select({
-				id: folders.id,
-				name: folders.name,
-				parentId: folders.parentId,
-				createdAt: folders.createdAt,
-				updatedAt: folders.updatedAt,
-			})
-			.from(folders)
-			.where(eq(folders.id, folderId))
-			.limit(1);
+		const folder = await withTenant(ownerCtx, async (tx) => {
+			const [row] = await tx
+				.select({
+					id: folders.id,
+					name: folders.name,
+					parentId: folders.parentId,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+				})
+				.from(folders)
+				.where(eq(folders.id, folderId))
+				.limit(1);
+			return row ?? null;
+		});
 		if (!folder) {
 			set.status = 404;
 			return { error: "Folder not found" };
 		}
 
-		const childFolders = await db
-			.select({
-				id: folders.id,
-				name: folders.name,
-				createdAt: folders.createdAt,
-				updatedAt: folders.updatedAt,
-			})
-			.from(folders)
-			.where(eq(folders.parentId, folderId))
-			.orderBy(folders.name);
+		const childFolders = await withTenant(ownerCtx, async (tx) => {
+			return tx
+				.select({
+					id: folders.id,
+					name: folders.name,
+					createdAt: folders.createdAt,
+					updatedAt: folders.updatedAt,
+				})
+				.from(folders)
+				.where(eq(folders.parentId, folderId))
+				.orderBy(folders.name);
+		});
 
-		const folderDocs = await db
-			.select({
-				id: documents.id,
-				title: documents.title,
-				createdAt: documents.createdAt,
-				updatedAt: documents.updatedAt,
-			})
-			.from(documents)
-			.where(eq(documents.folderId, folderId))
-			.orderBy(documents.title);
+		const folderDocs = await withTenant(ownerCtx, async (tx) => {
+			return tx
+				.select({
+					id: documents.id,
+					title: documents.title,
+					createdAt: documents.createdAt,
+					updatedAt: documents.updatedAt,
+				})
+				.from(documents)
+				.where(eq(documents.folderId, folderId))
+				.orderBy(documents.title);
+		});
 
 		return {
 			id: folder.id,
@@ -654,11 +734,14 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 			set.status = 429;
 			return { error: "Too many requests", retryAfter: rl.retryAfter };
 		}
-		const [link] = await db
-			.select()
-			.from(shareLinks)
-			.where(eq(shareLinks.token, token))
-			.limit(1);
+		const link = await withTenant(adminTenantContext(), async (tx) => {
+			const [row] = await tx
+				.select()
+				.from(shareLinks)
+				.where(eq(shareLinks.token, token))
+				.limit(1);
+			return row ?? null;
+		});
 		if (!link) {
 			set.status = 404;
 			return { error: "Share link not found" };
@@ -681,11 +764,12 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		}
 
 		// 2. Verify target document is under the shared root folder or is the shared document
+		const ownerCtx = shareGuestTenantContext(link.createdBy);
 		let isAllowed = false;
 		if (link.documentId === docId) {
 			isAllowed = true;
 		} else if (link.folderId) {
-			isAllowed = await isDocumentDescendant(docId, link.folderId);
+			isAllowed = await isDocumentDescendant(ownerCtx, docId, link.folderId);
 		}
 		if (!isAllowed) {
 			set.status = 403;
@@ -693,19 +777,22 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		}
 
 		// 3. Fetch document data
-		const [doc] = await db
-			.select({
-				id: documents.id,
-				title: documents.title,
-				content: documents.content,
-				contentJson: documents.contentJson,
-				metadata: documents.metadata,
-				createdAt: documents.createdAt,
-				updatedAt: documents.updatedAt,
-			})
-			.from(documents)
-			.where(eq(documents.id, docId))
-			.limit(1);
+		const doc = await withTenant(ownerCtx, async (tx) => {
+			const [row] = await tx
+				.select({
+					id: documents.id,
+					title: documents.title,
+					content: documents.content,
+					contentJson: documents.contentJson,
+					metadata: documents.metadata,
+					createdAt: documents.createdAt,
+					updatedAt: documents.updatedAt,
+				})
+				.from(documents)
+				.where(eq(documents.id, docId))
+				.limit(1);
+			return row ?? null;
+		});
 
 		if (!doc) {
 			set.status = 404;
@@ -724,6 +811,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 	});
 
 async function isFolderDescendant(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	targetFolderId: string,
 	rootFolderId: string,
 ): Promise<boolean> {
@@ -732,11 +820,18 @@ async function isFolderDescendant(
 	const visited = new Set<string>();
 	while (currentId && currentId !== rootFolderId && !visited.has(currentId)) {
 		visited.add(currentId);
-		const [row] = await db
-			.select({ parentId: folders.parentId })
-			.from(folders)
-			.where(eq(folders.id, currentId))
-			.limit(1);
+		const lookupId: string = currentId;
+		const row: { parentId: string | null } | null = await withTenant(
+			ctx,
+			async (tx) => {
+				const [r] = await tx
+					.select({ parentId: folders.parentId })
+					.from(folders)
+					.where(eq(folders.id, lookupId))
+					.limit(1);
+				return r ?? null;
+			},
+		);
 		if (!row) return false;
 		currentId = row.parentId;
 	}
@@ -744,14 +839,18 @@ async function isFolderDescendant(
 }
 
 async function isDocumentDescendant(
+	ctx: import("../../api/middleware/tenant").TenantContext,
 	docId: string,
 	rootFolderId: string,
 ): Promise<boolean> {
-	const [doc] = await db
-		.select({ folderId: documents.folderId })
-		.from(documents)
-		.where(eq(documents.id, docId))
-		.limit(1);
+	const doc = await withTenant(ctx, async (tx) => {
+		const [row] = await tx
+			.select({ folderId: documents.folderId })
+			.from(documents)
+			.where(eq(documents.id, docId))
+			.limit(1);
+		return row ?? null;
+	});
 	if (!doc?.folderId) return false;
-	return isFolderDescendant(doc.folderId, rootFolderId);
+	return isFolderDescendant(ctx, doc.folderId, rootFolderId);
 }
