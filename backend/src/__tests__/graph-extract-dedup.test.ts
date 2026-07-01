@@ -52,10 +52,16 @@ const fakeGraphInit = {
 };
 
 function applyMocks(): void {
-	// Mock config so GRAPH_EXTRACT_ENABLED=true (overrides any global mock)
+	// Mock config so GRAPH_EXTRACT_ENABLED=true (overrides any global mock).
+	// Include GRAPH_EXTRACT_MIN_CONFIDENCE so downstream consumers
+	// (notably `src/__tests__/graph-extract.test.ts`'s threshold-filter
+	// case) see a real threshold rather than `undefined` — `mock.module`
+	// is process-global in Bun, so this stub persists across test files
+	// in the same process.
 	mock.module("../lib/config", () => ({
 		config: {
 			GRAPH_EXTRACT_ENABLED: true,
+			GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5,
 			REEMBED_MIN_WORD_CHANGES: 20,
 			REEMBED_MIN_CHAR_CHANGES: 100,
 			REEMBED_MAX_IDLE_HOURS: 24,

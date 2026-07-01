@@ -14,6 +14,14 @@
  * restored in cleanup so other test files are not affected.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
+// `mock.module` is process-global in Bun, so we have to delegate the
+// helper functions we don't actually need to stub (notably
+// `rateLimitHeaders`) to the REAL implementation. Importing the real
+// module via a static `import` is hoisted by the ESM spec to the top
+// of the file, which means we capture the unstubbed reference before
+// `mock.module` is registered below — even though the import appears
+// textually after this comment.
+import * as realRateLimit from "../api/middleware/rate-limit";
 import {
 	getMetrics,
 	incrementCounter,
@@ -25,9 +33,15 @@ import {
 // Stub the rate-limit middleware so every request in this file is allowed
 // regardless of Redis state or bucket count. Registered BEFORE the route
 // module is imported so the route picks up the stubbed `searchRateLimiter`.
+//
+// `rateLimitHeaders` deliberately delegates to the real implementation
+// rather than returning `{}` so any sibling test file (notably
+// `src/__tests__/rate-limit.test.ts`) that loads
+// `../api/middleware/rate-limit` through this stub still sees the
+// proper `X-RateLimit-Remaining` / `Retry-After` headers.
 mock.module("../api/middleware/rate-limit", () => ({
 	searchRateLimiter: async () => ({ allowed: true, remaining: 999 }),
-	rateLimitHeaders: () => ({}),
+	rateLimitHeaders: realRateLimit.rateLimitHeaders,
 	documentRateLimiter: async () => ({ allowed: true, remaining: 999 }),
 	writeRateLimiter: async () => ({ allowed: true, remaining: 999 }),
 	shareRateLimiter: async () => ({ allowed: true, remaining: 999 }),
