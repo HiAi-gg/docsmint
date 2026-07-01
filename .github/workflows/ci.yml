@@ -85,19 +85,6 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_DB: hiai_docs_test
-          POSTGRES_USER: aiuser
-          POSTGRES_PASSWORD: testpassword
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U aiuser -d hiai_docs_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
       redis:
         image: redis:8-alpine
         ports:
@@ -135,8 +122,36 @@ jobs:
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
       - run: bun install
+
+      - name: Build custom Postgres image
+        run: docker build -t hiai-postgres:18-custom ./postgres
+
+      - name: Start custom Postgres
+        run: |
+          docker run -d --name postgres \
+            -e POSTGRES_DB=hiai_docs_test \
+            -e POSTGRES_USER=aiuser \
+            -e POSTGRES_PASSWORD=testpassword \
+            -p 5432:5432 \
+            hiai-postgres:18-custom
+          # Wait for ready
+          for i in $(seq 1 30); do
+            if docker exec postgres pg_isready -U aiuser -d hiai_docs_test; then
+              echo "Postgres ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Postgres failed to start"
+          docker logs postgres
+          exit 1
+
       - run: cd packages/db && bun run db:migrate
       - run: bun run test
+
+      - name: Stop Postgres
+        if: always()
+        run: docker stop postgres && docker rm postgres
 
   # ---------------------------------------------------------------------------
   # 4. Docker build — validate compose, build both images, security scan
