@@ -42,13 +42,24 @@ $$;
 -- tag names (used by `/api/search/suggest` and tag autocomplete).
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
-GRANT ALL PRIVILEGES ON DATABASE hiai_docs TO aiuser;
+-- Grant privileges on the current database dynamically. The database
+-- name is set via POSTGRES_DB at container start and may differ between
+-- local (`hiai_docs`), CI (`hiai_docs_test`), or any other environment,
+-- so we resolve it at runtime rather than hardcoding it.
+DO $$
+BEGIN
+  EXECUTE format('GRANT ALL PRIVILEGES ON DATABASE %I TO aiuser', current_database());
+END
+$$;
 GRANT ALL PRIVILEGES ON SCHEMA public TO aiuser;
 GRANT ALL PRIVILEGES ON SCHEMA ag_catalog TO aiuser;
 
--- Pin the search_path for every connection owned by `aiuser` so that
--- `agtype` and `graphid_ops` (both in ag_catalog) resolve without the
--- caller having to set them per-session. `SET search_path` further up
--- only affects the current docker-entrypoint-initdb.d session; this
--- ALTER ROLE persists across the connection pool.
-ALTER ROLE aiuser SET search_path = ag_catalog, public;
+-- Pin the search_path for every connection owned by `aiuser`. ORDER
+-- MATTERS: `public` must come first so that Drizzle/Better Auth
+-- resolve unqualified table names like `documents` to
+-- `public.documents` instead of `ag_catalog.documents`. `ag_catalog`
+-- is kept second so that AGE's `agtype`/`graphid_ops` still resolve
+-- without the schema prefix. The session-local `SET search_path`
+-- above only affects the current docker-entrypoint-initdb.d session;
+-- this ALTER ROLE persists across the connection pool.
+ALTER ROLE aiuser SET search_path = public, ag_catalog;
