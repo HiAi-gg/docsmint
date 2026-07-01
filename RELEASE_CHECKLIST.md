@@ -25,7 +25,8 @@
 - [ ] **Commit and tag** — `git add -A && git commit -m "Release v<version>" && git tag -a v<version> -m "v<version>"`
 - [ ] **Push** — `git push origin main --tags`
 - [ ] **Verify CI** — Confirm CI pipeline passes on GitHub Actions
-- [ ] **Verify Docker Hub** — Images pushed as `hiai-gg/hiai-docs:api-v<version>` and `hiai-gg/hiai-docs:web-v<version>`
+- [ ] **Verify Docker Hub** — Images pushed as `vgalibov/hiai-docs:api-v<version>` and `vgalibov/hiai-docs:web-v<version>`
+      > **Fallback:** `hiai-gg/hiai-docs` registry does not exist yet. CI pushes to `vgalibov/hiai-docs` (working registry). Update when `hiai-gg/hiai-docs` is created on Docker Hub.
 - [ ] **Verify npm** — `npm view @hiai-gg/hiai-docs@<version>` shows the new version
 - [ ] **Create GitHub release** — Use the tag, include changelog summary
 
