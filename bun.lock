@@ -5,7 +5,7 @@
     "": {
       "name": "hiai-docs",
       "dependencies": {
-        "@hiai-gg/hiai-ui": "^0.0.7",
+        "@hiai-gg/hiai-ui": "^0.0.8",
         "docx": "^9.7.1",
         "prosemirror-docx": "^0.6.1",
         "svelte-dnd-action": "^0.9.70",
@@ -17,7 +17,7 @@
     },
     "backend": {
       "name": "@hiai-docs/backend",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": {
         "@elysiajs/cors": "^1.4.2",
         "@elysiajs/swagger": "^1.3.1",
@@ -49,9 +49,9 @@
     },
     "frontend": {
       "name": "@hiai-docs/frontend",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": {
-        "@hiai-gg/hiai-ui": "^0.0.7",
+        "@hiai-gg/hiai-ui": "^0.0.8",
         "@inlang/paraglide-js": "^2.20.2",
         "@tiptap/core": "^3.27.1",
         "@tiptap/extension-code-block": "^3.27.1",
@@ -108,7 +108,7 @@
     },
     "packages/db": {
       "name": "@hiai-docs/db",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": {
         "drizzle-orm": "^0.45.2",
         "postgres": "^3.4.9",
@@ -240,7 +240,7 @@
 
     "@hiai-docs/frontend": ["@hiai-docs/frontend@workspace:frontend"],
 
-    "@hiai-gg/hiai-ui": ["@hiai-gg/hiai-ui@0.0.7", "", { "dependencies": { "@tiptap/core": "^3.23.5", "@tiptap/extension-code-block-lowlight": "^3.18.0", "@tiptap/extension-highlight": "^3.18.0", "@tiptap/extension-image": "^3.18.0", "@tiptap/extension-link": "^3.18.0", "@tiptap/extension-list": "^3.18.0", "@tiptap/extension-table": "^3.18.0", "@tiptap/extension-text-align": "^3.18.0", "@tiptap/markdown": "^3.18.0", "@tiptap/pm": "^3.23.5", "@tiptap/starter-kit": "^3.23.5", "bits-ui": "^2.18.1", "clsx": "^2.1.1", "lowlight": "^3.3.0", "lucide-svelte": "^0.577.0", "shadcn-svelte": "^1.2.7", "svelte": "^5.55.0", "svelte-tiptap": "^3.0.1", "tailwind-merge": "^3.6.0", "tailwind-variants": "^3.2.2" }, "peerDependencies": { "@sveltejs/kit": "^2.0.0" } }, "sha512-qQe1gQLNx8Dc4EXgbd5KkcRij0SipJncN+KBVTiZ3YeIUsKfZMs7Z0veooHGNq4Egls98LNcH16k4Lfoua73iA=="],
+    "@hiai-gg/hiai-ui": ["@hiai-gg/hiai-ui@0.0.8", "", { "dependencies": { "@tiptap/core": "^3.23.5", "@tiptap/extension-code-block-lowlight": "^3.18.0", "@tiptap/extension-highlight": "^3.18.0", "@tiptap/extension-image": "^3.18.0", "@tiptap/extension-link": "^3.18.0", "@tiptap/extension-list": "^3.18.0", "@tiptap/extension-table": "^3.18.0", "@tiptap/extension-text-align": "^3.18.0", "@tiptap/markdown": "^3.18.0", "@tiptap/pm": "^3.23.5", "@tiptap/starter-kit": "^3.23.5", "bits-ui": "^2.18.1", "clsx": "^2.1.1", "lowlight": "^3.3.0", "lucide-svelte": "^0.577.0", "shadcn-svelte": "^1.2.7", "svelte": "^5.55.0", "svelte-tiptap": "^3.0.1", "tailwind-merge": "^3.6.0", "tailwind-variants": "^3.2.2" }, "peerDependencies": { "@sveltejs/kit": "^2.0.0" } }, "sha512-ls2TMCaRa3ke9qmpWmd14MjbOQ/8VVtUbbLvtAyUMnipkr1MP9pka+RELMtIofsXpx9dZP6q0vf2Lh4X0UcW1Q=="],
 
     "@inlang/paraglide-js": ["@inlang/paraglide-js@2.20.2", "", { "dependencies": { "@inlang/recommend-sherlock": "^0.2.1", "@inlang/sdk": "^2.10.0", "commander": "11.1.0", "consola": "3.4.0", "json5": "2.2.3", "unplugin": "^2.1.2", "urlpattern-polyfill": "^10.0.0" }, "peerDependencies": { "typescript": ">=5.6" }, "optionalPeers": ["typescript"], "bin": { "paraglide-js": "bin/run.js" } }, "sha512-V8iY3uu/vQU94gEag1bdC3glMJSp4Dg3XMwfnabZLBh1Dv0F++DvDYlMeniqv2+nHbnS/twB75AM140OmpHDEg=="],
 
