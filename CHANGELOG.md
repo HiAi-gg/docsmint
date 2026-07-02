@@ -7,12 +7,32 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-07-02
+
+### Fixed
+
+- **npm export cleanup** — removed five broken or unnecessary export paths from `package.public.json`:
+  - `./auth` was non-functional: `backend/src/lib/auth.ts` imports `@hiai-docs/db`, a `private` workspace package that is not published to npm and therefore cannot be resolved by external consumers. Removed rather than fixed — auth is a server-internal concern and does not belong in the public package surface.
+  - `./db` exposed `packages/db/src/index.ts`, which instantiates a `postgres()` connection with a hardcoded `localhost:5433` fallback. This is an internal database client, not a public API. The `./schema` export already covers the Drizzle table definitions that external consumers need.
+  - `./backend/*`, `./frontend/*`, `./packages/*` were unscoped wildcard exports that leaked the entire monorepo source tree. No documented use case existed for these paths.
+- **`files[]` tightened** — removed `packages/cli/src`, `packages/mcp-server/src`, `backend/src`, `frontend/src` from the published tarball. These directories had no corresponding clean export paths and added ~1 MB of raw TypeScript to the npm package without benefit to consumers.
+- **`RELEASE_CHECKLIST.md` version-bump count** corrected from 6 to 8 — `packages/cli/package.json` and `packages/mcp-server/package.json` were omitted from the bump target list.
+
+### Added
+
+- **"Option 2: npm SDK" section** in `README.md` — makes it explicit that `bun add @hiai-gg/hiai-docs` installs a programmatic API client, not a deployable server. Includes `DocsClient` quickstart and a table of supported import paths.
+- **"For Builders: Extension Points" section** in `README.md` — documents the stable integration surfaces (REST API, MCP server, Drizzle schema import, webhooks) and a "core vs. downstream" boundary table.
+- **Extension Guide** in `CONTRIBUTING.md` — code examples for all three integration surfaces and an explicit list of what should not be added to core.
+- **`bin` entries** in `package.public.json` — CLI (`hiai-docs`) and MCP server (`hiai-docs-mcp`) are now properly exposed as runnable binaries:
+  - `bunx @hiai-gg/hiai-docs <command>` — terminal CLI (search, list, read, create, update, delete, folders, history, snapshot, restore, export, config)
+  - `bunx @hiai-gg/hiai-docs-mcp` / point your MCP client at `packages/mcp-server/src/index.ts` — stdio MCP server with 10 tools for AI agents
+
 ## [0.1.5] - 2026-07-02
 
 ### Fixed
 
 - **npm `files` whitelist** in `package.public.json` now lists explicit per-package source directories (`packages/db/src`, `packages/cli/src`, `packages/mcp-server/src`, `backend/src`, `frontend/src`) instead of the non-recursive glob `packages/*/src`. The glob was silently omitting `packages/db/src`, which broke the `./db` and `./schema` subpaths in the published tarball.
-- **Added `./auth` export** pointing to `backend/src/lib/auth.ts` so consumers can import the configured Better Auth instance directly.
+- **Added `./auth` export** pointing to `backend/src/lib/auth.ts` so consumers can import the configured Better Auth instance directly. *(Reverted in 0.1.6 — the export was non-functional due to an unresolvable `@hiai-docs/db` workspace reference.)*
 
 ### Changed
 

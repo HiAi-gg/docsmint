@@ -99,6 +99,65 @@ bun run typecheck
 - [ ] Commit messages follow Conventional Commits
 - [ ] Changes are focused — one feature/fix per PR
 
+## Extension Guide
+
+hiai-docs exposes three stable integration surfaces. Use these instead of forking core.
+
+### npm SDK — programmatic API access
+
+```bash
+bun add @hiai-gg/hiai-docs
+```
+
+```ts
+import { DocsClient } from "@hiai-gg/hiai-docs";
+
+const docs = new DocsClient({
+  baseUrl: "https://your-hiai-docs-host.com",
+  apiKey: process.env.HIAI_DOCS_API_KEY ?? "",
+});
+
+const { items } = await docs.listDocs();
+const results = await docs.search("knowledge base setup");
+```
+
+The SDK has no runtime dependencies. Full method list in [packages/sdk/README.md](packages/sdk/README.md).
+
+### Drizzle schema import — shared table definitions
+
+If you share the same PostgreSQL database and want typed queries against hiai-docs tables:
+
+```ts
+import { documents, folders, tags } from "@hiai-gg/hiai-docs/schema";
+import { drizzle } from "drizzle-orm/postgres-js";
+```
+
+Peer deps required: `drizzle-orm`, `postgres`.
+
+### MCP server — AI agent integration
+
+Point a Model Context Protocol client (Claude, Cursor, etc.) at the built-in MCP server:
+
+```bash
+bun run mcp:dev
+```
+
+The server is in `packages/mcp-server/` and exposes hiai-docs tools (search, read, write) to AI assistants.
+
+### What NOT to add to core
+
+The following belong in downstream products, not in `hiai-docs` itself:
+
+- Product-specific analytics or usage tracking
+- White-label UI themes
+- Custom auth providers (use `.env`-configurable Better Auth plugins instead)
+- Domain-specific document schemas (extend via the API, not the Drizzle schema)
+- Features that require new env vars not related to the core knowledge-base use case
+
+If you are unsure, open a GitHub Discussion before writing code.
+
+---
+
 ## Questions?
 
 Open an issue or start a discussion on GitHub.

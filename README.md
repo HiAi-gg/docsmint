@@ -143,7 +143,7 @@ GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
 See [`.env.example`](.env.example) for the full set, including optional `GRAPH_EXTRACT_FALLBACK_*` mirrors.
 ## Quick Start
 
-### Docker (Production-style)
+### Option 1: Docker (run the full product)
 
 ```bash
 git clone https://github.com/hiai-gg/hiai-docs.git
@@ -155,6 +155,58 @@ docker compose up -d
 ```
 
 Open http://localhost:50701
+
+### Option 2: npm — SDK, CLI, and MCP server
+
+Installing via npm gives you three agent-facing tools. It does **not** deploy hiai-docs —
+you still need a running instance (Docker or git clone).
+
+```bash
+bun add @hiai-gg/hiai-docs
+# or: npm install @hiai-gg/hiai-docs
+```
+
+**TypeScript / JavaScript SDK:**
+
+```ts
+import { DocsClient } from "@hiai-gg/hiai-docs";
+
+const docs = new DocsClient({
+  baseUrl: process.env.HIAI_DOCS_URL ?? "http://localhost:50700",
+  apiKey: process.env.HIAI_DOCS_API_KEY ?? "",
+});
+
+const { items } = await docs.listDocs({ limit: 20 });
+const results = await docs.search("quarterly planning");
+const doc = await docs.createDoc({ title: "Meeting notes", content: "# Agenda" });
+```
+
+**CLI (terminal):**
+
+```bash
+bunx @hiai-gg/hiai-docs init              # configure URL + API key
+bunx @hiai-gg/hiai-docs search "pgvector" # search docs
+bunx @hiai-gg/hiai-docs list              # list documents
+bunx @hiai-gg/hiai-docs read <id>         # read a document
+bunx @hiai-gg/hiai-docs create --title "Notes" --content "# Hello"
+```
+
+**MCP server (Claude Desktop, Cursor, etc.):**
+
+```bash
+bunx @hiai-gg/hiai-docs-mcp               # run the MCP server
+```
+
+**What's in the package:**
+
+| What | How to use |
+|------|-----------|
+| `import { DocsClient }` | TypeScript/JS SDK — typed HTTP client |
+| `import { documents } from "@hiai-gg/hiai-docs/schema"` | Drizzle table definitions |
+| `bunx @hiai-gg/hiai-docs <cmd>` | Terminal CLI (12 commands) |
+| `bunx @hiai-gg/hiai-docs-mcp` | MCP server (10 tools for AI agents) |
+
+The SDK has **no runtime dependencies** — it uses the platform `fetch` built into Bun, Node 18+, and modern browsers.
 
 ## Agentic Quickstart (AI-Powered Setup)
 
@@ -442,6 +494,86 @@ curl -H "x-api-key: $HIAI_DOCS_API_KEY" http://localhost:50700/api/admin/embeddi
 # Live provider probe (returns ok / degraded / not-configured)
 curl -H "x-api-key: $HIAI_DOCS_API_KEY" http://localhost:50700/api/admin/health/embeddings
 ```
+
+---
+
+## For Builders: Extension Points
+
+hiai-docs is designed to be extended from the **outside** — without forking the
+core repository. These are the stable, supported integration surfaces:
+
+### REST API
+
+Every hiai-docs capability is exposed as a REST endpoint at `http://<host>:50700/api`.
+Authenticate with `Authorization: Bearer <HIAI_DOCS_API_KEY>` for server-to-server use,
+or use the session cookie from Better Auth for user-facing flows.
+
+Full schema: [docs/API.md](docs/API.md) · OpenAPI JSON: [docs/openapi.json](docs/openapi.json)
+
+### MCP Server (AI agents)
+
+For AI coding assistants that support the Model Context Protocol (Claude, Cursor, etc.),
+use the built-in MCP server directly from npm — no clone required:
+
+```bash
+# Run once to verify
+bunx @hiai-gg/hiai-docs-mcp
+```
+
+Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "hiai-docs": {
+      "command": "bunx",
+      "args": ["@hiai-gg/hiai-docs-mcp"],
+      "env": {
+        "HIAI_DOCS_URL": "http://localhost:50700",
+        "HIAI_DOCS_API_KEY": "your-api-key"
+      }
+    }
+  }
+}
+```
+
+Available MCP tools: `search`, `get-document`, `create-document`, `update-document`,
+`list-documents`, `list-folders`, `create-folder`, `create-snapshot`, `version-history`, `export-document`.
+
+### Drizzle Schema Import
+
+If your project uses the same PostgreSQL database as hiai-docs and you want to
+write typed Drizzle queries against hiai-docs tables:
+
+```ts
+import { documents, folders, tags, users } from "@hiai-gg/hiai-docs/schema";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+
+const db = drizzle(postgres(process.env.DATABASE_URL!));
+const docs = await db.select().from(documents).limit(10);
+```
+
+Requires `drizzle-orm` and `postgres` as peer dependencies in your project.
+
+### Webhook Events
+
+hiai-docs emits webhook events for document lifecycle changes. Configure the
+`WEBHOOK_SECRET` and target URL in `.env`. See [docs/API.md](docs/API.md) for
+payload shapes.
+
+### What belongs in core vs. downstream
+
+| ✅ Core | ❌ Downstream only |
+|--------|-------------------|
+| Document CRUD, folders, tags, categories | Product-specific analytics / usage tracking |
+| Hybrid search (text + semantic) | Custom embedding providers not in `.env` |
+| Sharing, versioning, attachments | White-label UI themes |
+| GraphRAG (optional, feature-flagged) | Domain-specific document types |
+| Admin / reindex endpoints | Custom auth providers beyond Better Auth |
+
+If a feature requires changes to the Drizzle schema, authentication flow, or core
+embedding pipeline, open an issue first to discuss the design.
 
 ---
 
