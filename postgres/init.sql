@@ -18,6 +18,18 @@ CREATE EXTENSION IF NOT EXISTS vectorscale;
 -- is in the search path).
 CREATE EXTENSION IF NOT EXISTS age;
 
+-- Load the AGE shared library into every new session so cypher() works.
+-- CREATE EXTENSION installs the SQL definitions but does NOT load the
+-- .so into the process. Without this, cypher() raises "unhandled
+-- cypher(cstring) function call" because AGE's parser/planner hooks
+-- are never registered. This must be a database-level setting (not
+-- session-local) so it applies to every connection in the pool.
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET session_preload_libraries = %L', current_database(), 'age');
+END
+$$;
+
 -- Set search_path SESSION-LOCAL for the rest of this script so
 -- `create_graph` and `cypher()` calls resolve ag_catalog types and
 -- operator classes without the schema prefix. `ALTER DATABASE ... SET`
@@ -72,3 +84,7 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Match aiuser search_path so Drizzle resolves unqualified table names
+-- to public.* first (see the aiuser comment above for rationale).
+ALTER ROLE hiai_app SET search_path = public, ag_catalog;

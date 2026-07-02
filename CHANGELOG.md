@@ -2,8 +2,52 @@
 
 All notable changes to hiai-docs are documented in this file.
 
+<!-- Verified accurate for v0.1.1 by doc audit 2026-07-02 -->
+
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.2] - 2026-07-02
+
+### Performance
+
+- **HNSW vector index now used in semantic search** — the inner query finds top-k chunks by vector distance (using the HNSW index), and the outer query joins + deduplicates. Previously, `ORDER BY d.id, distance` put the document ID first, preventing the planner from using the HNSW index. Fixes **G3** from the GraphRAG audit.
+- **AGE search-expansion uses `client.unsafe()`** — Cypher queries in `search-expansion.ts` now use `client.unsafe()` with dollar-quoting instead of postgres-js bind parameters. Fixes **G7** from the GraphRAG audit.
+- **Frontend Dockerfile optimization** — multi-stage Dockerfile now separates dependency stages from runtime, reducing final image size and attack surface. Fixes **Item 16** from the production audit.
+
+### GraphRAG
+
+- **AGE shared library auto-loading** — `postgres/init.sql` now adds `ALTER DATABASE current_database() SET session_preload_libraries = 'age'` to load the AGE library on every session. Remaining graph-discoverable issues tracked in GRAPHRAG_AUDIT.md.
+- **Entity extraction refactored** — `extract-entities.ts` rewritten for cleaner error handling, Ollama-compatible endpoint path construction, and more robust entity parsing.
+- **Graph migration `001_init.sql`** — updated with AGE library preloading and index improvements.
+
+### Config & Security
+
+- **Config schema hardening** — `BETTER_AUTH_SECRET`, `CSRF_SECRET`, and `WEBHOOK_SECRET` now have explicit `.min(1)` guards to reject empty strings in any environment, complementing the existing production-only `refine()` guards.
+- **`docker-compose.yml` DB port default** — changed from `5433` to `5437` for consistency with `.env.example` and dev-compose. CSRF/WEBHOOK_SECRET now have `${:-default}` fallbacks in compose.
+
+### Documentation
+
+- **Full documentation audit sweep** — all documentation files updated to reflect v0.1.1+ reality:
+  - Ports unified across AGENTS.md, design-spec.md, DEPLOYMENT.md, PRODUCTION_STATUS.md (DB: 5437, Redis: 6384, MinIO console: 9021, Caddy: 80/443).
+  - Editor references updated from Tipex → svelte-tiptap + TipTap v3 in design-spec.md.
+  - PRODUCTION_AUDIT.md fully translated from Russian to English; all 19 audit items annotated with resolution status.
+  - GRAPHRAG_AUDIT.md banner added; G2 and G8 marked as fixed.
+  - DEPLOYMENT.md gained full env var tables for GraphRAG, hybrid search, chunking, re-embed batch caps, and attachments; secret hygiene policy documented.
+  - README.md added GraphRAG health caveat.
+  - AGENTS.md Docker services table updated to reflect current images and ports; secret management rules confirmed.
+  - CHANGELOG cross-check verified and confirmed.
+
+### Changed
+
+- **`backend/src/lib/config-schema.ts`** — added `.min(1)` guards to BETTER_AUTH_SECRET, CSRF_SECRET, WEBHOOK_SECRET.
+- **`backend/src/api/routes/search.ts`** — `semanticSearch` now uses a two-stage query for HNSW index utilization.
+- **`backend/src/lib/graph/extract-entities.ts`** — major refactoring for robustness and Ollama-compatible endpoints.
+- **`backend/src/lib/graph/search-expansion.ts`** — switched to `client.unsafe()` for Cypher queries.
+- **`docker-compose.yml`** — DB_PORT default 5437; CSRF/WEBHOOK_SECRET compose defaults; frontend Dockerfile updated.
+- **`packages/db/src/schema.ts`** — schema refinements.
+- **`postgres/init.sql`** — AGE session_preload_libraries added.
+- **`backend/src/__tests__/config.test.ts`** — expanded test coverage for config schema.
 
 ## [0.1.1] - 2026-07-01
 
@@ -16,7 +60,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **Config schema guards** — `CSRF_SECRET` and `WEBHOOK_SECRET` now have production-only `refine()` guards (like `BETTER_AUTH_SECRET`), rejecting default values in production.
 - **Cookie compatibility** — explicit `"cookie": "^0.6.0"` dependency pinned in frontend for SvelteKit build compatibility.
 - **Port alignment** — `scripts/health-check.sh` defaults corrected: `REDIS_PORT` → 6384, `DB_PORT` → 5437 (matching compose defaults).
-- **CI registry fix** — Docker Hub push target changed from `vgalibov/hiai-docs` to `hiai-gg/hiai-docs`.
+- **CI registry fix** — Docker Hub push target is `vgalibov/hiai-docs` (the `hiai-gg/hiai-docs` registry does not exist yet on Docker Hub; `RELEASE_CHECKLIST.md` documents this as the working fallback until the `hiai-gg` org is created).
 - **MinIO image pinning** — `minio/minio:latest` → `minio/minio:RELEASE.2025-06-26T16-23-29Z` in both compose files.
 
 ## [0.1.0] - 2026-06-28

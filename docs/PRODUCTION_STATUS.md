@@ -1,7 +1,7 @@
 # Production Status Report
 
-> **Status:** 🔧 Under maintenance — v0.1.1 release in progress (see .bob/plans/production-release-v0.1.1.md)
-> **Last verified:** 2026-07-01
+> **Status:** 🔧 Under maintenance — v0.1.1 released
+> **Last verified:** 2026-07-02
 
 ---
 
@@ -35,7 +35,7 @@ docker compose exec api bun run db:migrate
 |------|---------|
 | 50700 | API |
 | 50701 | Frontend |
-| 5433 | PostgreSQL |
+| 5437 | PostgreSQL |
 | 6384 | Redis |
 | 9020 | MinIO S3 |
 | 80/443 | Caddy |
@@ -58,4 +58,4 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 
 ---
 
-*Status: 🔧 Under maintenance — refer to .bob/plans/production-release-v0.1.1.md*
+*Status: 🔧 Under maintenance — v0.1.1 released*

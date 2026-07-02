@@ -566,56 +566,64 @@ async function persistEntities(
 	documentId: string,
 	entities: ExtractedEntity[],
 ): Promise<void> {
-	// 1. Ensure the source Document vertex exists. `cypher()` requires the
-	// search_path to include ag_catalog; the AGE init migration sets that
-	// for the connection but we re-set it here for safety because pooled
-	// connections can have their GUCs reset between transactions.
-	await sql`SELECT ag_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
+	// Wrap all cypher writes in a transaction so a failure mid-way rolls
+	// back partial graph state (some entities persisted, some edges missing).
+	// AGE's cypher() requires a literal dollar-quoted string constant, not a
+	// bind parameter, so we use sql.unsafe() with $$ ... $$ dollar-quoting.
+	// The helper functions already inline values via JSON.stringify, which
+	// is safe against injection.
+	await sql.begin(async (tx) => {
+		// Ensure the search_path includes ag_catalog for cypher() calls.
+		await tx`SELECT ag_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
 
-	const nowIso = new Date().toISOString();
+		const nowIso = new Date().toISOString();
+		const docIdLiteral = JSON.stringify(documentId);
+		const nowLiteral = JSON.stringify(nowIso);
 
-	// Upsert the document vertex.
-	await sql`
-		SELECT * FROM cypher('docs_graph', $$
-			MERGE (d:Document {id: ${documentId}})
-			ON CREATE SET d.created_at = ${nowIso}, d.entity_extracted_at = ${nowIso}
-			ON MATCH SET d.entity_extracted_at = ${nowIso}
-			RETURN d.id
-		$$) AS (result agtype)
-	`;
+		// 1. Upsert the source Document vertex. Values are inlined as JSON
+		//    literals (safe — documentId is a UUID from the DB).
+		await tx.unsafe(
+			`SELECT * FROM cypher('docs_graph', $$
+				MERGE (d:Document {id: ${docIdLiteral}})
+				ON CREATE SET d.created_at = ${nowLiteral}, d.entity_extracted_at = ${nowLiteral}
+				ON MATCH SET d.entity_extracted_at = ${nowLiteral}
+				RETURN d.id
+			$$) AS (result agtype)`,
+		);
 
-	// 2. Upsert each entity vertex and create a MENTIONS edge to the
-	//    source Document. Per-type Cypher because AGE doesn't allow
-	//    parameterized labels.
-	for (const ent of entities) {
-		const label = ent.type;
-		const name = ent.name;
-		const conf = ent.confidence;
-		await sql`
-			SELECT * FROM cypher('docs_graph', ${entityUpsertCypher(documentId, label, name, nowIso, conf)}) AS (result agtype)
-		`;
-
-		await sql`
-			SELECT * FROM cypher('docs_graph', ${documentEntityEdgeCypher(documentId, label, name, conf)}) AS (result agtype)
-		`;
-	}
-
-	// 3. Create entity-to-entity edges where the target can be found by
-	//    name across any entity label.
-	for (const ent of entities) {
-		for (const rel of ent.relationships) {
-			const cypher = entityRelationCypher(
-				ent.type,
-				ent.name,
-				rel.targetName,
-				rel.relationType,
-				rel.confidence,
+		// 2. Upsert each entity vertex and create a MENTIONS edge to the
+		//    source Document. Per-type Cypher because AGE doesn't allow
+		//    parameterized labels. Helper functions return literal Cypher
+		//    with values already inlined.
+		for (const ent of entities) {
+			const label = ent.type;
+			const name = ent.name;
+			const conf = ent.confidence;
+			await tx.unsafe(
+				`SELECT * FROM cypher('docs_graph', $$ ${entityUpsertCypher(documentId, label, name, nowIso, conf)} $$) AS (result agtype)`,
 			);
-			await sql`
-				SELECT * FROM cypher('docs_graph', ${cypher}) AS (result agtype)
-			`;
+			await tx.unsafe(
+				`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, label, name, conf)} $$) AS (result agtype)`,
+			);
 		}
-	}
+
+		// 3. Create entity-to-entity edges where the target can be found by
+		//    name across any entity label.
+		for (const ent of entities) {
+			for (const rel of ent.relationships) {
+				const cypher = entityRelationCypher(
+					ent.type,
+					ent.name,
+					rel.targetName,
+					rel.relationType,
+					rel.confidence,
+				);
+				await tx.unsafe(
+					`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
+				);
+			}
+		}
+	});
 }
 
 /**

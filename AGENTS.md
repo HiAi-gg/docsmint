@@ -28,7 +28,7 @@
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
 - **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
 - **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
-- **Ports:** API `50700` · frontend dev `50701` · Postgres `5433` · Redis `6384` · MinIO `9000/9001` · Caddy `50708/50709`
+- **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · MinIO `9000/9021` · Caddy `80/443`
 - **No Playwright** — use `agent-browser` for E2E
 - **English only** in code, comments, docs, README, AGENTS.md (zero Cyrillic)
 
@@ -99,9 +99,9 @@
 
 ```bash
 curl -fsS http://localhost:50700/api/health
-psql -h localhost -p 5433 -U aiuser -d hiai_docs -c "SELECT NOW();"
+psql -h localhost -p 5437 -U aiuser -d hiai_docs -c "SELECT NOW();"
 redis-cli -p 6384 ping
-curl -fsS http://localhost:9000/minio/health/live
+curl -fsS http://localhost:9020/minio/health/live
 ```
 
 ## Architecture
@@ -341,12 +341,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code style, testing, an
 
 | Container | Image | Port | Purpose |
 |-----------|-------|------|---------|
-| postgres | pgvector/pgvector:pg18 | 5433:5432 | Database (pgvector + pg_trgm) |
+| postgres | hiai-postgres:18-custom | 5437:5432 | Database (pgvector + pgvectorscale + AGE) |
 | redis | redis:8-alpine | 6384:6379 | Cache/queue |
-| minio | minio/minio:latest | 9000:9000, 9001:9021 | File storage |
+| minio | minio/minio:RELEASE.2025-06-26T16-23-29Z | 9000:9000, 9021:9001 | File storage |
 | api | custom | 50700:50700 | Elysia backend |
 | web | custom | 50701:50701 | SvelteKit frontend |
-| caddy | caddy:2-alpine | 50708:80, 50709:443 | Reverse proxy (profile-only, not started by default) |
+| caddy | caddy:2-alpine | 80:80, 443:443 | Reverse proxy (auto-TLS, build with xcaddy + caddy-ratelimit) |
 
 ## Multi-Agent Development
 

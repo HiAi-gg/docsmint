@@ -476,14 +476,19 @@ async function semanticSearch(
 			return tx.execute(sql`
 				SELECT DISTINCT ON (d.id)
 					d.id, d.title, LEFT(d.content, 200) as snippet,
-					1 - (de.embedding <=> ${embeddingStr}::vector) as score,
+					1 - (top.distance) as score,
 					d.folder_id, f.name as folder_name, d.created_at, d.updated_at
-				FROM document_embeddings de
-				JOIN documents d ON d.id = de.document_id
+				FROM (
+					SELECT de.document_id, de.embedding <=> ${embeddingStr}::vector AS distance
+					FROM document_embeddings de
+					WHERE de.embedding IS NOT NULL
+					ORDER BY de.embedding <=> ${embeddingStr}::vector
+					LIMIT ${limit * 3}
+				) top
+				JOIN documents d ON d.id = top.document_id
 				LEFT JOIN folders f ON f.id = d.folder_id
 				WHERE d.owner_id = ${ctx.userId}
-					AND de.embedding IS NOT NULL
-				ORDER BY d.id, de.embedding <=> ${embeddingStr}::vector
+				ORDER BY top.distance
 				LIMIT ${limit}
 			`);
 		});

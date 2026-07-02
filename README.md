@@ -122,6 +122,8 @@ GraphRAG layers a knowledge graph over the existing vector search. It is optiona
 2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, `GET /api/search?graph=true` walks the graph from each merged seed document (1-3 hops, controlled by `?graphHops=N`). Discovered neighbors are merged into the result list with a multiplicative boost of `GRAPH_EXPANSION_BOOST` (default `0.3`).
 3. **Operator tooling** — `GET /api/admin/graph/stats` reports current AGE inventory (node and edge counts).
 
+> **⚠️ GraphRAG health note:** As of v0.1.1, the AGE shared library auto-loading is a known gap — see [GraphRAG Infrastructure Audit](docs/GRAPHRAG_AUDIT.md) for current status. GraphRAG degrades gracefully; all other features work normally when GraphRAG is disabled.
+
 ### Where AGE lives
 
 Apache AGE runs in the **same PostgreSQL database** as the rest of the application. There is no separate container or connection string — the embedding worker and search route share the Drizzle client from `lib/db.ts` and dispatch `cypher()` queries against the shared `docs_graph` property graph. See `postgres/Dockerfile` for the unified image.

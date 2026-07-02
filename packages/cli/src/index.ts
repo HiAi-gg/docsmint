@@ -24,7 +24,7 @@ import { registerSearch } from "./commands/search.js";
 import { registerSnapshot } from "./commands/snapshot.js";
 import { registerUpdate } from "./commands/update.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.2";
 
 const program = new Command();
 program

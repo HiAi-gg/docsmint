@@ -53,21 +53,16 @@ export async function expandResults(
 
 	try {
 		const cypher = buildTraversalCypher(seeds, clampedHops);
-		const rows = await sql<
-			Array<{
-				seed_id: string;
-				neighbor_id: string;
-				relation: string;
-				hops: number;
-			}>
-		>`
-			SELECT * FROM cypher('docs_graph', ${cypher}) AS (
-				seed_id agtype,
-				neighbor_id agtype,
-				relation agtype,
-				hops agtype
-			)
-		`;
+		// AGE's cypher() requires a literal dollar-quoted string constant,
+		// not a bind parameter. The seed ids are already JSON.stringify-
+		// escaped in buildTraversalCypher, so inlining is safe.
+		const queryString = `SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (seed_id agtype, neighbor_id agtype, relation agtype, hops agtype)`;
+		const rows = (await sql.unsafe(queryString)) as Array<{
+			seed_id: string;
+			neighbor_id: string;
+			relation: string;
+			hops: number;
+		}>;
 
 		for (const row of rows) {
 			const seedId = stripQuotes(String(row.seed_id ?? ""));

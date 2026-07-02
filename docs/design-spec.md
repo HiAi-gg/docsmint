@@ -27,7 +27,7 @@
 ```
 hiai-docs/
 ├── backend/              # Elysia API server (Bun)
-├── frontend/             # SvelteKit 2 + shadcn-svelte + Tipex
+├── frontend/             # SvelteKit 2 + shadcn-svelte + svelte-tiptap (TipTap v3)
 ├── packages/db/          # Drizzle schema + migrations (reusable)
 ├── package.json          # Bun workspace root
 ├── package.public.json   # Publishable version (no internal paths)
@@ -47,10 +47,9 @@ hiai-docs/
 |---------|------|-------------|
 | API (Elysia) | 50700 | Backend REST API |
 | Frontend (SvelteKit) | 50701 | Web UI |
-| PostgreSQL | 5433 | Shared ai-core instance |
-| Redis | 6380 | Shared ai-core instance |
-| Ollama | 11434 | Local embedding service |
-| MinIO | 9000/9001 | Object storage (API + Console) |
+| PostgreSQL | 5437 | Shared ai-core instance |
+| Redis | 6384 | Shared ai-core instance |
+| MinIO | 9000/9021 | Object storage (API + Console) |
 | Caddy | 80/443 | Reverse proxy |
 
 ---
@@ -68,7 +67,7 @@ hiai-docs/
 | Frontend | SvelteKit | 2.60+ |
 | UI framework | Svelte | 5.55+ |
 | UI components | shadcn-svelte (new-york style) | 1.2.7+ |
-| Rich text editor | Tipex | latest |
+| Rich text editor | svelte-tiptap + TipTap v3 | latest |
 | Validation | Zod | 3.24+ |
 | Logging | Pino | 9.6+ |
 | Icons | lucide-svelte | latest |
@@ -91,7 +90,7 @@ All tables use `owner_id` for user-scoped isolation. `tenant_id` is reserved (nu
 
 **documents** — Core content
 - id (uuid, PK), owner_id (FK users), folder_id (FK folders, nullable)
-- title (text), content (text — markdown source), content_tipex (jsonb — Tipex AST)
+- title (text), content (text — markdown source), content_tipex (jsonb — Tipex AST, retained for backward compatibility after svelte-tiptap migration)
 - metadata (jsonb — frontmatter, custom fields)
 - embedding (vector(768) — pgvector)
 - created_at, updated_at
@@ -130,11 +129,17 @@ All tables use `owner_id` for user-scoped isolation. `tenant_id` is reserved (nu
 ### 5.1 Provider Configuration
 
 ```env
-EMBEDDING_PROVIDER=ollama              # ollama | openrouter | voyage
-EMBEDDING_MODEL=nomic-embed-text       # model name
-EMBEDDING_OLLAMA_URL=http://localhost:11434
-EMBEDDING_FALLBACK_PROVIDER=openrouter # fallback if primary fails
-EMBEDDING_FALLBACK_MODEL=openai/text-embedding-3-small
+# Base URL for an OpenAI-compatible embedding API.
+# Local Ollama example (no API key needed):
+#   EMBEDDING_BASE_URL=http://localhost:11434/api
+#   EMBEDDING_MODEL=bge-m3
+# OpenAI example:
+#   EMBEDDING_BASE_URL=https://api.openai.com/v1
+#   EMBEDDING_API_KEY=sk-...
+#   EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_BASE_URL=http://localhost:11434/api
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=bge-m3
 ```
 
 ### 5.2 Pipeline
@@ -207,7 +212,7 @@ Installed components: Button, Badge, Input, Sheet, ScrollArea, Separator, Skelet
 | Route | Description |
 |-------|-------------|
 | `/` | Dashboard: recent docs, quick search, folder tree |
-| `/docs/[id]` | Document editor (Tipex WYSIWYG + raw MD toggle) |
+| `/docs/[id]` | Document editor (svelte-tiptap WYSIWYG + raw MD toggle) |
 | `/folders/[id]` | Folder view with document list |
 | `/search` | Full hybrid search results page |
 | `/shared/[token]` | Public shared content view (guest access) |
@@ -224,7 +229,7 @@ Installed components: Button, Badge, Input, Sheet, ScrollArea, Separator, Skelet
 
 ### 7.4 Editor
 
-Tipex WYSIWYG as default mode. Toggle button switches to raw Markdown view with syntax highlighting. Content synced between both views via content_tipex (jsonb) and content (text) fields.
+svelte-tiptap (TipTap v3) WYSIWYG as default mode. Toggle button switches to raw Markdown view with syntax highlighting. Content synced between both views via content_tipex (jsonb — legacy Tipex AST, retained for backward compatibility) and content (text) fields.
 
 ---
 
@@ -255,9 +260,9 @@ Tipex WYSIWYG as default mode. Toggle button switches to raw Markdown view with 
 ```yaml
 services:
   postgres:
-    image: pgvector/pgvector:pg18
-    ports: ["5433:5432"]
-    volumes: [pgdata:/var/lib/postgresql]
+    build: ./postgres
+    ports: ["5437:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
     environment:
       POSTGRES_DB: hiai_docs
       POSTGRES_USER: ${DB_USER}
@@ -265,41 +270,44 @@ services:
 
   redis:
     image: redis:8-alpine
-    ports: ["6380:6379"]
-
-  ollama:
-    image: ollama/ollama
-    ports: ["11434:11434"]
-    volumes: [ollama:/root/.ollama]
+    ports: ["6384:6379"]
 
   minio:
-    image: minio/minio
-    ports: ["9000:9000", "9001:9001"]
+    image: minio/minio:RELEASE.2025-06-26T16-23-29Z
+    ports: ["9000:9000", "9021:9001"]
     volumes: [minio:/data]
     command: server /data --console-address ":9001"
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     ports: ["50700:50700"]
-    depends_on: [postgres, redis, ollama, minio]
+    depends_on: [postgres, redis, minio]
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/hiai_docs
       REDIS_URL: redis://redis:6379
       MINIO_ENDPOINT: minio
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      NODE_ENV: ${NODE_ENV:-production}
 
   web:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     ports: ["50701:50701"]
     depends_on: [api]
 
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
+    profiles: [caddy]
 ```
 
 ### 9.2 .env.example
@@ -308,28 +316,53 @@ services:
 # Database
 DB_USER=aiuser
 DB_PASSWORD=changeme
+DB_PORT=5437
+DATABASE_URL=postgresql://aiuser:changeme@localhost:5437/hiai_docs
 
 # Auth
-BETTER_AUTH_SECRET=generate-random-secret
+BETTER_AUTH_SECRET=change-me-generate-with-openssl-rand-hex-32
 BETTER_AUTH_URL=http://localhost:50700
+CSRF_SECRET=change-me-generate-with-openssl-rand-hex-32
+WEBHOOK_SECRET=change-me-generate-new-key-for-webhooks
+CORS_ORIGINS=http://localhost:50701,http://127.0.0.1:50701
 
 # MinIO
 MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=minioadmin
+MINIO_SECRET_KEY=changeme
 MINIO_BUCKET=hiai-docs
 
 # Embeddings
-EMBEDDING_PROVIDER=ollama
-EMBEDDING_MODEL=nomic-embed-text
-EMBEDDING_OLLAMA_URL=http://ollama:11434
-EMBEDDING_FALLBACK_PROVIDER=openrouter
-EMBEDDING_FALLBACK_MODEL=openai/text-embedding-3-small
-OPENROUTER_API_KEY=sk-or-...
+EMBEDDING_BASE_URL=http://localhost:11434/api
+EMBEDDING_API_KEY=
+EMBEDDING_MODEL=bge-m3
+
+# GraphRAG (optional)
+GRAPH_EXTRACT_ENABLED=false
+GRAPH_SEARCH_ENABLED=false
+GRAPH_EXTRACT_BASE_URL=http://localhost:11434/v1
+GRAPH_EXTRACT_MODEL=llama3.1
+GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
+
+# Search ranking
+HYBRID_TEXT_WEIGHT=0.4
+HYBRID_SEMANTIC_WEIGHT=0.6
+GRAPH_EXPANSION_BOOST=0.3
+
+# Chunking
+CHUNK_TARGET_TOKENS=500
+CHUNK_OVERLAP_TOKENS=50
+
+# Re-embed batch caps
+FOLDER_REEMBED_BATCH_SIZE=100
+CATEGORY_REEMBED_BATCH_SIZE=100
+TAG_REEMBED_BATCH_SIZE=500
 
 # App
 API_PORT=50700
 WEB_PORT=50701
-NODE_ENV=development
+NODE_ENV=production
+HIAI_DOCS_API_KEY=change-me-generate-new-key
+OWNER_ID=your-user-uuid-from-auth
 ```
 
 ---

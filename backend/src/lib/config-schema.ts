@@ -21,6 +21,7 @@ export const envSchema = z.object({
 	MINIO_BUCKET: z.string().default("hiai-docs"),
 	BETTER_AUTH_SECRET: z
 		.string()
+		.min(1, "BETTER_AUTH_SECRET must not be empty")
 		.default("change-me-to-random-32-chars")
 		.refine(
 			(val) =>
@@ -31,6 +32,7 @@ export const envSchema = z.object({
 	// CSRF: dedicated signing key — must NOT equal BETTER_AUTH_SECRET
 	CSRF_SECRET: z
 		.string()
+		.min(1, "CSRF_SECRET must not be empty")
 		.default("change-me-to-random-32-chars")
 		.refine(
 			(val) =>
@@ -41,6 +43,7 @@ export const envSchema = z.object({
 	// Webhook: dedicated HMAC key — must NOT equal MINIO_SECRET_KEY
 	WEBHOOK_SECRET: z
 		.string()
+		.min(1, "WEBHOOK_SECRET must not be empty")
 		.default("change-me-to-random-32-chars")
 		.refine(
 			(val) =>

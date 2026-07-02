@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/frontend",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -14,7 +14,7 @@
     "test": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && bun test --path-ignore-patterns='*node_modules*' src/"
   },
   "dependencies": {
-    "@hiai-gg/hiai-ui": "^0.0.7",
+    "@hiai-gg/hiai-ui": "^0.0.8",
     "@inlang/paraglide-js": "^2.20.2",
     "@tiptap/core": "^3.27.1",
     "@tiptap/extension-code-block": "^3.27.1",

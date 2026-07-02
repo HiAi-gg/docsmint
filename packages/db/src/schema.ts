@@ -426,6 +426,13 @@ export const documentEmbeddings = pgTable(
       "hnsw",
       sql`${table.embedding} vector_cosine_ops`
     ),
+    // StreamingDiskANN index for >100k row corpora. Co-exists with HNSW;
+    // the planner picks the right one based on table size and memory.
+    // Requires the pgvectorscale extension (enabled in postgres/init.sql).
+    index("idx_document_embeddings_diskann").using(
+      "diskann",
+      sql`${table.embedding} vector_cosine_ops`
+    ),
   ]
 );
 

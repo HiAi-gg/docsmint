@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { z } from "zod";
+import { envSchema as realEnvSchema } from "../lib/config-schema";
 
 const envSchema = z.object({
 	DATABASE_URL: z
@@ -104,5 +105,84 @@ describe("config schema", () => {
 			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBeUndefined();
 			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
 		}
+	});
+});
+
+// Production secret guards — the real schema (config-schema.ts) must reject
+// default/empty signing secrets when NODE_ENV=production. These cover the
+// security hole where docker-compose renders an unset ${CSRF_SECRET} as an
+// empty string: zod .min(1) catches the empty string before the .refine()
+// default-value check runs.
+describe("production secret guards (real schema)", () => {
+	const originalNodeEnv = process.env.NODE_ENV;
+
+	afterEach(() => {
+		process.env.NODE_ENV = originalNodeEnv;
+	});
+
+	test("rejects default BETTER_AUTH_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "change-me-to-random-32-chars",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects empty BETTER_AUTH_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({ BETTER_AUTH_SECRET: "" });
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects empty CSRF_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "real-secret-32-chars-long-aaaaaa",
+			CSRF_SECRET: "",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects empty WEBHOOK_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "real-secret-32-chars-long-aaaaaa",
+			WEBHOOK_SECRET: "",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects default CSRF_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "real-secret-32-chars-long-aaaaaa",
+			CSRF_SECRET: "change-me-to-random-32-chars",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects default WEBHOOK_SECRET in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "real-secret-32-chars-long-aaaaaa",
+			WEBHOOK_SECRET: "change-me-to-random-32-chars",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("accepts real non-empty secrets in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			BETTER_AUTH_SECRET: "real-better-auth-secret-32-chars-long",
+			CSRF_SECRET: "real-csrf-secret-32-chars-long-bbbb",
+			WEBHOOK_SECRET: "real-webhook-secret-32-chars-long-cc",
+		});
+		expect(result.success).toBe(true);
+	});
+
+	test("accepts default secrets in development (non-production)", () => {
+		process.env.NODE_ENV = "development";
+		const result = realEnvSchema.safeParse({});
+		expect(result.success).toBe(true);
 	});
 });

@@ -12,6 +12,20 @@ COPY packages/sdk/package.json ./packages/sdk/
 ENV BUN_INSTALL_CONCURRENCY=1
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --no-verify
 
+# Production-only dependencies for the runtime image. Installs just
+# `dependencies` (no devDependencies) so the runtime image excludes the
+# build toolchain (vite, svelte, @sveltejs/kit, svelte-check, …).
+FROM base AS prod-deps
+COPY package.json bun.lock* ./
+COPY frontend/package.json ./frontend/
+COPY backend/package.json ./backend/
+COPY packages/db/package.json ./packages/db/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp-server/package.json ./packages/mcp-server/
+COPY packages/sdk/package.json ./packages/sdk/
+ENV BUN_INSTALL_CONCURRENCY=1
+RUN --mount=type=cache,target=/root/.bun/install/cache bun install --production --no-verify
+
 # Build
 FROM base AS build
 COPY package.json tsconfig.json ./
@@ -26,8 +40,9 @@ RUN cd frontend && bun run build
 
 # Run
 FROM base AS runtime
-COPY --from=deps /app/node_modules /app/node_modules
-COPY --from=deps /app/frontend/node_modules /app/frontend/node_modules
+# Runtime deps only (no devDependencies) → smaller image, smaller attack surface.
+COPY --from=prod-deps /app/node_modules /app/node_modules
+COPY --from=prod-deps /app/frontend/node_modules /app/frontend/node_modules
 COPY --from=build /app/frontend/build /app/frontend/build
 COPY frontend/package.json /app/frontend/
 

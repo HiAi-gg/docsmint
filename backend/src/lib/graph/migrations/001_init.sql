@@ -38,3 +38,14 @@ SELECT * FROM ag_catalog.create_elabel('docs_graph', 'REFERENCES');
 SELECT * FROM ag_catalog.create_elabel('docs_graph', 'BELONGS_TO');
 SELECT * FROM ag_catalog.create_elabel('docs_graph', 'RELATED_TO');
 SELECT * FROM ag_catalog.create_elabel('docs_graph', 'AUTHORED_BY');
+
+-- Indexes on the `name` property of each vertex label. AGE's MERGE on
+-- `{name: $name}` does a full sequential scan of the backing table without
+-- these; with them it's an index lookup. Critical for extraction throughput
+-- as the entity count grows into the thousands.
+CREATE INDEX IF NOT EXISTS idx_document_name ON docs_graph."Document" (name);
+CREATE INDEX IF NOT EXISTS idx_person_name ON docs_graph."Person" (name);
+CREATE INDEX IF NOT EXISTS idx_organization_name ON docs_graph."Organization" (name);
+CREATE INDEX IF NOT EXISTS idx_concept_name ON docs_graph."Concept" (name);
+CREATE INDEX IF NOT EXISTS idx_location_name ON docs_graph."Location" (name);
+CREATE INDEX IF NOT EXISTS idx_topic_name ON docs_graph."Topic" (name);
