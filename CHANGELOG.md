@@ -7,6 +7,13 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-07-03
+
+### Features
+- **B.1**: RLS client (withTenant, TenantContext, adminTenantContext, shareGuestTenantContext) moved to packages/db for shared use
+- **B.4**: redis and minio refactored to factory functions (createRedis, createMinio) with backwards-compatible singletons
+- **B.3**: package.public.json updated with subpath exports for db/client, db/with-tenant, backend/lib/redis, backend/lib/minio, backend/lib/logger
+
 ## [0.1.6] - 2026-07-02
 
 ### Fixed

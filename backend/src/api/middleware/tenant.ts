@@ -34,31 +34,16 @@
 
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
+import type { TenantContext } from "../../lib/with-tenant";
+import {
+	adminTenantContext,
+	shareGuestTenantContext,
+	ZERO_UUID,
+} from "../../lib/with-tenant";
 
-/**
- * Tenant context type — defined here (rather than in `@hiai-docs/db`)
- * so importing the type does NOT trigger the package's `index.ts`
- * re-evaluation. `packages/db/src/index.ts` re-exports from `./client`,
- * which constructs the Drizzle client and walks the schema. The
- * HNSW index in the schema triggers a JSON parse error under
- * `drizzle-orm/pg-core/indexes.js` when the schema is loaded without
- * a real DB connection (e.g. inside the integration test harness
- * where postgres is mocked). Keeping the type local to the backend
- * avoids that path for callers that only need the type.
- */
-export interface TenantContext {
-	userId: string;
-	role: "admin" | "user" | "none";
-}
-
-/**
- * `00000000-0000-0000-0000-000000000000` — the UUID sentinel used as
- * `current_user_id` when the request is unauthenticated or has no
- * resolvable user. RLS policies evaluate this sentinel as `no rows
- * match`, which is the correct fail-closed behavior for anonymous
- * traffic against a tenant table.
- */
-export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+export type { TenantContext };
+// Re-export from the canonical source in @hiai-docs/db/with-tenant
+export { adminTenantContext, shareGuestTenantContext };
 
 /**
  * Resolve the caller's `TenantContext` from the request headers.
@@ -88,37 +73,5 @@ export async function buildTenantContext(
 	return {
 		userId: userId ?? ZERO_UUID,
 		role,
-	};
-}
-
-/**
- * Build an admin context backed by the configured `OWNER_ID`. Used by
- * public share-link lookups: the share token itself acts as the
- * authorization credential, so opening an admin-scoped transaction for
- * the lookup is acceptable (admin can only see what the token points
- * at, and only via the limited share-link query in `shareTokenAccessForDocument`).
- *
- * For read-only document/folder hydration under a share token, callers
- * should instead resolve `link.createdBy` and pass that as the user id
- * with role `'user'` so subsequent queries run with the owner's RLS
- * scope (which is the same data the share link was created against).
- */
-export function adminTenantContext(): TenantContext {
-	return {
-		userId: config.OWNER_ID,
-		role: "admin",
-	};
-}
-
-/**
- * Build a "share guest" context — i.e. one that has no real userId but
- * is being authorized via a share link. The `userId` is the link's
- * `createdBy` (the document owner), so subsequent queries against
- * `documents` / `folders` run with that owner's RLS scope.
- */
-export function shareGuestTenantContext(ownerId: string): TenantContext {
-	return {
-		userId: ownerId,
-		role: "user",
 	};
 }

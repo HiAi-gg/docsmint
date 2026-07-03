@@ -2,37 +2,25 @@ import { Client } from "minio";
 import { config } from "./config";
 import { logger } from "./logger";
 
-export const minio = new Client({
-	endPoint: config.MINIO_ENDPOINT,
-	port: config.MINIO_PORT,
-	useSSL: false,
-	accessKey: config.MINIO_ACCESS_KEY,
-	secretKey: config.MINIO_SECRET_KEY,
-	region: "us-east-1",
-});
+export interface MinioConfig {
+	endpoint: string;
+	port: number;
+	accessKey: string;
+	secretKey: string;
+	useSSL: boolean;
+	region: string;
+}
 
-/**
- * Public-facing MinIO client used to sign presigned URLs.
- *
- * MinIO validates the URL signature against the Host header at request time,
- * so a URL signed for the Docker-internal `minio:9000` endpoint is rejected
- * (403) when the browser fetches it via `localhost:9020`. This client signs
- * against the browser-resolvable host/port instead.
- *
- * Note: `region` is required explicitly. Without it, minio-js issues a HEAD
- * request for region auto-detection, which fail with ECONNREFUSED inside the
- * container because the public host/port (localhost:9020) is unreachable.
- */
-export const minioPublic = new Client({
-	endPoint: config.MINIO_PUBLIC_ENDPOINT,
-	port: config.MINIO_PUBLIC_PORT,
-	useSSL: false,
-	accessKey: config.MINIO_ACCESS_KEY,
-	secretKey: config.MINIO_SECRET_KEY,
-	region: "us-east-1",
-});
-
-export const BUCKET = config.MINIO_BUCKET;
+export function createMinio(cfg: MinioConfig): Client {
+	return new Client({
+		endPoint: cfg.endpoint,
+		port: cfg.port,
+		useSSL: cfg.useSSL,
+		accessKey: cfg.accessKey,
+		secretKey: cfg.secretKey,
+		region: cfg.region,
+	});
+}
 
 export async function ensureBucket(
 	client: Client,
@@ -44,3 +32,31 @@ export async function ensureBucket(
 		logger.info({ bucket }, "Created MinIO bucket");
 	}
 }
+
+// Backwards-compatible optional singletons:
+const defaultMinioConfig: MinioConfig = {
+	endpoint: config.MINIO_ENDPOINT,
+	port: config.MINIO_PORT,
+	accessKey: config.MINIO_ACCESS_KEY,
+	secretKey: config.MINIO_SECRET_KEY,
+	useSSL: false,
+	region: "us-east-1",
+};
+
+const defaultMinioPublicConfig: MinioConfig = {
+	endpoint: config.MINIO_PUBLIC_ENDPOINT,
+	port: config.MINIO_PUBLIC_PORT,
+	accessKey: config.MINIO_ACCESS_KEY,
+	secretKey: config.MINIO_SECRET_KEY,
+	useSSL: false,
+	region: "us-east-1",
+};
+
+if (!config.MINIO_ENDPOINT) throw new Error("MINIO_ENDPOINT is required");
+if (!config.MINIO_PUBLIC_ENDPOINT)
+	throw new Error("MINIO_PUBLIC_ENDPOINT is required");
+
+export const minio: Client = createMinio(defaultMinioConfig);
+export const minioPublic: Client = createMinio(defaultMinioPublicConfig);
+
+export const BUCKET = config.MINIO_BUCKET;

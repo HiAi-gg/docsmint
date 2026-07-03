@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/hiai-docs",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "type": "module",
   "license": "MIT",
   "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
@@ -41,6 +41,30 @@
     "./schema": {
       "import": "./packages/db/src/schema.ts",
       "types": "./packages/db/src/schema.ts"
+    },
+    "./db": {
+      "import": "./packages/db/src/index.ts",
+      "types": "./packages/db/src/index.ts"
+    },
+    "./db/client": {
+      "import": "./packages/db/src/client.ts",
+      "types": "./packages/db/src/client.ts"
+    },
+    "./db/with-tenant": {
+      "import": "./packages/db/src/with-tenant.ts",
+      "types": "./packages/db/src/with-tenant.ts"
+    },
+    "./backend/lib/redis": {
+      "import": "./backend/src/lib/redis.ts",
+      "types": "./backend/src/lib/redis.ts"
+    },
+    "./backend/lib/minio": {
+      "import": "./backend/src/lib/minio.ts",
+      "types": "./backend/src/lib/minio.ts"
+    },
+    "./backend/lib/logger": {
+      "import": "./backend/src/lib/logger.ts",
+      "types": "./backend/src/lib/logger.ts"
     }
   },
   "bin": {
@@ -52,6 +76,7 @@
     "packages/db/src",
     "packages/cli/src",
     "packages/mcp-server/src",
+    "backend/src",
     "README.md",
     "LICENSE"
   ],

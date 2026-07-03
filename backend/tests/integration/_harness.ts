@@ -673,6 +673,23 @@ mock.module("../../src/lib/db.js", () => ({
   withTransaction: (fn: any) => fn(mockDb),
 }));
 
+// Safety mock: prevent real DB connection when tests transitively load
+// @hiai-docs/db/with-tenant (via the backend re-export chain). Without this,
+// loading with-tenant.ts triggers client.ts → schema walk → HNSW index
+// JSON parse error (no Postgres available in test environment).
+mock.module("@hiai-docs/db/client", () => ({
+  db: mockDb,
+  client: (() => {
+    throw new Error(
+      "@hiai-docs/db/client stub invoked in tests — DB should be mocked",
+    );
+  }) as any,
+}));
+
+mock.module("@hiai-docs/db", () => ({
+  db: mockDb,
+}));
+
 // Stateful in-memory store backing the redis mock. `set` writes here,
 // `get` reads here, `del` removes from here, and `scan` walks here so
 // `invalidateDocCache` (which uses SCAN to clear all per-user variants
