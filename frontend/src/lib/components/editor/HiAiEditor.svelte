@@ -1,8 +1,8 @@
 <script lang="ts">
-import type { Snippet } from "svelte";
 import type { JSONContent } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import type { Snippet } from "svelte";
 import { onDestroy, onMount, untrack } from "svelte";
 import { createEditor, type Editor, EditorContent } from "svelte-tiptap";
 import type { CollaborationSession } from "$lib/collaboration";
@@ -47,7 +47,9 @@ const {
 	 * </HiAiEditor>
 	 * ```
 	 */
-	toolbarExtensions?: Snippet<[{ editor: import("@tiptap/core").Editor | null }]> | null;
+	toolbarExtensions?: Snippet<
+		[{ editor: import("@tiptap/core").Editor | null }]
+	> | null;
 } = $props();
 
 let editorStore: ReturnType<typeof createEditor> | null = null;

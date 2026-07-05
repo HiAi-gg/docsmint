@@ -32,6 +32,7 @@ import {
 import { marked } from "marked";
 import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
+import { docTabRegistry } from "$lib";
 import { ApiError, apiFetch } from "$lib/api/client";
 import { deleteDocument, updateDocument } from "$lib/api/documents";
 import { createFolder, listFolders } from "$lib/api/folders";
@@ -55,7 +56,6 @@ import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
-import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
 
 const { data } = $props();
 
@@ -68,6 +68,9 @@ let showMenu = $state(false);
 // "editor" is always the default/built-in tab; extension tabs are appended
 // by registerDocTab() calls in the consuming project's layout.
 let activeTab = $state("editor");
+const sortedTabs = $derived(
+	[...docTabRegistry].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+);
 let loading = $state(true);
 let error = $state<string | null>(null);
 let showShareDialog = $state(false);
@@ -153,7 +156,7 @@ function buildFolderTreeList(
 		if (!byParent.has(pId)) {
 			byParent.set(pId, []);
 		}
-		byParent.get(pId)!.push(f);
+		byParent.get(pId)?.push(f);
 	}
 	for (const [_, list] of byParent.entries()) {
 		list.sort((a, b) => a.name.localeCompare(b.name));
@@ -346,7 +349,7 @@ async function handleSaveAsConfirm(
 				method: "POST",
 			},
 		);
-		if (copy && copy.id) {
+		if (copy?.id) {
 			await apiFetch(`/api/documents/${copy.id}`, {
 				method: "PATCH",
 				body: JSON.stringify({
@@ -386,7 +389,7 @@ function handleExportDocx() {
 		const schema = getSchema(editorExtensions);
 		const docNode = Node.fromJSON(schema, json);
 		const wordDoc = customSerializer.serialize(docNode, {
-			getImageBuffer(src) {
+			getImageBuffer(_src) {
 				return new Uint8Array(0);
 			},
 			sections: [{ properties: {} }],
@@ -857,13 +860,18 @@ $effect(() => {
         >
           Editor
         </button>
-        {#each docTabRegistry as tab (tab.id)}
+        {#each sortedTabs as tab (tab.id)}
           <button
             class="doc-tab"
             class:active={activeTab === tab.id}
+            disabled={tab.disabled}
             onclick={() => (activeTab = tab.id)}
             type="button"
           >
+            {#if tab.icon}
+              {@const Icon = tab.icon}
+              <Icon size={14} class="mr-1.5 shrink-0" />
+            {/if}
             {tab.label}
           </button>
         {/each}
@@ -1063,7 +1071,7 @@ $effect(() => {
           {/if}
         {:else}
           <!-- Extension tab panels registered by external projects -->
-          {#each docTabRegistry as tab (tab.id)}
+          {#each sortedTabs as tab (tab.id)}
             {#if activeTab === tab.id}
               {@const TabPanel = tab.component}
               <TabPanel
@@ -1428,6 +1436,17 @@ $effect(() => {
   .doc-tab.active {
     color: var(--foreground);
     border-bottom-color: var(--primary);
+  }
+
+  .doc-tab:disabled {
+    color: var(--muted-foreground);
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .doc-tab :global(svg) {
+    margin-right: 6px;
+    flex-shrink: 0;
   }
 
   /* Editor main area */

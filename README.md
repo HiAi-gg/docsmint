@@ -570,6 +570,16 @@ or use the session cookie from Better Auth for user-facing flows.
 
 Full schema: [docs/API.md](docs/API.md) · OpenAPI JSON: [docs/openapi.json](docs/openapi.json)
 
+### UI Extension Points (submodule customization)
+
+External projects (such as commercial forks using hiai-docs as a Git submodule) can cleanly customize the editor formatting toolbar and register custom document view tabs without modifying core files:
+
+- **Editor Toolbar Snippet**: Inject custom buttons or dropdown menus (e.g. AI draft generation tools).
+- **Document View Tabs**: Register new custom tabs (e.g. live HTML preview, metadata dashboards, PDF renderers) next to the default Editor tab.
+
+For step-by-step setup guides, component interfaces, and complete API references, see [docs/EXTENDING.md](docs/EXTENDING.md).
+
+
 ### MCP Server (AI agents)
 
 For AI coding assistants that support the Model Context Protocol (Claude, Cursor, etc.),

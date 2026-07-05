@@ -12,6 +12,11 @@
  *   import { registerDocTab } from "$lib/stores/doc-tab-registry.svelte";
  *   import HtmlRenditionPanel from "./HtmlRenditionPanel.svelte";
  *   registerDocTab({ id: "html-rendition", label: "HTML Preview", component: HtmlRenditionPanel });
+ *
+ * STABILITY NOTICE:
+ * The interfaces `DocTabPanelProps` and `DocTabDefinition` and functions/states
+ * `registerDocTab` and `docTabRegistry` are considered stable public APIs.
+ * Breaking changes to these will be announced as major version bumps.
  */
 
 import type { Component } from "svelte";
@@ -45,6 +50,19 @@ export interface DocTabDefinition {
 	 * It receives DocTabPanelProps as props.
 	 */
 	component: Component<DocTabPanelProps>;
+	/**
+	 * Optional sort order. Tabs with smaller values are shown first.
+	 * Default is 0.
+	 */
+	order?: number;
+	/**
+	 * Optional icon component (e.g. from Lucide-Svelte) rendered next to the tab label.
+	 */
+	icon?: any;
+	/**
+	 * Optional flag to disable the tab button (renders greyed out and unclickable).
+	 */
+	disabled?: boolean;
 }
 
 /**

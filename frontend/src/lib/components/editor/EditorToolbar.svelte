@@ -1,6 +1,5 @@
 <!-- EditorToolbar.svelte — Formatting toolbar for TipTap editor -->
 <script lang="ts">
-import type { Snippet } from "svelte";
 import type { Editor } from "@tiptap/core";
 // biome-ignore lint/style/useImportType: Bold is used as a value in the Svelte template
 import {
@@ -36,6 +35,7 @@ import {
 	Undo,
 	X,
 } from "lucide-svelte";
+import type { Snippet } from "svelte";
 import {
 	isFileSizeAllowed,
 	isImageFile,
