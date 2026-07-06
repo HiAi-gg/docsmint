@@ -140,6 +140,8 @@
   "theme_dark": "Dark",
   "theme_system": "System",
   "settings_email": "Email",
+  "settings_email_change_warning": "Changing your email will affect how you log in. Make sure you have access to the new email address.",
+  "settings_invalid_email": "Please enter a valid email address",
   "settings_name": "Name",
   "settings_save": "Save changes",
   "settings_saved": "Settings saved",
