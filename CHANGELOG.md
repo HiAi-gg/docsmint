@@ -7,6 +7,24 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-07
+
+### Fixed
+
+- **GraphRAG N1 — graph route (`graph.ts`) cypher bind parameter**: `fetchDocumentEntities` in `backend/src/api/routes/graph.ts` used the postgres-js tagged-template form `sql\`...${...}\`` which passes the cypher string as a bind parameter (`$1`). AGE's `cypher()` rejects bind parameters — it requires a literal dollar-quoted string constant. Replaced with `sql.unsafe()` using `$$ ... $$` dollar-quoting, matching the pattern used in `search-expansion.ts` (G7 fix), `extract-entities.ts`, and `admin.ts`.
+- **docs/GRAPHRAG_AUDIT.md**: Post-Audit Resolution table updated with N1 fix documentation; remaining risks section cleaned to remove false claims of unresolved CRITICAL/HIGH items.
+- **docs/PRODUCTION_STATUS.md**: Updated to v0.2.1 verified status, removing stale v0.1.8 references.
+- **docs/openapi.json**: Stale version `0.1.9` corrected to `0.2.1`.
+- **packages/sdk/package.json**: Stale version `0.1.9` corrected to `0.2.1`.
+
+### Added
+
+- **Test coverage for N1**: `backend/src/__tests__/graph-routes.test.ts` (3 tests) — verifies `sql.unsafe()` is called with `$$` dollar-quoted cypher, graceful return of `[]` when AGE is unreachable, and special-character docId escaping via JSON.stringify.
+
+### Changed
+
+- All workspace packages, CLI, MCP server, Swagger/OpenAPI spec, and docs version references updated to `0.2.1`.
+
 ## [0.2.0] - 2026-07-07
 
 ### Breaking Changes

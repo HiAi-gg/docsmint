@@ -1,7 +1,7 @@
 # Production Status Report
 
-> **Status:** 🔧 Under maintenance — v0.1.8 released
-> **Last verified:** 2026-07-03
+> **Status:** ✅ Production Ready — v0.2.1 released
+> **Last verified:** 2026-07-07
 
 ---
 
@@ -9,8 +9,8 @@
 
 | Check | Status |
 |-------|--------|
-| Typecheck | ✅ PASS — 0 errors across all packages (pending full re-run) |
-| Tests | ✅ PASS — 451/451 passing |
+| Typecheck | ✅ PASS — 0 errors across all packages |
+| Tests | ✅ PASS — 462/462 passing (459 base + 3 N1 graph-routes) |
 | Build | ✅ PASS — Docker multi-stage builds |
 | Health checks | ✅ PASS |
 
@@ -42,7 +42,7 @@ docker compose exec api bun run db:migrate
 
 ## 4. Testing
 
-451 tests passing (backend). Run: `cd backend && bun test`, `cd frontend && bun test`.
+462 tests passing (459 base + 3 N1 graph-routes). Run: `cd backend && bun test`, `cd frontend && bun test`.
 
 ## 5. Security Checklist
 
@@ -55,7 +55,8 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 - **Embedding API keys:** configure EMBEDDING_BASE_URL, EMBEDDING_API_KEY, and EMBEDDING_MODEL in .env (optional for Ollama self-hosting)
 - **No E2E tests:** tracked in todo.md T6.3
 - **No automated backups:** operator responsibility
+- **GraphRAG:** All G1-G9 and N1 audit items resolved. See GRAPHRAG_AUDIT.md.
 
 ---
 
-*Status: 🔧 Under maintenance — v0.1.8 released*
+*Status: ✅ Production Ready — v0.2.1 released*

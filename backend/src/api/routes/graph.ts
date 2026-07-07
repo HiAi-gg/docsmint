@@ -257,12 +257,15 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
 		   OR e:Topic IS NOT NULL
 		RETURN labels(e) AS labels, e.name AS name
 	`;
-	const rows = await sql<Array<{ labels: string; name: string }>>`
-		SELECT * FROM cypher('docs_graph', ${cypherDocReplace(cypher, docId)}) AS (
-			labels agtype,
-			name agtype
-		)
-	`;
+	// AGE's cypher() requires a literal dollar-quoted string constant,
+	// not a bind parameter — see search-expansion.ts and admin.ts for
+	// the same pattern.  cypherDocReplace already escapes $docId via
+	// JSON.stringify, so inlining is safe.
+	const queryStr = `SELECT * FROM cypher('docs_graph', $$ ${cypherDocReplace(cypher, docId)} $$) AS (labels agtype, name agtype)`;
+	const rows = (await sql.unsafe(queryStr)) as Array<{
+		labels: string;
+		name: string;
+	}>;
 
 	const out: EntityRef[] = [];
 	for (const row of rows) {
@@ -471,3 +474,11 @@ function stripQuotes(value: string): string {
  * without reaching into `init.ts`.
  */
 export type { RelatedDoc };
+
+/**
+ * Test-only export of fetchDocumentEntities so unit tests can verify
+ * that the cypher query is sent via sql.unsafe() with dollar-quoting
+ * rather than as a postgres-js bind parameter. Not part of the public
+ * API surface — prefixed with underscore per project convention.
+ */
+export { fetchDocumentEntities as _fetchDocumentEntitiesForTests };

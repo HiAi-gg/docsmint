@@ -1,7 +1,10 @@
 # GraphRAG Infrastructure Audit — hiai-docs
 
+> **⚠️ Historical audit (v0.1.1). All findings resolved by v0.2.1.**
 > **Note:** This audit was performed at HEAD `724686c` (v0.1.1). Some items were addressed in the v0.1.1 release. See status annotations below.
 > **Audit date:** 2026-07-01, HEAD `724686c` (v0.1.1)
+>
+> **All G1–G9 and N1 are ✅ Resolved as of v0.2.1 (2026-07-07).** The Post-Audit Resolution table below documents each fix. The "Verdict" and per-item descriptions above are historical — they reflect the broken state found during the audit, not the current codebase.
 > **Method:** live DB probes on `:5437` + source code analysis of `backend/src/lib/graph/`, `backend/src/api/routes/{search,graph,admin}.ts`, `backend/src/embedding/`, `packages/db/src/schema.ts`, `postgres/`
 > **Nothing was modified** — analysis only.
 
@@ -164,4 +167,66 @@ Config schema defaults to `false`, but `.env.example:56-57` sets both graph flag
 
 ---
 
-*File created by audit agent. No repository files were modified.*
+---
+
+## Post-Audit Resolution
+
+| Item | Status | Date | Notes |
+|------|--------|------|-------|
+| **G1** — AGE `session_preload_libraries` | ✅ Fixed | 2026-07-01 | Added to `postgres/init.sql` |
+| **G2** — Ollama endpoint misconfigured | ✅ Fixed | 2026-07-01 | `.env.example` corrected to `GRAPH_EXTRACT_BASE_URL=http://localhost:11434/v1` |
+| **G3** — HNSW index bypass in search | ✅ Fixed | 2026-07-01 | Two-stage query rewrites |
+| **G4** — No indexes on AGE `name` columns | ✅ Fixed | 2026-07-01 | Btree indexes added to `graph/migrations/001_init.sql` |
+| **G5** — DiskANN index never applied | ✅ Fixed | 2026-07-01 | Added to `packages/db/src/schema.ts` |
+| **G6** — `hiai_app` search_path wrong order | ✅ Fixed | 2026-07-01 | `ALTER ROLE hiai_app SET search_path = public, ag_catalog` |
+| **G7** — postgres-js parameterized cypher | ✅ Fixed | 2026-07-01 | `search-expansion.ts` now uses `sql.unsafe()` with `$$` dollar-quoting |
+| **G8** — Graph flags default `true` in `.env.example` | ✅ Fixed | 2026-07-01 | Both flags set to `false` |
+| **G9** — Entity persistence not transactional | ✅ Fixed | 2026-07-01 | `persistEntities` wraps all cypher writes in `sql.begin(async (tx) => { ... })` |
+
+### N1. Graph route (`graph.ts`) cypher bind parameter — found & fixed
+
+- **Found:** 2026-07-07, during post-audit code review of all remaining cypher call sites.
+- **Issue:** `fetchDocumentEntities` in `backend/src/api/routes/graph.ts:260-261` used the postgres-js tagged-template form `sql\`SELECT * FROM cypher('docs_graph', ${...})\``, which passes the cypher string as a bind parameter (`$1`). AGE's `cypher()` function inspects its second argument lexically and **rejects** bind parameters — it requires a literal dollar-quoted string constant.
+- **Root cause:** The `graph.ts` route was added after the initial `search-expansion.ts` fix (G7) and didn't follow the same pattern. The codebase had three existing safe examples (`search-expansion.ts`, `extract-entities.ts`, `admin.ts`), but the graph route was never refactored to match.
+- **Fix:** Replaced the tagged-template with `sql.unsafe()` using `$$ ... $$` dollar-quoting:
+  ```typescript
+  // Before (broken — bind parameter):
+  const rows = await sql<Array<...>>`
+      SELECT * FROM cypher('docs_graph', ${cypherDocReplace(cypher, docId)}) AS (...)
+  `;
+
+  // After (safe — dollar-quoted literal):
+  const queryStr = `SELECT * FROM cypher('docs_graph', $$ ${cypherDocReplace(cypher, docId)} $$) AS (...)`;
+  const rows = (await sql.unsafe(queryStr)) as Array<...>;
+  ```
+- **Escaping preserved:** `cypherDocReplace` still uses `JSON.stringify(docId)` to escape the Zod-validated UUID — same level of injection safety as before.
+- **Test coverage:** `backend/src/__tests__/graph-routes.test.ts` (3 tests):
+  1. Verifies `sql.unsafe()` is called with `$$` dollar-quoted cypher and no `$1` bind param
+  2. Verifies graceful return of `[]` when AGE is unreachable
+  3. Verifies special-character docIds are JSON-stringify-escaped correctly
+- **Verification:**
+  ```bash
+  # Run the N1-specific tests
+  cd /mnt/ai_data/projects/hiai-docs
+  bun test backend/src/__tests__/graph-routes.test.ts --path-ignore-patterns="*node_modules*"
+  # → 3 pass, 0 fail
+
+  # Full test suite
+  bun test --path-ignore-patterns="*node_modules*"
+  # → pre-existing passing suite
+
+  # Typecheck
+  bun run typecheck
+  ```
+
+### Remaining risks
+
+| Risk | Severity | Notes |
+|------|----------|-------|
+| **No running AGE session** | 🔴 Critical | G1 fix (ALTER DATABASE SET session_preload_libraries) requires a PG restart or new connection to take effect. Until then, G1 is "fixed in code" but not "deployed." |
+| **No production deploy** | 🟡 Medium | All fixes are code-level. No deployment to a running production instance has been performed. |
+| **Query plan regression (G3)** | 🟡 Medium | The two-stage query fix for HNSW index usage was not verified with an `EXPLAIN ANALYZE` on a production-sized dataset. |
+| **Bun test flakiness** | 🟢 Low | The mock.module approach may be sensitive to test ordering if a sibling test pre-loads the graph/init module before mock.module can intercept it. |
+| **Embedding fallback (G2)** | 🟢 Low | If `GRAPH_EXTRACT_BASE_URL` is not set and `EMBEDDING_BASE_URL` is an embedding endpoint (not chat-compatible), the extraction LLM call fails with a confusing error. |
+
+*Audit created 2026-07-01 by audit agent. Resolution entries updated 2026-07-07 (v0.2.1).*
