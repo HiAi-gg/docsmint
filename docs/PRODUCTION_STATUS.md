@@ -1,6 +1,6 @@
 # Production Status Report
 
-> **Status:** ✅ Production Ready — v0.2.1 released
+> **Status:** ✅ Production Ready — v0.2.2 released
 > **Last verified:** 2026-07-07
 
 ---
@@ -10,7 +10,7 @@
 | Check | Status |
 |-------|--------|
 | Typecheck | ✅ PASS — 0 errors across all packages |
-| Tests | ✅ PASS — 462/462 passing (459 base + 3 N1 graph-routes) |
+| Tests | ✅ PASS — 462/462 passing (backend/core + frontend) |
 | Build | ✅ PASS — Docker multi-stage builds |
 | Health checks | ✅ PASS |
 
@@ -42,7 +42,7 @@ docker compose exec api bun run db:migrate
 
 ## 4. Testing
 
-462 tests passing (459 base + 3 N1 graph-routes). Run: `cd backend && bun test`, `cd frontend && bun test`.
+462 tests passing (backend/core unit + integration + frontend). Run: `cd backend && bun test`, `cd frontend && bun test`.
 
 ## 5. Security Checklist
 
@@ -59,4 +59,4 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 
 ---
 
-*Status: ✅ Production Ready — v0.2.1 released*
+*Status: ✅ Production Ready — v0.2.2 released*

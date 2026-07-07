@@ -7,6 +7,22 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-07
+
+### Fixed
+
+- **README.md — stale GraphRAG health note**: The note referencing "v0.1.8" and the "AGE shared library auto-loading known gap" was replaced with accurate v0.2.2 wording confirming all GraphRAG audit findings (G1–G9, N1) are resolved. GraphRAG remains optional/off by default and requires explicit `GRAPH_EXTRACT_BASE_URL` for production.
+- **docs/PRODUCTION_STATUS.md — test count wording**: Changed "459 base + 3 N1 graph-routes" to the generic "backend/core + frontend" to stay accurate across releases.
+- **Version bump**: All workspace packages, CLI, MCP server, Swagger/OpenAPI spec, and docs updated from `0.2.1` to `0.2.2`.
+
+### Changed
+
+- All workspace `package.json` files, `package.public.json`, `packages/sdk/package.json`, `packages/cli/package.json`, `packages/mcp-server/package.json`, `backend/src/index.ts` (Swagger version), `docs/openapi.json`, and `docs/PRODUCTION_STATUS.md` updated to `0.2.2`.
+
+### Documentation
+
+- Stale `v0.1.8`-era GraphRAG language removed from `README.md`. Historical references left intact only where clearly dated/historical (CHANGELOG entries).
+
 ## [0.2.1] - 2026-07-07
 
 ### Fixed
