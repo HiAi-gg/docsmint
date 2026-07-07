@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/backend",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -31,7 +31,8 @@
     "ioredis": "^5.11.1",
     "mammoth": "^1.9.0",
     "marked": "^18.0.5",
-    "minio": "^8.0.7",
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
     "nanoid": "^5.1.16",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",

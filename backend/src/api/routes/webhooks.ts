@@ -1,22 +1,25 @@
-import { attachments } from "@hiai-docs/db/schema";
-import { eq } from "drizzle-orm";
 import { Elysia } from "elysia";
-import { db } from "../../lib/db";
 import { logger } from "../../lib/logger";
 import { verifyWebhookSignature } from "../middleware/webhook-verify";
 
+/**
+ * DEPRECATED: MinIO webhook receiver.
+ * SeaweedFS does not support MinIO-compatible bucket event notifications.
+ * This route is kept as a no-op stub for API compatibility.
+ * Will be removed in the next major release.
+ */
 export const webhookRoutes = new Elysia({ prefix: "/api/webhooks" }).post(
-	"/minio",
-	async ({ request, body }) => {
+	"/storage",
+	async ({ request }) => {
 		const rawBody = await request.text();
-		const sig = request.headers.get("x-minio-signature");
+		const sig = request.headers.get("x-storage-signature");
 
 		if (!verifyWebhookSignature(rawBody, sig)) {
-			logger.warn("Invalid MinIO webhook signature");
+			logger.warn("Invalid storage webhook signature");
 			return { error: "Invalid signature" };
 		}
 
-		const event = body as Record<string, unknown>;
+		const event = JSON.parse(rawBody) as Record<string, unknown>;
 		const records = (event.Records ?? []) as Array<Record<string, unknown>>;
 
 		for (const record of records) {
@@ -26,15 +29,18 @@ export const webhookRoutes = new Elysia({ prefix: "/api/webhooks" }).post(
 
 			if (!key) continue;
 
-			logger.info({ eventName, key }, "MinIO webhook event");
+			logger.info(
+				{ eventName, key },
+				"Storage webhook event (no-op: SeaweedFS)",
+			);
 
 			if (eventName === "s3:ObjectRemoved:Delete") {
-				await db
-					.delete(attachments)
-					.where(eq(attachments.minioKey, key))
-					.catch((err: unknown) =>
-						logger.error({ err, key }, "Failed to mark attachment deleted"),
-					);
+				// SeaweedFS S3 Gateway does not emit MinIO-compatible bucket
+				// notifications. This path is a no-op stub for API compatibility.
+				logger.info(
+					{ key },
+					"Object removal notification ignored — SeaweedFS does not emit bucket notifications",
+				);
 			}
 		}
 

@@ -57,4 +57,4 @@ In-scope vulnerabilities include:
 - **Secrets**: All configuration via environment variables, zero hardcoded secrets
 - **Encryption**: Passwords hashed with Bun.password (bcrypt)
 - **CSP**: Content Security Policy headers on all pages
-- **Webhook verification**: HMAC-SHA256 signature verification for MinIO webhooks
+- **Webhook verification**: HMAC-SHA256 signature verification for storage webhooks (currently deprecated — SeaweedFS does not emit bucket notifications)

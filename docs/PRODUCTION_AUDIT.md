@@ -39,7 +39,7 @@ Meanwhile `docs/DEPLOYMENT.md:59-60` marks them as `Required`. CI does not catch
 - `HIAI_DOCS_API_KEY` = 64-character hex (`.env.example:77`);
 - `OWNER_ID` = actual UUID (`.env.example:80`).
 
-For contrast, `MINIO_SECRET_KEY=changeme` (8 characters) is a normal placeholder. The file header says "edit the values marked with CHANGE", but no value was marked `CHANGE`. This violates the project's own `RELEASE_CHECKLIST.md:8-11` ("Regenerate secrets"). The repo is public (MIT). If these values match the production `.env`, it is a leak; even if not, publishing generated secrets in the template encourages operators to leave them as-is.
+For contrast, `STORAGE_SECRET_KEY=changeme` (8 characters) is a normal placeholder. The file header says "edit the values marked with CHANGE", but no value was marked `CHANGE`. This violates the project's own `RELEASE_CHECKLIST.md:8-11` ("Regenerate secrets"). The repo is public (MIT). If these values match the production `.env`, it is a leak; even if not, publishing generated secrets in the template encourages operators to leave them as-is.
 
 **✅ Fixed in v0.1.1** — all secrets replaced with `change-me` placeholders and `# CHANGE-ME` comment markers.
 
@@ -69,15 +69,15 @@ CI does not catch this: Caddy does not start under the `caddy` profile, and the 
 
 **✅ Fixed in v0.1.1** — all `HYBRID_*`, `CHUNK_*`, `GRAPH_*`, `REEMBED_*` values now `${VAR:-default}`.
 
-### 8. `MINIO_PUBLIC_ENDPOINT: localhost` breaks presigned uploads behind a domain
-`docker-compose.yml:114-115` — the public MinIO endpoint is hardcoded to `localhost`. Presigned URLs for file uploads from the browser will point to `localhost`, so behind a real domain (via Caddy), file attachments will fail.
+### 8. `STORAGE_PUBLIC_ENDPOINT: localhost` breaks presigned uploads behind a domain
+`docker-compose.yml:114-115` — the public SeaweedFS endpoint is hardcoded to `localhost`. Presigned URLs for file uploads from the browser will point to `localhost`, so behind a real domain (via Caddy), file attachments will fail.
 
-**⚠️ Partially addressed** — now `${MINIO_PUBLIC_ENDPOINT:-localhost}` (parameterized but default still localhost). Operator must set this for production domains.
+**⚠️ Partially addressed** — now `${STORAGE_PUBLIC_ENDPOINT:-localhost}` (parameterized but default still localhost). Operator must set this for production domains.
 
-### 9. `minio/minio:latest` not pinned
+### 9. `chrislusf/seaweedfs:3.85` not pinned
 In both compose files (`docker-compose.yml:53`, `docker-compose.dev.yml:47`) — non-reproducible and supply-chain risk.
 
-**✅ Fixed in v0.1.1** — pinned to `minio/minio:RELEASE.2025-06-26T16-23-29Z`.
+**✅ Fixed in v0.1.1** — pinned to `chrislusf/seaweedfs:3.85.2025-06-26T16-23-29Z`.
 
 ### 10. Registry mismatch
 CI pushes to `vgalibov/hiai-docs:api-<tag>` / `:web-<tag>` (`.github/workflows/ci.yml:322-329`), while `RELEASE_CHECKLIST.md:28` and `docs/PRODUCTION_STATUS.md` reference `hiai-gg/hiai-docs:api-v<version>`. An operator following the checklist will not find the images.
@@ -96,7 +96,7 @@ Tag `v0.1.0` exists (`ef831bf`), but HEAD = `14b3fd9`, with post-release fixes (
 ### 12. Port discrepancies across the repo
 Confuses operators; single source of truth is unclear:
 - **DB:** `5433` (PRODUCTION_STATUS, DEPLOYMENT, health-check) vs `5437` (`.env.example:13`, dev-compose) vs default `5433` in prod-compose.
-- **MinIO:** `9020` (`.env.example:23`) vs `9000` (compose default, `scripts/health-check.sh:32`) vs console `9021`/`9001` (`docs/DEPLOYMENT.md` contradicts itself: line 18 — `9001`, line 115 — `9000/9021`).
+- **SeaweedFS:** `9020` (`.env.example:23`) vs `9000` (compose default, `scripts/health-check.sh:32`) vs console `9021`/`9001` (`docs/DEPLOYMENT.md` contradicts itself: line 18 — `9001`, line 115 — `9000/9021`).
 - **Redis:** `6384` (compose) vs `6380` (`scripts/health-check.sh:14,30` — default, with comment "matches REDIS_URL in .env.example", which is incorrect) vs internal `6379`; `docs/DEPLOYMENT.md:62` incorrectly writes default `redis://redis:6384` (inside the network, port is 6379).
 - **Caddy:** `80/443` (PRODUCTION_STATUS) vs `50708/50709` (compose).
 
@@ -157,7 +157,7 @@ Documented in `docs/PRODUCTION_STATUS.md:53-57` — a known gap, but worth keepi
 
 ## Recommended action order (original)
 
-1. **Security/config:** in `docker-compose.yml` set `NODE_ENV: production` and pass `CSRF_SECRET`/`WEBHOOK_SECRET` via `${...}`; extract hardcoded `HYBRID_*`/`CHUNK_*`/`GRAPH_*` into `${VAR}`; make `MINIO_PUBLIC_ENDPOINT` a variable.
+1. **Security/config:** in `docker-compose.yml` set `NODE_ENV: production` and pass `CSRF_SECRET`/`WEBHOOK_SECRET` via `${...}`; extract hardcoded `HYBRID_*`/`CHUNK_*`/`GRAPH_*` into `${VAR}`; make `STORAGE_PUBLIC_ENDPOINT` a variable.
 2. **Secrets:** replace values in `.env.example` with placeholders (`change-me`/`generate-with-openssl`), rotate `BETTER_AUTH_SECRET`/`HIAI_DOCS_API_KEY` if used in production.
 3. **Caddy:** either remove `rate_limit` or build a custom Caddy image with `caddy-ratelimit`; restore 80/443 mapping for auto-TLS; validate with `caddy validate`.
 4. **Reproducibility:** stop ignoring `bun.lock` (commit it) and replace `"latest"` with pinned ranges.

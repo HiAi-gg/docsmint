@@ -53,30 +53,40 @@ services:
           memory: 256M
           cpus: "0.5"
 
-  # MinIO — S3-compatible object storage for uploaded files (PDFs, etc.).
-  # The fixed 9020/9021 host ports avoid clashing with ai-shared-minio (9010/9011).
-  minio:
-    image: minio/minio:latest
+  # SeaweedFS — S3-compatible object storage for uploaded files (PDFs, etc.).
+  # The fixed 9020/9021 host ports avoid clashing with other services.
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.85
     restart: unless-stopped
     ports:
-      - "9020:9000"
-      - "9021:9001"
+      - "9020:8333"   # S3 Gateway
+      - "9021:8888"   # SeaweedFS Web UI (Filer)
     volumes:
-      - minio_data:/data
-    command: server /data --console-address ":9001"
+      - seaweedfs_data:/data
+    command: >
+      server -s3
+      -s3.port=8333
+      -s3.config=/data/s3.json
+      -filer
+      -filer.port=8888
+      -master.port=9333
+      -volume.port=8080
+      -dir=/data
+      -ip=seaweedfs
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      - SEAWEEDFS_S3_ACCESS_KEY=${STORAGE_ACCESS_KEY:-minioadmin}
+      - SEAWEEDFS_S3_SECRET_KEY=${STORAGE_SECRET_KEY:-minioadmin}
+      - SEAWEEDFS_S3_CORS_ALLOW_ORIGIN=${STORAGE_CORS_ALLOW_ORIGIN:-http://localhost:50701,http://127.0.0.1:50701}
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8333/"]
       interval: 10s
       timeout: 5s
       retries: 5
     deploy:
       resources:
         limits:
-          memory: 256M
-          cpus: "0.5"
+          memory: 512M
+          cpus: "1"
 
   # Backend API (Bun + Hono). Runs db:push on start, then watches src/.
   api:
@@ -95,7 +105,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      seaweedfs:
         condition: service_healthy
     command:
       - sh
@@ -105,13 +115,15 @@ services:
     environment:
       DATABASE_URL: postgresql://${DB_USER:-aiuser}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hiai_docs}
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: 9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-hiai-docs}
-      MINIO_PUBLIC_ENDPOINT: localhost
-      MINIO_PUBLIC_PORT: 9020
+      STORAGE_ENDPOINT: seaweedfs
+      STORAGE_PORT: 8333
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-hiai-docs}
+      STORAGE_PUBLIC_ENDPOINT: localhost
+      STORAGE_PUBLIC_PORT: 9020
+      STORAGE_REGION: us-east-1
+      STORAGE_FORCE_PATH_STYLE: true
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-replace-me}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:50700}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:50701,http://127.0.0.1:50701}
@@ -163,4 +175,4 @@ services:
 volumes:
   pgdata:
   redis_data:
-  minio_data:
+  seaweedfs_data:

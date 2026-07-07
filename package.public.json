@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/hiai-docs",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
@@ -58,9 +58,9 @@
       "import": "./backend/src/lib/redis-factory.ts",
       "types": "./backend/src/lib/redis-factory.ts"
     },
-    "./backend/lib/minio": {
-      "import": "./backend/src/lib/minio-factory.ts",
-      "types": "./backend/src/lib/minio-factory.ts"
+    "./backend/lib/storage": {
+      "import": "./backend/src/lib/storage-factory.ts",
+      "types": "./backend/src/lib/storage-factory.ts"
     },
     "./backend/lib/logger": {
       "import": "./backend/src/lib/logger.ts",
@@ -97,7 +97,7 @@
     "commander": "^13.1.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "ioredis": "^5.4.0",
-    "minio": "^8.0.0",
+    "@aws-sdk/client-s3": "^3.0.0",
     "pino": "^10.0.0",
     "zod": "^4.0.0"
   },
@@ -117,7 +117,7 @@
     "ioredis": {
       "optional": true
     },
-    "minio": {
+    "@aws-sdk/client-s3": {
       "optional": true
     },
     "pino": {

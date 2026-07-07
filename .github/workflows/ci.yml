@@ -191,10 +191,10 @@ jobs:
         run: |
           cp .env.example .env
           # Replace example secrets with deterministic test values
-          sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=ci-validation-secret-32-chars-long-xxx/' .env
-          sed -i 's/^CSRF_SECRET=.*/CSRF_SECRET=ci-csrf-secret-32-chars-long-yyy/' .env
-          sed -i 's/^MINIO_SECRET_KEY=.*/MINIO_SECRET_KEY=ci-minio-secret-32-chars-long-zzz/' .env
-          sed -i 's/^WEBHOOK_SECRET=.*/WEBHOOK_SECRET=ci-webhook-secret-32-chars-long-aaa/' .env
+           sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=ci-validation-secret-32-chars-long-xxx/' .env
+           sed -i 's/^CSRF_SECRET=.*/CSRF_SECRET=ci-csrf-secret-32-chars-long-yyy/' .env
+           sed -i 's/^STORAGE_SECRET_KEY=.*/STORAGE_SECRET_KEY=ci-storage-secret-32-chars-long-zzz/' .env
+           sed -i 's/^WEBHOOK_SECRET=.*/WEBHOOK_SECRET=ci-webhook-secret-32-chars-long-aaa/' .env
 
       # A) Validate docker-compose.yml — catches bad interpolations & schema errors
       - name: Validate docker compose
@@ -249,7 +249,7 @@ jobs:
         env:
           BETTER_AUTH_SECRET: ci-smoke-secret-32-chars-long-bbb
           CSRF_SECRET: ci-csrf-secret-32-chars-long-ccc
-          MINIO_SECRET_KEY: ci-minio-secret-32-chars-long-ddd
+          STORAGE_SECRET_KEY: ci-storage-secret-32-chars-long-ddd
           WEBHOOK_SECRET: ci-webhook-secret-32-chars-long-eee
           DATABASE_URL: postgresql://x:y@127.0.0.1:5432/z
           REDIS_URL: redis://127.0.0.1:6379
@@ -258,7 +258,7 @@ jobs:
         run: |
           # Quick boot check — image must start, listen, and respond to /api/health
           docker run --rm -d --name hiai-docs-api-smoke \
-            -e BETTER_AUTH_SECRET -e CSRF_SECRET -e MINIO_SECRET_KEY \
+            -e BETTER_AUTH_SECRET -e CSRF_SECRET -e STORAGE_SECRET_KEY \
             -e WEBHOOK_SECRET -e DATABASE_URL -e REDIS_URL \
             -e API_PORT -e NODE_ENV \
             -p 50700:50700 hiai-docs/api:ci-${{ github.sha }}

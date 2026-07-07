@@ -624,7 +624,7 @@
         }
       }
     },
-    "/api/webhooks/minio": {
+    "/api/webhooks/storage": {
       "post": {
         "operationId": "postApiWebhooksMinio",
         "responses": {

@@ -37,7 +37,7 @@ docker compose exec api bun run db:migrate
 | 50701 | Frontend |
 | 5437 | PostgreSQL |
 | 6384 | Redis |
-| 9020 | MinIO S3 |
+| 9020 | SeaweedFS S3 |
 | 80/443 | Caddy |
 
 ## 4. Testing

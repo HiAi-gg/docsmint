@@ -17,7 +17,7 @@
 - **DB:** PostgreSQL 18.4 + pgvector (user-scoped via `owner_id`, `tenant_id` reserved)
 - **Vector index (optional):** pgvectorscale StreamingDiskANN with SbqCompression, loaded in the unified PostgreSQL image (see `postgres/Dockerfile`)
 - **Cache:** Redis 8.6+
-- **Storage:** MinIO (S3-compatible)
+- **Storage:** SeaweedFS (S3-compatible)
 - **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; hybrid search `HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine`
 - **GraphRAG:** optional; LLM entity extraction + AGE graph expansion in search. Off by default.
 - **Re-embed invariant:** metadata mutations (tag / folder / category rename and delete) MUST trigger re-embed via `backend/src/lib/reembed.ts`.
@@ -28,7 +28,7 @@
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
 - **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
 - **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
-- **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · MinIO `9000/9021` · Caddy `80/443`
+- **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · SeaweedFS `9020/9021` · Caddy `80/443`
 - **No Playwright** — use `agent-browser` for E2E
 - **English only** in code, comments, docs, README, AGENTS.md (zero Cyrillic)
 
@@ -68,7 +68,7 @@
 | **Database** | PostgreSQL 18.4 + pgvector |
 | **Cache** | Redis 8.6+ |
 | **Auth** | Better Auth |
-| **Storage** | MinIO (S3-compatible) |
+| **Storage** | SeaweedFS (S3-compatible) |
 | **Embeddings** | External embedding API (configurable, optional self-hosted Ollama) |
 | **GraphRAG** | Optional; LLM entity extraction + AGE traversal in search |
 | **Logging** | Pino |
@@ -101,7 +101,7 @@
 curl -fsS http://localhost:50700/api/health
 psql -h localhost -p 5437 -U aiuser -d hiai_docs -c "SELECT NOW();"
 redis-cli -p 6384 ping
-curl -fsS http://localhost:9020/minio/health/live
+curl -fsS http://localhost:9020/
 ```
 
 ## Architecture
@@ -269,7 +269,7 @@ Notable groups:
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
 - **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
-- **Auth secrets:** `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `MINIO_SECRET_KEY` — each must be unique and set explicitly in production
+- **Auth secrets:** `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `STORAGE_SECRET_KEY` — each must be unique and set explicitly in production
 
 Full list with defaults: see `.env.example`.
 
@@ -343,7 +343,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code style, testing, an
 |-----------|-------|------|---------|
 | postgres | hiai-postgres:18-custom | 5437:5432 | Database (pgvector + pgvectorscale + AGE) |
 | redis | redis:8-alpine | 6384:6379 | Cache/queue |
-| minio | minio/minio:RELEASE.2025-06-26T16-23-29Z | 9000:9000, 9021:9001 | File storage |
+| seaweedfs | chrislusf/seaweedfs:3.85 | 9000:8333, 9021:8888 | File storage |
 | api | custom | 50700:50700 | Elysia backend |
 | web | custom | 50701:50701 | SvelteKit frontend |
 | caddy | caddy:2-alpine | 80:80, 443:443 | Reverse proxy (auto-TLS, build with xcaddy + caddy-ratelimit) |
@@ -404,7 +404,7 @@ End every response with a structured `<CLOSURE>` block:
   - `OPENROUTER_API_KEY` / `EMBEDDING_API_KEY` (real production keys)
   - `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET` (auth signing keys)
   - `HIAI_DOCS_API_KEY` (admin API key)
-  - any database or MinIO credential
+  - any database or storage credential
 - **Where to add new variables**: extend `.env.example` (committed, placeholders only) and, if needed, document the variable in `docs/`. The user copies `.env.example` → `.env` and fills in real values themselves.
 - **If a task appears to require editing `.env`** (e.g. "add OPENROUTER_FALLBACK_KEY"): STOP and surface the requirement to the user instead of editing the file. Provide the exact line to add; let the user paste it.
 - **If `.env` already contains a real secret** (e.g. the live OpenRouter key): DO NOT include the secret in any report, checkpoint, memory file, or commit. Reference the variable name only; redact the value.

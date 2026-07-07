@@ -12,13 +12,19 @@ export const envSchema = z.object({
 		.string()
 		.default("postgresql://hiai_app:changeme@localhost:5437/hiai_docs"),
 	REDIS_URL: z.string().default("redis://localhost:6384"),
-	MINIO_ENDPOINT: z.string().default("localhost"),
-	MINIO_PORT: z.coerce.number().default(9020),
-	MINIO_PUBLIC_ENDPOINT: z.string().default("localhost"),
-	MINIO_PUBLIC_PORT: z.coerce.number().default(9020),
-	MINIO_ACCESS_KEY: z.string().default("minioadmin"),
-	MINIO_SECRET_KEY: z.string().default("change-me-to-random-32-chars"),
-	MINIO_BUCKET: z.string().default("hiai-docs"),
+	STORAGE_ENDPOINT: z.string().default("localhost"),
+	STORAGE_PORT: z.coerce.number().default(9020),
+	STORAGE_PUBLIC_ENDPOINT: z.string().default("localhost"),
+	STORAGE_PUBLIC_PORT: z.coerce.number().default(9020),
+	STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
+	STORAGE_SECRET_KEY: z.string().default("change-me-to-random-32-chars"),
+	STORAGE_BUCKET: z.string().default("hiai-docs"),
+	STORAGE_REGION: z.string().default("us-east-1"),
+	STORAGE_FORCE_PATH_STYLE: z
+		.string()
+		.optional()
+		.default("true")
+		.transform((v) => v === "true"),
 	BETTER_AUTH_SECRET: z
 		.string()
 		.min(1, "BETTER_AUTH_SECRET must not be empty")
@@ -40,7 +46,7 @@ export const envSchema = z.object({
 				val !== "change-me-to-random-32-chars",
 			"CSRF_SECRET must be set in production",
 		),
-	// Webhook: dedicated HMAC key — must NOT equal MINIO_SECRET_KEY
+	// Webhook: dedicated HMAC key — must NOT equal STORAGE_SECRET_KEY
 	WEBHOOK_SECRET: z
 		.string()
 		.min(1, "WEBHOOK_SECRET must not be empty")
@@ -73,7 +79,7 @@ export const envSchema = z.object({
 	VERSION_RETENTION_COUNT: z.coerce.number().default(50),
 	// Maximum attachment (image) size in MB enforced by the presigned-upload
 	// endpoints. Default 25 MB — well above the legacy 10 MB ceiling but
-	// still small enough to bound MinIO storage exposure from a single
+	// still small enough to bound SeaweedFS storage exposure from a single
 	// authenticated user. The legacy POST /documents/:id/attachments route
 	// keeps its own 10 MB cap to preserve backwards compatibility.
 	ATTACHMENT_MAX_SIZE_MB: z.coerce.number().int().min(1).max(500).default(25),

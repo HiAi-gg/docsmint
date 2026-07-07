@@ -1,11 +1,18 @@
+import {
+	DeleteObjectCommand,
+	GetObjectCommand,
+	HeadObjectCommand,
+	PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { attachments, documents } from "@hiai-docs/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { config } from "../../lib/config";
 import { logger } from "../../lib/logger";
-import { BUCKET, minio, minioPublic } from "../../lib/minio";
 import { shareTokenAccessForDocument } from "../../lib/share-access";
+import { BUCKET, storage, storagePublic } from "../../lib/storage";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
 import { buildTenantContext } from "../middleware/tenant";
@@ -30,7 +37,7 @@ const PRESIGN_EXPIRY_SECONDS = config.ATTACHMENT_PRESIGN_EXPIRY_SECONDS;
 const INTEGRITY_PROBE_BYTES = 8;
 
 /**
- * Read the first few bytes of an uploaded object back from MinIO and
+ * Read the first few bytes of an uploaded object back from storage and
  * compare them to the source buffer. Returns true on match, false on
  * mismatch, and true (treated as success) if the readback itself fails
  * — we never want a transient readback error to reject a successful
@@ -46,12 +53,22 @@ async function verifyUploadIntegrity(
 	const expected = source.subarray(0, probeLen);
 
 	try {
-		const stream = await minio.getPartialObject(BUCKET, key, 0, probeLen);
-		const chunks: Buffer[] = [];
-		for await (const chunk of stream) {
-			chunks.push(chunk as Buffer);
+		const response = await storage.send(
+			new GetObjectCommand({
+				Bucket: BUCKET,
+				Key: key,
+				Range: `bytes=0-${probeLen - 1}`,
+			}),
+		);
+		const stream = response.Body as ReadableStream;
+		const reader = stream.getReader();
+		const chunks: Uint8Array[] = [];
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			chunks.push(value);
 		}
-		const actual = Buffer.concat(chunks);
+		const actual = Buffer.concat(chunks.map((c) => Buffer.from(c)));
 		if (actual.length !== probeLen) {
 			logger.warn(
 				{ key, expected: probeLen, got: actual.length },
@@ -92,7 +109,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 	// POST /api/documents/:id/attachments/presign
 	//
-	// Returns a presigned MinIO PUT URL that the browser can upload to
+	// Returns a presigned SeaweedFS PUT URL that the browser can upload to
 	// directly. The actual file bytes never traverse this API process,
 	// so the global body-size limit is irrelevant for attachment uploads.
 	//
@@ -164,17 +181,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				};
 			}
 
-			// Generate MinIO key. Reuse the existing naming shape so the
+			// Generate storage key. Reuse the existing naming shape so the
 			// download route (GET /attachments/:id/raw) keeps working for
 			// any old records created before presign was introduced.
 			const ext = filename.split(".").pop() ?? "bin";
 			const key = `${userId}/${documentId}/${nanoid()}.${ext}`;
 
 			try {
-				const url = await minioPublic.presignedPutObject(
-					BUCKET,
-					key,
-					PRESIGN_EXPIRY_SECONDS,
+				const url = await getSignedUrl(
+					storagePublic,
+					new PutObjectCommand({ Bucket: BUCKET, Key: key }),
+					{ expiresIn: PRESIGN_EXPIRY_SECONDS },
 				);
 				return {
 					url,
@@ -193,7 +210,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 	// POST /api/documents/:id/attachments/confirm
 	//
 	// Called by the client AFTER the PUT to the presigned URL succeeds.
-	// Verifies the object exists in MinIO with the expected size before
+	// Verifies the object exists in SeaweedFS with the expected size before
 	// inserting the database row, so we never record a row for an upload
 	// that didn't actually land.
 	//
@@ -282,25 +299,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				};
 			}
 
-			// Verify the object actually exists in MinIO before we record
+			// Verify the object actually exists in SeaweedFS before we record
 			// a row for it. A successful presign + failed PUT (network
 			// blip, user closed tab) should not become a dangling DB row.
-			let stat: Awaited<ReturnType<typeof minio.statObject>>;
+			let headOutput: { ContentLength?: number };
 			try {
-				stat = await minio.statObject(BUCKET, key);
+				headOutput = await storage.send(
+					new HeadObjectCommand({ Bucket: BUCKET, Key: key }),
+				);
 			} catch (err) {
-				logger.warn({ err, key }, "Confirm failed: object not in MinIO");
+				logger.warn({ err, key }, "Confirm failed: object not in storage");
 				set.status = 409;
 				return { error: "Upload not found in storage — please retry upload" };
 			}
 
-			// Sanity-check the size we recorded against the size MinIO
+			// Sanity-check the size we recorded against the size storage
 			// observed. A client that lies about size gets corrected
 			// here so the DB row reflects what was actually stored.
-			const storedSize =
-				typeof stat.size === "number"
-					? stat.size
-					: Number((stat as { size?: number }).size ?? size);
+			const storedSize = headOutput.ContentLength ?? size;
 
 			try {
 				const created = await withTenant(ctx, async (tx) => {
@@ -311,7 +327,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							filename,
 							mimeType: contentType,
 							size: storedSize,
-							minioKey: key,
+							storageKey: key,
 						})
 						.returning();
 					return row ?? null;
@@ -344,7 +360,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 	// POST /api/documents/:id/attachments — Legacy in-process upload
 	//
 	// Kept for backward compatibility (e.g. CLI / API-key clients that
-	// can't reach MinIO directly). New uploads from the editor go through
+	// can't reach storage directly). New uploads from the editor go through
 	// the presigned flow above; this endpoint caps at 10 MB to match its
 	// historical behavior and to keep the per-request memory footprint
 	// bounded.
@@ -408,22 +424,28 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			};
 		}
 
-		// Generate MinIO key
+		// Generate storage key
 		const ext = file.name.split(".").pop() ?? "bin";
 		const key = `${userId}/${documentId}/${nanoid()}.${ext}`;
 
 		try {
-			// Upload to MinIO
+			// Upload to SeaweedFS
 			const arrayBuffer = await file.arrayBuffer();
 			const buffer = Buffer.from(arrayBuffer);
-			await minio.putObject(BUCKET, key, buffer, file.size, {
-				"Content-Type": file.type,
-			});
+			await storage.send(
+				new PutObjectCommand({
+					Bucket: BUCKET,
+					Key: key,
+					Body: buffer,
+					ContentType: file.type,
+					ContentLength: file.size,
+				}),
+			);
 
 			// Defensive integrity check: read the first 8 bytes back from
-			// MinIO and compare to the source buffer. The current pipeline
+			// storage and compare to the source buffer. The current pipeline
 			// (Bun Request.formData() + Buffer.from(arrayBuffer) +
-			// minio.putObject) is binary-safe — empirical round-trip tests
+			// PutObjectCommand) is binary-safe — empirical round-trip tests
 			// confirm no corruption — but a non-text-mode regression in any
 			// of those layers would surface as 0x89 being replaced with
 			// 0xEF 0xBF 0xBD (UTF-8 U+FFFD) for PNG/JPEG high-bit bytes.
@@ -431,12 +453,14 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// network blip) logs a warning but does not fail the upload.
 			const integrityOk = await verifyUploadIntegrity(buffer, key);
 			if (!integrityOk) {
-				await minio.removeObject(BUCKET, key).catch((removeErr) => {
-					logger.error(
-						{ err: removeErr, key },
-						"Failed to clean up corrupted upload",
-					);
-				});
+				await storage
+					.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+					.catch((removeErr) => {
+						logger.error(
+							{ err: removeErr, key },
+							"Failed to clean up corrupted upload",
+						);
+					});
 				set.status = 500;
 				return { error: "Upload integrity check failed" };
 			}
@@ -450,7 +474,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						filename: file.name,
 						mimeType: file.type,
 						size: file.size,
-						minioKey: key,
+						storageKey: key,
 					})
 					.returning();
 				return row ?? null;
@@ -527,7 +551,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 	// DELETE /api/attachments/:id — Remove an attachment
 	//
 	// Verifies the caller owns the document the attachment is attached to
-	// via an inner join, then removes the MinIO object and the DB row.
+	// via an inner join, then removes the storage object and the DB row.
 	// Object removal is best-effort: a missing object (e.g. a row that
 	// was inserted by `confirm` after a partial PUT) still proceeds to
 	// delete the DB row so the user is not left with a phantom record.
@@ -566,7 +590,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			const [r] = await tx
 				.select({
 					id: attachments.id,
-					minioKey: attachments.minioKey,
+					storageKey: attachments.storageKey,
 					ownerId: documents.ownerId,
 				})
 				.from(attachments)
@@ -590,11 +614,13 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		// up out-of-band than a phantom attachment row the user can't
 		// remove.
 		try {
-			await minio.removeObject(BUCKET, row.minioKey);
+			await storage.send(
+				new DeleteObjectCommand({ Bucket: BUCKET, Key: row.storageKey }),
+			);
 		} catch (err) {
 			logger.warn(
-				{ err, key: row.minioKey, attachmentId },
-				"Failed to remove attachment object from MinIO; proceeding to delete DB row",
+				{ err, key: row.storageKey, attachmentId },
+				"Failed to remove attachment object from storage; proceeding to delete DB row",
 			);
 		}
 
@@ -632,7 +658,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 	//
 	// Streaming the bytes after the gate uses the same buffered path the
 	// original public endpoint used. We don't pipe directly into the
-	// Response stream so the existing `minio.getObject` mock in tests
+	// Response stream so the existing `GetObjectCommand` mock in tests
 	// keeps working without needing a second streaming implementation.
 	.get("/attachments/:id/raw", async ({ params, request, set }) => {
 		try {
@@ -662,7 +688,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						id: attachments.id,
 						documentId: attachments.documentId,
 						mimeType: attachments.mimeType,
-						minioKey: attachments.minioKey,
+						storageKey: attachments.storageKey,
 						ownerId: documents.ownerId,
 					})
 					.from(attachments)
@@ -709,12 +735,18 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				}
 			}
 
-			const stream = await minio.getObject(BUCKET, row.minioKey);
-			const chunks: Buffer[] = [];
-			for await (const chunk of stream) {
-				chunks.push(chunk as Buffer);
+			const response = await storage.send(
+				new GetObjectCommand({ Bucket: BUCKET, Key: row.storageKey }),
+			);
+			const stream = response.Body as ReadableStream;
+			const reader = stream.getReader();
+			const chunks: Uint8Array[] = [];
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				chunks.push(value);
 			}
-			const buffer = Buffer.concat(chunks);
+			const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
 			return new Response(buffer, {
 				headers: {
 					"Content-Type": row.mimeType,

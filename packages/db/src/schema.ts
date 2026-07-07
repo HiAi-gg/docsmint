@@ -340,7 +340,7 @@ export const guestAccessRelations = relations(guestAccess, ({ one }) => ({
 }));
 
 // ============================================
-// attachments — file uploads (MinIO)
+// attachments — file uploads (SeaweedFS)
 // ============================================
 export const attachments = pgTable(
   "attachments",
@@ -352,7 +352,7 @@ export const attachments = pgTable(
     filename: text("filename").notNull(),
     mimeType: text("mime_type").notNull(),
     size: bigint("size", { mode: "number" }).notNull(),
-    minioKey: text("minio_key").notNull(),
+    storageKey: text("storage_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [index("attachments_document_id_idx").on(table.documentId)]

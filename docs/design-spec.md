@@ -49,7 +49,7 @@ hiai-docs/
 | Frontend (SvelteKit) | 50701 | Web UI |
 | PostgreSQL | 5437 | Shared ai-core instance |
 | Redis | 6384 | Shared ai-core instance |
-| MinIO | 9000/9021 | Object storage (API + Console) |
+| SeaweedFS | 9000/9021 | Object storage (API + Console) |
 | Caddy | 80/443 | Reverse proxy |
 
 ---
@@ -109,8 +109,8 @@ All tables use `owner_id` for user-scoped isolation. `tenant_id` is reserved (nu
 **guest_access** — Guest email grants
 - id (uuid, PK), share_link_id (FK), guest_email, granted_at
 
-**attachments** — File uploads (MinIO)
-- id (uuid, PK), document_id (FK), filename, mime_type, size (bigint), minio_key, created_at
+**attachments** — File uploads (SeaweedFS)
+- id (uuid, PK), document_id (FK), filename, mime_type, size (bigint), storage_key, created_at
 
 **versions** — Document version history
 - id (uuid, PK), document_id (FK), content (text), content_tipex (jsonb), created_by (FK users), created_at
@@ -188,7 +188,7 @@ Hybrid search combining:
 | `/api/share` | POST | Create share link |
 | `/api/share/:token` | GET | Access shared content |
 | `/api/share/:token` | DELETE | Revoke share link |
-| `/api/attachments` | POST | Upload file to MinIO |
+| `/api/attachments` | POST | Upload file to SeaweedFS |
 | `/api/attachments/:id` | GET | Download attachment |
 
 ### 6.2 Auth
@@ -272,10 +272,10 @@ services:
     image: redis:8-alpine
     ports: ["6384:6379"]
 
-  minio:
-    image: minio/minio:RELEASE.2025-06-26T16-23-29Z
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.85
     ports: ["9000:9000", "9021:9001"]
-    volumes: [minio:/data]
+    volumes: [seaweedfs_data:/data]
     command: server /data --console-address ":9001"
 
   api:
@@ -283,13 +283,13 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     ports: ["50700:50700"]
-    depends_on: [postgres, redis, minio]
+    depends_on: [postgres, redis, seaweedfs]
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/hiai_docs
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: minio
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      STORAGE_ENDPOINT: seaweedfs
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
       NODE_ENV: ${NODE_ENV:-production}
 
   web:
@@ -326,10 +326,10 @@ CSRF_SECRET=change-me-generate-with-openssl-rand-hex-32
 WEBHOOK_SECRET=change-me-generate-new-key-for-webhooks
 CORS_ORIGINS=http://localhost:50701,http://127.0.0.1:50701
 
-# MinIO
-MINIO_ACCESS_KEY=minioadmin
-MINIO_SECRET_KEY=changeme
-MINIO_BUCKET=hiai-docs
+# SeaweedFS
+STORAGE_ACCESS_KEY=minioadmin
+STORAGE_SECRET_KEY=changeme
+STORAGE_BUCKET=hiai-docs
 
 # Embeddings
 EMBEDDING_BASE_URL=http://localhost:11434/api

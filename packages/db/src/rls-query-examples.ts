@@ -441,7 +441,7 @@ async function createAttachment(
   filename: string,
   mimeType: string,
   size: number,
-  minioKey: string
+  storageKey: string
 ) {
   const [att] = await db
     .insert(attachments)
@@ -450,7 +450,7 @@ async function createAttachment(
       filename,
       mimeType,
       size,
-      minioKey,
+      storageKey,
     })
     .returning();
 

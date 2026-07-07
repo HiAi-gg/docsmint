@@ -13,8 +13,7 @@
 #   DB_HOST     default localhost
 #   REDIS_PORT  default 6384  (matches docker-compose.yml default)
 #   OLLAMA_URL  default http://localhost:11434
-#   MINIO_PORT  default 9000
-#   MINIO_HEALTH_PATH  default /minio/health/live
+#   STORAGE_PORT  default 8333
 #
 # Example:
 #   ./scripts/health-check.sh
@@ -29,8 +28,7 @@ DB_USER="${DB_USER:-aiuser}"
 DB_NAME="${DB_NAME:-hiai_docs}"
 REDIS_PORT="${REDIS_PORT:-6384}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
-MINIO_PORT="${MINIO_PORT:-9000}"
-MINIO_HEALTH_PATH="${MINIO_HEALTH_PATH:-/minio/health/live}"
+STORAGE_PORT="${STORAGE_PORT:-8333}"
 
 fail=0
 
@@ -51,14 +49,14 @@ echo "API:        http://localhost:${API_PORT}/api/health"
 echo "PostgreSQL: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 echo "Redis:      localhost:${REDIS_PORT}"
 echo "Ollama:     ${OLLAMA_URL}"
-echo "MinIO:      http://localhost:${MINIO_PORT}${MINIO_HEALTH_PATH}"
+echo "SeaweedFS:  http://localhost:${STORAGE_PORT}/status"
 echo ""
 
 check "API"        "curl -fsS http://localhost:${API_PORT}/api/health"
 check "PostgreSQL" "psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c 'SELECT 1'"
 check "Redis"      "redis-cli -p ${REDIS_PORT} ping"
 check "Ollama"     "curl -fsS ${OLLAMA_URL}/api/tags"
-check "MinIO"      "curl -fsS http://localhost:${MINIO_PORT}${MINIO_HEALTH_PATH}"
+check "SeaweedFS"  "curl -fsS http://localhost:${STORAGE_PORT}/status"
 
 echo ""
 if [ "$fail" -eq 0 ]; then

@@ -32,7 +32,7 @@ import {
 import {
   OTHER_USER_ID,
   OWNER_ID,
-  getMinioMockState,
+  getStorageMockState,
   getState,
   noAuthHeaders,
   ownerHeaders,
@@ -71,14 +71,14 @@ const SUBFOLDER_ID = "00000000-0000-4000-8000-00000000aa11";
 const DOC_IN_SUBFOLDER = "00000000-0000-4000-8000-00000000aa12";
 const ATTACHMENT_ID = "00000000-0000-4000-8000-00000000aa20";
 const OTHER_ATTACHMENT_ID = "00000000-0000-4000-8000-00000000aa21";
-const MINIO_KEY = `${OWNER_ID}/${DOC_ID}/raw-test.png`;
+const STORAGE_KEY = `${OWNER_ID}/${DOC_ID}/raw-test.png`;
 
 function seedAttachment(
   opts: {
     id?: string;
     ownerId?: string;
     documentId?: string;
-    minioKey?: string;
+    storageKey?: string;
     mimeType?: string;
     folderId?: string | null;
   } = {},
@@ -101,7 +101,7 @@ function seedAttachment(
     filename: "raw-test.png",
     mimeType: opts.mimeType ?? "image/png",
     size: 4,
-    minioKey: opts.minioKey ?? MINIO_KEY,
+    storageKey: opts.storageKey ?? STORAGE_KEY,
     // Mirror the production JOIN result so the mock's
     // applyFieldSelection can read `ownerId` directly off the
     // attachments row.
@@ -136,17 +136,17 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetState();
-  getMinioMockState().getObjectShouldThrow = false;
-  getMinioMockState().objectBytes.set(
-    MINIO_KEY,
+  getStorageMockState().getObjectShouldThrow = false;
+  getStorageMockState().objectBytes.set(
+    STORAGE_KEY,
     Buffer.from([0x89, 0x50, 0x4e, 0x47]),
   );
 });
 
 afterEach(() => {
   resetState();
-  getMinioMockState().getObjectShouldThrow = false;
-  getMinioMockState().objectBytes.clear();
+  getStorageMockState().getObjectShouldThrow = false;
+  getStorageMockState().objectBytes.clear();
 });
 
 describe("GET /api/attachments/:id/raw — auth gate", () => {
@@ -258,10 +258,10 @@ describe("GET /api/attachments/:id/raw — share-token path", () => {
     seedAttachment({
       id: OTHER_ATTACHMENT_ID,
       documentId: DOC_IN_SUBFOLDER,
-      minioKey: `${OWNER_ID}/${DOC_IN_SUBFOLDER}/nested.png`,
+      storageKey: `${OWNER_ID}/${DOC_IN_SUBFOLDER}/nested.png`,
       folderId: SUBFOLDER_ID,
     });
-    getMinioMockState().objectBytes.set(
+    getStorageMockState().objectBytes.set(
       `${OWNER_ID}/${DOC_IN_SUBFOLDER}/nested.png`,
       Buffer.from([0x01, 0x02]),
     );
@@ -378,9 +378,9 @@ describe("GET /api/attachments/:id/raw — streaming", () => {
     expect(cache.startsWith("public")).toBe(false);
   });
 
-  it("propagates MinIO getObject failures as 500", async () => {
+  it("propagates storage getObject failures as 500", async () => {
     seedAttachment();
-    getMinioMockState().getObjectShouldThrow = true;
+    getStorageMockState().getObjectShouldThrow = true;
     const res = await request(app, `/api/attachments/${ATTACHMENT_ID}/raw`, {
       headers: ownerHeaders(),
     });

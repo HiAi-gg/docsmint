@@ -11,9 +11,9 @@ hiai-docs/
 │       ├── embedding/    # Embedding pipeline (chunker, providers, queue)
 │       └── lib/          # Shared utilities
 │           ├── redis-factory.ts  # Pure createRedis(cfg) factory — no config dependency
-│           ├── minio-factory.ts   # Pure createMinio(cfg) + ensureBucket() factory
+│           ├── storage-factory.ts   # Pure createObjectStorageClient(cfg) + ensureBucket() factory
 │           ├── redis.ts          # Singleton re-export wrapper (→ redis-factory)
-│           ├── minio.ts          # Singleton re-export wrapper (→ minio-factory)
+│           ├── storage.ts          # Singleton re-export wrapper (→ storage-factory)
 │           ├── with-tenant.ts    # Re-export shim → packages/db/src/with-tenant
 │           └── metrics.ts        # In-process metrics registry
 ├── frontend/             # SvelteKit 2 + Svelte 5 + Tailwind CSS v4
@@ -33,14 +33,14 @@ hiai-docs/
 
 ### Module Boundaries & DI Factories
 
-The `backend/src/lib/` directory uses a **factory pattern** that enables external consumers (e.g. `docsmint`) to reuse Redis and MinIO infrastructure **without coupling to hiai-docs' `.env` validation**:
+The `backend/src/lib/` directory uses a **factory pattern** that enables external consumers (e.g. `docsmint`) to reuse Redis and SeaweedFS infrastructure **without coupling to hiai-docs' `.env` validation**:
 
 | File | Purpose | For external use? |
 |------|---------|-----------------|
 | `redis-factory.ts` | Pure `createRedis(cfg: RedisConfig)` — no `config.ts` import | ✅ Yes — `@hiai-gg/hiai-docs/backend/lib/redis` |
-| `minio-factory.ts` | Pure `createMinio(cfg: MinioConfig)` + `ensureBucket()` | ✅ Yes — `@hiai-gg/hiai-docs/backend/lib/minio` |
+| `storage-factory.ts` | Pure `createStorage(cfg: StorageConfig)` + `ensureBucket()` | ✅ Yes — `@hiai-gg/hiai-docs/backend/lib/storage` |
 | `redis.ts` | Backwards-compatible singleton (calls factory with `config.REDIS_URL`) | Internal only |
-| `minio.ts` | Backwards-compatible singletons (`minio`, `minioPublic`) | Internal only |
+| `storage.ts` | Backwards-compatible singletons (`storage`, `storagePublic`) | Internal only |
 | `with-tenant.ts` | Thin re-export shim → `packages/db/src/with-tenant` | ✅ Yes — `@hiai-gg/hiai-docs/db/with-tenant` |
 | `metrics.ts` | In-process embedding metrics registry | Internal only |
 
@@ -52,7 +52,7 @@ import { withTenant, adminTenantContext } from "@hiai-gg/hiai-docs/db/with-tenan
 
 // Pure factories — no hiai-docs config dependency
 import { createRedis } from "@hiai-gg/hiai-docs/backend/lib/redis";
-import { createMinio } from "@hiai-gg/hiai-docs/backend/lib/minio";
+import { createStorage } from "@hiai-gg/hiai-docs/backend/lib/storage";
 
 // Schema access
 import { documents, folders } from "@hiai-gg/hiai-docs/schema";
@@ -74,14 +74,14 @@ The RLS tenant context (`with-tenant.ts`) lives in `packages/db/` so it can be s
 | UI | shadcn-svelte (new-york) + Tailwind v4 |
 | Editor | TipTap + svelte-tiptap |
 | Embeddings | OpenAI-compatible API (optional) |
-| Storage | MinIO (S3-compatible) |
+| Storage | SeaweedFS (S3-compatible) |
 
 ## Data Flow
 
 ```
 User → SvelteKit Frontend → REST API (Elysia) → PostgreSQL
                                               → Redis (queue/cache)
-                                              → MinIO (attachments)
+                                               → SeaweedFS (attachments)
                                               → [Optional] Embedding API
 ```
 

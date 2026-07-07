@@ -1,3 +1,4 @@
+import { ListBucketsCommand } from "@aws-sdk/client-s3";
 import { cors } from "@elysiajs/cors";
 import { swagger } from "@elysiajs/swagger";
 import { Elysia } from "elysia";
@@ -24,17 +25,17 @@ import { webhookRoutes } from "./api/routes/webhooks";
 import { config } from "./lib/config";
 import { startEmbeddingWorker } from "./lib/embedding-queue";
 import { logger } from "./lib/logger";
-import { BUCKET, ensureBucket, minio } from "./lib/minio";
+import { BUCKET, ensureBucket, storage } from "./lib/storage";
 
 // Start background embedding worker
 startEmbeddingWorker();
 
-ensureBucket(minio, BUCKET).catch((err) => {
-	logger.error({ err }, "Failed to ensure MinIO bucket");
+ensureBucket(storage, BUCKET).catch((err) => {
+	logger.error({ err }, "Failed to ensure storage bucket");
 });
 
 // Global body-size cap. Large attachment uploads NO LONGER pass through
-// this process — they go to MinIO directly via presigned URLs (see
+// this process — they go to SeaweedFS directly via presigned URLs (see
 // /api/documents/:id/attachments/presign) — so this only needs to be big
 // enough for the remaining endpoints (markdown imports, document
 // updates, etc.) while still blocking obviously malicious payloads.
@@ -44,7 +45,7 @@ const CSP_POLICY = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: blob: http://localhost:9020 http://localhost:9000 http://minio:9000",
+	"img-src 'self' data: blob: http://localhost:9020 http://localhost:9000 http://seaweedfs:8333",
 	"connect-src 'self' http://localhost:50700 ws://localhost:50700 http://localhost:9000 http://localhost:9020",
 	"font-src 'self' data:",
 	"frame-ancestors 'none'",
@@ -80,7 +81,7 @@ const swaggerConfig = {
 	documentation: {
 		info: {
 			title: "hiai-docs API",
-			version: "0.1.9",
+			version: "0.2.0",
 			description:
 				"Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
 			contact: { name: "hiai-gg", url: "https://github.com/hiai-gg/hiai-docs" },
@@ -138,11 +139,21 @@ const app = new Elysia()
 			"unknown";
 		const rl = await healthRateLimiter(ip);
 		const headers = rateLimitHeaders(rl.remaining, rl.retryAfter);
+
+		let storageStatus = "unknown";
+		try {
+			await storage.send(new ListBucketsCommand({}));
+			storageStatus = "ok";
+		} catch {
+			storageStatus = "error";
+		}
+
 		return Object.assign(
 			{
 				status: "ok",
 				service: "hiai-docs",
 				timestamp: new Date().toISOString(),
+				storage: storageStatus,
 			},
 			headers,
 		);

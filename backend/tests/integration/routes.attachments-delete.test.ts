@@ -8,8 +8,8 @@
  *   - 401 with an invalid bearer token.
  *   - 404 for an unknown attachment id.
  *   - 403 when the attachment is owned by a different user.
- *   - 200 + DB row removed + MinIO key removed for the owner.
- *   - DB row is still removed when MinIO throws on removeObject (best-effort).
+ *   - 200 + DB row removed + storage key removed for the owner.
+ *   - DB row is still removed when storage throws on removeObject (best-effort).
  *
  * Note: the harness's mock db does not process `innerJoin`, so the test
  * seeds the attachment row with an `ownerId` field directly. The route
@@ -29,7 +29,7 @@ import {
 import {
   OTHER_USER_ID,
   OWNER_ID,
-  getMinioMockState,
+  getStorageMockState,
   getState,
   noAuthHeaders,
   ownerHeaders,
@@ -43,14 +43,14 @@ let app: any;
 const DOC_ID = "00000000-0000-4000-8000-0000000000aa";
 const OTHER_DOC_ID = "00000000-0000-4000-8000-0000000000bb";
 const ATTACHMENT_ID = "00000000-0000-4000-8000-0000000000cc";
-const MINIO_KEY = `${OWNER_ID}/${DOC_ID}/seeded.png`;
+const STORAGE_KEY = `${OWNER_ID}/${DOC_ID}/seeded.png`;
 
 function seedAttachment(
   opts: {
     id?: string;
     ownerId?: string;
     documentId?: string;
-    minioKey?: string;
+    storageKey?: string;
   } = {},
 ) {
   const id = opts.id ?? ATTACHMENT_ID;
@@ -75,7 +75,7 @@ function seedAttachment(
     filename: "seeded.png",
     mimeType: "image/png",
     size: 1024,
-    minioKey: opts.minioKey ?? MINIO_KEY,
+    storageKey: opts.storageKey ?? STORAGE_KEY,
     // Mirrors the `ownerId` the production code reads off the
     // joined documents row. The harness's applyFieldSelection
     // reads this key directly off the attachments row because
@@ -92,19 +92,19 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetState();
-  // Reset minio mock to the happy path. Individual tests that simulate
+  // Reset storage mock to the happy path. Individual tests that simulate
   // failures flip the flags and reset them themselves so they never
   // leak into siblings.
-  getMinioMockState().statObjectShouldThrow = false;
-  getMinioMockState().removeObjectShouldThrow = false;
-  getMinioMockState().removedKeys.length = 0;
+  getStorageMockState().statObjectShouldThrow = false;
+  getStorageMockState().removeObjectShouldThrow = false;
+  getStorageMockState().removedKeys.length = 0;
 });
 
 afterEach(() => {
   resetState();
-  getMinioMockState().statObjectShouldThrow = false;
-  getMinioMockState().removeObjectShouldThrow = false;
-  getMinioMockState().removedKeys.length = 0;
+  getStorageMockState().statObjectShouldThrow = false;
+  getStorageMockState().removeObjectShouldThrow = false;
+  getStorageMockState().removedKeys.length = 0;
 });
 
 describe("DELETE /api/attachments/:id", () => {
@@ -117,9 +117,9 @@ describe("DELETE /api/attachments/:id", () => {
       },
     });
     expect(res.status).toBe(401);
-    // The DB row and MinIO object should both be untouched.
+    // The DB row and storage object should both be untouched.
     expect(getState().attachments.size).toBe(1);
-    expect(getMinioMockState().removedKeys).toEqual([]);
+    expect(getStorageMockState().removedKeys).toEqual([]);
   });
 
   it("returns 403 without auth (CSRF blocks first)", async () => {
@@ -140,7 +140,7 @@ describe("DELETE /api/attachments/:id", () => {
     });
     expect(res.status).toBe(404);
     expect(getState().attachments.size).toBe(1);
-    expect(getMinioMockState().removedKeys).toEqual([]);
+    expect(getStorageMockState().removedKeys).toEqual([]);
   });
 
   it("returns 403 when the attachment belongs to another user", async () => {
@@ -152,10 +152,10 @@ describe("DELETE /api/attachments/:id", () => {
     expect(res.status).toBe(403);
     // The other user's row and object must remain intact.
     expect(getState().attachments.size).toBe(1);
-    expect(getMinioMockState().removedKeys).toEqual([]);
+    expect(getStorageMockState().removedKeys).toEqual([]);
   });
 
-  it("deletes the DB row and removes the MinIO object for the owner", async () => {
+  it("deletes the DB row and removes the storage object for the owner", async () => {
     seedAttachment();
     const res = await request(app, `/api/attachments/${ATTACHMENT_ID}`, {
       method: "DELETE",
@@ -164,22 +164,22 @@ describe("DELETE /api/attachments/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
     expect(getState().attachments.has(ATTACHMENT_ID)).toBe(false);
-    expect(getMinioMockState().removedKeys).toEqual([MINIO_KEY]);
+    expect(getStorageMockState().removedKeys).toEqual([STORAGE_KEY]);
   });
 
-  it("still deletes the DB row if MinIO removeObject throws", async () => {
+  it("still deletes the DB row if storage removeObject throws", async () => {
     seedAttachment();
-    getMinioMockState().removeObjectShouldThrow = true;
+    getStorageMockState().removeObjectShouldThrow = true;
     const res = await request(app, `/api/attachments/${ATTACHMENT_ID}`, {
       method: "DELETE",
       headers: ownerHeaders(),
     });
-    // The 200 is what the user sees; the MinIO failure is logged
+    // The 200 is what the user sees; the storage failure is logged
     // and surfaced as a follow-up cleanup task, not as an error
     // to the caller.
     expect(res.status).toBe(200);
     expect(getState().attachments.has(ATTACHMENT_ID)).toBe(false);
     // removeObject was attempted (and threw) before the DB delete.
-    expect(getMinioMockState().removedKeys).toEqual([MINIO_KEY]);
+    expect(getStorageMockState().removedKeys).toEqual([STORAGE_KEY]);
   });
 });

@@ -19,11 +19,8 @@ curl -X POST http://localhost:50700/api/auth/sign-up \
   -H "Content-Type: application/json" \
   -d '{"name": "User", "email": "user@example.com", "password": "secret"}'
 
-# Get current session
-curl http://localhost:50700/api/auth/session
-
-# Sign out
-curl -X POST http://localhost:50700/api/auth/sign-out
+# Verify health
+curl -fsS http://localhost:50700/api/health
 ```
 
 ## Health
@@ -180,7 +177,7 @@ GET    /api/attachments/:id/raw                  # Stream attachment bytes (gate
 DELETE /api/attachments/:id                       # Remove attachment (auth required)
 ```
 
-Image uploads are stored in MinIO with integrity verification. Max file size: 10 MB. Only `image/*` MIME types accepted.
+Image uploads are stored in SeaweedFS with integrity verification. Max file size: 10 MB. Only `image/*` MIME types accepted.
 
 ```bash
 curl -X POST http://localhost:50700/api/documents/UUID/attachments \
@@ -246,10 +243,10 @@ Messages are JSON: `{ type: "sync" | "update" | "ping", update?: "base64", state
 ## Webhooks
 
 ```
-POST /api/webhooks/minio               # MinIO bucket event webhook
+POST /api/webhooks/storage               # SeaweedFS bucket event webhook
 ```
 
-Verifies `x-minio-signature` header against `WEBHOOK_SECRET`. Currently handles `s3:ObjectRemoved:Delete` events to sync attachment DB records.
+Verifies `x-storage-signature` header against `WEBHOOK_SECRET`. Currently handles `s3:ObjectRemoved:Delete` events to sync attachment DB records.
 
 ## Folders
 

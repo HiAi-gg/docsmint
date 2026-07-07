@@ -10,7 +10,7 @@
  *   - presign validation: filename, contentType, size.
  *   - presign over-cap: 413 when size > ATTACHMENT_MAX_SIZE_MB.
  *   - presign happy path: returns { url, key, maxSize, expiresIn }.
- *   - confirm: 409 when MinIO has no object, 201 when statObject returns.
+ *   - confirm: 409 when storage has no object, 201 when statObject returns.
  *   - confirm rejection: key that doesn't match the user's prefix is rejected.
  *   - confirm inserts a row whose `url` points at /api/attachments/:id/raw.
  */
@@ -26,7 +26,7 @@ import {
 import {
   OTHER_USER_ID,
   OWNER_ID,
-  getMinioMockState,
+  getStorageMockState,
   getState,
   noAuthHeaders,
   ownerHeaders,
@@ -44,15 +44,15 @@ beforeAll(async () => {
 
 beforeEach(() => {
   resetState();
-  // Reset minio mock to the happy path. Individual tests that simulate
+  // Reset storage mock to the happy path. Individual tests that simulate
   // failures flip the flag and reset it themselves so they never leak
   // into siblings.
-  getMinioMockState().statObjectShouldThrow = false;
+  getStorageMockState().statObjectShouldThrow = false;
 });
 
 afterEach(() => {
   resetState();
-  getMinioMockState().statObjectShouldThrow = false;
+  getStorageMockState().statObjectShouldThrow = false;
 });
 
 function seedOwnedDocument(): string {
@@ -291,9 +291,9 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     expect(res.status).toBe(403);
   });
 
-  it("returns 409 when MinIO has no object", async () => {
+  it("returns 409 when storage has no object", async () => {
     const docId = seedOwnedDocument();
-    getMinioMockState().statObjectShouldThrow = true;
+    getStorageMockState().statObjectShouldThrow = true;
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -310,16 +310,16 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     );
     expect(res.status).toBe(409);
     // Reset for any siblings in this `it`.
-    getMinioMockState().statObjectShouldThrow = false;
+    getStorageMockState().statObjectShouldThrow = false;
   });
 
   it("returns 201 and inserts a row on happy path", async () => {
     const docId = seedOwnedDocument();
     const key = `${OWNER_ID}/${docId}/happy.png`;
-    // Pre-populate MinIO's stored-size map so statObject returns a
+    // Pre-populate storage's stored-size map so statObject returns a
     // realistic size — in production this would have been written by
     // the PUT that landed just before this confirm call.
-    getMinioMockState().storedSizes.set(key, 4096);
+    getStorageMockState().storedSizes.set(key, 4096);
 
     const res = await request(
       app,
@@ -349,11 +349,11 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     expect(body.mimeType).toBe("image/png");
     expect(getState().attachments.size).toBe(1);
     const stored = Array.from(getState().attachments.values())[0] as {
-      minioKey: string;
+      storageKey: string;
       documentId: string;
       size: number;
     };
-    expect(stored.minioKey).toBe(key);
+    expect(stored.storageKey).toBe(key);
     expect(stored.documentId).toBe(docId);
     expect(stored.size).toBe(4096);
   });

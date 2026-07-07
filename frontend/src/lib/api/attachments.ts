@@ -31,7 +31,7 @@ interface PresignResponse {
 
 /**
  * Request a presigned PUT URL from the backend. The returned URL is
- * scoped to a single MinIO object and expires after `expiresIn` seconds.
+ * scoped to a single storage object and expires after `expiresIn` seconds.
  * No file bytes cross the wire in this call.
  */
 export function presignAttachment(
@@ -53,7 +53,7 @@ export function presignAttachment(
 
 /**
  * Tell the backend to record an attachment row for an object that has
- * already been PUT to MinIO. The backend verifies the object exists
+ * already been PUT to storage. The backend verifies the object exists
  * before inserting.
  */
 export function confirmAttachment(
@@ -78,11 +78,11 @@ export function confirmAttachment(
 /**
  * Upload an image attachment using the presigned-URL flow:
  *
- *   1. POST /attachments/presign  — get a signed MinIO PUT URL (small JSON).
- *   2. PUT  <presigned URL>        — stream the file bytes to MinIO directly
+ *   1. POST /attachments/presign  — get a signed storage PUT URL (small JSON).
+ *   2. PUT  <presigned URL>        — stream the file bytes to storage directly
  *                                     (NOT through this API process).
  *   3. POST /attachments/confirm   — record the row; backend verifies the
- *                                     object actually exists in MinIO.
+ *                                     object actually exists in storage.
  *
  * The orchestration is transparent to callers — they keep calling
  * `uploadAttachment(documentId, file)` exactly as before. Step 2 never
@@ -95,10 +95,10 @@ export async function uploadAttachment(
 ): Promise<Attachment> {
 	const presign = await presignAttachment(documentId, file);
 
-	// Stream the file to MinIO. We do NOT pass cookies or auth headers —
-	// the presigned URL is the only credential MinIO accepts, and we
+	// Stream the file to storage. We do NOT pass cookies or auth headers —
+	// the presigned URL is the only credential storage accepts, and we
 	// mustn't taint the signature with extra headers. Disable any
-	// default Content-Type the helper might infer; MinIO's signature
+	// default Content-Type the helper might infer; storage's signature
 	// was computed against the original Content-Type we sent in the
 	// presign request (file.type).
 	const putController = new AbortController();
@@ -123,10 +123,10 @@ export async function uploadAttachment(
 	if (!putResponse.ok) {
 		// Mirror the ApiError shape so callers can `catch (e) { e.status }`
 		// uniformly. The original presign is now burnt — the URL will
-		// expire — but no MinIO object was created, so the user can just
+		// expire — but no storage object was created, so the user can just
 		// retry without leaking storage.
 		throw new Error(
-			`MinIO upload failed: ${putResponse.status} ${putResponse.statusText}`,
+			`Storage upload failed: ${putResponse.status} ${putResponse.statusText}`,
 		);
 	}
 

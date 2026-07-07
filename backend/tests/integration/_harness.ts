@@ -597,12 +597,15 @@ mock.module("../../src/lib/config.js", () => ({
     EMBEDDING_FALLBACK_BASE_URL: "",
     EMBEDDING_FALLBACK_API_KEY: "",
     EMBEDDING_FALLBACK_MODEL: "",
-    MINIO_ENDPOINT: "localhost",
-    MINIO_PORT: 9000,
-    MINIO_ACCESS_KEY: "minioadmin",
-    MINIO_SECRET_KEY: "minioadmin",
-    MINIO_BUCKET: "hiai-docs",
-    MINIO_USE_SSL: false,
+    STORAGE_ENDPOINT: "localhost",
+    STORAGE_PORT: 9000,
+    STORAGE_ACCESS_KEY: "minioadmin",
+    STORAGE_SECRET_KEY: "minioadmin",
+    STORAGE_BUCKET: "hiai-docs",
+    STORAGE_REGION: "us-east-1",
+    STORAGE_FORCE_PATH_STYLE: true,
+    STORAGE_PUBLIC_ENDPOINT: "localhost",
+    STORAGE_PUBLIC_PORT: 9000,
     API_PORT: 50700,
     FRONTEND_PORT: 50701,
     CORS_ORIGINS: undefined,
@@ -760,114 +763,126 @@ mock.module("../../src/lib/logger.js", () => ({
   }),
 }));
 
-// Mutable flags for the minio mock. Tests can flip these to simulate
+// Mutable flags for the storage mock. Tests can flip these to simulate
 // transient failures (e.g. an upload that didn't actually land in
-// MinIO). Defaults reflect the "happy path" — statObject returns a
+// storage). Defaults reflect the "happy path" — statObject returns a
 // plausible result so confirm-attachments tests pass without setup.
-const minioMockState: {
+const storageMockState: {
+  putObjectFailNext: boolean;
+  statObjectNotFoundNext: boolean;
   statObjectShouldThrow: boolean;
   presignedPutObjectFailNext: boolean;
+  removeObjectCalls: number;
   removeObjectShouldThrow: boolean;
-  getObjectShouldThrow: boolean;
-  storedSizes: Map<string, number>;
   removedKeys: string[];
+  getObjectFailNext: boolean;
+  getObjectShouldThrow: boolean;
+  getObjectCalls: number;
+  putObjectCalls: number;
+  objectSize: number;
+  objectContent?: string;
   objectBytes: Map<string, Buffer>;
+  storedSizes: Map<string, number>;
 } = {
+  putObjectFailNext: false,
+  statObjectNotFoundNext: false,
   statObjectShouldThrow: false,
   presignedPutObjectFailNext: false,
+  removeObjectCalls: 0,
   removeObjectShouldThrow: false,
-  getObjectShouldThrow: false,
-  storedSizes: new Map(),
   removedKeys: [],
+  getObjectFailNext: false,
+  getObjectShouldThrow: false,
+  getObjectCalls: 0,
+  putObjectCalls: 0,
+  objectSize: 1024,
+  objectContent: undefined,
   objectBytes: new Map(),
+  storedSizes: new Map(),
 };
 // Tests can read this object directly to flip behavior, e.g.
-//   getMinioMockState().statObjectShouldThrow = true;
+//   getStorageMockState().statObjectNotFoundNext = true;
 // The object reference is stable; mutating its properties works even
-// after the route module has already imported its top-level `minio`
-// binding because the mock's statObject CLOSURE reads the property
+// after the route module has already imported its top-level `storage`
+// binding because the mock's send CLOSURE reads the property
 // each call.
-export function getMinioMockState() {
-  return minioMockState;
+export function getStorageMockState() {
+  return storageMockState;
 }
 
-mock.module("../../src/lib/minio.js", () => ({
-  minio: {
-    putObject: async (
-      _bucket: string,
-      key: string,
-      _body: Buffer | string,
-      size?: number,
-    ) => {
-      // Record the size so a subsequent statObject returns the
-      // same value the route's confirm step will read.
-      const recordSize =
-        typeof size === "number"
-          ? size
-          : Buffer.isBuffer(_body)
-            ? _body.length
-            : _body.length;
-      minioMockState.storedSizes.set(key, recordSize);
-      if (Buffer.isBuffer(_body)) minioMockState.objectBytes.set(key, _body);
-      return "etag";
-    },
-    removeObject: async (_bucket: string, key: string) => {
-      minioMockState.removedKeys.push(key);
-      minioMockState.objectBytes.delete(key);
-      if (minioMockState.removeObjectShouldThrow) {
-        throw Object.assign(new Error("Simulated MinIO remove failure"), {
-          code: "InternalError",
-        });
+mock.module("../../src/lib/storage.js", () => ({
+  storage: {
+    send: async (command) => {
+      const cmdName = command.constructor.name;
+      if (cmdName === "PutObjectCommand") {
+        if (storageMockState.putObjectFailNext) {
+          storageMockState.putObjectFailNext = false;
+          throw new Error("Simulated put failure");
+        }
+        storageMockState.putObjectCalls++;
+        return {};
+      } else if (cmdName === "DeleteObjectCommand") {
+        storageMockState.removeObjectCalls++;
+        storageMockState.removedKeys.push(command.input.Key);
+        if (storageMockState.removeObjectShouldThrow) {
+          storageMockState.removeObjectShouldThrow = false;
+          throw new Error("Simulated remove failure");
+        }
+        return {};
+      } else if (cmdName === "HeadObjectCommand") {
+        if (storageMockState.statObjectNotFoundNext) {
+          storageMockState.statObjectNotFoundNext = false;
+          throw new Error("Not found");
+        }
+        if (storageMockState.statObjectShouldThrow) {
+          storageMockState.statObjectShouldThrow = false;
+          throw new Error("Not found");
+        }
+        // Support per-key sizes via storedSizes Map (preferred) and fallback objectSize
+        const key = command.input.Key;
+        const size = storageMockState.storedSizes.get(key) ?? storageMockState.objectSize;
+        return { ContentLength: size };
+      } else if (cmdName === "GetObjectCommand") {
+        storageMockState.getObjectCalls++;
+        if (storageMockState.getObjectFailNext) {
+          storageMockState.getObjectFailNext = false;
+          throw new Error("Simulated get failure");
+        }
+        if (storageMockState.getObjectShouldThrow) {
+          storageMockState.getObjectShouldThrow = false;
+          throw new Error("Simulated get failure");
+        }
+        // Support per-key bytes via objectBytes Map (preferred) and fallback string
+        const key = command.input.Key;
+        const bytes = storageMockState.objectBytes.get(key) ?? Buffer.from(storageMockState.objectContent || "");
+        // Return a WHATWG ReadableStream so the route's `.getReader()` works
+        const ts = new TransformStream<Uint8Array>();
+        const writer = ts.writable.getWriter();
+        writer.write(new Uint8Array(bytes));
+        writer.close();
+        return {
+          Body: ts.readable,
+        };
       }
-    },
-    statObject: async (_bucket: string, key: string) => {
-      if (minioMockState.statObjectShouldThrow) {
-        throw Object.assign(new Error("Not Found"), { code: "NoSuchKey" });
-      }
-      return {
-        size: minioMockState.storedSizes.get(key) ?? 1024,
-        etag: "mock-etag",
-        metaData: {},
-        lastModified: new Date(),
-        key,
-      };
-    },
-    // Yield a tiny deterministic byte payload for the raw-attachment
-    // route. The production client returns an async iterable; we
-    // mimic that contract with an async generator so the route's
-    // `for await (const chunk of stream)` works against the mock.
-    getObject: async function* (_bucket: string, key: string) {
-      if (minioMockState.getObjectShouldThrow) {
-        throw Object.assign(new Error("Simulated MinIO get failure"), {
-          code: "InternalError",
-        });
-      }
-      const bytes = minioMockState.objectBytes.get(key);
-      if (bytes) {
-        yield bytes;
-        return;
-      }
-      // No explicit bytes recorded — emit a one-byte stand-in so the
-      // route can still respond with a valid body. Tests that need a
-      // specific payload can seed `objectBytes` directly via
-      // `getMinioMockState().objectBytes.set(key, Buffer.from(...))`.
-      yield Buffer.from([0x00]);
+      throw new Error(`Unmocked command: ${cmdName}`);
     },
   },
-  minioPublic: {
-    presignedPutObject: async (
-      _bucket: string,
-      key: string,
-      _expiry: number,
-    ) => {
-      if (minioMockState.presignedPutObjectFailNext) {
-        minioMockState.presignedPutObjectFailNext = false;
-        throw new Error("Simulated presign failure");
-      }
-      return `http://minio.local/hiai-docs/${key}?X-Amz-Signature=mock`;
+  storagePublic: {
+    send: async (_command) => {
+      return {};
     },
   },
   BUCKET: "hiai-docs",
+}));
+
+mock.module("@aws-sdk/s3-request-presigner", () => ({
+  getSignedUrl: async (_client, command, _options) => {
+    if (storageMockState.presignedPutObjectFailNext) {
+      storageMockState.presignedPutObjectFailNext = false;
+      throw new Error("Simulated presign failure");
+    }
+    return `http://storage.local/hiai-docs/${command.input.Key}?X-Amz-Signature=mock`;
+  },
 }));
 
 mock.module("../../src/lib/embedding-queue.js", () => ({

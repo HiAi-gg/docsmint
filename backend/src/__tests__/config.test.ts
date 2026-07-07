@@ -22,11 +22,13 @@ const envSchema = z.object({
 	EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
 	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
 	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
-	MINIO_ENDPOINT: z.string().default("localhost"),
-	MINIO_PORT: z.coerce.number().default(9010),
-	MINIO_ACCESS_KEY: z.string().default("minioadmin"),
-	MINIO_SECRET_KEY: z.string().default("minioadmin"),
-	MINIO_BUCKET: z.string().default("hiai-docs"),
+	STORAGE_ENDPOINT: z.string().default("localhost"),
+	STORAGE_PORT: z.coerce.number().default(9020),
+	STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
+	STORAGE_SECRET_KEY: z.string().default("minioadmin"),
+	STORAGE_BUCKET: z.string().default("hiai-docs"),
+	STORAGE_REGION: z.string().default("us-east-1"),
+	STORAGE_FORCE_PATH_STYLE: z.boolean().default(true),
 	HIAI_DOCS_API_KEY: z.string().optional(),
 	OWNER_ID: z.string().default("api-key-user"),
 });
@@ -45,7 +47,7 @@ describe("config schema", () => {
 			expect(result.data.EMBEDDING_FALLBACK_BASE_URL).toBeUndefined();
 			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBeUndefined();
 			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
-			expect(result.data.MINIO_PORT).toBe(9010);
+			expect(result.data.STORAGE_PORT).toBe(9020);
 		}
 	});
 

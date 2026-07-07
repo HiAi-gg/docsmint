@@ -7,6 +7,17 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-07
+
+### Breaking Changes
+- **MinIO → SeaweedFS migration**: MinIO completely removed as the object storage backend. SeaweedFS (chrislusf/seaweedfs:3.85) is now the only supported storage backend.
+- **Config rename**: All `MINIO_*` environment variables renamed to `STORAGE_*` (e.g., `MINIO_ENDPOINT` → `STORAGE_ENDPOINT`, `MINIO_SECRET_KEY` → `STORAGE_SECRET_KEY`). See `.env.example` for the full list.
+- **DB schema rename**: `attachments.minio_key` column renamed to `attachments.storage_key` (migration `0013_rename_minio_key_to_storage_key.sql`).
+- **npm package change**: `minio` npm dependency replaced with `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner`. Exports path `./backend/lib/minio` renamed to `./backend/lib/storage`; `createMinio` renamed to `createObjectStorageClient`.
+- **Docker Compose**: MinIO service replaced with SeaweedFS S3 Gateway service. Volume `minio_data` renamed to `seaweedfs_data`.
+- **Webhook**: `POST /api/webhooks/minio` replaced with `POST /api/webhooks/storage` as a no-op stub (SeaweedFS does not emit MinIO-compatible bucket notifications).
+- **Health check**: MinIO health endpoint removed from `/api/health`; SeaweedFS S3 liveness check added.
+
 ## [0.1.9] - 2026-07-03
 
 ### Documentation

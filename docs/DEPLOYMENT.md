@@ -15,7 +15,7 @@ The app will be available at:
 - Frontend: `http://localhost:50701`
 - API: `http://localhost:50700`
 - API Docs: `http://localhost:50700/api/docs`
-- MinIO Console: `http://localhost:9021`
+- SeaweedFS Console: `http://localhost:9021`
 
 ## Local Development
 
@@ -43,11 +43,11 @@ Copy `.env.example` and fill in:
 | `REDIS_URL` | Yes | `redis://localhost:6384` | Redis connection URL. **Host/macOS:** use `redis://localhost:6384`. **Docker Compose:** the default compose file overrides this to `redis://redis:6379` (container DNS name, internal port 6379) so the api container can reach redis via the Docker network. |
 | `BETTER_AUTH_SECRET` | **Yes** | — | Random 32+ char string |
 | `BETTER_AUTH_URL` | Yes | `http://localhost:50700` | Public API URL |
-| `MINIO_ENDPOINT` | No | `localhost` | MinIO host |
-| `MINIO_PORT` | No | `9020` | MinIO port |
-| `MINIO_ACCESS_KEY` | Yes | `minioadmin` | MinIO access key |
-| `MINIO_SECRET_KEY` | Yes | `change-me-to-random-32-chars` | MinIO secret key |
-| `MINIO_BUCKET` | Yes | `hiai-docs` | MinIO bucket name |
+| `STORAGE_ENDPOINT` | No | `localhost` | SeaweedFS host |
+| `STORAGE_PORT` | No | `9020` | SeaweedFS port |
+| `STORAGE_ACCESS_KEY` | Yes | `minioadmin` | SeaweedFS access key |
+| `STORAGE_SECRET_KEY` | Yes | `change-me-to-random-32-chars` | SeaweedFS secret key |
+| `STORAGE_BUCKET` | Yes | `hiai-docs` | SeaweedFS bucket name |
 | `EMBEDDING_BASE_URL` | If embeddings enabled | — | Base URL for OpenAI-compatible embedding API |
 | `EMBEDDING_API_KEY` | If embeddings enabled | — | API key for embedding provider |
 | `EMBEDDING_MODEL` | No | — | Model name for embeddings |
@@ -140,12 +140,12 @@ Copy `.env.example` and fill in:
 | `GRAPH_EXTRACT_FALLBACK_API_KEY` | No | — | Fallback extraction LLM API key |
 | `GRAPH_EXTRACT_FALLBACK_MODEL` | No | — | Fallback extraction model name |
 
-### MinIO Public Endpoint
+### SeaweedFS Public Endpoint
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `MINIO_PUBLIC_ENDPOINT` | No | `localhost` | Public MinIO host (used for presigned attachment URLs) |
-| `MINIO_PUBLIC_PORT` | No | `9020` | Public MinIO port |
+| `STORAGE_PUBLIC_ENDPOINT` | No | `localhost` | Public SeaweedFS host (used for presigned attachment URLs) |
+| `STORAGE_PUBLIC_PORT` | No | `9020` | Public SeaweedFS port |
 
 > **⚠️ Secret hygiene:** All secrets in `.env.example` use `change-me` placeholders with `CHANGE-ME` markers. Run `openssl rand -hex 32` to generate values for `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, and `HIAI_DOCS_API_KEY`. The `OWNER_ID` should be your first registered user's UUID from the auth system. Never commit real secrets to `.env.example` or documentation.
 
@@ -170,8 +170,8 @@ docker compose exec postgres pg_dump -U aiuser hiai_docs > backup.sql
 # Restore
 cat backup.sql | docker compose exec -T postgres psql -U aiuser -d hiai_docs
 
-# MinIO attachments
-docker compose exec minio mc mirror /data ./backup-minio/
+# SeaweedFS attachments
+docker compose exec seaweedfs ./weed backup /data ./backup-seaweedfs/
 ```
 
 ### Health Checks
@@ -200,7 +200,7 @@ bun run db:push
 |-----------|------|---------|
 | postgres | 5437 | PostgreSQL 18 + pgvector |
 | redis | 6384 | Cache/queue |
-| minio | 9000/9021 | S3-compatible file storage |
+| seaweedfs | 8333/8888 | S3-compatible file storage |
 | api | 50700 | Elysia REST API |
 | web | 50701 | SvelteKit frontend |
 | caddy | 80/443 | Reverse proxy (auto-TLS) |

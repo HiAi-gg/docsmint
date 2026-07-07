@@ -213,7 +213,7 @@ The SDK has **no runtime dependencies** — it uses the platform `fetch` built i
 
 #### Subpath imports for advanced integration
 
-The npm package exposes deep imports for consumers who want to reuse hiai-docs infrastructure (DB client, RLS tenant context, Redis/MinIO factories) without coupling to hiai-docs' own `.env` validation:
+The npm package exposes deep imports for consumers who want to reuse hiai-docs infrastructure (DB client, RLS tenant context, Redis/SeaweedFS factories) without coupling to hiai-docs' own `.env` validation:
 
 ```ts
 // RLS-tenant-scoped DB queries (from shared package)
@@ -225,14 +225,14 @@ import { documents, folders } from "@hiai-gg/hiai-docs/schema";
 
 // Pure factories — no hiai-docs config dependency (ideal for docsmint / external consumers)
 import { createRedis, type RedisConfig } from "@hiai-gg/hiai-docs/backend/lib/redis";
-import { createMinio, ensureBucket, type MinioConfig } from "@hiai-gg/hiai-docs/backend/lib/minio";
+import { createObjectStorageClient, ensureBucket, type ObjectStorageConfig } from "@hiai-gg/hiai-docs/backend/lib/storage";
 
-// Example: create your own Redis/MinIO instance with custom config
+// Example: create your own Redis/SeaweedFS instance with custom config
 const redis = createRedis({ url: "redis://localhost:6384", maxRetriesPerRequest: 3 });
-const minio = createMinio({ endpoint: "localhost", port: 9000, accessKey: "minioadmin", secretKey: "change-me", useSSL: false, region: "us-east-1" });
+const storage = createObjectStorageClient({ endpoint: "localhost", port: 9020, accessKey: "minioadmin", secretKey: "change-me", useSSL: false, region: "us-east-1", forcePathStyle: true });
 ```
 
-> **Note:** `backend/lib/redis` and `backend/lib/minio` resolve to the pure factory files (`redis-factory.ts`, `minio-factory.ts`). Importing from `backend/lib/redis.ts` or `backend/lib/minio.ts` directly is also supported and equivalent — both re-export from the factory. The `packages/db/with-tenant` path goes through a re-export shim at `backend/src/lib/with-tenant.ts`.
+> **Note:** `backend/lib/redis` and `backend/lib/storage` resolve to the pure factory files (`redis-factory.ts`, `storage-factory.ts`). Importing from `backend/lib/redis.ts` or `backend/lib/storage.ts` directly is also supported and equivalent — both re-export from the factory. The `packages/db/with-tenant` path goes through a re-export shim at `backend/src/lib/with-tenant.ts`.
 
 ## Agentic Quickstart (AI-Powered Setup)
 
@@ -244,7 +244,7 @@ Set up and launch the hiai-docs project on my local system:
 2. Copy .env.example to .env
 3. Generate a secure random auth secret using openssl or a secure generator, and set it as BETTER_AUTH_SECRET in .env
 4. Install all dependencies with "bun install"
-5. Boot up the developer Docker container dependencies (Postgres, Redis, MinIO) by running:
+5. Boot up the developer Docker container dependencies (Postgres, Redis, SeaweedFS) by running:
     bun run docker:dev
 6. Generate and apply database migrations to setup schemas by running:
    bun run db:push
@@ -268,7 +268,7 @@ This is the fastest dev loop. `bun run dev` runs `vite dev` (port 50701) and `bu
 bun install
 
 # 2. Start infrastructure in Docker
-bun run docker:dev          # brings up postgres, redis, minio
+bun run docker:dev          # brings up postgres, redis, seaweedfs
 
 # 3. Push DB schema (one-time, or after schema changes)
 bun run db:push
@@ -336,7 +336,7 @@ Then verify: `docker ps` should work without `sudo`.
 | UI | [shadcn-svelte](https://shadcn-svelte.com) (new-york style) |
 | Editor | [svelte-tiptap](https://github.com/sibiraj-s/svelte-tiptap) + [TipTap v3](https://tiptap.dev) |
 | Embeddings | OpenAI-compatible API (configurable) |
-| Storage | [MinIO](https://min.io) (S3-compatible) |
+| Storage | [SeaweedFS](https://github.com/seaweedfs/seaweedfs) (S3-compatible) |
 
 ---
 
@@ -366,9 +366,9 @@ hiai-docs/
 │   │   ├── api/          # Routes + middleware
 │   │   ├── lib/          # Shared utilities
 │   │   │   ├── redis-factory.ts   # Pure createRedis(cfg) factory
-│   │   │   ├── minio-factory.ts   # Pure createMinio(cfg) + ensureBucket() factory
+│   │   │   ├── storage-factory.ts   # Pure createObjectStorageClient(cfg) + ensureBucket() factory
 │   │   │   ├── redis.ts           # Singleton re-export wrapper (→ redis-factory)
-│   │   │   ├── minio.ts           # Singleton re-export wrapper (→ minio-factory)
+│   │   │   ├── storage.ts         # Singleton re-export wrapper (→ storage-factory)
 │   │   │   ├── with-tenant.ts     # Re-export shim (→ packages/db/src/with-tenant)
 │   │   │   └── reembed.ts         # Smart re-embed entry point
 │   │   ├── embedding/    # Embedding pipeline
@@ -413,13 +413,13 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `BETTER_AUTH_URL` | http://localhost:50700 | Auth base URL |
 | `CSRF_SECRET` | — | CSRF signing secret |
 | `WEBHOOK_SECRET` | — | Webhook HMAC secret |
-| `MINIO_ENDPOINT` | localhost | MinIO host |
-| `MINIO_PORT` | 9020 | MinIO port |
-| `MINIO_PUBLIC_ENDPOINT` | localhost | Public MinIO host (for presigned URLs) |
-| `MINIO_PUBLIC_PORT` | 9020 | Public MinIO port |
-| `MINIO_ACCESS_KEY` | minioadmin | MinIO access key |
-| `MINIO_SECRET_KEY` | minioadmin | MinIO secret key |
-| `MINIO_BUCKET` | hiai-docs | MinIO bucket name |
+| `STORAGE_ENDPOINT` | localhost | SeaweedFS host |
+| `STORAGE_PORT` | 9020 | SeaweedFS port |
+| `STORAGE_PUBLIC_ENDPOINT` | localhost | Public SeaweedFS host (for presigned URLs) |
+| `STORAGE_PUBLIC_PORT` | 9020 | Public SeaweedFS port |
+| `STORAGE_ACCESS_KEY` | minioadmin | SeaweedFS access key |
+| `STORAGE_SECRET_KEY` | minioadmin | SeaweedFS secret key |
+| `STORAGE_BUCKET` | hiai-docs | SeaweedFS bucket name |
 | `EMBEDDING_BASE_URL` | — | Base URL for OpenAI-compatible embedding API (optional) |
 | `EMBEDDING_API_KEY` | — | API key for embedding service (leave empty for local inference) |
 | `EMBEDDING_MODEL` | — | Embedding model name |
