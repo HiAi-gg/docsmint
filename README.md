@@ -56,16 +56,20 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
 - **AI-native** — automatic chunking + vector embeddings on every save, with folder / tag / category metadata enriched into the chunk text for sharper semantic recall
-- **Unified search stack** — `pgvector` for dense embeddings, `pgvectorscale` StreamingDiskANN with binary quantization for index speed and recall, and Apache AGE for graph expansion, all living in a single PostgreSQL 18 database. Hybrid ranking = full-text + semantic + graph-neighbor boost
+- **Unified search stack** — `pgvector` for dense embeddings, `pgvectorscale` StreamingDiskANN with binary quantization for index speed and recall, and Apache AGE for graph expansion, all living in a single PostgreSQL 18 database. Hybrid ranking = full-text + semantic + graph-neighbor boost; optional `includeChunks` returns top-3 chunk snippets with character-offset tracking
 - **System-wide re-embed** — every metadata mutation (tag / folder / category rename or delete) automatically refreshes affected vectors, with Redis-coalesced PATCH-storm dedup so rapid edits never spike embedding costs
 - **GraphRAG (optional)** — entity extraction + AGE graph expansion surfaces related documents beyond vector similarity, gated by feature flags and fully off by default
 - **Categories** — collapsible sidebar groups that classify folders and documents independently of the folder hierarchy, filterable from the search page
 - **Folder hierarchy** — nested folders to organize your documents
 - **Keyboard-first** — `Ctrl+K` QuickSearch, `?` ShortcutHelp, editor shortcuts (`Ctrl+Shift+7` toggle markdown, `Ctrl+Shift+E` export), and `Esc` to close any dialog
-- **Sharing** — token-protected links with password, expiration, and guest access
+- **Sharing** — token-protected links with password, expiration, and viewer/commenter/editor roles
 - **Multi-file import** — drag in many `.md` / `.txt` / `.markdown` / `.json` / `.docx` files at once with a per-file progress overlay
+- **API Keys** — create, list, and revoke user-scoped API keys with Bearer auth for programmatic access
+- **Document visibility** — per-document public/private/shared visibility with RLS-enforced access control
+- **Plugin Registry** — REST API for discovering available editor plugins
 - **Agent-ready** — clean REST API for AI agents (Mastra compatible and others) plus an MCP server
 - **Operator tooling** — admin endpoints for embedding-stats, provider health, targeted reindex, AGE inventory, and graph index introspection
+- **Audit trail** — append-only audit log recording document, share, and API key lifecycle events
 - **Self-hosted** — full data ownership with minimal resource usage
 
 ## Screenshots
@@ -122,7 +126,7 @@ GraphRAG layers a knowledge graph over the existing vector search. It is optiona
 2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, `GET /api/search?graph=true` walks the graph from each merged seed document (1-3 hops, controlled by `?graphHops=N`). Discovered neighbors are merged into the result list with a multiplicative boost of `GRAPH_EXPANSION_BOOST` (default `0.3`).
 3. **Operator tooling** — `GET /api/admin/graph/stats` reports current AGE inventory (node and edge counts).
 
-> **✅ GraphRAG status:** All GraphRAG audit findings (G1–G9, N1) are resolved as of v0.2.2. GraphRAG remains **optional and off by default** — it requires an AGE-enabled PostgreSQL instance and explicit `GRAPH_EXTRACT_BASE_URL` configuration for production use. See [GraphRAG Infrastructure Audit](docs/GRAPHRAG_AUDIT.md) for the full resolution log.
+> **✅ GraphRAG status:** All GraphRAG audit findings (G1–G9, N1) are resolved. GraphRAG remains **optional and off by default** — it requires an AGE-enabled PostgreSQL instance and explicit `GRAPH_EXTRACT_BASE_URL` configuration for production use. See [GraphRAG Infrastructure Audit](docs/GRAPHRAG_AUDIT.md) for the full resolution log.
 
 ### Where AGE lives
 
