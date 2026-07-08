@@ -7,6 +7,17 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-07-08
+
+### Fixed
+- **package.public.json — broken export paths**: Three new v0.2.3 exports (`./backend/lib/rate-limit`, `./backend/lib/api-keys`, `./backend/lib/audit`) used `backend/...` paths missing the `./` prefix. Published package would fail to resolve these imports. Paths corrected to `./backend/...` to match all other exports.
+- **docs/API.md — API keys mismatch**: Documented `expiresIn` duration field, but code uses `expiresAt` ISO 8601 datetime. Docs updated to match actual code behaviour.
+- **docs/API.md — plugins response shape mismatch**: Documented `displayName`/`enabled` fields that do not exist in the `PluginManifest` type. Actual shape is `name`/`version`/`description`. Docs updated to match code.
+- **docs/PRODUCTION_STATUS.md — route count**: Stale count of 14 route files. Actual count is 17 (added keys, plugins, visibility in v0.2.3). Corrected.
+
+### Changed
+- Version bumped from `0.2.3` to `0.2.4` across all workspace manifests: root `package.json`, `package.public.json`, `backend/package.json`, `frontend/package.json`, `packages/{sdk,cli,mcp-server,db}/package.json`, `backend/src/index.ts` (Swagger), `docs/openapi.json`, `docs/PRODUCTION_STATUS.md`.
+
 ## [0.2.3] - 2026-07-08
 
 ### Added

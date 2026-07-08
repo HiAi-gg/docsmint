@@ -1,6 +1,6 @@
 # Production Status Report
 
-> **Status:** ✅ Production Ready — v0.2.3 released
+> **Status:** ✅ Production Ready — v0.2.4 released
 > **Last verified:** 2026-07-08
 
 ---
@@ -16,7 +16,7 @@
 
 ## 2. Architecture
 
-14 route files: admin, auth, categories, collaboration, documents, folders, graph, metrics, search, share, tags, attachments, versions, webhooks.
+17 route files: admin, attachments, auth, categories, collaboration, documents, folders, graph, keys, metrics, plugins, search, share, tags, versions, visibility, webhooks.
 
 Security: rate limiting, Zod validation, owner_id scoping, CSRF protection, CORS, security headers.
 
@@ -59,4 +59,4 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 
 ---
 
-*Status: ✅ Production Ready — v0.2.3 released*
+*Status: ✅ Production Ready — v0.2.4 released*

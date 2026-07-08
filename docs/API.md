@@ -391,13 +391,13 @@ DELETE /api/keys/:id       # Revoke API key
 ```bash
 curl -X POST http://localhost:50700/api/keys \
   -H "Content-Type: application/json" \
-  -d '{"name": "CI Deploy Key", "scopes": ["documents:read", "documents:write"], "expiresIn": "90d"}'
+  -d '{"name": "CI Deploy Key", "scopes": ["documents:read", "documents:write"], "expiresAt": "2027-07-08T00:00:00Z"}'
 ```
 
 Body:
 - `name` (required) — Human-readable label
 - `scopes` (optional) — Array of scope strings: `documents:read`, `documents:write`, `search:read`. Defaults to all scopes.
-- `expiresIn` (optional) — Duration string: `30d`, `90d`, `180d`, `1y`, `never`. Defaults to `90d`.
+- `expiresAt` (optional) — ISO 8601 datetime string (e.g. `"2027-07-08T00:00:00Z"`). When omitted, the key never expires.
 
 Response includes the full `key` value — store it securely, it is only shown once.
 
@@ -461,9 +461,8 @@ Response:
   "plugins": [
     {
       "name": "highlight",
-      "displayName": "Highlight",
-      "description": "Highlight text with background color",
-      "enabled": true
+      "version": "1.0.0",
+      "description": "Text highlight/marker extension"
     }
   ]
 }
