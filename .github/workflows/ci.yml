@@ -355,6 +355,10 @@ jobs:
       - name: Upgrade npm for OIDC trusted publishing
         run: npm install -g npm@latest
 
+      # sigstore is required by npm for --provenance flag in trusted publishing
+      - name: Install sigstore for npm provenance
+        run: npm install -g sigstore
+
       - name: Configure workspaces for CI
         run: |
           bun -e "
