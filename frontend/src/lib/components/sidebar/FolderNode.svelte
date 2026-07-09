@@ -27,7 +27,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
+import { ChevronRight, Folder, MoreVertical, Share2 } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";
 import { goto } from "$app/navigation";
@@ -70,6 +70,7 @@ let {
 	onClearExpandTimer,
 	onRename,
 	onDelete,
+	onShare,
 	onConsiderDocs,
 	onFinalizeDocs,
 	onConsiderSubfolders,
@@ -94,6 +95,7 @@ let {
 	onClearExpandTimer: () => void;
 	onRename: (id: string, name: string) => void;
 	onDelete: (id: string, name: string) => void;
+	onShare: (id: string, name: string) => void;
 	onConsiderDocs: (zone: {
 		kind: "folder";
 		id: string;
@@ -269,6 +271,10 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 				<DropdownMenuItem onSelect={() => goto(`/docs/new?folder=${folder.id}`)}>
 					{m.dashboard_new_document()}
 				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => onShare(folder.id, folder.name)}>
+					<Share2 class="size-3.5" />
+					{m.doc_share()}
+				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => onRename(folder.id, folder.name)}>
 					{m.folders_rename()}
 				</DropdownMenuItem>
@@ -317,6 +323,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 							{onScheduleFolderExpand}
 							{onClearExpandTimer}
 							{onRename}
+							{onShare}
 							{onDelete}
 							{onConsiderDocs}
 							{onFinalizeDocs}

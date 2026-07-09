@@ -36,6 +36,99 @@ const PRESIGN_EXPIRY_SECONDS = config.ATTACHMENT_PRESIGN_EXPIRY_SECONDS;
 
 const INTEGRITY_PROBE_BYTES = 8;
 
+type BodyChunk = Uint8Array | Buffer | ArrayBuffer | ArrayBufferView | string;
+type AsyncBody = AsyncIterable<BodyChunk>;
+
+async function readStorageBody(body: unknown): Promise<Buffer> {
+	if (body == null) {
+		return Buffer.alloc(0);
+	}
+	if (body instanceof Buffer) {
+		return body;
+	}
+	if (body instanceof ArrayBuffer) {
+		return Buffer.from(new Uint8Array(body));
+	}
+	if (ArrayBuffer.isView(body)) {
+		return Buffer.from(
+			new Uint8Array(body.buffer, body.byteOffset, body.byteLength),
+		);
+	}
+	if (typeof body === "string") {
+		return Buffer.from(body);
+	}
+
+	if (
+		typeof (body as { transformToByteArray: () => Promise<Uint8Array> })
+			.transformToByteArray === "function"
+	) {
+		const bytes = await (
+			body as { transformToByteArray: () => Promise<Uint8Array> }
+		).transformToByteArray();
+		return Buffer.from(bytes);
+	}
+
+	if (
+		typeof (body as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer ===
+		"function"
+	) {
+		const bytes = await (
+			body as { arrayBuffer: () => Promise<ArrayBuffer> }
+		).arrayBuffer();
+		return Buffer.from(new Uint8Array(bytes));
+	}
+
+	if (typeof (body as ReadableStream<BodyChunk>).getReader === "function") {
+		const reader = (body as ReadableStream<BodyChunk>).getReader();
+		const chunks: Uint8Array[] = [];
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			if (value == null) continue;
+			if (Buffer.isBuffer(value)) {
+				chunks.push(value);
+			} else if (value instanceof Uint8Array) {
+				chunks.push(value);
+			} else if (value instanceof ArrayBuffer) {
+				chunks.push(new Uint8Array(value));
+			} else if (ArrayBuffer.isView(value)) {
+				chunks.push(
+					new Uint8Array(value.buffer, value.byteOffset, value.byteLength),
+				);
+			} else if (typeof value === "string") {
+				chunks.push(Buffer.from(value));
+			} else {
+				chunks.push(Buffer.from(String(value)));
+			}
+		}
+		return Buffer.concat(chunks);
+	}
+
+	if (typeof (body as AsyncBody)[Symbol.asyncIterator] === "function") {
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of body as AsyncBody) {
+			if (Buffer.isBuffer(chunk)) {
+				chunks.push(chunk);
+			} else if (chunk instanceof Uint8Array) {
+				chunks.push(chunk);
+			} else if (chunk instanceof ArrayBuffer) {
+				chunks.push(new Uint8Array(chunk));
+			} else if (ArrayBuffer.isView(chunk)) {
+				chunks.push(
+					new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+				);
+			} else if (typeof chunk === "string") {
+				chunks.push(Buffer.from(chunk));
+			} else {
+				chunks.push(Buffer.from(String(chunk)));
+			}
+		}
+		return Buffer.concat(chunks);
+	}
+
+	return Buffer.from(String(body));
+}
+
 /**
  * Read the first few bytes of an uploaded object back from storage and
  * compare them to the source buffer. Returns true on match, false on
@@ -60,15 +153,7 @@ async function verifyUploadIntegrity(
 				Range: `bytes=0-${probeLen - 1}`,
 			}),
 		);
-		const stream = response.Body as ReadableStream;
-		const reader = stream.getReader();
-		const chunks: Uint8Array[] = [];
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			chunks.push(value);
-		}
-		const actual = Buffer.concat(chunks.map((c) => Buffer.from(c)));
+		const actual = await readStorageBody(response.Body);
 		if (actual.length !== probeLen) {
 			logger.warn(
 				{ key, expected: probeLen, got: actual.length },
@@ -738,16 +823,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			const response = await storage.send(
 				new GetObjectCommand({ Bucket: BUCKET, Key: row.storageKey }),
 			);
-			const stream = response.Body as ReadableStream;
-			const reader = stream.getReader();
-			const chunks: Uint8Array[] = [];
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				chunks.push(value);
-			}
-			const buffer = Buffer.concat(chunks.map((c) => Buffer.from(c)));
-			return new Response(buffer, {
+			const buffer = await readStorageBody(response.Body);
+			return new Response(new Uint8Array(buffer), {
 				headers: {
 					"Content-Type": row.mimeType,
 					// `private` so shared caches (CDNs, proxies) cannot

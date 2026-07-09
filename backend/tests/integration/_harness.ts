@@ -768,7 +768,7 @@ mock.module("../../src/lib/logger.js", () => ({
 // storage). Defaults reflect the "happy path" — statObject returns a
 // plausible result so confirm-attachments tests pass without setup.
 const storageMockState: {
-  putObjectFailNext: boolean;
+	putObjectFailNext: boolean;
   statObjectNotFoundNext: boolean;
   statObjectShouldThrow: boolean;
   presignedPutObjectFailNext: boolean;
@@ -776,10 +776,11 @@ const storageMockState: {
   removeObjectShouldThrow: boolean;
   removedKeys: string[];
   getObjectFailNext: boolean;
-  getObjectShouldThrow: boolean;
-  getObjectCalls: number;
-  putObjectCalls: number;
-  objectSize: number;
+	getObjectShouldThrow: boolean;
+	getObjectCalls: number;
+	getObjectBodyMode: "web-stream" | "async-iterable";
+	putObjectCalls: number;
+	objectSize: number;
   objectContent?: string;
   objectBytes: Map<string, Buffer>;
   storedSizes: Map<string, number>;
@@ -793,6 +794,7 @@ const storageMockState: {
   removedKeys: [],
   getObjectFailNext: false,
   getObjectShouldThrow: false,
+  getObjectBodyMode: "web-stream",
   getObjectCalls: 0,
   putObjectCalls: 0,
   objectSize: 1024,
@@ -855,6 +857,15 @@ mock.module("../../src/lib/storage.js", () => ({
         // Support per-key bytes via objectBytes Map (preferred) and fallback string
         const key = command.input.Key;
         const bytes = storageMockState.objectBytes.get(key) ?? Buffer.from(storageMockState.objectContent || "");
+        if (storageMockState.getObjectBodyMode === "async-iterable") {
+          return {
+            Body: {
+              [Symbol.asyncIterator]: async function* () {
+                yield new Uint8Array(bytes);
+              },
+            },
+          };
+        }
         // Return a WHATWG ReadableStream so the route's `.getReader()` works
         const ts = new TransformStream<Uint8Array>();
         const writer = ts.writable.getWriter();

@@ -44,6 +44,7 @@ import {
 	MoreVertical,
 	Pencil,
 	Plus,
+	Share2,
 	Trash2,
 } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
@@ -71,6 +72,7 @@ import {
 	listFolders,
 	updateFolder,
 } from "$lib/api/folders";
+import ShareDialog from "$lib/components/ShareDialog.svelte";
 import CategoryDialog from "$lib/components/sidebar/CategoryDialog.svelte";
 import FolderNode from "$lib/components/sidebar/FolderNode.svelte";
 import * as m from "$lib/paraglide/messages.js";
@@ -153,6 +155,12 @@ let loadError = $state<string | null>(null);
 // item silently jump back to its old category.
 let dndError = $state<string | null>(null);
 let dndErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+function debugLog(...args: unknown[]) {
+	if (import.meta.env.DEV) {
+		console.log(...args);
+	}
+}
 
 function setDndError(msg: string | null) {
 	dndError = msg;
@@ -241,6 +249,12 @@ let deleteTarget = $state<{
 	name: string;
 } | null>(null);
 let deleteBusy = $state(false);
+
+let showShareDialog = $state(false);
+let shareDocumentId = $state("");
+let shareFolderId = $state("");
+let shareDocumentTitle = $state("");
+let shareFolderName = $state("");
 
 // Category CRUD dialog state.
 type CategoryDialogMode = "create" | "edit" | "delete";
@@ -488,7 +502,7 @@ async function loadDocuments() {
 		const res = await listDocuments({ limit: 100, ...(tag ? { tag } : {}) });
 		documents = res.items as DndDoc[];
 		documents.forEach((d) => {
-			console.log(
+			debugLog(
 				"[DnD] loadDocuments registering doc:",
 				d.id,
 				"title:",
@@ -681,7 +695,7 @@ function handleFinalize(zone: DocZone) {
 		setZoneItems(zone, next);
 		clearExpandTimer();
 		const isSourceZone = e.detail.info?.trigger === "droppedIntoAnother";
-		console.log(
+		debugLog(
 			"[DnD] handleFinalize zone:",
 			zone,
 			"trigger:",
@@ -693,7 +707,7 @@ function handleFinalize(zone: DocZone) {
 		);
 		if (!isSourceZone) {
 			if (droppedOnHeader) {
-				console.log(
+				debugLog(
 					"[DnD] Skipping persistZoneChanges because droppedOnHeader is true",
 				);
 				droppedOnHeader = false;
@@ -716,7 +730,7 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 				? null
 				: // Resolve nested folder category ID using the registry
 					(getFolderFromRegistry(zone.id)?.categoryId ?? null);
-	console.log(
+	debugLog(
 		"[DnD] persistZoneChanges zone:",
 		zone,
 		"targetFolderId:",
@@ -732,7 +746,7 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 	for (const item of zoneItems) {
 		const original = getDocumentFromRegistry(item.id);
 		if (!original) {
-			console.log("[DnD] Item not found in registry:", item.id);
+			debugLog("[DnD] Item not found in registry:", item.id);
 			continue;
 		}
 
@@ -740,7 +754,7 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 		const originalCategory = original.categoryId;
 		const folderChanged = originalFolder !== targetFolderId;
 		const categoryChanged = originalCategory !== targetCategoryId;
-		console.log(
+		debugLog(
 			"[DnD] Checking item:",
 			item.id,
 			"originalFolder:",
@@ -767,10 +781,10 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 		}
 	}
 	if (updates.length === 0) {
-		console.log("[DnD] No updates to persist for zone:", zone);
+		debugLog("[DnD] No updates to persist for zone:", zone);
 		return;
 	}
-	console.log("[DnD] persistZoneChanges updates:", updates);
+	debugLog("[DnD] persistZoneChanges updates:", updates);
 	try {
 		const results = await Promise.all(
 			updates.map((u) =>
@@ -780,7 +794,7 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 				}),
 			),
 		);
-		console.log("[DnD] updateDocument results:", results);
+		debugLog("[DnD] updateDocument results:", results);
 		// Only re-sync from the server when the backend confirmed the move.
 		// On failure we deliberately keep the optimistic zone state so the
 		// user's drop is not silently reverted.
@@ -827,7 +841,7 @@ async function handleDropOnCategory(e: DragEvent, categoryId: string) {
 		resyncZonesFromDocuments();
 
 		try {
-			console.log(
+			debugLog(
 				"[DnD] Drop on category header:",
 				categoryId,
 				"doc:",
@@ -869,12 +883,7 @@ async function handleDropOnFolder(e: DragEvent, folderId: string) {
 		resyncZonesFromDocuments();
 
 		try {
-			console.log(
-				"[DnD] Drop on folder header:",
-				folderId,
-				"doc:",
-				draggedDocId,
-			);
+			debugLog("[DnD] Drop on folder header:", folderId, "doc:", draggedDocId);
 			await updateDocument(draggedDocId, {
 				folderId: folderId,
 				categoryId: targetCategoryId,
@@ -1111,10 +1120,10 @@ async function persistFolderChanges(zoneKey: string, zoneItems: FolderItem[]) {
 	}
 
 	if (updates.length === 0) {
-		console.log("[DnD] persistFolderChanges: no changes for zone", zoneKey);
+		debugLog("[DnD] persistFolderChanges: no changes for zone", zoneKey);
 		return;
 	}
-	console.log("[DnD] persistFolderChanges zone:", zoneKey, "updates:", updates);
+	debugLog("[DnD] persistFolderChanges zone:", zoneKey, "updates:", updates);
 	try {
 		// Send clean payloads without folderId in body (same pattern as
 		// document DnD `persistZoneChanges` which is confirmed working).
@@ -1124,7 +1133,7 @@ async function persistFolderChanges(zoneKey: string, zoneItems: FolderItem[]) {
 				return updateFolder(folderId, patchBody);
 			}),
 		);
-		console.log("[DnD] updateFolder results:", results);
+		debugLog("[DnD] updateFolder results:", results);
 		// Re-sync from the server after the backend confirmed the move.
 		await refresh();
 		// Rebuild the per-category folder buckets from the refreshed
@@ -1254,6 +1263,22 @@ async function submitRename(e?: Event) {
 function startDelete(kind: EntityKind, id: string, name: string) {
 	deleteTarget = { kind, id, name };
 	showDeleteDialog = true;
+}
+
+function openShareDialogForDocument(id: string, title: string) {
+	shareDocumentId = id;
+	shareFolderId = "";
+	shareDocumentTitle = title;
+	shareFolderName = "";
+	showShareDialog = true;
+}
+
+function openShareDialogForFolder(id: string, name: string) {
+	shareFolderId = id;
+	shareDocumentId = "";
+	shareFolderName = name;
+	shareDocumentTitle = "";
+	showShareDialog = true;
 }
 
 function cancelDelete() {
@@ -1410,6 +1435,10 @@ const buckets = $derived.by(() => {
       <DropdownMenuItem onSelect={() => startRename("doc", doc.id, doc.title)}>
         {m.folders_rename()}
       </DropdownMenuItem>
+      <DropdownMenuItem onSelect={() => openShareDialogForDocument(doc.id, doc.title)}>
+        <Share2 class="size-3.5" />
+        {m.doc_share()}
+      </DropdownMenuItem>
       <DropdownMenuItem
         class="text-destructive focus:text-destructive"
         onSelect={() => startDelete("doc", doc.id, doc.title)}
@@ -1461,6 +1490,7 @@ const buckets = $derived.by(() => {
     onToggleFolder={toggleFolder}
     onRename={(id, name) => startRename("folder", id, name)}
     onDelete={(id, name) => startDelete("folder", id, name)}
+    onShare={openShareDialogForFolder}
     {dragDisabled}
     {isDraggingGlobal}
     {isDraggingFolder}
@@ -1857,4 +1887,12 @@ const buckets = $derived.by(() => {
   onSave={handleCategorySave}
   onDelete={handleCategoryDelete}
   onClose={closeCategoryDialog}
+/>
+
+<ShareDialog
+  bind:open={showShareDialog}
+  documentId={shareDocumentId}
+  documentTitle={shareDocumentTitle}
+  folderId={shareFolderId}
+  folderName={shareFolderName}
 />

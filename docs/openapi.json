@@ -3,7 +3,7 @@
   "info": {
     "title": "hiai-docs API",
     "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "contact": {
       "name": "hiai-gg",
       "url": "https://github.com/hiai-gg/hiai-docs"

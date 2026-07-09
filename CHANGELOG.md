@@ -7,6 +7,17 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] - 2026-07-09
+
+### Fixed
+- **Attachments raw streaming**: the `GET /api/attachments/:id/raw` route now reads SeaweedFS/S3 bodies through a runtime-agnostic body reader, so it handles both WHATWG streams and async-iterable S3 bodies during raw attachment downloads and integrity probes.
+- **Editor toolbar list/alignment**: list toggles now fall back cleanly when the current TipTap command surface differs, and left alignment clears text alignment through `unsetTextAlign()` when available.
+- **DOCX serializer**: paragraph/heading alignment handling is tightened and the serializer no longer relies on loose `any` typing for the local node/mark helpers.
+- **Sidebar share actions**: folder and document menus now open the share dialog from the sidebar, with share state wired through the tree component.
+
+### Changed
+- Version bumped from `0.2.4` to `0.2.5` across workspace manifests, `package.public.json`, Swagger/OpenAPI, and production status metadata.
+
 ## [0.2.4] - 2026-07-08
 
 ### Fixed

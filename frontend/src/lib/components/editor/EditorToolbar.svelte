@@ -329,12 +329,42 @@ function toggleListDropdown() {
 
 function applyList(kind: "bullet" | "ordered" | "task") {
 	if (!editor) return;
+	const commands = editor.commands as Record<
+		string,
+		(...args: unknown[]) => boolean
+	>;
 	if (kind === "bullet") {
-		editor.chain().focus().toggleBulletList().run();
+		if (typeof editor.commands.toggleBulletList === "function") {
+			editor.chain().focus().toggleBulletList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(() => commands.toggleList?.("bulletList", "listItem") ?? false)
+				.run();
+		}
 	} else if (kind === "ordered") {
-		editor.chain().focus().toggleOrderedList().run();
+		if (typeof editor.commands.toggleOrderedList === "function") {
+			editor.chain().focus().toggleOrderedList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(
+					() => commands.toggleList?.("orderedList", "listItem") ?? false,
+				)
+				.run();
+		}
 	} else {
-		editor.chain().focus().toggleTaskList().run();
+		if (typeof editor.commands.toggleTaskList === "function") {
+			editor.chain().focus().toggleTaskList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(() => commands.toggleList?.("taskList", "taskItem") ?? false)
+				.run();
+		}
 	}
 	listDropdownOpen = false;
 }
@@ -358,7 +388,28 @@ function toggleAlignDropdown() {
 
 function applyAlignment(value: TextAlignValue) {
 	if (!editor) return;
-	editor.chain().focus().setTextAlign(value).run();
+	const chain = editor.chain().focus();
+	const commands = editor.commands as Record<
+		string,
+		(...args: unknown[]) => boolean
+	>;
+	if (
+		value === "left" &&
+		typeof (chain as { unsetTextAlign: () => unknown }).unsetTextAlign ===
+			"function"
+	) {
+		chain.unsetTextAlign().run();
+		alignDropdownOpen = false;
+		return;
+	}
+	if (
+		typeof (chain as { setTextAlign: (value: TextAlignValue) => unknown })
+			.setTextAlign === "function"
+	) {
+		chain.setTextAlign(value).run();
+	} else if (typeof commands.setTextAlign === "function") {
+		commands.setTextAlign(value);
+	}
 	alignDropdownOpen = false;
 }
 

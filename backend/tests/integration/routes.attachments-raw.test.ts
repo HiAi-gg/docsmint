@@ -378,12 +378,23 @@ describe("GET /api/attachments/:id/raw — streaming", () => {
     expect(cache.startsWith("public")).toBe(false);
   });
 
-  it("propagates storage getObject failures as 500", async () => {
+	it("propagates storage getObject failures as 500", async () => {
+		seedAttachment();
+		getStorageMockState().getObjectShouldThrow = true;
+		const res = await request(app, `/api/attachments/${ATTACHMENT_ID}/raw`, {
+			headers: ownerHeaders(),
+		});
+		expect(res.status).toBe(500);
+	});
+
+  it("supports async-iterable storage bodies from the S3 runtime", async () => {
     seedAttachment();
-    getStorageMockState().getObjectShouldThrow = true;
+    const storage = getStorageMockState();
+    storage.getObjectBodyMode = "async-iterable";
     const res = await request(app, `/api/attachments/${ATTACHMENT_ID}/raw`, {
       headers: ownerHeaders(),
     });
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
   });
 });

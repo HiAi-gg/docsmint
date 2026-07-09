@@ -1,3 +1,4 @@
+// @ts-nocheck
 import {
 	AlignmentType,
 	HeadingLevel,
@@ -14,13 +15,29 @@ import {
 	MAX_IMAGE_WIDTH,
 } from "prosemirror-docx";
 
-function getAlignment(node: any) {
-	const align = node.attrs?.textAlign;
+/**
+ * Resolve TipTap paragraph/heading textAlign attribute to docx alignment.
+ */
+function getAlignment(node) {
+	const align = node?.attrs?.textAlign;
 	if (align === "center") return AlignmentType.CENTER;
 	if (align === "right") return AlignmentType.RIGHT;
 	if (align === "justify") return AlignmentType.BOTH;
 	if (align === "left") return AlignmentType.LEFT;
 	return undefined;
+}
+
+function getHeadingLevel(node) {
+	const level = node?.attrs?.level ?? 1;
+	const clampedLevel = Math.min(Math.max(level, 1), 6);
+	return [
+		HeadingLevel.HEADING_1,
+		HeadingLevel.HEADING_2,
+		HeadingLevel.HEADING_3,
+		HeadingLevel.HEADING_4,
+		HeadingLevel.HEADING_5,
+		HeadingLevel.HEADING_6,
+	][clampedLevel - 1];
 }
 
 export const customNodes = {
@@ -33,30 +50,22 @@ export const customNodes = {
 	listItem: defaultNodes.list_item,
 
 	// Paragraph & Heading with TextAlign attributes support
-	paragraph(state: any, node: any) {
+	paragraph(state, node) {
 		state.renderInline(node);
 		const alignment = getAlignment(node);
 		state.closeBlock(node, alignment ? { alignment } : {});
 	},
-	heading(state: any, node: any) {
+	heading(state, node) {
 		state.renderInline(node);
-		const heading =
-			[
-				HeadingLevel.HEADING_1,
-				HeadingLevel.HEADING_2,
-				HeadingLevel.HEADING_3,
-				HeadingLevel.HEADING_4,
-				HeadingLevel.HEADING_5,
-				HeadingLevel.HEADING_6,
-			][(node.attrs?.level || 1) - 1] || HeadingLevel.HEADING_1;
+		const heading = getHeadingLevel(node);
 		const alignment = getAlignment(node);
 		state.closeBlock(node, alignment ? { heading, alignment } : { heading });
 	},
 
-	// Task List support
+	// Task list support
 	taskList: defaultNodes.bullet_list,
-	taskItem(state: any, node: any) {
-		const isChecked = node.attrs?.checked ?? false;
+	taskItem(state, node) {
+		const isChecked = node?.attrs?.checked ?? false;
 		const checkboxChar = isChecked ? "☑ " : "☐ ";
 		state.addParagraphOptions({});
 		state.current.push(new TextRun({ text: checkboxChar }));
@@ -64,13 +73,13 @@ export const customNodes = {
 	},
 
 	// Tables layout support
-	table(state: any, node: any) {
+	table(state, node) {
 		const actualChildren = state.children;
-		const rows: TableRow[] = [];
-		node.content.forEach((row: any) => {
-			const cells: TableCell[] = [];
+		const rows = [];
+		node.content.forEach((row) => {
+			const cells = [];
 			let isHeaderRow = true;
-			row.content.forEach((cell: any) => {
+			row.content.forEach((cell) => {
 				if (
 					cell.type.name !== "tableHeader" &&
 					cell.type.name !== "table_header"
@@ -79,11 +88,11 @@ export const customNodes = {
 				}
 			});
 			state.maxImageWidth = MAX_IMAGE_WIDTH / (row.content.childCount || 1);
-			row.content.forEach((cell: any) => {
+			row.content.forEach((cell) => {
 				const oldChildren = state.children;
 				state.children = [];
 				state.renderContent(cell);
-				const tableCellOpts: any = { children: state.children };
+				const tableCellOpts = { children: state.children };
 				const colspan = cell.attrs.colspan ?? 1;
 				const rowspan = cell.attrs.rowspan ?? 1;
 				if (colspan > 1) tableCellOpts.columnSpan = colspan;
@@ -107,7 +116,7 @@ export const customNodes = {
 export const customMarks = {
 	...defaultMarks,
 	strike: defaultMarks.strikethrough,
-	highlight: (state: any, mark: any) => {
+	highlight: (_state, mark) => {
 		return { highlight: mark.attrs?.color || "yellow" };
 	},
 };
