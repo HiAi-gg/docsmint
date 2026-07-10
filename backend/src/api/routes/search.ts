@@ -229,8 +229,8 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 				);
 				try {
 					const queryEmbedding = await getEmbedding(q);
-					if (!queryEmbedding.every((v) => v === 0)) {
-						const embeddingStr = `[${queryEmbedding.join(",")}]`;
+					if (queryEmbedding.ok) {
+						const embeddingStr = `[${queryEmbedding.vector.join(",")}]`;
 						const chunkRows = await withTenant(ctx, async (tx) => {
 							return tx.execute(sql`
 								SELECT de.document_id, de.chunk_index, de.chunk_text,
@@ -552,12 +552,12 @@ async function semanticSearch(
 	try {
 		const queryEmbedding = await getEmbedding(q);
 
-		// Skip if embedding is all zeros (provider failure)
-		if (queryEmbedding.every((v) => v === 0)) {
+		// Skip semantic search when the provider reports a validated failure.
+		if (!queryEmbedding.ok) {
 			return [];
 		}
 
-		const embeddingStr = `[${queryEmbedding.join(",")}]`;
+		const embeddingStr = `[${queryEmbedding.vector.join(",")}]`;
 
 		return withTenant(ctx, async (tx) => {
 			return tx.execute(sql`

@@ -78,42 +78,14 @@ describe("buildMetadataPreamble", () => {
 });
 
 describe("embedDocument metadata behaviour", () => {
-	test("without metadata: result has 1024-dim vectors (legacy shape)", async () => {
-		const result = await embedDocument("My Title", "Some content here.");
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("with folder metadata: vectors are still 1024-dim", async () => {
-		const result = await embedDocument("Title", "Content", {
-			folderName: "Engineering",
+	test("reports an explicit provider failure instead of storing a zero vector", async () => {
+		await expect(
+			embedDocument("My Title", "Some content here."),
+		).rejects.toMatchObject({
+			name: "EmbeddingBatchError",
+			code: "not_configured",
+			chunkIndex: 0,
 		});
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("with all metadata fields: vectors are still 1024-dim", async () => {
-		const result = await embedDocument("Title", "Content", {
-			folderName: "Engineering",
-			tagNames: ["alpha", "beta"],
-			categoryName: "Research",
-		});
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("returns at least one chunk even for empty content", async () => {
-		const result = await embedDocument("Title Only", "");
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
 	});
 
 	test("multi-chunk behaviour is covered by chunker.test.ts", () => {

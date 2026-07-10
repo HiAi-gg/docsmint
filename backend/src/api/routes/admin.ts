@@ -240,11 +240,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 
 		const startedAt = Date.now();
 		try {
-			const vector = await getEmbedding(probe);
+			const embedding = await getEmbedding(probe);
 			const latencyMs = Date.now() - startedAt;
-			const allZero = vector.every((v) => v === 0);
 
-			if (allZero) {
+			if (!embedding.ok) {
 				return {
 					status: "degraded",
 					provider: {
@@ -252,8 +251,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 						model: config.EMBEDDING_MODEL,
 					},
 					latencyMs,
-					details:
-						"Provider returned a zero vector — check API key, model name, and base URL",
+					details: `Provider embedding failed: ${embedding.code}`,
 				};
 			}
 
@@ -264,7 +262,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 					model: config.EMBEDDING_MODEL,
 				},
 				latencyMs,
-				dimensions: vector.length,
+				dimensions: embedding.dimensions,
 			};
 		} catch (err) {
 			const latencyMs = Date.now() - startedAt;

@@ -8,7 +8,13 @@ import { logger } from "../lib/logger";
 import { incrementCounter, METRIC_NAMES, recordDuration } from "../lib/metrics";
 import { chunkText } from "./chunker";
 import { getOpenAICompatibleEmbedding } from "./providers/openai-compatible";
-import { EMBEDDING_DIMENSIONS } from "./utils";
+import {
+	EmbeddingBatchError,
+	type EmbeddingFailureCode,
+	type EmbeddingResult,
+} from "./result";
+import type { EMBEDDING_DIMENSIONS } from "./utils";
+import { embeddingProfileId, validateEmbeddingVector } from "./validation";
 
 function providerApiKey(baseUrl: string, explicitKey?: string): string {
 	const providerKey = explicitKey?.trim();
@@ -29,8 +35,8 @@ function providerApiKey(baseUrl: string, explicitKey?: string): string {
 }
 
 /**
- * Get an embedding vector for a single text.
- * Tries primary provider, then fallback, then returns a zero vector.
+ * Get an embedding result for a single text.
+ * Tries the primary provider, then fallback, and reports failures as data.
  *
  * Observability: records a duration sample for every call and increments
  * one of `embedding_success` / `embedding_fallback` / `embedding_zero`
@@ -40,7 +46,7 @@ function providerApiKey(baseUrl: string, explicitKey?: string): string {
  * sample (the counter increment is intentionally skipped on that path —
  * we don't want to mis-classify exceptions as zero-vector fallbacks).
  */
-export async function getEmbedding(text: string): Promise<number[]> {
+export async function getEmbedding(text: string): Promise<EmbeddingResult> {
 	const start = Date.now();
 	try {
 		return await getEmbeddingInner(text);
@@ -55,61 +61,121 @@ export async function getEmbedding(text: string): Promise<number[]> {
  * function so the outer try/finally can wrap the whole call without
  * duplicating increment logic in every return branch.
  */
-async function getEmbeddingInner(text: string): Promise<number[]> {
-	if (!config.EMBEDDING_BASE_URL || !config.EMBEDDING_MODEL) {
+async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
+	const providers: Array<{
+		baseUrl: string;
+		apiKey?: string;
+		model: string;
+		provider: "primary" | "fallback";
+	}> = [];
+	if (config.EMBEDDING_BASE_URL && config.EMBEDDING_MODEL) {
+		providers.push({
+			baseUrl: config.EMBEDDING_BASE_URL,
+			apiKey: config.EMBEDDING_API_KEY,
+			model: config.EMBEDDING_MODEL,
+			provider: "primary",
+		});
+	}
+	if (config.EMBEDDING_FALLBACK_BASE_URL && config.EMBEDDING_FALLBACK_MODEL) {
+		providers.push({
+			baseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
+			apiKey: config.EMBEDDING_FALLBACK_API_KEY,
+			model: config.EMBEDDING_FALLBACK_MODEL,
+			provider: "fallback",
+		});
+	}
+
+	if (providers.length === 0) {
 		logger.warn(
-			"Embedding primary provider not configured (EMBEDDING_BASE_URL or EMBEDDING_MODEL missing), returning zero vector",
+			"No embedding provider configured (primary or fallback); embedding result is unavailable",
 		);
 		incrementCounter(METRIC_NAMES.EMBEDDING_ZERO);
-		return new Array(EMBEDDING_DIMENSIONS).fill(0);
+		return { ok: false, code: "not_configured" };
 	}
 
-	try {
-		const vector = await getOpenAICompatibleEmbedding(
-			text,
-			config.EMBEDDING_BASE_URL,
-			providerApiKey(config.EMBEDDING_BASE_URL, config.EMBEDDING_API_KEY),
-			config.EMBEDDING_MODEL,
-			config.EMBEDDING_TIMEOUT_MS,
-		);
-		incrementCounter(METRIC_NAMES.EMBEDDING_SUCCESS);
-		return vector;
-	} catch (primaryErr) {
-		logger.warn(
-			{ err: primaryErr, model: config.EMBEDDING_MODEL },
-			"Primary embedding provider failed, trying fallback",
-		);
+	let primaryError: string | undefined;
+	let fallbackError: string | undefined;
+	let finalCode: EmbeddingFailureCode = "provider_error";
 
-		if (config.EMBEDDING_FALLBACK_BASE_URL && config.EMBEDDING_FALLBACK_MODEL) {
-			try {
-				const vector = await getOpenAICompatibleEmbedding(
-					text,
-					config.EMBEDDING_FALLBACK_BASE_URL,
-					providerApiKey(
-						config.EMBEDDING_FALLBACK_BASE_URL,
-						config.EMBEDDING_FALLBACK_API_KEY,
-					),
-					config.EMBEDDING_FALLBACK_MODEL,
-					config.EMBEDDING_TIMEOUT_MS,
-				);
-				incrementCounter(METRIC_NAMES.EMBEDDING_FALLBACK);
-				return vector;
-			} catch (fallbackErr) {
-				logger.error(
-					{ err: fallbackErr, model: config.EMBEDDING_FALLBACK_MODEL },
-					"Fallback embedding provider also failed, returning zero vector",
-				);
-				incrementCounter(METRIC_NAMES.EMBEDDING_ZERO);
-			}
-		} else {
-			logger.warn(
-				"Embedding fallback provider not configured, returning zero vector",
+	for (const provider of providers) {
+		try {
+			const vector = await getOpenAICompatibleEmbedding(
+				text,
+				provider.baseUrl,
+				providerApiKey(provider.baseUrl, provider.apiKey),
+				provider.model,
+				config.EMBEDDING_TIMEOUT_MS,
 			);
-			incrementCounter(METRIC_NAMES.EMBEDDING_ZERO);
-		}
+			const validation = validateEmbeddingVector(vector);
+			if (!validation.ok) {
+				finalCode = validation.code;
+				const message = `provider returned ${validation.code}`;
+				if (provider.provider === "primary") primaryError = message;
+				else fallbackError = message;
+				logger.warn(
+					{
+						model: provider.model,
+						provider: provider.provider,
+						code: validation.code,
+					},
+					"Embedding provider returned an invalid vector",
+				);
+				continue;
+			}
 
-		return new Array(EMBEDDING_DIMENSIONS).fill(0);
+			if (provider.provider === "primary") {
+				incrementCounter(METRIC_NAMES.EMBEDDING_SUCCESS);
+			} else {
+				incrementCounter(METRIC_NAMES.EMBEDDING_FALLBACK);
+			}
+			return {
+				ok: true,
+				vector,
+				model: provider.model,
+				provider: provider.provider,
+				dimensions: validation.dimensions,
+				profile: embeddingProfileId(
+					provider.model,
+					validation.dimensions,
+					"v1",
+				),
+			};
+		} catch (err) {
+			finalCode = failureCodeFromError(err);
+			const message = safeErrorMessage(err);
+			if (provider.provider === "primary") primaryError = message;
+			else fallbackError = message;
+			logger.warn(
+				{ err, model: provider.model, provider: provider.provider },
+				"Embedding provider failed, trying next configured provider",
+			);
+		}
 	}
+
+	incrementCounter(METRIC_NAMES.EMBEDDING_ZERO);
+	return {
+		ok: false,
+		code: finalCode,
+		...(primaryError ? { primaryError } : {}),
+		...(fallbackError ? { fallbackError } : {}),
+	};
+}
+
+function safeErrorMessage(error: unknown): string {
+	if (error instanceof Error && error.message.length > 0) {
+		return error.message.slice(0, 256);
+	}
+	return "provider error";
+}
+
+function failureCodeFromError(error: unknown): EmbeddingFailureCode {
+	const message = safeErrorMessage(error).toLowerCase();
+	if (message.includes("dimension")) return "wrong_dimensions";
+	if (message.includes("finite") || message.includes("nan")) {
+		return "non_finite";
+	}
+	if (message.includes("zero")) return "zero_vector";
+	return "provider_error";
 }
 
 /**
@@ -164,6 +230,9 @@ export interface EmbeddingChunk {
 	embedding: number[];
 	charStart: number;
 	charEnd: number;
+	model: string;
+	profile: string;
+	dimensions: typeof EMBEDDING_DIMENSIONS;
 }
 
 /**
@@ -185,21 +254,20 @@ export async function embedDocument(
 	const chunks = chunkText(fullText);
 
 	if (chunks.length === 0) {
-		return [
-			{
-				chunkText: "",
-				embedding: new Array(EMBEDDING_DIMENSIONS).fill(0),
-				charStart: 0,
-				charEnd: 0,
-			},
-		];
+		return [];
 	}
 
 	const results: EmbeddingChunk[] = [];
 	for (let i = 0; i < chunks.length; i += 5) {
 		const batch = chunks.slice(i, i + 5);
 		const batchEmbeddings = await Promise.all(
-			batch.map((chunk) => getEmbedding(chunk.text)),
+			batch.map(async (chunk, batchIndex) => {
+				const result = await getEmbedding(chunk.text);
+				if (!result.ok) {
+					throw new EmbeddingBatchError(result.code, i + batchIndex);
+				}
+				return result;
+			}),
 		);
 		for (let j = 0; j < batchEmbeddings.length; j++) {
 			// `j < batch.length` and `j < batchEmbeddings.length` are both
@@ -213,9 +281,12 @@ export async function embedDocument(
 			if (!chunk || !embedding) continue;
 			results.push({
 				chunkText: chunk.text,
-				embedding,
+				embedding: embedding.vector,
 				charStart: chunk.charStart,
 				charEnd: chunk.charEnd,
+				model: embedding.model,
+				profile: embedding.profile,
+				dimensions: embedding.dimensions,
 			});
 		}
 	}
