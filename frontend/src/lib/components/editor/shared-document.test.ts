@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	hydrateSharedAttachmentImages,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
 } from "./shared-document";
@@ -123,5 +124,50 @@ describe("shared document renderer", () => {
 		});
 		expect(html).toContain('<a href="#"');
 		expect(html).not.toContain("javascript:");
+	});
+
+	test("hydrates only protected attachment placeholders", async () => {
+		const images: Array<{
+			dataset: { sharedAttachmentSrc?: string };
+			src: string;
+			removeAttribute(name: string): void;
+		}> = [
+			{
+				dataset: {
+					sharedAttachmentSrc:
+						"/api/attachments/11111111-1111-1111-1111-111111111111/raw",
+				},
+				src: "",
+				removeAttribute(name: string) {
+					if (name === "data-shared-attachment-src") {
+						delete this.dataset.sharedAttachmentSrc;
+					}
+				},
+			},
+		];
+		const root = {
+			querySelectorAll: () => images,
+		};
+		const originalFetch = globalThis.fetch;
+		const originalUrl = globalThis.URL;
+		globalThis.fetch = (async () =>
+			new Response(new Blob(["image"]), { status: 200 })) as unknown as typeof fetch;
+		globalThis.URL = {
+			...originalUrl,
+			createObjectURL: () => "blob:shared-image",
+		} as unknown as typeof URL;
+
+		try {
+			const objectUrls = await hydrateSharedAttachmentImages(
+				root as unknown as ParentNode,
+				"share-token",
+			);
+			expect(objectUrls).toEqual(["blob:shared-image"]);
+			expect(images[0].src).toBe("blob:shared-image");
+			expect(images[0].dataset.sharedAttachmentSrc).toBeUndefined();
+		} finally {
+			globalThis.fetch = originalFetch;
+			globalThis.URL = originalUrl;
+		}
 	});
 });

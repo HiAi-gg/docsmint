@@ -10,6 +10,9 @@ export type ProseMirrorDoc = ProseMirrorNode & {
 	content?: ProseMirrorNode[];
 };
 
+/** Object URLs created while hydrating protected share attachments. */
+export type SharedAttachmentObjectUrls = string[];
+
 const ATTACHMENT_PATH = /^\/api\/attachments\/[0-9a-f-]+\/raw$/i;
 const SAFE_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
@@ -173,7 +176,7 @@ export async function hydrateSharedAttachmentImages(
 	root: ParentNode,
 	token: string,
 	password = "",
-): Promise<string[]> {
+): Promise<SharedAttachmentObjectUrls> {
 	const objectUrls: string[] = [];
 	const images = root.querySelectorAll<HTMLImageElement>(
 		"img[data-shared-attachment-src]",

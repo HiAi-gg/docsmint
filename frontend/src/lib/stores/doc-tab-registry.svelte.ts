@@ -76,6 +76,27 @@ export interface DocTabDefinition {
 export const docTabRegistry: DocTabDefinition[] = $state([]);
 
 /**
+ * Create an isolated tab collection for a host-provided extension manifest.
+ * The legacy `docTabRegistry` export remains available for existing clients,
+ * while new app-shell integrations should keep their tabs request-scoped.
+ */
+export function createDocTabRegistry(
+	initial: readonly DocTabDefinition[] = [],
+): DocTabDefinition[] {
+	return [...initial];
+}
+
+/** Register a tab in an isolated collection, preserving idempotency. */
+export function registerDocTabIn(
+	registry: DocTabDefinition[],
+	tab: DocTabDefinition,
+): void {
+	if (!registry.find((existing) => existing.id === tab.id)) {
+		registry.push(tab);
+	}
+}
+
+/**
  * Register a custom document tab.
  *
  * Safe to call multiple times (e.g. across HMR reloads) - duplicate ids
@@ -84,7 +105,5 @@ export const docTabRegistry: DocTabDefinition[] = $state([]);
  * @param tab - Tab definition to register.
  */
 export function registerDocTab(tab: DocTabDefinition): void {
-	if (!docTabRegistry.find((t) => t.id === tab.id)) {
-		docTabRegistry.push(tab);
-	}
+	registerDocTabIn(docTabRegistry, tab);
 }
