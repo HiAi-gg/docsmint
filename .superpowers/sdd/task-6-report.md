@@ -6,7 +6,8 @@ Implemented and ready for integration. Changes are committed in the task branch;
 
 ## Commit
 
-- `feat(search): add adaptive multilingual query expansion`
+- `b13001e feat(search): add adaptive multilingual query expansion`
+- `dc9c330 refactor(search): consume shared query plan contract`
 
 ## Files changed
 
@@ -48,6 +49,6 @@ The focused `bun run typecheck` is currently blocked by concurrent Task 1 databa
 
 ## Concerns for integration
 
-- Task 4 should expose the same structural `QueryPlan` fields; the expander keeps a local compatible type so it can be integrated without a runtime dependency on the provider-independent search module.
+- Task 4's `backend/src/search/types.ts` is now consumed directly by the expander; its `QueryPlan` fields must remain provider-independent.
 - The runtime Redis singleton logs its expected connection warning when Redis is not running; cache failures are intentionally non-fatal.
 - The public `.env.example` contains only the existing change-me OpenRouter placeholder and no real credential.
