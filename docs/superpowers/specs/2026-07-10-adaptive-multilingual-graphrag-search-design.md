@@ -6,7 +6,7 @@
 
 ## Goal
 
-Make the default hiai-docs search reliably find relevant content across languages, terminology, spelling variants, and conceptual relationships. A query such as `английский` must find documents containing `English`; `авторизация` must find `authentication`; misspelled and thematic queries must still return useful, explainable results.
+Make the default hiai-docs search reliably find relevant content across languages, terminology, spelling variants, and conceptual relationships. A Russian query represented in fixtures as `\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439` must find documents containing `English`; `\u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044f` must find `authentication`; misspelled and thematic queries must still return useful, explainable results.
 
 The search experience remains a single input. Users do not select retrieval modes or enable GraphRAG manually. The backend chooses the cheapest sufficient path and expands the query only when the first retrieval pass is not confident enough.
 
@@ -231,10 +231,10 @@ No metric label may contain raw user queries, document text, tenant identifiers 
 
 The versioned evaluation corpus includes at least:
 
-- cross-language: `английский` -> `English`;
-- terminology: `авторизация` -> `authentication`;
-- terminology: `развертывание` -> `deployment`;
-- typo: `аутентифкация` -> authentication-related documents;
+- cross-language: `\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439` -> `English`;
+- terminology: `\u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044f` -> `authentication`;
+- terminology: `\u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044b\u0432\u0430\u043d\u0438\u0435` -> `deployment`;
+- typo: `\u0430\u0443\u0442\u0435\u043d\u0442\u0438\u0444\u043a\u0430\u0446\u0438\u044f` -> authentication-related documents;
 - thematic queries that share no exact keywords with the answer;
 - entity and relationship questions requiring GraphRAG;
 - strong exact-title and code-identifier queries;
