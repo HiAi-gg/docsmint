@@ -18,10 +18,14 @@ import type {
 	DocsDocumentListResponse,
 	DocsFolder,
 	DocsHealthResponse,
+	DocsGraphEntitiesResponse,
+	DocsGraphRelatedResponse,
+	DocsGraphSearchResponse,
 	DocsSearchResponse,
 	DocsSearchOptions,
 	DocsSearchSuggestItem,
 	DocsShareLink,
+	DocsShareRole,
 	DocsShareListResponse,
 	DocsSharedContent,
 	DocsTag,
@@ -333,6 +337,8 @@ export class DocsClient {
 				limit: options?.limit,
 				graph: options?.graph,
 				graphHops: options?.graphHops,
+				graphBoost: options?.graphBoost,
+				includeChunks: options?.includeChunks,
 			}),
 		}, context);
 	}
@@ -343,6 +349,51 @@ export class DocsClient {
 		}, context);
 	}
 
+	// ── Graph metadata ───────────────────────────────────────────────────
+
+	/** Return entities linked to a document through the AGE graph. */
+	async getGraphEntities(docId: string, context?: DocsRequestContext): Promise<DocsGraphEntitiesResponse> {
+		return this.request<DocsGraphEntitiesResponse>("GET", "/api/graph/entities", {
+			query: this.cleanQuery({ docId }),
+		}, context);
+	}
+
+	async listGraphEntities(docId: string, context?: DocsRequestContext): Promise<DocsGraphEntitiesResponse> {
+		return this.getGraphEntities(docId, context);
+	}
+
+	/** Return graph-related documents and their relation metadata. */
+	async getRelatedDocuments(docId: string, context?: DocsRequestContext): Promise<DocsGraphRelatedResponse> {
+		return this.request<DocsGraphRelatedResponse>(
+			"GET",
+			`/api/graph/related/${encodeURIComponent(docId)}`,
+			undefined,
+			context,
+		);
+	}
+
+	async listRelatedDocuments(docId: string, context?: DocsRequestContext): Promise<DocsGraphRelatedResponse> {
+		return this.getRelatedDocuments(docId, context);
+	}
+
+	/** Bulk graph lookup for agent and product integrations. */
+	async graphSearch(
+		input: { query?: string; docIds: string[]; maxResults?: number },
+		context?: DocsRequestContext,
+	): Promise<DocsGraphSearchResponse> {
+		return this.request<DocsGraphSearchResponse>("POST", "/api/graph/search", {
+			json: input,
+		}, context);
+	}
+
+	/** Compatibility alias for callers that prefer verb-first naming. */
+	async searchGraph(
+		input: { query?: string; docIds: string[]; maxResults?: number },
+		context?: DocsRequestContext,
+	): Promise<DocsGraphSearchResponse> {
+		return this.graphSearch(input, context);
+	}
+
 	// ── Share ────────────────────────────────────────────────────────────
 
 	async createShare(input: {
@@ -350,7 +401,7 @@ export class DocsClient {
 		folderId?: string;
 		password?: string;
 		expiresIn?: "1h" | "1d" | "7d" | "30d" | "never";
-		role?: "viewer" | "editor";
+		role?: DocsShareRole;
 	}, context?: DocsRequestContext): Promise<DocsShareLink> {
 		return this.request<DocsShareLink>("POST", "/api/share", { json: input }, context);
 	}
@@ -361,6 +412,19 @@ export class DocsClient {
 
 	async deleteShare(id: string, context?: DocsRequestContext): Promise<void> {
 		await this.request<unknown>("DELETE", `/api/share/${encodeURIComponent(id)}`, undefined, context);
+	}
+
+	async updateShare(
+		id: string,
+		updates: { role?: DocsShareRole; expiresIn?: "1h" | "1d" | "7d" | "30d" | "never" },
+		context?: DocsRequestContext,
+	): Promise<DocsShareLink> {
+		return this.request<DocsShareLink>(
+			"PATCH",
+			`/api/share/${encodeURIComponent(id)}`,
+			{ json: updates },
+			context,
+		);
 	}
 
 	/**
@@ -532,22 +596,29 @@ export class DocsClient {
 			try {
 				const res = await this.config.fetch(url, { ...init, signal });
 				if (this.shouldRetryStatus(res.status) && attempt < maxAttempts - 1) {
-					await this.sleep(this.backoffDelay(attempt));
+					await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
 					continue;
 				}
 				return res;
 			} catch (err) {
 				lastError = err;
-			if (!this.isRetryableError(err) || attempt === maxAttempts - 1) {
-				if (this.isTimeoutError(err)) {
-					throw new DocsTimeoutError(this.config.timeout, {
-						cause: err,
-						requestId: requestContext?.requestId,
-					});
+				// A caller cancellation is authoritative. Do not retry it and do
+				// not turn it into a timeout merely because the internal timeout
+				// signal is also part of AbortSignal.any(). Preserving the original
+				// error keeps standard AbortController semantics for hosts.
+				if (requestContext?.signal?.aborted) {
+					throw requestContext.signal.reason ?? err;
 				}
-				throw this.wrapNetworkError(err, requestContext?.requestId);
+				if (!this.isRetryableError(err) || attempt === maxAttempts - 1) {
+					if (this.isTimeoutError(err)) {
+						throw new DocsTimeoutError(this.config.timeout, {
+							cause: err,
+							requestId: requestContext?.requestId,
+						});
+					}
+					throw this.wrapNetworkError(err, requestContext?.requestId);
 				}
-				await this.sleep(this.backoffDelay(attempt));
+				await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
 			}
 		}
 
@@ -608,8 +679,22 @@ export class DocsClient {
 		return Math.floor(base + jitter);
 	}
 
-	private async sleep(ms: number): Promise<void> {
-		return new Promise((resolve) => setTimeout(resolve, ms));
+	private async sleep(ms: number, signal?: AbortSignal): Promise<void> {
+		if (signal?.aborted) {
+			throw signal.reason ?? new DOMException("The operation was aborted", "AbortError");
+		}
+		await new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(() => {
+				signal?.removeEventListener("abort", onAbort);
+				resolve();
+			}, ms);
+			const onAbort = () => {
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", onAbort);
+				reject(signal?.reason ?? new DOMException("The operation was aborted", "AbortError"));
+			};
+			signal?.addEventListener("abort", onAbort, { once: true });
+		});
 	}
 
 	private async toApiError(res: Response): Promise<DocsApiError> {

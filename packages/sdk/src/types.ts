@@ -141,6 +141,16 @@ export interface DocsSearchResult {
 	created_at: string;
 	updated_at: string;
 	tags?: DocsTag[];
+	/** Top matching text chunks, present when `includeChunks=true`. */
+	chunks?: DocsSearchChunk[];
+}
+
+export interface DocsSearchChunk {
+	chunkIndex: number;
+	chunkText: string;
+	charStart: number;
+	charEnd: number;
+	score: number;
 }
 
 export interface DocsSearchResponse {
@@ -161,6 +171,42 @@ export interface DocsSearchOptions {
 	limit?: number;
 	graph?: boolean;
 	graphHops?: number;
+	graphBoost?: number;
+	includeChunks?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Graph metadata
+// ---------------------------------------------------------------------------
+
+export interface DocsGraphEntity {
+	name: string;
+	type: string;
+}
+
+export interface DocsGraphDocumentNeighbor {
+	docId: string;
+	relationType: string;
+	hopDistance: number;
+}
+
+export interface DocsGraphRelatedDocument extends DocsGraphDocumentNeighbor {
+	title: string;
+	snippet: string;
+}
+
+export interface DocsGraphEntitiesResponse {
+	entities: DocsGraphEntity[];
+}
+
+export interface DocsGraphRelatedResponse {
+	related: DocsGraphDocumentNeighbor[];
+}
+
+export interface DocsGraphSearchResponse {
+	query?: string;
+	entities: DocsGraphEntity[];
+	relatedDocs: DocsGraphRelatedDocument[];
 }
 
 /**
@@ -183,9 +229,11 @@ export interface DocsShareLink {
 	folderId: string | null;
 	expiresAt: string | null;
 	hasPassword: boolean;
-	role?: "viewer" | "editor";
+	role?: DocsShareRole;
 	createdAt: string;
 }
+
+export type DocsShareRole = "viewer" | "commenter" | "editor";
 
 /**
  * `GET /api/share` returns a richer list item with `title` and `type`
@@ -201,7 +249,7 @@ export interface DocsShareLinkListItem {
 	createdAt: string;
 	title: string;
 	type: "document" | "folder";
-	role?: "viewer" | "editor";
+	role?: DocsShareRole;
 }
 
 export interface DocsShareListResponse {

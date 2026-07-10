@@ -75,11 +75,52 @@ describe("DocsClient public contract", () => {
 			return jsonResponse({ items: [], total: 0, page: 1, limit: 20 });
 		});
 
-		await docs.search("road map", { category: "cat/one", graph: true, graphHops: 2 });
+		await docs.search("road map", {
+			category: "cat/one",
+			graph: true,
+			graphHops: 2,
+			graphBoost: 0.75,
+			includeChunks: true,
+		});
 		expect(seenUrl).toContain("q=road+map");
 		expect(seenUrl).toContain("category=cat%2Fone");
 		expect(seenUrl).toContain("graph=true");
 		expect(seenUrl).toContain("graphHops=2");
+		expect(seenUrl).toContain("graphBoost=0.75");
+		expect(seenUrl).toContain("includeChunks=true");
+	});
+
+	it("supports commenter share links and graph metadata endpoints", async () => {
+		const calls: Array<{ url: string; method: string; body?: string }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({ url: String(input), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : undefined });
+			if (String(input).includes("/api/graph/entities")) return jsonResponse({ entities: [{ name: "Ada", type: "Person" }] });
+			if (String(input).includes("/api/graph/related/")) return jsonResponse({ related: [{ docId: "doc-2", relationType: "MENTIONS", hopDistance: 2 }] });
+			if (String(input).includes("/api/graph/search")) return jsonResponse({ query: "road map", entities: [], relatedDocs: [] });
+			return jsonResponse({
+				id: "share-1",
+				token: "token",
+				documentId: "doc-1",
+				folderId: null,
+				role: "commenter",
+				expiresAt: null,
+				hasPassword: false,
+				createdAt: "now",
+			});
+		});
+
+		const share = await docs.createShare({ documentId: "doc-1", role: "commenter" });
+		await docs.updateShare("share-1", { role: "commenter" });
+		await docs.getGraphEntities("doc-1");
+		await docs.getRelatedDocuments("doc-1");
+		await docs.graphSearch({ query: "road map", docIds: ["doc-1"], maxResults: 5 });
+
+		expect(share.role).toBe("commenter");
+		expect(calls[0]?.body).toContain('"role":"commenter"');
+		expect(calls[1]?.method).toBe("PATCH");
+		expect(calls[2]?.url).toContain("docId=doc-1");
+		expect(calls[3]?.url).toContain("/api/graph/related/doc-1");
+		expect(calls[4]?.method).toBe("POST");
 	});
 
 	it("throws DocsApiError with status and parsed body", async () => {
@@ -116,5 +157,22 @@ describe("DocsClient public contract", () => {
 		}, { timeout: 1 });
 
 		await expect(docs.health()).rejects.toBeInstanceOf(DocsTimeoutError);
+	});
+
+	it("propagates caller cancellation without retrying or converting to timeout", async () => {
+		const controller = new AbortController();
+		let attempts = 0;
+		const abortError = new DOMException("cancelled", "AbortError");
+		const docs = client(async (_input, init) => {
+			attempts += 1;
+			controller.abort(abortError);
+			// A real fetch may reject with a runtime-created AbortError rather
+			// than the caller's reason. The client must preserve the reason.
+			void init;
+			throw new DOMException("transport aborted", "AbortError");
+		}, { requestContext: { signal: controller.signal }, retries: 3, retryBackoffMs: 0 });
+
+		await expect(docs.health()).rejects.toBe(abortError);
+		expect(attempts).toBe(1);
 	});
 });
