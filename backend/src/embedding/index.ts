@@ -10,23 +10,22 @@ import { chunkText } from "./chunker";
 import { getOpenAICompatibleEmbedding } from "./providers/openai-compatible";
 import { EMBEDDING_DIMENSIONS } from "./utils";
 
-/**
- * Resolve a provider credential while keeping the public OpenRouter profile
- * ergonomic. Explicit provider keys win; otherwise the shared OpenRouter key
- * is used for both the primary and fallback embedding providers.
- */
-function embeddingApiKey(explicitKey?: string): string {
-	return explicitKey?.trim() || config.OPENROUTER_API_KEY?.trim() || "";
-}
-
 function providerApiKey(baseUrl: string, explicitKey?: string): string {
-	const apiKey = embeddingApiKey(explicitKey);
-	if (/openrouter\.ai/i.test(baseUrl) && apiKey.length === 0) {
+	const providerKey = explicitKey?.trim();
+	if (providerKey) return providerKey;
+
+	// Only OpenRouter may inherit the shared public-profile credential. This
+	// prevents accidentally forwarding it to Ollama or another local/custom
+	// OpenAI-compatible endpoint when the base URL is overridden.
+	if (!/openrouter\.ai/i.test(baseUrl)) return "";
+
+	const openRouterKey = config.OPENROUTER_API_KEY?.trim();
+	if (!openRouterKey) {
 		throw new Error(
 			"OpenRouter embedding provider requires OPENROUTER_API_KEY (or a provider-specific EMBEDDING_*_API_KEY)",
 		);
 	}
-	return apiKey;
+	return openRouterKey;
 }
 
 /**

@@ -122,7 +122,7 @@ describe("config schema", () => {
 		).toBe(false);
 	});
 
-		test("accepts the shared OpenRouter key used by the public embedding profile", () => {
+	test("accepts shared OpenRouter key for public embedding profile", () => {
 		const result = realEnvSchema.safeParse({
 			OPENROUTER_API_KEY: "test-openrouter-key",
 		});
