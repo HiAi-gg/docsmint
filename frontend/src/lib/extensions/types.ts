@@ -3,7 +3,7 @@ import type {
 	DocTabDefinition,
 	DocTabIcon,
 	DocTabPanelProps,
-} from "../stores/doc-tab-registry.svelte";
+} from "./doc-tabs";
 
 /**
  * Runtime information supplied to extension visibility predicates.

@@ -46,8 +46,8 @@ Copy `.env.example` and fill in:
 | `BETTER_AUTH_URL` | Yes | `http://localhost:50700` | Public API URL |
 | `STORAGE_ENDPOINT` | No | `localhost` | SeaweedFS host |
 | `STORAGE_PORT` | No | `9020` | SeaweedFS port |
-| `STORAGE_ACCESS_KEY` | Yes | `minioadmin` | SeaweedFS access key |
-| `STORAGE_SECRET_KEY` | Yes | `change-me-to-random-32-chars` | SeaweedFS secret key |
+| `STORAGE_ACCESS_KEY` | Yes | `hiai-docs` | SeaweedFS access key |
+| `STORAGE_SECRET_KEY` | Yes | — | SeaweedFS secret key; generate a unique random value |
 | `STORAGE_BUCKET` | Yes | `hiai-docs` | SeaweedFS bucket name |
 | `EMBEDDING_BASE_URL` | If embeddings enabled | — | Base URL for OpenAI-compatible embedding API |
 | `EMBEDDING_API_KEY` | If embeddings enabled | — | API key for embedding provider |

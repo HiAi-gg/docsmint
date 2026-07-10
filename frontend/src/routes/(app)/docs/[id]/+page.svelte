@@ -32,7 +32,6 @@ import {
 import { marked } from "marked";
 import { onDestroy, onMount } from "svelte";
 import { goto } from "$app/navigation";
-import { docTabRegistry } from "$lib";
 import { ApiError, apiFetch } from "$lib/api/client";
 import { deleteDocument, updateDocument } from "$lib/api/documents";
 import { createFolder, listFolders } from "$lib/api/folders";
@@ -55,6 +54,7 @@ import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
+import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();

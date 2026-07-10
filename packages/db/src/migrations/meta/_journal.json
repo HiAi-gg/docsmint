@@ -169,6 +169,13 @@
       "when": 1785000000009,
       "tag": "0023_preload_age",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785000000010,
+      "tag": "0024_add_documents_content_hash",
+      "breakpoints": true
     }
   ]
 }

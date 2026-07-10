@@ -50,6 +50,10 @@
       "import": "./frontend/src/lib/extensions/types.ts",
       "types": "./frontend/src/lib/extensions/types.ts"
     },
+    "./frontend/legacy/doc-tab-registry": {
+      "import": "./frontend/src/lib/stores/doc-tab-registry.svelte.ts",
+      "types": "./frontend/src/lib/stores/doc-tab-registry.svelte.ts"
+    },
     "./schema": {
       "import": "./packages/db/src/schema.ts",
       "types": "./packages/db/src/schema.ts"
@@ -127,6 +131,7 @@
     "ioredis": "^5.4.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "pino": "^10.0.0",
+    "svelte": "^5.56.4",
     "zod": "^4.0.0"
   },
   "peerDependenciesMeta": {

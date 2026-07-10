@@ -19,9 +19,9 @@
       openssl rand -hex 32   # repeat for each secret
       ```
 - [ ] **Update `.env.example`** if any new env vars were added
-- [ ] **Verify public contracts** — `@hiai-gg/hiai-docs/frontend` exports only the SSR-safe extension barrel and shared-document helpers; `MIGRATION_DATABASE_URL` is explicit and runtime uses `hiai_app`
+- [ ] **Verify public contracts** — `@hiai-gg/hiai-docs/frontend` exports only SSR-safe contracts and helpers; the module-level tab registry is available only from `frontend/legacy/doc-tab-registry`; `MIGRATION_DATABASE_URL` is explicit and runtime uses `hiai_app`
 - [ ] **Verify migration job** — `docker compose run --rm migrate` applies the upstream journal before the API starts; `DATABASE_URL` is never used for DDL
-- [ ] **Verify PostgreSQL bootstrap** — `postgres/init.sql` contains extensions only; graph/labels/indexes are created by Drizzle migrations
+- [ ] **Verify PostgreSQL bootstrap** — `postgres/init.sql` contains infrastructure setup only; application schema and graph/labels/indexes are created by Drizzle migrations
 - [ ] **Build SDK** — `cd packages/sdk && bun run build` (ensures `dist/` is current before publishing)
 - [ ] **Run full typecheck** — `bun run typecheck` (0 errors)
 - [ ] **Run full test suite** — `bun test` (all passing)

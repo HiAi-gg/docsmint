@@ -12,7 +12,7 @@ import type { Editor } from "@tiptap/core";
 import InfoIcon from "lucide-svelte/icons/info";
 import SparklesIcon from "lucide-svelte/icons/sparkles";
 import { onMount } from "svelte";
-import { registerDocTab } from "../..";
+import { registerDocTab } from "$lib/stores/doc-tab-registry.svelte";
 import ExtensionExamplePanel from "./ExtensionExamplePanel.svelte";
 import HiAiEditor from "./HiAiEditor.svelte";
 

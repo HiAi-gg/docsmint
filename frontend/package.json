@@ -16,6 +16,10 @@
     "./extensions": {
       "types": "./src/lib/extensions/types.ts",
       "import": "./src/lib/extensions/types.ts"
+    },
+    "./legacy/doc-tab-registry": {
+      "types": "./src/lib/stores/doc-tab-registry.svelte.ts",
+      "import": "./src/lib/stores/doc-tab-registry.svelte.ts"
     }
   },
   "files": [

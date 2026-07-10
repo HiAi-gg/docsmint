@@ -235,7 +235,7 @@ import { createObjectStorageClient, ensureBucket, type ObjectStorageConfig } fro
 
 // Example: create your own Redis/SeaweedFS instance with custom config
 const redis = createRedis({ url: "redis://localhost:6384", maxRetriesPerRequest: 3 });
-const storage = createObjectStorageClient({ endpoint: "localhost", port: 9020, accessKey: "minioadmin", secretKey: "change-me", useSSL: false, region: "us-east-1", forcePathStyle: true });
+const storage = createObjectStorageClient({ endpoint: "localhost", port: 9020, accessKey: "hiai-docs", secretKey: "replace-with-a-random-secret", useSSL: false, region: "us-east-1", forcePathStyle: true });
 ```
 
 > **Note:** `backend/lib/redis` and `backend/lib/storage` resolve to the pure factory files (`redis-factory.ts`, `storage-factory.ts`). Importing from `backend/lib/redis.ts` or `backend/lib/storage.ts` directly is also supported and equivalent — both re-export from the factory. The `packages/db/with-tenant` path goes through a re-export shim at `backend/src/lib/with-tenant.ts`.
@@ -413,7 +413,7 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | postgresql://hiai_app:changeme@localhost:5437/hiai_docs | PostgreSQL connection string |
+| `DATABASE_URL` | required | PostgreSQL runtime connection string using the non-owner `hiai_app` role |
 | `REDIS_URL` | redis://localhost:6384 | Redis connection URL |
 | `BETTER_AUTH_SECRET` | — | Auth secret (generate random) |
 | `BETTER_AUTH_URL` | http://localhost:50700 | Auth base URL |
@@ -423,8 +423,8 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `STORAGE_PORT` | 9020 | SeaweedFS port |
 | `STORAGE_PUBLIC_ENDPOINT` | localhost | Public SeaweedFS host (for presigned URLs) |
 | `STORAGE_PUBLIC_PORT` | 9020 | Public SeaweedFS port |
-| `STORAGE_ACCESS_KEY` | minioadmin | SeaweedFS access key |
-| `STORAGE_SECRET_KEY` | minioadmin | SeaweedFS secret key |
+| `STORAGE_ACCESS_KEY` | hiai-docs | SeaweedFS access key |
+| `STORAGE_SECRET_KEY` | required | SeaweedFS secret key; generate a unique random value |
 | `STORAGE_BUCKET` | hiai-docs | SeaweedFS bucket name |
 | `EMBEDDING_BASE_URL` | — | Base URL for OpenAI-compatible embedding API (optional) |
 | `EMBEDDING_API_KEY` | — | API key for embedding service (leave empty for local inference) |

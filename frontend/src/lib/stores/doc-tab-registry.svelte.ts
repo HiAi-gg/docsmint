@@ -19,54 +19,13 @@
  * Breaking changes to these will be announced as major version bumps.
  */
 
-import type { IconProps } from "lucide-svelte";
-import type { Component, ComponentType, SvelteComponent } from "svelte";
+import type { DocTabDefinition } from "../extensions/doc-tabs";
 
-export type DocTabIcon = ComponentType<SvelteComponent<IconProps>>;
-
-/**
- * Props passed to every registered tab panel component.
- * Keep this stable - breaking changes here break all registered tabs.
- */
-export interface DocTabPanelProps {
-	/** The document server-assigned ID */
-	documentId: string;
-	/** Latest markdown content string */
-	content: string;
-	/** Latest ProseMirror JSON (undefined when not yet loaded) */
-	contentJson: object | undefined;
-}
-
-/**
- * Definition of a single registerable document tab.
- */
-export interface DocTabDefinition {
-	/**
-	 * Stable unique identifier for this tab.
-	 * Used as the active-tab key and must not change between re-renders.
-	 */
-	id: string;
-	/** Human-readable label shown in the tab button. */
-	label: string;
-	/**
-	 * Svelte component rendered when this tab is active.
-	 * It receives DocTabPanelProps as props.
-	 */
-	component: Component<DocTabPanelProps>;
-	/**
-	 * Optional sort order. Tabs with smaller values are shown first.
-	 * Default is 0.
-	 */
-	order?: number;
-	/**
-	 * Optional icon component (e.g. from Lucide-Svelte) rendered next to the tab label.
-	 */
-	icon?: DocTabIcon;
-	/**
-	 * Optional flag to disable the tab button (renders greyed out and unclickable).
-	 */
-	disabled?: boolean;
-}
+export type {
+	DocTabDefinition,
+	DocTabIcon,
+	DocTabPanelProps,
+} from "../extensions/doc-tabs";
 
 /**
  * Reactive array of registered doc tabs.

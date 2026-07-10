@@ -18,8 +18,8 @@
 #
 # Schema, indexes, and FKs are applied via Drizzle migrations from
 # packages/db/src/migrations (run by the one-shot migration job after the
-# database is healthy). This image only installs extensions; GraphRAG graph
-# DDL is owned by the Drizzle migration journal.
+# database is healthy). This image bootstraps extensions and owner-role
+# configuration; all application and GraphRAG DDL is owned by Drizzle.
 
 # --- Stage 1: build pgvector + pgvectorscale from source
 FROM postgres:18.1 AS builder

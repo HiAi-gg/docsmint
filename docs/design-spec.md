@@ -315,9 +315,10 @@ services:
 ```env
 # Database
 DB_USER=aiuser
-DB_PASSWORD=changeme
+DB_PASSWORD=change-me-generate-a-unique-owner-password
 DB_PORT=5437
-DATABASE_URL=postgresql://aiuser:changeme@localhost:5437/hiai_docs
+DATABASE_URL=postgresql://hiai_app:change-me-generate-a-unique-runtime-password@localhost:5437/hiai_docs
+MIGRATION_DATABASE_URL=postgresql://aiuser:change-me-generate-a-unique-owner-password@localhost:5437/hiai_docs
 
 # Auth
 BETTER_AUTH_SECRET=change-me-generate-with-openssl-rand-hex-32
@@ -327,8 +328,8 @@ WEBHOOK_SECRET=change-me-generate-new-key-for-webhooks
 CORS_ORIGINS=http://localhost:50701,http://127.0.0.1:50701
 
 # SeaweedFS
-STORAGE_ACCESS_KEY=minioadmin
-STORAGE_SECRET_KEY=changeme
+STORAGE_ACCESS_KEY=hiai-docs
+STORAGE_SECRET_KEY=change-me-to-random-32-chars
 STORAGE_BUCKET=hiai-docs
 
 # Embeddings

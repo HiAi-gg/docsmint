@@ -25,6 +25,11 @@ export {
 	setHiaiDocsExtensions,
 } from "./extensions/context";
 export type {
+	DocTabDefinition,
+	DocTabIcon,
+	DocTabPanelProps,
+} from "./extensions/doc-tabs";
+export type {
 	CommandPaletteAction,
 	CommandPaletteActionContext,
 	CommandPaletteActionExtension,
@@ -45,12 +50,3 @@ export type {
 	SettingsSectionExtension,
 	SettingsSectionProps,
 } from "./extensions/types";
-export {
-	createDocTabRegistry,
-	type DocTabDefinition,
-	type DocTabIcon,
-	type DocTabPanelProps,
-	docTabRegistry,
-	registerDocTab,
-	registerDocTabIn,
-} from "./stores/doc-tab-registry.svelte";
