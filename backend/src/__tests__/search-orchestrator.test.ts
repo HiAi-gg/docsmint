@@ -1,0 +1,229 @@
+import { describe, expect, mock, test } from "bun:test";
+import type { TenantContext } from "@hiai-docs/db/with-tenant";
+import { searchDocuments } from "../search/orchestrator";
+import type {
+	ChannelResult,
+	QueryPlan,
+	SearchCandidate,
+	SearchChannel,
+} from "../search/types";
+
+const OWNER = "00000000-0000-4000-8000-000000000001";
+const ctx: TenantContext = { userId: OWNER, role: "user" };
+
+function candidate(
+	documentId: string,
+	channel: SearchChannel,
+	rank = 1,
+	rawScore?: number,
+): SearchCandidate {
+	return {
+		documentId,
+		channel,
+		rank,
+		rawScore,
+		evidence: `${channel}:${documentId}`,
+	};
+}
+
+function channels(
+	values: Partial<Record<SearchChannel, SearchCandidate[]>>,
+): ChannelResult[] {
+	return [
+		"exact",
+		"fts",
+		"fuzzy",
+		"vector",
+		"expanded_fts",
+		"expanded_fuzzy",
+		"expanded_vector",
+	].map((channel) => ({
+		channel: channel as SearchChannel,
+		candidates: values[channel as SearchChannel] ?? [],
+		durationMs: 1,
+	}));
+}
+
+function expansion(plan: QueryPlan, variants = ["English"] as string[]) {
+	return {
+		model: "mistralai/ministral-14b-2512",
+		plan: {
+			...plan,
+			translations: variants,
+			synonyms: [],
+			concepts: ["authentication"],
+			namedEntities: ["English"],
+		},
+	};
+}
+
+describe("automatic GraphRAG search orchestration", () => {
+	test("confident exact plus vector fast pass does not call the LLM", async () => {
+		const expand = mock(async () => null);
+		const graph = mock(async () => [] as SearchCandidate[]);
+		const response = await searchDocuments(
+			ctx,
+			{ query: "English", limit: 10 },
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-1", "exact")],
+						vector: [candidate("doc-1", "vector", 1, 0.9)],
+					}),
+				expand,
+				retrieveGraph: graph,
+			},
+		);
+		expect(expand).not.toHaveBeenCalled();
+		expect(graph).toHaveBeenCalledTimes(1);
+		expect(response.items[0]?.documentId).toBe("doc-1");
+	});
+
+	test("Russian low-confidence pass expands once and reruns expanded channels", async () => {
+		const expand = mock(async (plan: QueryPlan) =>
+			expansion(plan, ["English"]),
+		);
+		const expanded = mock(async () =>
+			channels({ expanded_fts: [candidate("doc-2", "expanded_fts")] }),
+		);
+		const response = await searchDocuments(
+			ctx,
+			{ query: "английский", limit: 10 },
+			{
+				retrieveFast: async () => channels({}),
+				expand,
+				retrieveExpanded: expanded,
+				retrieveGraph: async () => [],
+			},
+		);
+		expect(expand).toHaveBeenCalledTimes(1);
+		expect(expanded).toHaveBeenCalledTimes(1);
+		expect(response.diagnostics.expansionAttempted).toBe(true);
+		expect(response.items[0]?.documentId).toBe("doc-2");
+	});
+
+	test("GraphRAG is called without a request flag", async () => {
+		const graph = mock(async () => [candidate("graph-doc", "graph")]);
+		const response = await searchDocuments(
+			ctx,
+			{ query: "topic" },
+			{
+				retrieveFast: async () =>
+					channels({ fts: [candidate("direct", "fts")] }),
+				expand: async () => null,
+				retrieveGraph: graph,
+			},
+		);
+		expect(graph).toHaveBeenCalledTimes(1);
+		expect(response.diagnostics.graphAttempted).toBe(true);
+	});
+
+	test("graph-only results remain below a strong exact result", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{ query: "Exact title" },
+			{
+				retrieveFast: async () =>
+					channels({ exact: [candidate("exact", "exact")] }),
+				expand: async () => null,
+				retrieveGraph: async () => [candidate("related", "graph")],
+			},
+		);
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"exact",
+			"related",
+		]);
+	});
+
+	test("provider timeout returns fast-pass results", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{ query: "таймаут" },
+			{
+				retrieveFast: async () => channels({ fts: [candidate("fast", "fts")] }),
+				expand: async () => {
+					throw new Error("timeout");
+				},
+				retrieveGraph: async () => [],
+			},
+		);
+		expect(response.items[0]?.documentId).toBe("fast");
+		expect(response.diagnostics.expansionAttempted).toBe(true);
+	});
+
+	test("graph failure returns fused direct results", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{ query: "direct" },
+			{
+				retrieveFast: async () =>
+					channels({ exact: [candidate("direct", "exact")] }),
+				expand: async () => null,
+				retrieveGraph: async () => {
+					throw new Error("AGE unavailable");
+				},
+			},
+		);
+		expect(response.items[0]?.documentId).toBe("direct");
+		expect(response.diagnostics.graphFailed).toBe(true);
+	});
+
+	test("empty healthy channels report no relevant candidates", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{ query: "missing" },
+			{
+				retrieveFast: async () => channels({}),
+				expand: async () => null,
+				retrieveGraph: async () => [],
+			},
+		);
+		expect(response.items).toEqual([]);
+		expect(response.diagnostics.reason).toBe("no_relevant_candidates");
+	});
+
+	test("every adapter receives the same tenant context", async () => {
+		const seen: TenantContext[] = [];
+		const response = await searchDocuments(
+			ctx,
+			{ query: "scope" },
+			{
+				retrieveFast: async (received) => {
+					seen.push(received);
+					return channels({});
+				},
+				expand: async () => null,
+				retrieveGraph: async (received) => {
+					seen.push(received);
+					return [];
+				},
+			},
+		);
+		expect(response.items).toEqual([]);
+		expect(seen).toHaveLength(2);
+		expect(seen.every((received) => received === ctx)).toBe(true);
+	});
+
+	test("empty direct pass seeds AGE from expanded concepts and entities", async () => {
+		let graphRequest:
+			| { documentSeeds: string[]; queryPlan: QueryPlan }
+			| undefined;
+		const planExpansion = mock(async (plan: QueryPlan) => expansion(plan, []));
+		const response = await searchDocuments(
+			ctx,
+			{ query: "русский термин" },
+			{
+				retrieveFast: async () => channels({}),
+				expand: planExpansion,
+				retrieveExpanded: async () => [],
+				retrieveGraph: async (_ctx, request) => {
+					graphRequest = request;
+					return [candidate("graph-concept", "graph")];
+				},
+			},
+		);
+		expect(graphRequest?.documentSeeds).toEqual([]);
+		expect(graphRequest?.queryPlan.concepts).toContain("authentication");
+		expect(response.items[0]?.documentId).toBe("graph-concept");
+	});
+});

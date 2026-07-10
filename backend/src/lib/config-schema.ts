@@ -209,6 +209,13 @@ export const envSchema = z.object({
 		.max(10)
 		.default(2),
 	SEARCH_GRAPH_SEED_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+	SEARCH_GRAPH_MAX_HOPS: z.coerce.number().int().min(1).max(3).default(2),
+	SEARCH_GRAPH_RESULT_LIMIT: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(100)
+		.default(20),
 	// Hybrid search weights — applied to the merged text + semantic score.
 	// Both must be in [0, 1]; defaults preserve the historical 0.4 text /
 	// 0.6 semantic balance from the README contract.

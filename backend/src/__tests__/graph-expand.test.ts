@@ -39,4 +39,14 @@ describe("graph expand module", () => {
 		const withInvalid = await expandResults([""], 2);
 		expect(withInvalid.size).toBe(0);
 	});
+
+	test("builds a query-plan entity seed traversal", async () => {
+		const { _buildQuerySeedCypher } = await import(
+			"../lib/graph/search-expansion"
+		);
+		const cypher = _buildQuerySeedCypher(["Authentication", "English"], 10);
+		expect(cypher).toContain("MATCH (entity)-[:MENTIONS]-(document:Document)");
+		expect(cypher).toContain("QUERY_ENTITY");
+		expect(cypher).toContain("LIMIT 10");
+	});
 });

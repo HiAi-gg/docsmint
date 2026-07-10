@@ -12,6 +12,7 @@
  * when AGE is unreachable, or when no seed ids are provided.
  */
 
+import type { QueryPlan } from "../../search/types";
 import { config } from "../config";
 import { logger } from "../logger";
 import { type GraphSqlClient, getGraphDb } from "./init";
@@ -22,6 +23,57 @@ export interface RelatedDoc {
 	docId: string;
 	relationType: string;
 	hopDistance: number;
+}
+
+/**
+ * Resolve query-plan concepts and named entities to document vertices. This
+ * is deliberately separate from document-seed expansion: a query with no
+ * lexical/vector hit still gets one bounded AGE lookup without exposing any
+ * hidden document metadata to the caller.
+ */
+export async function expandFromQueryPlan(
+	plan: QueryPlan,
+	limit = 20,
+): Promise<RelatedDoc[]> {
+	if (!config.GRAPH_SEARCH_ENABLED) return [];
+	const terms = dedupe([
+		...plan.concepts,
+		...plan.namedEntities,
+		...plan.translations,
+		...plan.synonyms,
+	]).map((term) => term.toLocaleLowerCase());
+	if (terms.length === 0) return [];
+	const sql = await getGraphDb();
+	if (!sql) return [];
+	const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+
+	try {
+		const cypher = buildQuerySeedCypher(terms, boundedLimit);
+		const queryString = `SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (neighbor_id agtype, relation agtype, hops agtype)`;
+		const rows = (await sql.unsafe(queryString)) as Array<{
+			neighbor_id: string;
+			relation: string;
+			hops: number;
+		}>;
+		const seen = new Set<string>();
+		const out: RelatedDoc[] = [];
+		for (const row of rows) {
+			const docId = stripQuotes(String(row.neighbor_id ?? ""));
+			if (!docId || seen.has(docId)) continue;
+			seen.add(docId);
+			const hops = Number(row.hops);
+			out.push({
+				docId,
+				relationType: stripQuotes(String(row.relation ?? "QUERY_ENTITY")),
+				hopDistance: Number.isFinite(hops) ? Math.max(1, hops) : 1,
+			});
+			if (out.length >= boundedLimit) break;
+		}
+		return out;
+	} catch (err) {
+		logger.warn({ err, terms: terms.length }, "Graph query seed lookup failed");
+		return [];
+	}
 }
 
 /**
@@ -131,6 +183,18 @@ function dedupe(ids: string[]): string[] {
 	return out;
 }
 
+function buildQuerySeedCypher(terms: string[], limit: number): string {
+	const termList = terms.map((term) => JSON.stringify(term)).join(", ");
+	return `
+		MATCH (entity)-[:MENTIONS]-(document:Document)
+		WHERE toLower(entity.name) IN [${termList}]
+		RETURN DISTINCT document.id AS neighbor_id,
+		       'QUERY_ENTITY' AS relation,
+		       1 AS hops
+		LIMIT ${limit}
+	`;
+}
+
 /**
  * AGE returns string values wrapped in double quotes (e.g. `"foo"`). Strip
  * the quotes so callers receive plain string ids usable as document ids.
@@ -152,6 +216,14 @@ export function _buildTraversalCypher(
 	maxHops: number = DEFAULT_MAX_HOPS,
 ): string {
 	return buildTraversalCypher(seedIds, maxHops);
+}
+
+/** Test-only query-seed cypher helper. */
+export function _buildQuerySeedCypher(terms: string[], limit = 20): string {
+	return buildQuerySeedCypher(
+		dedupe(terms),
+		Math.max(1, Math.min(Math.floor(limit), 100)),
+	);
 }
 
 /**
