@@ -1,9 +1,13 @@
 import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, integer, pgEnum, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // pgvector vector type — maps to PostgreSQL vector(n) column
-const vector = customType<{ data: number[] }>({
-  dataType() {
-    return "vector(1024)";
+const vector = customType<{
+  data: number[];
+  config: { dimensions: number };
+  configRequired: true;
+}>({
+  dataType(config) {
+    return `vector(${config.dimensions})`;
   },
   toDriver(value: number[]) {
     return JSON.stringify(value);
@@ -28,6 +32,13 @@ import { relations, sql } from "drizzle-orm";
 // ============================================
 export const documentVisibilityEnum = pgEnum("document_visibility", ["private", "shared", "public"]);
 export const shareRoleEnum = pgEnum("share_role", ["viewer", "commenter", "editor"]);
+export const embeddingStatusEnum = pgEnum("embedding_status", [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+  "stale",
+]);
 
 // ============================================
 // users — managed by Better Auth
@@ -176,6 +187,15 @@ export const documents = pgTable(
     searchVector: tsvector("search_vector").generatedAlwaysAs(
       sql`to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
     ),
+    searchVectorSimple: tsvector("search_vector_simple").generatedAlwaysAs(
+      sql`to_tsvector('simple', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
+    ),
+    embeddingStatus: embeddingStatusEnum("embedding_status").notNull().default("pending"),
+    activeEmbeddingGeneration: uuid("active_embedding_generation"),
+    pendingEmbeddingGeneration: uuid("pending_embedding_generation"),
+    embeddingProfile: text("embedding_profile"),
+    embeddingErrorCode: text("embedding_error_code"),
+    embeddingUpdatedAt: timestamp("embedding_updated_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -185,6 +205,8 @@ export const documents = pgTable(
     index("documents_category_id_idx").on(table.categoryId),
     index("documents_created_at_idx").on(table.createdAt),
     index("idx_documents_search_vector").using("gin", table.searchVector),
+    index("idx_documents_search_vector_simple").using("gin", table.searchVectorSimple),
+    index("documents_embedding_status_idx").on(table.embeddingStatus),
     index("idx_documents_title_trgm").using(
       "gin",
       sql`${table.title} gin_trgm_ops`
@@ -425,7 +447,7 @@ export const documentEmbeddings = pgTable(
     chunkHash: text("chunk_hash"),
     charStart: integer("char_start").notNull().default(0),
     charEnd: integer("char_end").notNull().default(0),
-    embedding: vector("embedding"),
+    embedding: vector("embedding", { dimensions: 1024 }),
     // Identifier of the embedding model that produced the vector above.
     // Empty string ("") means "unknown / legacy row" (pre-v1 rows that
     // existed before this column was introduced). The targeted reindex
@@ -433,11 +455,24 @@ export const documentEmbeddings = pgTable(
     // to refresh only docs whose stored model does not match the
     // currently-configured EMBEDDING_MODEL.
     embeddingModel: text("embedding_model").notNull().default(""),
+    generationId: uuid("generation_id").notNull(),
+    embeddingDimensions: integer("embedding_dimensions").notNull().default(1024),
+    embeddingProfile: text("embedding_profile").notNull().default("legacy"),
+    isValid: boolean("is_valid").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("document_embeddings_doc_id_idx").on(table.documentId),
-    uniqueIndex("document_embeddings_doc_chunk_idx").on(table.documentId, table.chunkIndex),
+    uniqueIndex("document_embeddings_doc_chunk_idx").on(
+      table.documentId,
+      table.generationId,
+      table.chunkIndex,
+    ),
+    index("document_embeddings_generation_valid_idx").on(
+      table.documentId,
+      table.generationId,
+      table.isValid,
+    ),
     // Backs POST /api/admin/reindex/model which selects docs whose stored
     // embedding model differs from the currently-configured EMBEDDING_MODEL.
     index("idx_document_embeddings_embedding_model").on(table.embeddingModel),

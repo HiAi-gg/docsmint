@@ -198,7 +198,7 @@ export const envSchema = z.object({
 	SEARCH_EXACT_BOOST: z.coerce.number().min(0).max(1).default(0.02),
 	SEARCH_CHANNEL_AGREEMENT_BOOST: z.coerce.number().min(0).max(1).default(0.01),
 	SEARCH_GRAPH_MAX_CONTRIBUTION: z.coerce.number().min(0).max(1).default(0.03),
-	SEARCH_VECTOR_MIN_SIMILARITY: z.coerce.number().min(-1).max(1).default(0.35),
+	SEARCH_VECTOR_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.35),
 	SEARCH_FUZZY_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.25),
 	SEARCH_MIN_CHANNEL_AGREEMENT: z.coerce
 		.number()

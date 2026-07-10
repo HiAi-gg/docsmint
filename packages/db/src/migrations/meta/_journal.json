@@ -176,6 +176,13 @@
       "when": 1785000000010,
       "tag": "0024_add_documents_content_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785000000011,
+      "tag": "0025_search_embedding_generations",
+      "breakpoints": true
     }
   ]
 }
