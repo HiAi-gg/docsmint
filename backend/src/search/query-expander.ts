@@ -6,17 +6,9 @@ import {
 	resolveChatProviderKey,
 } from "../lib/openai-compatible-chat";
 import { redis } from "../lib/redis";
+import type { QueryPlan } from "./types";
 
-/** Provider-independent query plan shared with the search domain. */
-export interface QueryPlan {
-	original: string;
-	normalized: string;
-	detectedLanguage: string;
-	translations: string[];
-	synonyms: string[];
-	concepts: string[];
-	namedEntities: string[];
-}
+export type { QueryPlan } from "./types";
 
 export interface ExpansionScope {
 	tenantScope?: string;
