@@ -6,7 +6,44 @@ const LETTER = /\p{L}/u;
 
 /** Normalize a user query without changing meaningful punctuation or paths. */
 export function normalizeQuery(query: string): string {
-	return query.normalize("NFC").replace(/\s+/gu, " ").trim();
+	const normalized = query.normalize("NFC");
+	let result = "";
+	let inQuotedPhrase = false;
+	let escaped = false;
+	let pendingWhitespace = false;
+
+	for (const character of normalized) {
+		if (inQuotedPhrase) {
+			result += character;
+			if (escaped) {
+				escaped = false;
+			} else if (character === "\\") {
+				escaped = true;
+			} else if (character === '"') {
+				inQuotedPhrase = false;
+			}
+			continue;
+		}
+
+		if (character === '"') {
+			if (pendingWhitespace && result.length > 0) result += " ";
+			pendingWhitespace = false;
+			result += character;
+			inQuotedPhrase = true;
+			continue;
+		}
+
+		if (/\s/u.test(character)) {
+			pendingWhitespace = true;
+			continue;
+		}
+
+		if (pendingWhitespace && result.length > 0) result += " ";
+		pendingWhitespace = false;
+		result += character;
+	}
+
+	return result;
 }
 
 /** Detect the dominant script locally; no provider or network call is involved. */

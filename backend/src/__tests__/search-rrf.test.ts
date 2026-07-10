@@ -57,6 +57,13 @@ describe("deterministic reciprocal rank fusion", () => {
 				candidate("doc-a", "vector", 1, 0.8),
 				candidate("weak", "vector", 1, 0.1),
 				candidate("nan", "vector", 1, Number.NaN),
+				candidate("weak-expanded", "expanded_vector", 1, 0.1),
+				candidate(
+					"infinity-expanded",
+					"expanded_vector",
+					1,
+					Number.POSITIVE_INFINITY,
+				),
 			],
 			{ rrfK: 60, vectorMinSimilarity: 0.35 },
 		);

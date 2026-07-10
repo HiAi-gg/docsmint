@@ -60,7 +60,10 @@ export function fuseCandidates(
 			candidate.rank < 1
 		)
 			continue;
-		if (candidate.channel === "vector") {
+		if (
+			candidate.channel === "vector" ||
+			candidate.channel === "expanded_vector"
+		) {
 			if (
 				typeof candidate.rawScore !== "number" ||
 				!Number.isFinite(candidate.rawScore)
