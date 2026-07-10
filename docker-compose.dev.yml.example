@@ -8,21 +8,20 @@
 # machine, then `docker compose -f docker-compose.dev.yml up`.
 
 services:
-  # Postgres with the pgvector extension. Stores documents, chunks,
-  # embeddings, and Better Auth state.
+  # Custom PostgreSQL image with AGE, pgvector, and pgvectorscale.
   postgres:
-    image: pgvector/pgvector:pg18
+    image: hiai-postgres:18-custom
     restart: unless-stopped
     ports:
       - "${DB_PORT:-5437}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       POSTGRES_DB: ${DB_NAME:-hiai_docs}
       POSTGRES_USER: ${DB_USER:-aiuser}
       # Change this for any non-throwaway environment.
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${DB_NAME:-hiai_docs}"]
       interval: 10s
@@ -63,22 +62,17 @@ services:
       - "9021:8888"   # SeaweedFS Web UI (Filer)
     volumes:
       - seaweedfs_data:/data
-    command: >
-      server -s3
-      -s3.port=8333
-      -s3.config=/data/s3.json
-      -filer
-      -filer.port=8888
-      -master.port=9333
-      -volume.port=8080
-      -dir=/data
-      -ip=seaweedfs
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        printf '%s' "$$SEAWEEDFS_S3_CONFIG" > /data/s3.json
+        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=seaweedfs
     environment:
-      - SEAWEEDFS_S3_ACCESS_KEY=${STORAGE_ACCESS_KEY:-minioadmin}
-      - SEAWEEDFS_S3_SECRET_KEY=${STORAGE_SECRET_KEY:-minioadmin}
-      - SEAWEEDFS_S3_CORS_ALLOW_ORIGIN=${STORAGE_CORS_ALLOW_ORIGIN:-http://localhost:50701,http://127.0.0.1:50701}
+      SEAWEEDFS_S3_CONFIG: >-
+        {"identities":[{"name":"hiai-docs","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-minioadmin}","secretKey":"${STORAGE_SECRET_KEY:-minioadmin}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
+      SEAWEEDFS_S3_CORS_ALLOW_ORIGIN: ${STORAGE_CORS_ALLOW_ORIGIN:-http://localhost:50701,http://127.0.0.1:50701}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8333/"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8888/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -88,13 +82,15 @@ services:
           memory: 512M
           cpus: "1"
 
-  # Backend API (Bun + Hono). Runs db:push on start, then watches src/.
+  # Backend API (Bun + Elysia). Runs migrations, then watches src/.
   api:
     image: oven/bun:1.3.14-alpine
     working_dir: /mnt/ai_data/projects/hiai-docs
     restart: unless-stopped
     ports:
       - "${API_PORT:-50700}:50700"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       # Bind-mount source for live reload.
       # Host's node_modules (with workspace symlinks) are used directly.
@@ -110,10 +106,11 @@ services:
     command:
       - sh
       - -c
-      - "cd /mnt/ai_data/projects/hiai-docs/packages/db && bun run db:push && cd /mnt/ai_data/projects/hiai-docs/backend && bun run --watch src/index.ts"
+      - "cd /mnt/ai_data/projects/hiai-docs/packages/db && DATABASE_URL=postgresql://${DB_USER:-aiuser}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hiai_docs} bun run db:migrate && cd /mnt/ai_data/projects/hiai-docs/backend && bun run --watch src/index.ts"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-aiuser}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hiai_docs}
+      DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}@postgres:5432/${DB_NAME:-hiai_docs}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: seaweedfs
       STORAGE_PORT: 8333
@@ -137,6 +134,7 @@ services:
       EMBEDDING_FALLBACK_MODEL: ${EMBEDDING_FALLBACK_MODEL:-}
       API_PORT: ${API_PORT:-50700}
       NODE_ENV: development
+      BODY_SIZE_LIMIT: "10485760"
       LOG_LEVEL: ${LOG_LEVEL:-debug}
       # Loaded from .env; explicit here for Docker (Bun's auto-load only
       # checks the cwd, which after `cd /app/backend` is backend/).

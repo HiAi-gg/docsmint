@@ -223,6 +223,10 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 			// callable and the graph-expansion path is unaffected.
 			if (includeChunks && merged.size > 0) {
 				const docIds = Array.from(merged.keys());
+				const docIdList = sql.join(
+					docIds.map((id) => sql`${id}`),
+					sql`, `,
+				);
 				try {
 					const queryEmbedding = await getEmbedding(q);
 					if (!queryEmbedding.every((v) => v === 0)) {
@@ -233,7 +237,7 @@ export const searchRoutes = new Elysia({ prefix: "/api/search" })
 								       de.char_start, de.char_end,
 								       de.embedding <=> ${embeddingStr}::vector AS score
 								FROM document_embeddings de
-								WHERE de.document_id = ANY(${docIds})
+								WHERE de.document_id IN (${docIdList})
 								ORDER BY de.document_id, de.embedding <=> ${embeddingStr}::vector
 							`);
 						});
@@ -557,9 +561,9 @@ async function semanticSearch(
 
 		return withTenant(ctx, async (tx) => {
 			return tx.execute(sql`
-				SELECT DISTINCT ON (d.id)
+				SELECT
 					d.id, d.title, LEFT(d.content, 200) as snippet,
-					1 - (top.distance) as score,
+					1 - MIN(top.distance) as score,
 					d.folder_id, f.name as folder_name, d.created_at, d.updated_at
 				FROM (
 					SELECT de.document_id, de.embedding <=> ${embeddingStr}::vector AS distance
@@ -571,7 +575,9 @@ async function semanticSearch(
 				JOIN documents d ON d.id = top.document_id
 				LEFT JOIN folders f ON f.id = d.folder_id
 				WHERE d.owner_id = ${ctx.userId}
-				ORDER BY top.distance
+				GROUP BY d.id, d.title, d.content, d.folder_id, f.name,
+					d.created_at, d.updated_at
+				ORDER BY MIN(top.distance)
 				LIMIT ${limit}
 			`);
 		});

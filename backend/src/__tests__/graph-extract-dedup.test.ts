@@ -67,7 +67,7 @@ function applyMocks(): void {
 			REEMBED_MAX_IDLE_HOURS: 24,
 			METADATA_REEMBED_CRON_INTERVAL_MINUTES: 1,
 			REEMBED_CRON_INTERVAL_MINUTES: 15,
-		} as any,
+		},
 	}));
 	// Intercept redis import so extractEntities gets our fake set()
 	mock.module("../lib/redis", () => ({ redis: { set: redisSetMock } }));

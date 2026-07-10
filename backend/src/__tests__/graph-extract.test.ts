@@ -313,6 +313,28 @@ describe("graph extract-entities module", () => {
 		).toBeDefined();
 	});
 
+	test("the prompt example only uses supported entity types", async () => {
+		const source = await Bun.file(
+			new URL("../lib/graph/extract-entities.ts", import.meta.url),
+		).text();
+		const example = source.slice(
+			source.indexOf('Example — for the text "Apple Inc.'),
+			source.indexOf('].join("\\n")'),
+		);
+		expect(example).not.toContain('"type":"Product"');
+		expect(example).toContain('"type":"Concept"');
+	});
+
+	test("AGE persistence uses PostgreSQL set_config", async () => {
+		const source = await Bun.file(
+			new URL("../lib/graph/extract-entities.ts", import.meta.url),
+		).text();
+		expect(source).toContain("pg_catalog.set_config('search_path'");
+		expect(source).not.toContain("ag_catalog.set_config('search_path'");
+		expect(source).not.toContain("ON CREATE SET");
+		expect(source).not.toContain("ON MATCH SET");
+	});
+
 	test("parseExtractionResponse drops unknown entity/relation types", async () => {
 		const { _parseExtractionResponseForTests } = await import(
 			"../lib/graph/extract-entities"

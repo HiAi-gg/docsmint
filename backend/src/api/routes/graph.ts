@@ -252,9 +252,6 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
 
 	const cypher = `
 		MATCH (d:Document {id: $docId})-[r:MENTIONS]->(e)
-		WHERE e:Person IS NOT NULL OR e:Organization IS NOT NULL
-		   OR e:Concept IS NOT NULL OR e:Location IS NOT NULL
-		   OR e:Topic IS NOT NULL
 		RETURN labels(e) AS labels, e.name AS name
 	`;
 	// AGE's cypher() requires a literal dollar-quoted string constant,

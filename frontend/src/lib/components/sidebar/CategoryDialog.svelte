@@ -114,7 +114,9 @@ const submitLabel = $derived(
 			: m.action_create(),
 );
 
-function normalizeApiMode(value: ApiMode): "unavailable" | "global" | "category" {
+function normalizeApiMode(
+	value: ApiMode,
+): "unavailable" | "global" | "category" {
 	if (value === "category") return "category";
 	if (value === "general") return "global";
 	return "unavailable";
@@ -186,7 +188,8 @@ async function handleSubmit(e?: Event) {
 			apiMode: normalizeApiMode(apiMode),
 			apiPermissionRead: apiMode === "unavailable" ? false : apiPermissionRead,
 			apiPermissionEdit: apiMode === "unavailable" ? false : apiPermissionEdit,
-			apiPermissionWrite: apiMode === "unavailable" ? false : apiPermissionWrite,
+			apiPermissionWrite:
+				apiMode === "unavailable" ? false : apiPermissionWrite,
 		});
 		close();
 	} catch (err) {

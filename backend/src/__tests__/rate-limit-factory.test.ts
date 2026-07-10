@@ -109,7 +109,7 @@ describe("createRateLimiter", () => {
 		};
 		const limiter = createRateLimiter(
 			{ windowSec: 60, max: 10, keyPrefix: "test" },
-			trackingRedis as any,
+			trackingRedis,
 		);
 		await limiter("127.0.0.1");
 		expect(incrCalled).toBe(true);
@@ -143,7 +143,7 @@ describe("createRateLimiter", () => {
 		};
 		const limiter = createRateLimiter(
 			{ windowSec: 60, max: 10, keyPrefix: "test" },
-			errorRedis as any,
+			errorRedis,
 		);
 		const result = await limiter("127.0.0.1");
 		expect(result.allowed).toBe(false);

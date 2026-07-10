@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 describe("graph expand module", () => {
+	test("builds an AGE-compatible shared-entity traversal", async () => {
+		const { _buildTraversalCypher } = await import(
+			"../lib/graph/search-expansion"
+		);
+		const cypher = _buildTraversalCypher(["doc-1"], 2);
+		expect(cypher).toContain("(seed:Document)-[:MENTIONS]->(entity)");
+		expect(cypher).toContain("<-[:MENTIONS]-(neighbor:Document)");
+		expect(cypher).toContain("RETURN DISTINCT");
+		expect(cypher).not.toContain("shortestPath");
+	});
+
 	test("expandResults returns empty Map when GRAPH_SEARCH_ENABLED is false", async () => {
 		// Force a fresh config read with the flag disabled. The default
 		// in `.env` is `false` so the process-wide config already reflects

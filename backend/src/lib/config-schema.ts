@@ -62,6 +62,14 @@ export const envSchema = z.object({
 	EMBEDDING_BASE_URL: z.string().optional(),
 	EMBEDDING_API_KEY: z.string().optional(),
 	EMBEDDING_MODEL: z.string().optional(),
+	// Local models may need tens of seconds to swap into memory. Keep this
+	// configurable so a cold Ollama load does not silently become a zero vector.
+	EMBEDDING_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(300_000)
+		.default(120_000),
 	EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
 	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
 	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
@@ -116,6 +124,19 @@ export const envSchema = z.object({
 	// GraphRAG extractor reuses the configured embedding provider's model
 	// name where possible; falls back to `gpt-4o-mini` if neither is set.
 	GRAPH_EXTRACT_MODEL: z.string().optional(),
+	// Optional OpenAI-compatible reasoning control. Ollama Qwen3 models need
+	// `none` here so the response token budget is spent on the JSON payload
+	// instead of a reasoning trace. Omitted by default for providers/models
+	// that do not support the field.
+	GRAPH_EXTRACT_REASONING_EFFORT: z
+		.enum(["none", "low", "medium", "high", "max"])
+		.optional(),
+	GRAPH_EXTRACT_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(300_000)
+		.default(120_000),
 	// Base URL for the LLM that performs entity extraction. This endpoint
 	// MUST accept OpenAI-compatible chat completion requests
 	// (POST {url}/chat/completions). When absent, falls back to

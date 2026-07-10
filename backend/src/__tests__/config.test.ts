@@ -108,6 +108,19 @@ describe("config schema", () => {
 			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
 		}
 	});
+
+	test("accepts supported GraphRAG reasoning effort values", () => {
+		for (const effort of ["none", "low", "medium", "high", "max"]) {
+			const result = realEnvSchema.safeParse({
+				GRAPH_EXTRACT_REASONING_EFFORT: effort,
+			});
+			expect(result.success).toBe(true);
+		}
+		expect(
+			realEnvSchema.safeParse({ GRAPH_EXTRACT_REASONING_EFFORT: "off" })
+				.success,
+		).toBe(false);
+	});
 });
 
 // Production secret guards — the real schema (config-schema.ts) must reject

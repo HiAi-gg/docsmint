@@ -4,11 +4,12 @@
 
 ## Pre-Release
 
-- [ ] **Bump version** — Update version in all 8 files:
+- [ ] **Bump version** — Update version in all 9 files:
   - `package.json`
   - `backend/package.json`
   - `frontend/package.json`
   - `packages/db/package.json`
+  - `packages/sdk/package.json`
   - `packages/cli/package.json`
   - `packages/mcp-server/package.json`
   - `package.public.json`
@@ -27,7 +28,7 @@
 
 - [ ] **Build Docker images** — `docker compose build` (both `api` and `web`)
 - [ ] **Verify Docker health** — `docker compose up -d && curl -fsS http://localhost:50700/api/health`
-- [ ] **Run DB migrations** — `docker compose exec api bun run db:migrate`
+- [ ] **Run DB migrations** — `bun run db:migrate` (loads the root `.env` and applies the canonical Drizzle migration journal)
 
 ## Release
 

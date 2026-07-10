@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/hiai-docs",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "type": "module",
   "license": "MIT",
   "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",

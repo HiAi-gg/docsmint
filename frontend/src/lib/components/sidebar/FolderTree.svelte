@@ -51,13 +51,13 @@ import { onDestroy, onMount } from "svelte";
 import { flip } from "svelte/animate";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { apiFetch } from "$lib/api/client";
 import {
 	type Category,
 	deleteCategory,
 	listCategories,
 	updateCategory,
 } from "$lib/api/categories";
+import { apiFetch } from "$lib/api/client";
 import {
 	clearDocumentsCache,
 	type Document,
@@ -1359,10 +1359,13 @@ async function handleCategorySave(payload: {
 			apiPermissionWrite: payload.apiPermissionWrite,
 		};
 		if (categoryDialogMode === "edit" && selectedCategory) {
-			await apiFetch(`/api/categories/${encodeURIComponent(selectedCategory.id)}`, {
-				method: "PATCH",
-				body,
-			});
+			await apiFetch(
+				`/api/categories/${encodeURIComponent(selectedCategory.id)}`,
+				{
+					method: "PATCH",
+					body,
+				},
+			);
 		} else {
 			await apiFetch("/api/categories", {
 				method: "POST",
@@ -1401,8 +1404,13 @@ const UNCATEGORIZED_KEY = "__uncategorized__";
 // Uncategorized is excluded so it can never be dragged away.
 const categoryBuckets = $derived(
 	orderedBuckets.filter(
-		(b): b is { id: string; category: CategoryWithApiAccess; folders: FolderItem[] } =>
-			b.id !== UNCATEGORIZED_KEY && b.category !== null,
+		(
+			b,
+		): b is {
+			id: string;
+			category: CategoryWithApiAccess;
+			folders: FolderItem[];
+		} => b.id !== UNCATEGORIZED_KEY && b.category !== null,
 	),
 );
 const uncatBucket = $derived(

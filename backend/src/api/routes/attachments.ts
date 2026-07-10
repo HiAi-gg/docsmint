@@ -58,6 +58,28 @@ async function readStorageBody(body: unknown): Promise<Buffer> {
 		return Buffer.from(body);
 	}
 
+	if (typeof (body as AsyncBody)[Symbol.asyncIterator] === "function") {
+		const chunks: Uint8Array[] = [];
+		for await (const chunk of body as AsyncBody) {
+			if (Buffer.isBuffer(chunk)) {
+				chunks.push(chunk);
+			} else if (chunk instanceof Uint8Array) {
+				chunks.push(chunk);
+			} else if (chunk instanceof ArrayBuffer) {
+				chunks.push(new Uint8Array(chunk));
+			} else if (ArrayBuffer.isView(chunk)) {
+				chunks.push(
+					new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+				);
+			} else if (typeof chunk === "string") {
+				chunks.push(Buffer.from(chunk));
+			} else {
+				chunks.push(Buffer.from(String(chunk)));
+			}
+		}
+		return Buffer.concat(chunks);
+	}
+
 	if (
 		typeof (body as { transformToByteArray: () => Promise<Uint8Array> })
 			.transformToByteArray === "function"
@@ -99,28 +121,6 @@ async function readStorageBody(body: unknown): Promise<Buffer> {
 				chunks.push(Buffer.from(value));
 			} else {
 				chunks.push(Buffer.from(String(value)));
-			}
-		}
-		return Buffer.concat(chunks);
-	}
-
-	if (typeof (body as AsyncBody)[Symbol.asyncIterator] === "function") {
-		const chunks: Uint8Array[] = [];
-		for await (const chunk of body as AsyncBody) {
-			if (Buffer.isBuffer(chunk)) {
-				chunks.push(chunk);
-			} else if (chunk instanceof Uint8Array) {
-				chunks.push(chunk);
-			} else if (chunk instanceof ArrayBuffer) {
-				chunks.push(new Uint8Array(chunk));
-			} else if (ArrayBuffer.isView(chunk)) {
-				chunks.push(
-					new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-				);
-			} else if (typeof chunk === "string") {
-				chunks.push(Buffer.from(chunk));
-			} else {
-				chunks.push(Buffer.from(String(chunk)));
 			}
 		}
 		return Buffer.concat(chunks);

@@ -8,11 +8,10 @@
 -- migration:
 --
 --   1. Creates `hiai_app` with NOSUPERUSER NOBYPASSRLS and a LOGIN
---      password sourced from `current_setting('hiai_app.password')`
---      if set (lets the operator override the default via
---      `ALTER ROLE ... SET hiai_app.password = '...'` or a one-time
---      `SET LOCAL` from the migration runner), otherwise falls back
---      to the standard `hiai_app_password` default.
+--      password sourced from `current_setting('hiai_app.password')`.
+--      Fresh Docker installs create the role in the PostgreSQL init shell
+--      with HIAI_APP_PASSWORD before this migration runs. External
+--      migration owners must set the setting explicitly.
 --   2. Grants CONNECT on the current database, USAGE on `public` and
 --      `ag_catalog`, and DML on all existing/future tables in
 --      `public`. Apache AGE functions/types in `ag_catalog` are
@@ -27,17 +26,17 @@
 -- 1. Create the role (NOSUPERUSER, NOBYPASSRLS, LOGIN, no replication).
 --    Password resolution order:
 --      a) `current_setting('hiai_app.password', true)` — operator override
---      b) fallback literal 'hiai_app_password' (matches .env.example)
+--      b) no fallback — fail clearly when the operator omitted the secret
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
   v_password text;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'hiai_app') THEN
-    v_password := coalesce(
-      nullif(current_setting('hiai_app.password', true), ''),
-      'hiai_app_password'
-    );
+    v_password := nullif(current_setting('hiai_app.password', true), '');
+    IF v_password IS NULL THEN
+      RAISE EXCEPTION 'hiai_app.password must be set before creating the runtime role';
+    END IF;
     EXECUTE format(
       'CREATE ROLE hiai_app WITH LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS',
       v_password

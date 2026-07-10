@@ -60,7 +60,9 @@ const settled = $derived(inFlight === 0);
     <div
       class="w-full max-w-md overflow-hidden rounded-lg border border-border bg-background shadow-2xl"
       onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
       role="dialog"
+      tabindex="-1"
       aria-modal="true"
       aria-label={m.import_progress_title()}
     >

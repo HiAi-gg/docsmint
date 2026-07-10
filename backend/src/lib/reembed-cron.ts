@@ -38,9 +38,13 @@
  */
 
 import { documents } from "@hiai-docs/db/schema";
+import {
+	adminTenantContext,
+	withTenant,
+	ZERO_UUID,
+} from "@hiai-docs/db/with-tenant";
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { config } from "./config";
-import { db } from "./db";
 import { logger } from "./logger";
 import { enqueueReembed } from "./reembed";
 
@@ -62,6 +66,7 @@ const METADATA_DEBOUNCE_MINUTES = 3;
  * not raw scan cost.
  */
 const CRON_BATCH_SIZE = 100;
+const CRON_TENANT = adminTenantContext(ZERO_UUID);
 
 /**
  * Start both background scan loops. Designed to be called once during
@@ -136,20 +141,22 @@ export function startReembedCron(): void {
 async function processStaleMetadataChanges(): Promise<void> {
 	const cutoff = new Date(Date.now() - METADATA_DEBOUNCE_MINUTES * 60 * 1000);
 
-	const stale = await db
-		.select({
-			id: documents.id,
-			metadataChangedAt: documents.metadataChangedAt,
-		})
-		.from(documents)
-		.where(
-			and(
-				isNotNull(documents.metadataChangedAt),
-				lt(documents.metadataChangedAt, cutoff),
-			),
-		)
-		.orderBy(documents.metadataChangedAt)
-		.limit(CRON_BATCH_SIZE);
+	const stale = await withTenant(CRON_TENANT, (tx) =>
+		tx
+			.select({
+				id: documents.id,
+				metadataChangedAt: documents.metadataChangedAt,
+			})
+			.from(documents)
+			.where(
+				and(
+					isNotNull(documents.metadataChangedAt),
+					lt(documents.metadataChangedAt, cutoff),
+				),
+			)
+			.orderBy(documents.metadataChangedAt)
+			.limit(CRON_BATCH_SIZE),
+	);
 
 	if (stale.length === 0) return;
 
@@ -173,13 +180,15 @@ async function processStaleMetadataChanges(): Promise<void> {
 			row.metadataChangedAt instanceof Date
 				? row.metadataChangedAt.toISOString()
 				: String(row.metadataChangedAt);
-		const cleared = await db.execute(sql`
-			UPDATE documents
-			SET metadata_changed_at = NULL
-			WHERE id = ${row.id}
-			  AND metadata_changed_at = ${originalTimestamp}
-			RETURNING id
-		`);
+		const cleared = await withTenant(CRON_TENANT, (tx) =>
+			tx.execute(sql`
+				UPDATE documents
+				SET metadata_changed_at = NULL
+				WHERE id = ${row.id}
+				  AND metadata_changed_at = ${originalTimestamp}
+				RETURNING id
+			`),
+		);
 		if (Array.isArray(cleared) && cleared.length > 0) {
 			await enqueueReembed([row.id]);
 			enqueued += 1;
@@ -227,17 +236,19 @@ async function processIdlePendingChanges(): Promise<void> {
 		Date.now() - config.REEMBED_MAX_IDLE_HOURS * 3_600_000,
 	);
 
-	const idle = await db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(
-			and(
-				eq(documents.pendingMinorChanges, true),
-				lt(documents.lastSignificantUpdateAt, cutoff),
-			),
-		)
-		.orderBy(documents.lastSignificantUpdateAt)
-		.limit(CRON_BATCH_SIZE);
+	const idle = await withTenant(CRON_TENANT, (tx) =>
+		tx
+			.select({ id: documents.id })
+			.from(documents)
+			.where(
+				and(
+					eq(documents.pendingMinorChanges, true),
+					lt(documents.lastSignificantUpdateAt, cutoff),
+				),
+			)
+			.orderBy(documents.lastSignificantUpdateAt)
+			.limit(CRON_BATCH_SIZE),
+	);
 
 	if (idle.length === 0) return;
 

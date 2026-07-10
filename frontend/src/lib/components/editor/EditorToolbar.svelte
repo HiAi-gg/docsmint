@@ -1159,6 +1159,7 @@ $effect(() => {
 			onpointermove={onDrag}
 			onpointerup={stopDrag}
 			role="toolbar"
+			tabindex="0"
 			aria-label={m.editor_toolbar_text_formatting()}
 		>
 			{#if isScrolled}

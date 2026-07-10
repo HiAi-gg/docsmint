@@ -48,7 +48,9 @@ export const categorySchemas = {
 	list: listQuerySchema,
 };
 
-function normalizeApiMode(apiMode?: string | null): "unavailable" | "global" | "category" {
+function normalizeApiMode(
+	apiMode?: string | null,
+): "unavailable" | "global" | "category" {
 	if (apiMode === "category") return "category";
 	if (apiMode === "global" || apiMode === "general") return "global";
 	return "unavailable";
@@ -263,7 +265,10 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			parsed.data.apiPermissionWrite === undefined
 		) {
 			set.status = 400;
-			return { error: "At least one field is required" };
+			return {
+				error:
+					"At least one field (name, order, or API access setting) is required",
+			};
 		}
 		const newName = parsed.data.name;
 		try {

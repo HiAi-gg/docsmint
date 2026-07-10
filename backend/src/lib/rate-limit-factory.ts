@@ -13,10 +13,16 @@ export interface RateLimitResult {
 	retryAfter?: number;
 }
 
+export interface RateLimitRedisClient {
+	incr(key: string): Promise<number>;
+	expire(key: string, seconds: number): Promise<number>;
+	ttl(key: string): Promise<number>;
+}
+
 // Redis is injected as optional dependency, defaults to singleton
 export function createRateLimiter(
 	config: RateLimitConfig,
-	redisClient?: typeof redis,
+	redisClient?: RateLimitRedisClient,
 ) {
 	const client = redisClient ?? redis;
 	return async (ip: string): Promise<RateLimitResult> => {

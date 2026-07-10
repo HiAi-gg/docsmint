@@ -15,9 +15,6 @@
  * "graph features disabled" and continue without raising.
  */
 
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type postgres from "postgres";
 import { client as sharedClient } from "../db";
 import { logger } from "../logger";
@@ -30,8 +27,6 @@ import { logger } from "../logger";
 export type GraphSqlClient = postgres.Sql;
 
 const GRAPH_NAME = "docs_graph";
-const MIGRATION_PATH = "migrations/001_init.sql";
-
 let initAttempted = false;
 let initSucceeded = false;
 
@@ -46,7 +41,14 @@ export async function getGraphDb(): Promise<GraphSqlClient | null> {
 	initAttempted = true;
 	try {
 		await sharedClient`SELECT 1`;
-		await runMigration(sharedClient);
+		const rows = await sharedClient.unsafe(
+			"SELECT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'docs_graph') AS available",
+		);
+		if (!rows[0]?.available) {
+			throw new Error(
+				"AGE graph docs_graph is not initialized; run database migrations",
+			);
+		}
 		initSucceeded = true;
 		logger.info({ graph: GRAPH_NAME }, "AGE graph initialized");
 		return sharedClient;
@@ -64,27 +66,4 @@ export async function getGraphDb(): Promise<GraphSqlClient | null> {
 export function _resetGraphForTests(): void {
 	initAttempted = false;
 	initSucceeded = false;
-}
-
-/**
- * Run the SQL migration file at `migrations/001_init.sql`. Statements
- * are run one at a time (not inside BEGIN/COMMIT) because AGE 1.7
- * raises "graph already exists" / "label already exists" on a second
- * run; we swallow those specific errors so re-init is idempotent.
- */
-async function runMigration(client: GraphSqlClient): Promise<void> {
-	const here = dirname(fileURLToPath(import.meta.url));
-	const sqlPath = join(here, MIGRATION_PATH);
-	const sqlText = await readFile(sqlPath, "utf-8");
-
-	for (const stmt of sqlText.split(/;\s*\n/)) {
-		const trimmed = stmt.trim();
-		if (!trimmed) continue;
-		try {
-			await client.unsafe(trimmed);
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			if (!/already exists/i.test(msg)) throw err;
-		}
-	}
 }

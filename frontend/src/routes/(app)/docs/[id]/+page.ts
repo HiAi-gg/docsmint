@@ -6,7 +6,7 @@ export const load: PageLoad = async ({ params, fetch, url }) => {
 	if (params.id === "new") {
 		const folderId = url.searchParams.get("folder") || undefined;
 		const categoryId = url.searchParams.get("category") || undefined;
-		let doc: any;
+		let doc: Awaited<ReturnType<typeof createDocument>> | undefined;
 		try {
 			doc = await createDocument(
 				{
@@ -26,19 +26,18 @@ export const load: PageLoad = async ({ params, fetch, url }) => {
 		}
 
 		// Fallback placeholder when backend is down
-		return {
-			document: {
-				id: "new",
-				title: "Untitled Document",
-				content: "",
-				folderId: folderId || null,
-				folderName: "",
-				tags: [],
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-				excerpt: "",
-			} as any,
+		const placeholder: Awaited<ReturnType<typeof getDocument>> = {
+			id: "new",
+			title: "Untitled Document",
+			content: "",
+			folderId: folderId || null,
+			folderName: "",
+			tags: [],
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+			excerpt: "",
 		};
+		return { document: placeholder };
 	}
 
 	try {

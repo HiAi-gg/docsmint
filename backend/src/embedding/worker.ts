@@ -6,18 +6,24 @@ import {
 	folders,
 	tags,
 } from "@hiai-docs/db/schema";
+import {
+	adminTenantContext,
+	withTenant,
+	ZERO_UUID,
+} from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray } from "drizzle-orm";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
-import { db } from "../lib/db";
 import { extractEntities } from "../lib/graph/extract-entities";
 import { logger } from "../lib/logger";
 import { incrementCounter, METRIC_NAMES } from "../lib/metrics";
 import { redis } from "../lib/redis";
+import { needsChunkRefresh } from "./incremental";
 import { type EmbeddingMetadata, embedDocument } from "./index";
 
 const QUEUE_KEY = "hiai-docs:embedding-queue";
+const WORKER_TENANT = adminTenantContext(ZERO_UUID);
 
 export function startEmbeddingWorker(): void {
 	logger.info("Embedding worker started");
@@ -48,16 +54,18 @@ async function processDocument(documentId: string): Promise<void> {
 	incrementCounter(METRIC_NAMES.EMBEDDING_DOCS_TOTAL);
 
 	try {
-		const doc = await db.query.documents.findFirst({
-			where: eq(documents.id, documentId),
-			columns: {
-				id: true,
-				title: true,
-				content: true,
-				folderId: true,
-				categoryId: true,
-			},
-		});
+		const doc = await withTenant(WORKER_TENANT, (tx) =>
+			tx.query.documents.findFirst({
+				where: eq(documents.id, documentId),
+				columns: {
+					id: true,
+					title: true,
+					content: true,
+					folderId: true,
+					categoryId: true,
+				},
+			}),
+		);
 
 		if (!doc) {
 			logger.warn({ documentId }, "Document not found, skipping embedding");
@@ -98,17 +106,19 @@ async function processDocument(documentId: string): Promise<void> {
 		// + reinsert only the affected slice. Unchanged chunks stay put and
 		// keep their original embeddings — full re-embed was O(N) embeddings
 		// per document save, this is O(changed + 2·changed).
-		const existing = await db
-			.select({
-				chunkIndex: documentEmbeddings.chunkIndex,
-				chunkHash: documentEmbeddings.chunkHash,
-			})
-			.from(documentEmbeddings)
-			.where(eq(documentEmbeddings.documentId, documentId));
-
-		const existingByIndex = new Map(
-			existing.map((e) => [e.chunkIndex, e.chunkHash]),
+		const existing = await withTenant(WORKER_TENANT, (tx) =>
+			tx
+				.select({
+					chunkIndex: documentEmbeddings.chunkIndex,
+					chunkHash: documentEmbeddings.chunkHash,
+					embedding: documentEmbeddings.embedding,
+					embeddingModel: documentEmbeddings.embeddingModel,
+				})
+				.from(documentEmbeddings)
+				.where(eq(documentEmbeddings.documentId, documentId)),
 		);
+
+		const existingByIndex = new Map(existing.map((e) => [e.chunkIndex, e]));
 
 		// A chunk "changed" when its hash differs from the stored hash at
 		// the same index. New chunks have no stored hash yet (treat as
@@ -119,8 +129,10 @@ async function processDocument(documentId: string): Promise<void> {
 			const chunk = embeddings[i];
 			if (!chunk) continue;
 			const newHash = chunkHash(chunk.chunkText);
-			const oldHash = existingByIndex.get(i);
-			if (oldHash !== newHash) changedIndices.add(i);
+			const stored = existingByIndex.get(i);
+			if (needsChunkRefresh(stored, newHash, config.EMBEDDING_MODEL ?? "")) {
+				changedIndices.add(i);
+			}
 		}
 
 		// Include the immediate neighbors of each changed chunk so the
@@ -144,7 +156,7 @@ async function processDocument(documentId: string): Promise<void> {
 			"Incremental re-embed",
 		);
 
-		await db.transaction(async (tx) => {
+		await withTenant(WORKER_TENANT, async (tx) => {
 			// Orphan cleanup: if the new chunk count is smaller than the
 			// stored count, the trailing old chunks point at text that no
 			// longer exists. Delete them so they don't leak into search
@@ -220,10 +232,12 @@ async function processDocument(documentId: string): Promise<void> {
 
 		// Update content hash so future edits can skip re-embed if content unchanged
 		const hash = contentHash(doc.title, content);
-		await db
-			.update(documents)
-			.set({ contentHash: hash })
-			.where(eq(documents.id, documentId));
+		await withTenant(WORKER_TENANT, (tx) =>
+			tx
+				.update(documents)
+				.set({ contentHash: hash })
+				.where(eq(documents.id, documentId)),
+		);
 
 		// GraphRAG entity extraction. Best-effort — failures are logged
 		// inside `extractEntities` and MUST NOT break the embedding
@@ -265,36 +279,40 @@ async function loadEmbeddingMetadata(doc: {
 	folderId: string | null;
 	categoryId: string | null;
 }): Promise<EmbeddingMetadata | undefined> {
-	const tasks: [
-		Promise<string | null>,
-		Promise<string[]>,
-		Promise<string | null>,
-	] = [
-		doc.folderId
-			? db
-					.select({ name: folders.name })
-					.from(folders)
-					.where(eq(folders.id, doc.folderId))
-					.limit(1)
-					.then((rows) => rows[0]?.name ?? null)
-			: Promise.resolve(null),
-		db
-			.select({ name: tags.name })
-			.from(documentTags)
-			.innerJoin(tags, eq(tags.id, documentTags.tagId))
-			.where(eq(documentTags.documentId, doc.id))
-			.then((rows) => rows.map((r) => r.name)),
-		doc.categoryId
-			? db
-					.select({ name: categories.name })
-					.from(categories)
-					.where(eq(categories.id, doc.categoryId))
-					.limit(1)
-					.then((rows) => rows[0]?.name ?? null)
-			: Promise.resolve(null),
-	];
-
-	const [folderName, tagNames, categoryName] = await Promise.all(tasks);
+	const [folderName, tagNames, categoryName] = await withTenant(
+		WORKER_TENANT,
+		async (tx) => {
+			const tasks: [
+				Promise<string | null>,
+				Promise<string[]>,
+				Promise<string | null>,
+			] = [
+				doc.folderId
+					? tx
+							.select({ name: folders.name })
+							.from(folders)
+							.where(eq(folders.id, doc.folderId))
+							.limit(1)
+							.then((rows) => rows[0]?.name ?? null)
+					: Promise.resolve(null),
+				tx
+					.select({ name: tags.name })
+					.from(documentTags)
+					.innerJoin(tags, eq(tags.id, documentTags.tagId))
+					.where(eq(documentTags.documentId, doc.id))
+					.then((rows) => rows.map((r) => r.name)),
+				doc.categoryId
+					? tx
+							.select({ name: categories.name })
+							.from(categories)
+							.where(eq(categories.id, doc.categoryId))
+							.limit(1)
+							.then((rows) => rows[0]?.name ?? null)
+					: Promise.resolve(null),
+			];
+			return Promise.all(tasks);
+		},
+	);
 
 	const hasAny =
 		(folderName && folderName.length > 0) ||

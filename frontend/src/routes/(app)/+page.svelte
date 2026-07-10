@@ -332,17 +332,14 @@ const filteredDocuments = $derived.by(() => {
 		list = list.filter(
 			(d: Document) =>
 				d.title.toLowerCase().includes(q) ||
-				(d.content && d.content.toLowerCase().includes(q)),
+				d.content?.toLowerCase().includes(q),
 		);
 	}
 
 	// Filter by tag
 	if (selectedTagId) {
-		list = list.filter((d: any) =>
-			d.tags?.some((t: any) =>
-				typeof t === "string" ? t === selectedTagId : t.id === selectedTagId,
-			),
-		);
+		const tagId = selectedTagId;
+		list = list.filter((d: Document) => d.tags.includes(tagId));
 	}
 
 	// Filter by date range (updatedAt)
@@ -448,8 +445,9 @@ const isFolderEmpty = $derived(
         <h1 class="text-2xl font-semibold tracking-tight truncate">
           {data.activeFolder?.name || "Folder"}
         </h1>
-        {#if data.activeFolder?.categoryId}
-          {@const cat = data.categories.find(c => c.id === data.activeFolder.categoryId)}
+        {@const activeFolderCategoryId = data.activeFolder?.categoryId}
+        {#if activeFolderCategoryId}
+          {@const cat = data.categories.find(c => c.id === activeFolderCategoryId)}
           {#if cat}
             <Badge variant="secondary">{cat.name}</Badge>
           {/if}

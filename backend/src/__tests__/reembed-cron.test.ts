@@ -85,9 +85,29 @@ const persistentMocks = {
 	reembed: { enqueueReembed: fakeEnqueueReembed },
 };
 
+const fakeClient = { unsafe: mock(async () => []) };
+
 function applyCronMocks(): void {
 	mock.module("../lib/redis", () => ({ redis: persistentMocks.redis }));
-	mock.module("../lib/db", () => ({ db: persistentMocks.db }));
+	mock.module("../lib/db", () => ({
+		db: persistentMocks.db,
+		client: fakeClient,
+	}));
+	mock.module("@hiai-docs/db/with-tenant", () => ({
+		ZERO_UUID: "00000000-0000-0000-0000-000000000000",
+		adminTenantContext: (userId: string) => ({
+			userId,
+			role: "admin" as const,
+		}),
+		shareGuestTenantContext: (userId: string) => ({
+			userId,
+			role: "user" as const,
+		}),
+		withTenant: async <T>(
+			_context: unknown,
+			callback: (tx: typeof persistentMocks.db) => Promise<T>,
+		): Promise<T> => callback(persistentMocks.db),
+	}));
 	mock.module("../lib/reembed", () => persistentMocks.reembed);
 }
 

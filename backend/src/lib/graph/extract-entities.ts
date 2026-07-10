@@ -69,6 +69,8 @@ export interface ExtractEntitiesOptions {
 	llmBaseUrl?: string;
 	llmApiKey?: string;
 	llmModel?: string;
+	/** Optional OpenAI-compatible reasoning effort control. */
+	reasoningEffort?: "none" | "low" | "medium" | "high" | "max";
 	/**
 	 * Per-chunk content hash. When paired with `chunkIndex` it triggers a
 	 * Redis-backed dedup gate that short-circuits redundant LLM calls for
@@ -106,7 +108,6 @@ function extractDedupKey(
 
 const DEFAULT_MAX_TOKENS = 1024;
 const DEFAULT_TEMPERATURE = 0;
-const CHAT_TIMEOUT_MS = 30_000;
 
 /**
  * Global deduplication: TTL'd cache of recently extracted entities.
@@ -304,7 +305,7 @@ const SYSTEM_PROMPT = [
 	'    {"targetName":"iPhone 15","relationType":"REFERENCES","confidence":1.0},',
 	'    {"targetName":"Tim Cook","relationType":"AUTHORED_BY","confidence":0.8}',
 	"  ]},",
-	'  {"name":"iPhone 15","type":"Product","confidence":1.0,"relationships":[]},',
+	'  {"name":"iPhone 15","type":"Concept","confidence":1.0,"relationships":[]},',
 	'  {"name":"Tim Cook","type":"Person","confidence":1.0,"relationships":[]}',
 	"]}",
 ].join("\n");
@@ -378,6 +379,8 @@ async function callEntityExtractionLLM(
 				],
 				maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
 				temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+				reasoningEffort:
+					options.reasoningEffort ?? config.GRAPH_EXTRACT_REASONING_EFFORT,
 			});
 			return parseExtractionResponse(raw);
 		} catch (err) {
@@ -399,10 +402,14 @@ async function callChatCompletions(params: {
 	messages: ChatMessage[];
 	maxTokens: number;
 	temperature: number;
+	reasoningEffort?: "none" | "low" | "medium" | "high" | "max";
 }): Promise<string> {
 	const url = `${params.baseUrl.replace(/\/$/, "")}/chat/completions`;
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
+	const timeout = setTimeout(
+		() => controller.abort(),
+		config.GRAPH_EXTRACT_TIMEOUT_MS,
+	);
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -410,16 +417,20 @@ async function callChatCompletions(params: {
 	if (params.apiKey) headers.Authorization = `Bearer ${params.apiKey}`;
 
 	try {
+		const body = {
+			model: params.model,
+			messages: params.messages,
+			max_tokens: params.maxTokens,
+			temperature: params.temperature,
+			response_format: { type: "json_object" },
+			...(params.reasoningEffort
+				? { reasoning_effort: params.reasoningEffort }
+				: {}),
+		};
 		const response = await fetch(url, {
 			method: "POST",
 			headers,
-			body: JSON.stringify({
-				model: params.model,
-				messages: params.messages,
-				max_tokens: params.maxTokens,
-				temperature: params.temperature,
-				response_format: { type: "json_object" },
-			}),
+			body: JSON.stringify(body),
 			signal: controller.signal,
 		});
 		if (!response.ok) {
@@ -574,7 +585,7 @@ async function persistEntities(
 	// is safe against injection.
 	await sql.begin(async (tx) => {
 		// Ensure the search_path includes ag_catalog for cypher() calls.
-		await tx`SELECT ag_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
+		await tx`SELECT pg_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
 
 		const nowIso = new Date().toISOString();
 		const docIdLiteral = JSON.stringify(documentId);
@@ -585,8 +596,7 @@ async function persistEntities(
 		await tx.unsafe(
 			`SELECT * FROM cypher('docs_graph', $$
 				MERGE (d:Document {id: ${docIdLiteral}})
-				ON CREATE SET d.created_at = ${nowLiteral}, d.entity_extracted_at = ${nowLiteral}
-				ON MATCH SET d.entity_extracted_at = ${nowLiteral}
+				SET d.created_at = ${nowLiteral}, d.entity_extracted_at = ${nowLiteral}
 				RETURN d.id
 			$$) AS (result agtype)`,
 		);
@@ -649,8 +659,7 @@ function entityUpsertCypher(
 		typeof confidence === "number" ? JSON.stringify(confidence) : "null";
 	return `
 		MERGE (e:\`${label}\` {name: $name})
-		ON CREATE SET e.created_at = $now, e.first_seen_doc = $docId, e.confidence = $conf
-		ON MATCH SET e.last_seen_doc = $docId, e.confidence = GREATEST(COALESCE(e.confidence, 0), $conf)
+		SET e.created_at = $now, e.last_seen_doc = $docId, e.confidence = $conf
 		RETURN e.name
 	`
 		.replace("$name", JSON.stringify(name))
@@ -676,8 +685,7 @@ function documentEntityEdgeCypher(
 		MATCH (d:Document {id: $docId})
 		MATCH (e:\`${label}\` {name: $name})
 		MERGE (d)-[r:MENTIONS]->(e)
-		ON CREATE SET r.created_at = $now, r.confidence = $conf
-		ON MATCH SET r.confidence = GREATEST(COALESCE(r.confidence, 0), $conf)
+		SET r.created_at = $now, r.confidence = $conf
 		RETURN r
 	`
 		.replace("$docId", JSON.stringify(docId))
@@ -707,15 +715,9 @@ function entityRelationCypher(
 		typeof confidence === "number" ? JSON.stringify(confidence) : "null";
 	return `
 		MATCH (a:\`${sourceLabel}\` {name: $source})
-		MATCH (b)
-		WHERE (b:Person {name: $target}) IS NOT NULL
-		   OR (b:Organization {name: $target}) IS NOT NULL
-		   OR (b:Concept {name: $target}) IS NOT NULL
-		   OR (b:Location {name: $target}) IS NOT NULL
-		   OR (b:Topic {name: $target}) IS NOT NULL
+		MATCH (b {name: $target})
 		MERGE (a)-[r:\`${relationType}\`]->(b)
-		ON CREATE SET r.created_at = $now, r.confidence = $conf
-		ON MATCH SET r.confidence = GREATEST(COALESCE(r.confidence, 0), $conf)
+		SET r.created_at = $now, r.confidence = $conf
 		RETURN r
 	`
 		.replace("$source", JSON.stringify(sourceName))

@@ -343,7 +343,7 @@ async function handleSaveAsConfirm(
 	categoryId: string | null,
 ) {
 	try {
-		const copy = await apiFetch<any>(
+		const copy = await apiFetch<{ id: string }>(
 			`/api/documents/${data.document.id}/duplicate`,
 			{
 				method: "POST",

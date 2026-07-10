@@ -7,6 +7,23 @@ All notable changes to hiai-docs are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-07-10
+
+### Fixed
+- **Public share attachments**: protected document images are fetched with the share token and rendered through revocable blob URLs instead of anonymous raw URLs that returned `401`.
+- **Public rich-text rendering**: paragraph/heading alignment, bullet lists, ordered-list start values, and task lists now share one tested ProseMirror renderer. Invalid block nodes from older imports are flattened inside headings instead of producing browser-rewritten HTML.
+- **Public share hardening**: Markdown fallback and export HTML now pass through the same escaped renderer, and unsafe link protocols are rejected.
+- **Audit RLS**: audit events are inserted inside a tenant transaction. Migration `0020_fix_audit_log_rls.sql` permits actors to append their own events, restricts reads to admins, and keeps update/delete unavailable.
+- **SeaweedFS runtime**: production and development Compose files now generate the supported S3 identity configuration, use the filer health endpoint, and keep application traffic on the non-superuser `hiai_app` database role.
+- **Attachment streaming**: async-iterable S3 bodies are consumed before AWS transform helpers, avoiding Bun runtime incompatibilities.
+- **Release stability**: the metrics route test no longer binds an ephemeral host port, category API-access validation matches the current contract, and the session schema includes the already-migrated revocation fields.
+
+### Changed
+- Version synchronized to `0.2.6` across all workspace packages, the public package manifest, Swagger, OpenAPI, and release metadata.
+
+### Migration Notes
+- Run `bun run db:migrate` after upgrade to apply migration `0020_fix_audit_log_rls.sql`.
+
 ## [0.2.5] - 2026-07-09
 
 ### Fixed

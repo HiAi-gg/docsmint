@@ -52,6 +52,7 @@ async function getEmbeddingInner(text: string): Promise<number[]> {
 			config.EMBEDDING_BASE_URL,
 			config.EMBEDDING_API_KEY ?? "",
 			config.EMBEDDING_MODEL,
+			config.EMBEDDING_TIMEOUT_MS,
 		);
 		incrementCounter(METRIC_NAMES.EMBEDDING_SUCCESS);
 		return vector;
@@ -68,6 +69,7 @@ async function getEmbeddingInner(text: string): Promise<number[]> {
 					config.EMBEDDING_FALLBACK_BASE_URL,
 					config.EMBEDDING_FALLBACK_API_KEY ?? "",
 					config.EMBEDDING_FALLBACK_MODEL,
+					config.EMBEDDING_TIMEOUT_MS,
 				);
 				incrementCounter(METRIC_NAMES.EMBEDDING_FALLBACK);
 				return vector;

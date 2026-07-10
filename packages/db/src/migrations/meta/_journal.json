@@ -141,6 +141,34 @@
       "when": 1785000000005,
       "tag": "0019_category_api_access",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785000000006,
+      "tag": "0020_fix_audit_log_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785000000007,
+      "tag": "0021_initialize_graphrag",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785000000008,
+      "tag": "0022_grant_age_catalog_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785000000009,
+      "tag": "0023_preload_age",
+      "breakpoints": true
     }
   ]
 }

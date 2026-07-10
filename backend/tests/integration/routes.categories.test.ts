@@ -205,7 +205,7 @@ describe("PATCH /api/categories/:id", () => {
     const res = await authedPatch("/api/categories/cat-1", {});
     expect(res.status).toBe(400);
     expect((res.body as any).error).toBe(
-      "At least one field (name or order) is required",
+      "At least one field (name, order, or API access setting) is required",
     );
   });
 

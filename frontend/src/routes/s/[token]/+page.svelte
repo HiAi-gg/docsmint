@@ -12,11 +12,15 @@ import {
 	FolderOpen,
 	Lock,
 } from "lucide-svelte";
-import { marked } from "marked";
-import { untrack } from "svelte";
+import { tick, untrack } from "svelte";
 import { customSerializer } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import {
+	hydrateSharedAttachmentImages,
+	type ProseMirrorDoc,
+	renderSharedDocument,
+} from "$lib/components/editor/shared-document";
 import ScrollToTop from "$lib/components/ScrollToTop.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { copyToClipboard } from "$lib/utils/clipboard";
@@ -98,160 +102,6 @@ $effect(() => {
 	});
 });
 
-// Configure marked for safe, GFM-flavored rendering of shared document
-// markdown. The HiAiEditor JSON path (contentJson) is preferred when the
-// server provides it, but `content` (raw markdown) is the universal fallback.
-marked.setOptions({ gfm: true, breaks: false });
-
-function renderContent(): string {
-	if (!shareData?.data) return "";
-	const docJson = shareData.data.contentJson as
-		| { content?: unknown }
-		| null
-		| undefined;
-	if (docJson && Array.isArray(docJson.content)) {
-		return docToHtml(docJson as ProseMirrorDoc);
-	}
-	const md = shareData.data.content;
-	if (md && md.length > 0) {
-		return marked.parse(md, { async: false }) as string;
-	}
-	return "";
-}
-
-type ProseMirrorNode = {
-	type: string;
-	text?: string;
-	content?: ProseMirrorNode[];
-	attrs?: Record<string, unknown>;
-	marks?: Array<{ type: string; attrs?: Record<string, unknown> }>;
-};
-
-type ProseMirrorDoc = ProseMirrorNode & { content?: ProseMirrorNode[] };
-
-function escapeHtml(s: string): string {
-	return s
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/"/g, "&quot;")
-		.replace(/'/g, "&#39;");
-}
-
-function docToHtml(doc: ProseMirrorDoc): string {
-	const renderNode = (node: ProseMirrorNode): string => {
-		if (node.type === "text") {
-			let html = escapeHtml(node.text ?? "");
-			for (const mark of node.marks ?? []) {
-				html = wrapMark(mark, html);
-			}
-			return html;
-		}
-		const inner = (node.content ?? []).map(renderNode).join("");
-		return wrapBlock(node, inner);
-	};
-	return (doc.content ?? []).map(renderNode).join("");
-}
-
-function wrapMark(
-	mark: { type: string; attrs?: Record<string, unknown> },
-	html: string,
-): string {
-	switch (mark.type) {
-		case "bold":
-			return `<strong>${html}</strong>`;
-		case "italic":
-			return `<em>${html}</em>`;
-		case "strike":
-		case "strikethrough":
-			return `<s>${html}</s>`;
-		case "underline":
-			return `<u>${html}</u>`;
-		case "code":
-			return `<code>${html}</code>`;
-		case "link": {
-			const href = (mark.attrs?.href as string) ?? "#";
-			return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${html}</a>`;
-		}
-		case "highlight": {
-			const color = (mark.attrs?.color as string) ?? "#fde68a";
-			return `<mark style="background-color: ${escapeHtml(color)}">${html}</mark>`;
-		}
-		default:
-			return html;
-	}
-}
-
-// Returns an inline `style` attribute fragment (` style="text-align: X"`) for
-// the block-level textAlign attribute, or an empty string when alignment is
-// unset / not a recognized value. Whitelists the four values supported by the
-// editor to avoid passing attacker-controlled strings into the markup.
-function alignStyle(attrs?: Record<string, unknown>): string {
-	const align = attrs?.textAlign as string | undefined;
-	if (
-		align !== "left" &&
-		align !== "center" &&
-		align !== "right" &&
-		align !== "justify"
-	) {
-		return "";
-	}
-	return ` style="text-align: ${align}"`;
-}
-
-function wrapBlock(node: ProseMirrorNode, inner: string): string {
-	const lang = (node.attrs?.language as string) ?? "";
-	const align = alignStyle(node.attrs);
-	switch (node.type) {
-		case "paragraph":
-			return `<p${align}>${inner}</p>`;
-		case "heading": {
-			const level = Math.min(Math.max(Number(node.attrs?.level ?? 1), 1), 6);
-			return `<h${level}${align}>${inner}</h${level}>`;
-		}
-		case "bulletList":
-			return `<ul${align}>${inner}</ul>`;
-		case "orderedList":
-			return `<ol${align}>${inner}</ol>`;
-		case "listItem":
-			return `<li${align}>${inner}</li>`;
-		case "taskList":
-			return `<ul data-type="taskList">${inner}</ul>`;
-		case "taskItem": {
-			// Read-only checkbox reflecting the saved checked state.
-			const isChecked =
-				node.attrs?.checked === true || node.attrs?.checked === "true";
-			const checked = isChecked ? " checked" : "";
-			return `<li data-type="taskItem"${isChecked ? ' data-checked="true"' : ""}><label><input type="checkbox" onclick="return false;" class="cursor-default" ${checked} /></label><div>${inner}</div></li>`;
-		}
-		case "blockquote":
-			return `<blockquote${align}>${inner}</blockquote>`;
-		case "table":
-			return `<table><tbody>${inner}</tbody></table>`;
-		case "tableRow":
-			return `<tr>${inner}</tr>`;
-		case "tableHeader":
-			return `<th${align}>${inner}</th>`;
-		case "tableCell":
-			return `<td${align}>${inner}</td>`;
-		case "codeBlock":
-			return `<pre><code${lang ? ` class="language-${escapeHtml(lang)}"` : ""}>${inner}</code></pre>`;
-		case "horizontalRule":
-			return `<hr />`;
-		case "hardBreak":
-			return `<br />`;
-		case "image": {
-			const src = (node.attrs?.src as string) ?? "";
-			const alt = (node.attrs?.alt as string) ?? "";
-			return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />`;
-		}
-		default:
-			return inner;
-	}
-}
-
-const renderedContent = $derived(renderContent());
-
 async function fetchShare() {
 	// Guard: the load function already short-circuits for a missing token
 	// and sets shareError. The user can land here via client-side
@@ -296,18 +146,18 @@ async function fetchShare() {
 
 		if (shareData && shareData.type === "folder" && shareData.data) {
 			folderData = {
-				id: (shareData.data as any).id || "",
+				id: shareData.data.id || "",
 				name: shareData.data.name || "",
-				parentId: (shareData.data as any).parentId || null,
-				folders: (shareData.data as any).folders || [],
-				documents: (shareData.data as any).documents || [],
+				parentId: shareData.data.parentId || null,
+				folders: shareData.data.folders || [],
+				documents: shareData.data.documents || [],
 			};
 			breadcrumbs = [{ id: "root", name: folderData.name }];
 			currentView = "folder";
 		} else if (shareData && shareData.type === "document" && shareData.data) {
 			currentView = "document";
 			viewedDoc = {
-				id: (shareData.data as any).id || "",
+				id: shareData.data.id || "",
 				title: shareData.data.title || "",
 				content: shareData.data.content || "",
 				contentJson: shareData.data.contentJson,
@@ -406,9 +256,7 @@ function handleExportDocx() {
 	}
 
 	function fallbackHtmlDocx(docItem: { title: string; content: string }) {
-		const htmlContent = marked.parse(docItem.content || "", {
-			async: false,
-		}) as string;
+		const htmlContent = renderDocumentContent(docItem);
 		const docHtml = `
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head><title>${docItem.title}</title>
@@ -439,9 +287,7 @@ ${htmlContent}
 function handleExportPdf() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const htmlContent = marked.parse(doc.content || "", {
-		async: false,
-	}) as string;
+	const htmlContent = renderDocumentContent(doc);
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -562,11 +408,11 @@ async function openFolder(folderId: string) {
 async function openRootFolder() {
 	if (!shareData?.data) return;
 	folderData = {
-		id: (shareData.data as any).id || "",
+		id: shareData.data.id || "",
 		name: shareData.data.name || "",
-		parentId: (shareData.data as any).parentId || null,
-		folders: (shareData.data as any).folders || [],
-		documents: (shareData.data as any).documents || [],
+		parentId: shareData.data.parentId || null,
+		folders: shareData.data.folders || [],
+		documents: shareData.data.documents || [],
 	};
 	breadcrumbs = [{ id: "root", name: folderData.name }];
 	currentView = "folder";
@@ -587,21 +433,72 @@ async function openDocument(docId: string) {
 	}
 }
 
-function renderViewedDocContent(): string {
-	if (!viewedDoc) return "";
-	const docJson = viewedDoc.contentJson as
-		| { content?: unknown }
-		| null
-		| undefined;
+function renderDocumentContent(doc: {
+	content: string;
+	contentJson?: object | null;
+}): string {
+	const docJson = doc.contentJson as { content?: unknown } | null | undefined;
 	if (docJson && Array.isArray(docJson.content)) {
-		return docToHtml(docJson as ProseMirrorDoc);
+		return renderSharedDocument(docJson as ProseMirrorDoc);
 	}
-	const md = viewedDoc.content;
+	const md = doc.content;
 	if (md && md.length > 0) {
-		return marked.parse(md, { async: false }) as string;
+		try {
+			return renderSharedDocument(markdownToJson(md) as ProseMirrorDoc);
+		} catch {
+			return renderSharedDocument({
+				type: "doc",
+				content: [
+					{
+						type: "paragraph",
+						content: [{ type: "text", text: md }],
+					},
+				],
+			});
+		}
 	}
 	return "";
 }
+
+function renderViewedDocContent(): string {
+	return viewedDoc ? renderDocumentContent(viewedDoc) : "";
+}
+
+let sharedDocumentRoot = $state<HTMLElement | null>(null);
+
+$effect(() => {
+	const root = sharedDocumentRoot;
+	const token = data.token ?? "";
+	const passwordForShare = verifiedPassword;
+	// Reading this value makes the effect rerun when a folder share opens a
+	// different document and replaces the {@html} subtree.
+	const rendered = renderViewedDocContent();
+	if (!root || !token || !rendered) return;
+
+	let cancelled = false;
+	let objectUrls: string[] = [];
+	void tick().then(async () => {
+		try {
+			const hydrated = await hydrateSharedAttachmentImages(
+				root,
+				token,
+				passwordForShare,
+			);
+			if (cancelled) {
+				for (const url of hydrated) URL.revokeObjectURL(url);
+			} else {
+				objectUrls = hydrated;
+			}
+		} catch (err) {
+			console.error("Failed to load shared attachment", err);
+		}
+	});
+
+	return () => {
+		cancelled = true;
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+	};
+});
 </script>
 
 <svelte:head>
@@ -718,7 +615,7 @@ function renderViewedDocContent(): string {
             <span>{viewedDoc.title}</span>
           </h1>
           {#if renderViewedDocContent()}
-            <div class="shared-doc-body">
+            <div class="shared-doc-body" bind:this={sharedDocumentRoot}>
               {@html renderViewedDocContent()}
             </div>
           {:else}
@@ -861,6 +758,7 @@ function renderViewedDocContent(): string {
   }
   .shared-doc-body :global(li) {
     margin: 0.25rem 0;
+    display: list-item;
   }
   /* Task lists — no bullet, checkbox + content laid out in a row. */
   .shared-doc-body :global(ul[data-type="taskList"]) {

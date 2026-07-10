@@ -4,6 +4,7 @@ import { ApiError } from "$lib/api/client.js";
 import { listDocuments } from "$lib/api/documents.js";
 import { getFolder, getFolderPath, listFolders } from "$lib/api/folders.js";
 import { listTags } from "$lib/api/tags.js";
+import type { Document, Folder } from "$lib/types.js";
 import type { PageLoad } from "./$types.js";
 
 export const load: PageLoad = async ({ url, fetch, depends }) => {
@@ -17,10 +18,10 @@ export const load: PageLoad = async ({ url, fetch, depends }) => {
 			listTags(fetch).catch(() => []),
 		]);
 
-		let activeFolder: any = null;
-		let breadcrumb: any[] = [];
-		let rootFolders: any[] = [];
-		let recentDocs: any[] = [];
+		let activeFolder: Folder | null = null;
+		let breadcrumb: Array<{ id: string; name: string }> = [];
+		let rootFolders: Folder[] = [];
+		let recentDocs: Document[] = [];
 
 		if (folderId) {
 			const [folder, path] = await Promise.all([
@@ -35,7 +36,18 @@ export const load: PageLoad = async ({ url, fetch, depends }) => {
 				listDocuments({ limit: 100 }, fetch).catch(() => ({ items: [] })),
 			]);
 			rootFolders = rootResult[0]?.children ?? [];
-			recentDocs = docsResult.items ?? [];
+			recentDocs = (docsResult.items ?? []).map((doc) => ({
+				id: doc.id,
+				title: doc.title,
+				content: doc.content,
+				folderId: doc.folderId ?? null,
+				folderName: doc.folderName ?? "",
+				categoryId: doc.categoryId ?? null,
+				tags: (doc.tags ?? []).map((tag) => tag.id),
+				createdAt: doc.createdAt,
+				updatedAt: doc.updatedAt,
+				excerpt: doc.excerpt ?? "",
+			}));
 		}
 
 		return {

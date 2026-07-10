@@ -86,14 +86,30 @@ const dbChain: {
 	limit: mock(() => Promise.resolve(adminMockRows)),
 };
 
+const fakeDb = {
+	select: mock(() => ({ from: mock(() => dbChain) })),
+};
+const fakeClient = { unsafe: mock(async () => []) };
+
 mock.module("../lib/redis", () => ({ redis: fakeRedis }));
 mock.module("../lib/embedding-queue", () => ({
 	enqueueEmbedding: fakeEnqueue,
 }));
 mock.module("../lib/db", () => ({
-	db: {
-		select: mock(() => ({ from: mock(() => dbChain) })),
-	},
+	db: fakeDb,
+	client: fakeClient,
+}));
+mock.module("@hiai-docs/db/with-tenant", () => ({
+	ZERO_UUID: "00000000-0000-0000-0000-000000000000",
+	adminTenantContext: (userId: string) => ({ userId, role: "admin" as const }),
+	shareGuestTenantContext: (userId: string) => ({
+		userId,
+		role: "user" as const,
+	}),
+	withTenant: async <T>(
+		_context: unknown,
+		callback: (tx: typeof fakeDb) => Promise<T>,
+	): Promise<T> => callback(fakeDb),
 }));
 
 // Now safe to import the module under test.

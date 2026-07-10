@@ -98,23 +98,20 @@ export async function expandResults(
  */
 function buildTraversalCypher(seedIds: string[], maxHops: number): string {
 	const seedList = seedIds.map((id) => JSON.stringify(id)).join(", ");
-	const relTypes = [
-		"MENTIONS",
-		"REFERENCES",
-		"BELONGS_TO",
-		"RELATED_TO",
-		"AUTHORED_BY",
-	]
-		.map((r) => `\`${r}\``)
-		.join("|");
+	if (maxHops < 2) {
+		return `
+			MATCH (seed:Document) WHERE seed.id IN [${seedList}]
+			RETURN seed.id AS seed_id, seed.id AS neighbor_id,
+			       'MENTIONS' AS relation, 0 AS hops
+		`;
+	}
 	return `
-		MATCH (seed:Document) WHERE seed.id IN [${seedList}]
-		MATCH path = shortestPath((seed)-[:${relTypes}*1..${maxHops}]-(neighbor:Document))
-		WHERE seed <> neighbor
-		RETURN seed.id AS seed_id,
+		MATCH (seed:Document)-[:MENTIONS]->(entity)<-[:MENTIONS]-(neighbor:Document)
+		WHERE seed.id IN [${seedList}] AND seed <> neighbor
+		RETURN DISTINCT seed.id AS seed_id,
 		       neighbor.id AS neighbor_id,
-		       [r IN relationships(path) | type(r)][0] AS relation,
-		       length(path) AS hops
+		       'MENTIONS' AS relation,
+		       2 AS hops
 	`;
 }
 

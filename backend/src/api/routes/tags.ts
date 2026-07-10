@@ -148,7 +148,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			// Re-embed every document linked to this tag if its name changed
 			// (the tag name is part of the embedding preamble).
 			if (body.data.name !== undefined) {
-				reembedDocsByTag(params.id).catch((err: unknown) =>
+				reembedDocsByTag(params.id, userId).catch((err: unknown) =>
 					logger.warn(
 						{ err, tagId: params.id },
 						"Failed to re-embed documents after tag rename",

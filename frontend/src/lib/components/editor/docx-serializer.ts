@@ -9,8 +9,8 @@ import {
 	TextRun,
 } from "docx";
 import {
-	DocxSerializerAsync,
 	DocxSerializer,
+	DocxSerializerAsync,
 	defaultAsyncNodes,
 	defaultMarks,
 	defaultNodes,
@@ -158,7 +158,11 @@ export const customAsyncNodes = {
 				}
 			});
 			state.maxImageWidth = MAX_IMAGE_WIDTH / (row.content.childCount || 1);
-			for (let cellIndex = 0; cellIndex < row.content.childCount; cellIndex += 1) {
+			for (
+				let cellIndex = 0;
+				cellIndex < row.content.childCount;
+				cellIndex += 1
+			) {
 				const cell = row.content.child(cellIndex);
 				const oldChildren = state.children;
 				state.children = [];
@@ -193,4 +197,7 @@ export const customMarks = {
 };
 
 export const customSerializer = new DocxSerializer(customNodes, customMarks);
-export const customSerializerAsync = new DocxSerializerAsync(customAsyncNodes, customMarks);
+export const customSerializerAsync = new DocxSerializerAsync(
+	customAsyncNodes,
+	customMarks,
+);

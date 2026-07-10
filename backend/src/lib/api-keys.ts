@@ -1,6 +1,12 @@
 import { apiKeys } from "@hiai-docs/db/schema";
+import {
+	adminTenantContext,
+	withTenant,
+	ZERO_UUID,
+} from "@hiai-docs/db/with-tenant";
 import { and, desc, eq } from "drizzle-orm";
-import { db } from "../lib/db";
+
+const API_KEY_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 
 /**
  * Hash a raw API key with SHA-256.
@@ -26,17 +32,19 @@ export async function createApiKey(
 	const keyHash = hashKey(rawKey);
 	const prefix = rawKey.slice(0, 8);
 
-	const [row] = await db
-		.insert(apiKeys)
-		.values({
-			ownerId,
-			name,
-			keyHash,
-			prefix,
-			scopes: scopes ?? [],
-			expiresAt: expiresAt ?? null,
-		})
-		.returning({ id: apiKeys.id });
+	const [row] = await withTenant({ userId: ownerId, role: "user" }, (tx) =>
+		tx
+			.insert(apiKeys)
+			.values({
+				ownerId,
+				name,
+				keyHash,
+				prefix,
+				scopes: scopes ?? [],
+				expiresAt: expiresAt ?? null,
+			})
+			.returning({ id: apiKeys.id }),
+	);
 
 	if (!row) {
 		throw new Error("Failed to create API key");
@@ -59,19 +67,21 @@ export async function listApiKeys(ownerId: string): Promise<
 		createdAt: Date;
 	}>
 > {
-	const rows = await db
-		.select({
-			id: apiKeys.id,
-			name: apiKeys.name,
-			prefix: apiKeys.prefix,
-			scopes: apiKeys.scopes,
-			lastUsedAt: apiKeys.lastUsedAt,
-			expiresAt: apiKeys.expiresAt,
-			createdAt: apiKeys.createdAt,
-		})
-		.from(apiKeys)
-		.where(eq(apiKeys.ownerId, ownerId))
-		.orderBy(desc(apiKeys.createdAt));
+	const rows = await withTenant({ userId: ownerId, role: "user" }, (tx) =>
+		tx
+			.select({
+				id: apiKeys.id,
+				name: apiKeys.name,
+				prefix: apiKeys.prefix,
+				scopes: apiKeys.scopes,
+				lastUsedAt: apiKeys.lastUsedAt,
+				expiresAt: apiKeys.expiresAt,
+				createdAt: apiKeys.createdAt,
+			})
+			.from(apiKeys)
+			.where(eq(apiKeys.ownerId, ownerId))
+			.orderBy(desc(apiKeys.createdAt)),
+	);
 
 	return rows.map((r) => ({
 		...r,
@@ -87,10 +97,12 @@ export async function revokeApiKey(
 	id: string,
 	ownerId: string,
 ): Promise<boolean> {
-	const deleted = await db
-		.delete(apiKeys)
-		.where(and(eq(apiKeys.id, id), eq(apiKeys.ownerId, ownerId)))
-		.returning({ id: apiKeys.id });
+	const deleted = await withTenant({ userId: ownerId, role: "user" }, (tx) =>
+		tx
+			.delete(apiKeys)
+			.where(and(eq(apiKeys.id, id), eq(apiKeys.ownerId, ownerId)))
+			.returning({ id: apiKeys.id }),
+	);
 
 	return deleted.length > 0;
 }
@@ -105,16 +117,18 @@ export async function validateApiKey(
 ): Promise<{ ownerId: string; scopes: string[] } | null> {
 	const keyHash = hashKey(key);
 
-	const [row] = await db
-		.select({
-			id: apiKeys.id,
-			ownerId: apiKeys.ownerId,
-			scopes: apiKeys.scopes,
-			expiresAt: apiKeys.expiresAt,
-		})
-		.from(apiKeys)
-		.where(eq(apiKeys.keyHash, keyHash))
-		.limit(1);
+	const [row] = await withTenant(API_KEY_ADMIN_TENANT, (tx) =>
+		tx
+			.select({
+				id: apiKeys.id,
+				ownerId: apiKeys.ownerId,
+				scopes: apiKeys.scopes,
+				expiresAt: apiKeys.expiresAt,
+			})
+			.from(apiKeys)
+			.where(eq(apiKeys.keyHash, keyHash))
+			.limit(1),
+	);
 
 	if (!row) {
 		return null;
@@ -126,10 +140,12 @@ export async function validateApiKey(
 	}
 
 	// Update last_used_at
-	await db
-		.update(apiKeys)
-		.set({ lastUsedAt: new Date() })
-		.where(eq(apiKeys.id, row.id));
+	await withTenant(API_KEY_ADMIN_TENANT, (tx) =>
+		tx
+			.update(apiKeys)
+			.set({ lastUsedAt: new Date() })
+			.where(eq(apiKeys.id, row.id)),
+	);
 
 	return {
 		ownerId: row.ownerId,

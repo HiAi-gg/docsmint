@@ -19,8 +19,8 @@
  * Breaking changes to these will be announced as major version bumps.
  */
 
-import type { Component, ComponentType, SvelteComponent } from "svelte";
 import type { IconProps } from "lucide-svelte";
+import type { Component, ComponentType, SvelteComponent } from "svelte";
 
 export type DocTabIcon = ComponentType<SvelteComponent<IconProps>>;
 

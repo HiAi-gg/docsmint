@@ -1,12 +1,11 @@
 /**
  * Behavioural tests for `GET /api/admin/metrics`.
  *
- * Boots the metrics route on a free port with `app.listen(0)`, then
- * drives it through real HTTP requests to validate the auth gate and
- * the response shape. The rate-limiter middleware is mocked so the
- * test path stays in-process and independent of any shared Redis state
- * (the test focuses on the auth-gate contract, not on rate-limiter
- * semantics — those are covered by `rate-limit.test.ts`).
+ * Boots the metrics route in-process and drives it with Request objects
+ * to validate the auth gate and the response shape. The rate-limiter
+ * middleware is mocked so the test path stays independent of any shared
+ * Redis state (the test focuses on the auth-gate contract, not on
+ * rate-limiter semantics — those are covered by `rate-limit.test.ts`).
  *
  * `config.HIAI_DOCS_API_KEY` is parsed at module-load time and cached as
  * a plain object — we mutate it directly here so the route picks up our
@@ -55,10 +54,6 @@ afterEach(() => {
 });
 
 describe("GET /api/admin/metrics", () => {
-	let baseUrl: string;
-	// The Elysia recursive type prevents a precise annotation here; the
-	// runtime shape we use is `{ stop(): Promise<void>; server: { port?: number } }`.
-	let appHandle: { stop: () => Promise<void>; server: { port?: number } };
 	let originalKey: string | undefined;
 
 	test("end-to-end: auth gate + response shape", async () => {
@@ -70,21 +65,23 @@ describe("GET /api/admin/metrics", () => {
 
 		const { metricsRoutes } = await import("../api/routes/metrics");
 		const ElysiaCtor = (await import("elysia")).Elysia;
-		appHandle = new ElysiaCtor().use(metricsRoutes).listen(0) as never;
-		const port = appHandle.server?.port ?? 0;
-		baseUrl = `http://127.0.0.1:${port}`;
+		const app = new ElysiaCtor().use(metricsRoutes);
 
 		try {
 			// --- Auth gate: missing key → 401
-			const noKey = await fetch(`${baseUrl}/api/admin/metrics`);
+			const noKey = await app.handle(
+				new Request("http://localhost/api/admin/metrics"),
+			);
 			expect(noKey.status).toBe(401);
 			const noKeyBody = (await noKey.json()) as { error: string };
 			expect(noKeyBody.error).toBe("Unauthorized");
 
 			// --- Auth gate: wrong key → 401
-			const wrongKey = await fetch(`${baseUrl}/api/admin/metrics`, {
-				headers: { "x-api-key": "definitely-not-the-real-key" },
-			});
+			const wrongKey = await app.handle(
+				new Request("http://localhost/api/admin/metrics", {
+					headers: { "x-api-key": "definitely-not-the-real-key" },
+				}),
+			);
 			expect(wrongKey.status).toBe(401);
 
 			// --- Happy path: matching key → 200 with snapshot
@@ -94,9 +91,11 @@ describe("GET /api/admin/metrics", () => {
 			recordDuration(METRIC_NAMES.EMBEDDING_DURATION_MS, 42);
 			incrementCounter(METRIC_NAMES.EMBEDDING_DOCS_TOTAL);
 
-			const ok = await fetch(`${baseUrl}/api/admin/metrics`, {
-				headers: { "x-api-key": TEST_API_KEY },
-			});
+			const ok = await app.handle(
+				new Request("http://localhost/api/admin/metrics", {
+					headers: { "x-api-key": TEST_API_KEY },
+				}),
+			);
 			expect(ok.status).toBe(200);
 			const body = (await ok.json()) as {
 				metrics: Record<string, number | number[]>;
@@ -119,7 +118,6 @@ describe("GET /api/admin/metrics", () => {
 			expect(local[METRIC_NAMES.EMBEDDING_SUCCESS]).toBe(2);
 			expect(local[METRIC_NAMES.EMBEDDING_DOCS_TOTAL]).toBe(1);
 		} finally {
-			if (appHandle) await appHandle.stop();
 			resetMetrics();
 			// Restore original config so this test doesn't pollute later
 			// files in the same process.

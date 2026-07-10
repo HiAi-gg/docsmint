@@ -1,7 +1,7 @@
 # Production Status Report
 
-> **Status:** ✅ Production Ready — v0.2.5 released
-> **Last verified:** 2026-07-09
+> **Status:** 🟡 Release Candidate — v0.2.6
+> **Last verified:** 2026-07-10
 
 ---
 
@@ -10,8 +10,8 @@
 | Check | Status |
 |-------|--------|
 | Typecheck | ✅ PASS — 0 errors across all packages |
-| Tests | ✅ PASS — 462/462 passing (backend/core + frontend) |
-| Build | ✅ PASS — Docker multi-stage builds |
+| Tests | ✅ PASS — 531/531 passing (backend 483 + frontend 48) |
+| Build | ✅ PASS — backend, frontend, SDK, and custom PostgreSQL images |
 | Health checks | ✅ PASS |
 
 ## 2. Architecture
@@ -26,7 +26,8 @@ Security: rate limiting, Zod validation, owner_id scoping, CSRF protection, CORS
 git clone https://github.com/hiai-gg/hiai-docs.git && cd hiai-docs
 cp .env.example .env
 docker compose pull && docker compose up -d
-docker compose exec api bun run db:migrate
+# From the repository root; the runtime image does not ship migration source.
+bun run db:migrate
 ```
 
 ### Ports
@@ -42,7 +43,7 @@ docker compose exec api bun run db:migrate
 
 ## 4. Testing
 
-462 tests passing (backend/core unit + integration + frontend). Run: `cd backend && bun test`, `cd frontend && bun test`.
+531 tests passing (backend 483 + frontend 48). Run: `bun run test`.
 
 ## 5. Security Checklist
 
@@ -50,13 +51,11 @@ Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, 
 
 ## 6. Known Issues
 
-- **Biome/Svelte 5:** 44 false-positive lint errors on Svelte 5 runes (non-blocking)
 - **Typebox pin:** required for Elysia 1.4.28 compatibility
-- **Embedding API keys:** configure EMBEDDING_BASE_URL, EMBEDDING_API_KEY, and EMBEDDING_MODEL in .env (optional for Ollama self-hosting)
-- **No E2E tests:** tracked in todo.md T6.3
+- **Embedding provider:** configure EMBEDDING_BASE_URL, EMBEDDING_API_KEY, and EMBEDDING_MODEL in .env (optional for Ollama self-hosting)
 - **No automated backups:** operator responsibility
 - **GraphRAG:** All G1-G9 and N1 audit items resolved. See GRAPHRAG_AUDIT.md.
 
 ---
 
-*Status: ✅ Production Ready — v0.2.5 released*
+*Status: 🟡 Release Candidate — v0.2.6*

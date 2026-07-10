@@ -141,6 +141,8 @@ GRAPH_EXPANSION_BOOST=0.3      # graph-neighbor boost (0..2)
 GRAPH_EXTRACT_BASE_URL=        # OpenAI-compatible chat-completion URL (REQUIRED — do not rely on EMBEDDING_BASE_URL fallback)
 GRAPH_EXTRACT_API_KEY=
 GRAPH_EXTRACT_MODEL=           # defaults to EMBEDDING_MODEL when unset
+GRAPH_EXTRACT_REASONING_EFFORT= # optional; use none for Ollama Qwen3
+GRAPH_EXTRACT_TIMEOUT_MS=120000 # allows cold local-model loads
 GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
 ```
 
@@ -437,6 +439,8 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `GRAPH_EXTRACT_BASE_URL` | — | Chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | — | API key for entity extraction LLM |
 | `GRAPH_EXTRACT_MODEL` | — | Entity extraction model (defaults to EMBEDDING_MODEL) |
+| `GRAPH_EXTRACT_REASONING_EFFORT` | — | Optional reasoning control; use `none` for Ollama Qwen3 |
+| `GRAPH_EXTRACT_TIMEOUT_MS` | 120000 | Entity extraction request timeout; accommodates cold local models |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | 0.5 | Minimum entity confidence threshold |
 | `GRAPH_EXTRACT_FALLBACK_BASE_URL` | — | Fallback extraction LLM URL |
 | `GRAPH_EXTRACT_FALLBACK_API_KEY` | — | Fallback extraction LLM API key |

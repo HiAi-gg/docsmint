@@ -96,7 +96,7 @@ At 583 rows / 84 documents: instant. At 100k+ chunks for one tenant: O(N log N) 
 
 `entityUpsertCypher` does `MERGE (e:Person {name: $name})`. Without an index on `name`, every MERGE does a full sequential scan of the label's backing table. Confirmed: zero indexes on `name` in any `docs_graph` label table.
 
-**Fix:** Add btree indexes on `name` for each vertex label in `graph/migrations/001_init.sql`.
+**Fix:** Add GIN indexes on AGE vertex properties in the canonical Drizzle migration `0021_initialize_graphrag.sql`.
 
 ### G5. DiskANN index migration never applied
 
@@ -148,7 +148,7 @@ Config schema defaults to `false`, but `.env.example:56-57` sets both graph flag
 - **`search_vector` is a generated column:** auto-updates, GIN index exists, full-text search correct.
 - **Chunking + incremental re-embed:** hash-based, O(changed + 2·changed). Correct and efficient.
 - **Hybrid search merge:** 0.4 text + 0.6 semantic, graph boost multiplicative. Sound ranking.
-- **Graph traversal Cypher:** `shortestPath` with bounded hops, O(branching^hops) documented. Correct.
+- **Graph traversal Cypher:** bounded two-hop traversal through shared entities, compatible with Apache AGE and covered by regression tests.
 - **Unified PG image:** pgvector 0.8.3 + pgvectorscale 0.9.0 + AGE 1.7.0 + pg_trgm 1.6 in one PG 18.1. Extensions coexist correctly.
 
 ---
@@ -173,10 +173,10 @@ Config schema defaults to `false`, but `.env.example:56-57` sets both graph flag
 
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
-| **G1** — AGE `session_preload_libraries` | ✅ Fixed | 2026-07-01 | Added to `postgres/init.sql` |
-| **G2** — Ollama endpoint misconfigured | ✅ Fixed | 2026-07-01 | `.env.example` corrected to `GRAPH_EXTRACT_BASE_URL=http://localhost:11434/v1` |
+| **G1** — AGE `session_preload_libraries` | ✅ Fixed | 2026-07-10 | Covered for fresh installs by `postgres/init.sql` and existing databases by migration `0023_preload_age.sql` |
+| **G2** — Ollama endpoint misconfigured | ✅ Fixed | 2026-07-10 | Compose example uses the OpenAI-compatible `http://host.docker.internal:11434/v1` endpoint |
 | **G3** — HNSW index bypass in search | ✅ Fixed | 2026-07-01 | Two-stage query rewrites |
-| **G4** — No indexes on AGE `name` columns | ✅ Fixed | 2026-07-01 | Btree indexes added to `graph/migrations/001_init.sql` |
+| **G4** — No indexes on AGE entity properties | ✅ Fixed | 2026-07-10 | GIN property indexes added in `0021_initialize_graphrag.sql` |
 | **G5** — DiskANN index never applied | ✅ Fixed | 2026-07-01 | Added to `packages/db/src/schema.ts` |
 | **G6** — `hiai_app` search_path wrong order | ✅ Fixed | 2026-07-01 | `ALTER ROLE hiai_app SET search_path = public, ag_catalog` |
 | **G7** — postgres-js parameterized cypher | ✅ Fixed | 2026-07-01 | `search-expansion.ts` now uses `sql.unsafe()` with `$$` dollar-quoting |

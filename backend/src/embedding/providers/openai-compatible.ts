@@ -7,8 +7,6 @@
 import { logger } from "../../lib/logger";
 import { EMBEDDING_DIMENSIONS, normalizeDimensions } from "../utils";
 
-const TIMEOUT_MS = 30_000;
-
 interface OpenAICompatibleEmbeddingResponse {
 	data: Array<{ embedding: number[] }>;
 }
@@ -26,11 +24,12 @@ export async function getOpenAICompatibleEmbedding(
 	baseUrl: string,
 	apiKey: string,
 	model: string,
+	timeoutMs: number,
 ): Promise<number[]> {
 	const url = `${baseUrl.replace(/\/$/, "")}/embeddings`;
 
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -71,7 +70,7 @@ export async function getOpenAICompatibleEmbedding(
 				"OpenAI-compatible embedding request timed out",
 			);
 			throw new Error(
-				`OpenAI-compatible embedding timed out after ${TIMEOUT_MS}ms`,
+				`OpenAI-compatible embedding timed out after ${timeoutMs}ms`,
 			);
 		}
 		logger.error({ err, url, model }, "OpenAI-compatible embedding error");

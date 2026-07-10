@@ -35,9 +35,13 @@
  */
 
 import { documents, documentTags, folders } from "@hiai-docs/db/schema";
+import {
+	adminTenantContext,
+	withTenant,
+	ZERO_UUID,
+} from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray } from "drizzle-orm";
 import { config } from "./config";
-import { db } from "./db";
 import { enqueueEmbedding } from "./embedding-queue";
 import { logger } from "./logger";
 import { redis } from "./redis";
@@ -50,6 +54,7 @@ import { redis } from "./redis";
  */
 const DEDUP_KEY_PREFIX = "hiai-docs:reembed:dedup:";
 const DEDUP_TTL_SECONDS = 5;
+const REEMBED_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 
 /**
  * Try to claim a one-shot enqueue slot for `docId`. Returns `true` if the
@@ -125,14 +130,15 @@ export async function reembedDocsInFolder(
 	ownerId: string,
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
-	const query = db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(
-			and(eq(documents.folderId, folderId), eq(documents.ownerId, ownerId)),
-		);
-
-	const rows = limit > 0 ? await query.limit(limit) : await query;
+	const rows = await withTenant({ userId: ownerId, role: "user" }, (tx) => {
+		const query = tx
+			.select({ id: documents.id })
+			.from(documents)
+			.where(
+				and(eq(documents.folderId, folderId), eq(documents.ownerId, ownerId)),
+			);
+		return limit > 0 ? query.limit(limit) : query;
+	});
 	const enqueued = await enqueueReembed(rows.map((r) => r.id));
 	if (enqueued > 0) {
 		logger.info(
@@ -159,12 +165,13 @@ export async function reembedDocsInFolderAdmin(
 	folderId: string,
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
-	const query = db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(eq(documents.folderId, folderId));
-
-	const rows = limit > 0 ? await query.limit(limit) : await query;
+	const rows = await withTenant(REEMBED_ADMIN_TENANT, (tx) => {
+		const query = tx
+			.select({ id: documents.id })
+			.from(documents)
+			.where(eq(documents.folderId, folderId));
+		return limit > 0 ? query.limit(limit) : query;
+	});
 	const enqueued = await enqueueReembed(rows.map((r) => r.id));
 	if (enqueued > 0) {
 		logger.info(
@@ -196,46 +203,39 @@ export async function reembedDocsInCategory(
 ): Promise<number> {
 	const limit = config.CATEGORY_REEMBED_BATCH_SIZE;
 
-	// (1) Docs that still point at the category directly. Cheap index hit.
-	const directQuery = db
-		.select({ id: documents.id })
-		.from(documents)
-		.where(
-			and(eq(documents.categoryId, categoryId), eq(documents.ownerId, ownerId)),
-		);
-
-	// (2) Folders that had this category - their docs inherit the preamble
-	// change too (the embedding worker resolves `categoryName` from a
-	// folder's `category_id` when the doc has none of its own).
-	const folderQuery = db
-		.select({ id: folders.id })
-		.from(folders)
-		.where(
-			and(eq(folders.categoryId, categoryId), eq(folders.ownerId, ownerId)),
-		);
-
-	const [directRows, folderRows] = await Promise.all([
-		directQuery,
-		folderQuery,
-	]);
-	const folderIds = folderRows.map((r) => r.id);
-
-	let folderDocRows: Array<{ id: string }> = [];
-	if (folderIds.length > 0) {
-		const limitForFolderDocs = limit > 0 ? limit : undefined;
-		const folderDocsQuery = db
-			.select({ id: documents.id })
-			.from(documents)
-			.where(
-				and(
-					eq(documents.ownerId, ownerId),
-					inArray(documents.folderId, folderIds),
-				),
-			);
-		folderDocRows = limitForFolderDocs
-			? await folderDocsQuery.limit(limitForFolderDocs)
-			: await folderDocsQuery;
-	}
+	const [directRows, folderDocRows] = await withTenant(
+		{ userId: ownerId, role: "user" },
+		async (tx) => {
+			const directRows = await tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(
+					and(
+						eq(documents.categoryId, categoryId),
+						eq(documents.ownerId, ownerId),
+					),
+				);
+			const folderRows = await tx
+				.select({ id: folders.id })
+				.from(folders)
+				.where(
+					and(eq(folders.categoryId, categoryId), eq(folders.ownerId, ownerId)),
+				);
+			const folderIds = folderRows.map((row) => row.id);
+			if (folderIds.length === 0) return [directRows, []] as const;
+			const query = tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(
+					and(
+						eq(documents.ownerId, ownerId),
+						inArray(documents.folderId, folderIds),
+					),
+				);
+			const folderDocs = limit > 0 ? await query.limit(limit) : await query;
+			return [directRows, folderDocs] as const;
+		},
+	);
 
 	const allIds = new Set<string>();
 	for (const r of directRows) allIds.add(r.id);
@@ -271,14 +271,21 @@ export async function reembedDocsInCategory(
  *
  * @internal
  */
-export async function reembedDocsByTag(tagId: string): Promise<number> {
+export async function reembedDocsByTag(
+	tagId: string,
+	ownerId?: string,
+): Promise<number> {
 	const limit = config.TAG_REEMBED_BATCH_SIZE;
-	const query = db
-		.selectDistinct({ documentId: documentTags.documentId })
-		.from(documentTags)
-		.where(eq(documentTags.tagId, tagId));
-
-	const rows = limit > 0 ? await query.limit(limit) : await query;
+	const tenant = ownerId
+		? { userId: ownerId, role: "user" as const }
+		: REEMBED_ADMIN_TENANT;
+	const rows = await withTenant(tenant, (tx) => {
+		const query = tx
+			.selectDistinct({ documentId: documentTags.documentId })
+			.from(documentTags)
+			.where(eq(documentTags.tagId, tagId));
+		return limit > 0 ? query.limit(limit) : query;
+	});
 	const enqueued = await enqueueReembed(rows.map((r) => r.documentId));
 	if (enqueued > 0) {
 		logger.info(

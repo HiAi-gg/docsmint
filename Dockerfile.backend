@@ -46,7 +46,6 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/backend/node_modules ./backend/node_modules
 COPY --from=deps /app/packages/db/node_modules ./packages/db/node_modules
 COPY --from=build /app/backend/dist ./backend/dist
-COPY --from=build /app/backend/src/lib/graph/migrations/001_init.sql ./backend/dist/migrations/001_init.sql
 COPY backend/package.json ./backend/
 
 ENV NODE_ENV=production

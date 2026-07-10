@@ -1,12 +1,17 @@
 import { versions } from "@hiai-docs/db/schema";
+import {
+	adminTenantContext,
+	withTenant,
+	ZERO_UUID,
+} from "@hiai-docs/db/with-tenant";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { config } from "./config";
-import { db } from "./db";
 import { logger } from "./logger";
 import { redis } from "./redis";
 
 const PRUNE_DEBOUNCE_KEY = (docId: string) => `hiai-docs:prune:${docId}`;
 const PRUNE_DEBOUNCE_SECONDS = 60;
+const PRUNE_TENANT = adminTenantContext(ZERO_UUID);
 
 /**
  * Garbage-collect auto-saved versions for a single document, keeping the
@@ -39,41 +44,41 @@ export async function maybePruneVersions(documentId: string): Promise<void> {
 
 		// Count auto-saved versions only (isSnapshot = false). Snapshots
 		// are never pruned, so they should not count against retention.
-		const countRows = await db
-			.select({ count: sql<number>`count(*)::int` })
-			.from(versions)
-			.where(
-				and(
-					eq(versions.documentId, documentId),
-					eq(versions.isSnapshot, false),
-				),
-			);
-		const count = countRows[0]?.count ?? 0;
-		if (count <= retention) return;
+		await withTenant(PRUNE_TENANT, async (tx) => {
+			const countRows = await tx
+				.select({ count: sql<number>`count(*)::int` })
+				.from(versions)
+				.where(
+					and(
+						eq(versions.documentId, documentId),
+						eq(versions.isSnapshot, false),
+					),
+				);
+			const count = countRows[0]?.count ?? 0;
+			if (count <= retention) return;
 
-		const toDelete = count - retention;
-		// Oldest auto-saved versions get pruned first; `id` is a tiebreaker
-		// for rows with identical `createdAt` so the delete is deterministic.
-		const staleVersions = await db
-			.select({ id: versions.id })
-			.from(versions)
-			.where(
-				and(
-					eq(versions.documentId, documentId),
-					eq(versions.isSnapshot, false),
-				),
-			)
-			.orderBy(asc(versions.createdAt), asc(versions.id))
-			.limit(toDelete);
+			const toDelete = count - retention;
+			const staleVersions = await tx
+				.select({ id: versions.id })
+				.from(versions)
+				.where(
+					and(
+						eq(versions.documentId, documentId),
+						eq(versions.isSnapshot, false),
+					),
+				)
+				.orderBy(asc(versions.createdAt), asc(versions.id))
+				.limit(toDelete);
 
-		if (staleVersions.length > 0) {
-			const ids = staleVersions.map((v) => v.id);
-			await db.delete(versions).where(inArray(versions.id, ids));
-			logger.info(
-				{ documentId, pruned: ids.length, retention },
-				"Pruned old auto-saved versions",
-			);
-		}
+			if (staleVersions.length > 0) {
+				const ids = staleVersions.map((v) => v.id);
+				await tx.delete(versions).where(inArray(versions.id, ids));
+				logger.info(
+					{ documentId, pruned: ids.length, retention },
+					"Pruned old auto-saved versions",
+				);
+			}
+		});
 	} catch (err) {
 		logger.error({ err, documentId }, "Version pruning failed");
 	}

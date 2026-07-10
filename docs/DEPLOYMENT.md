@@ -39,7 +39,8 @@ Copy `.env.example` and fill in:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | `postgresql://hiai_app:changeme@localhost:5437/hiai_docs` | PostgreSQL connection string (encodes host, port, user, password, db) |
+| `DATABASE_URL` | Yes | — | PostgreSQL runtime connection string for `hiai_app` |
+| `HIAI_APP_PASSWORD` | Yes | — | Unique runtime-role password; generate a hex value with `openssl rand -hex 32` |
 | `REDIS_URL` | Yes | `redis://localhost:6384` | Redis connection URL. **Host/macOS:** use `redis://localhost:6384`. **Docker Compose:** the default compose file overrides this to `redis://redis:6379` (container DNS name, internal port 6379) so the api container can reach redis via the Docker network. |
 | `BETTER_AUTH_SECRET` | **Yes** | — | Random 32+ char string |
 | `BETTER_AUTH_URL` | Yes | `http://localhost:50700` | Public API URL |
@@ -70,6 +71,8 @@ Copy `.env.example` and fill in:
 | `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | — | OpenAI-compatible chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | If extraction enabled | — | API key for extraction LLM |
 | `GRAPH_EXTRACT_MODEL` | No | `EMBEDDING_MODEL` | Extraction model name |
+| `GRAPH_EXTRACT_REASONING_EFFORT` | No | — | OpenAI-compatible reasoning control; use `none` for Ollama Qwen3 |
+| `GRAPH_EXTRACT_TIMEOUT_MS` | No | `120000` | Entity extraction request timeout in milliseconds |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | No | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
 | `GRAPH_EXPANSION_BOOST` | No | `0.3` | Multiplier on graph-neighbor discovery scores (0–2) |
 
@@ -183,12 +186,17 @@ curl -fsS http://localhost:50700/api/health
 
 ## Database Migrations
 
+The custom PostgreSQL image installs the extensions and creates the runtime
+role. Drizzle owns all relational and GraphRAG schema objects, including the
+single `docs_graph` in the same PostgreSQL database.
+
 ```bash
 # Generate migration from schema changes
 cd packages/db && bun run db:generate
 
-# Apply migration
-bun run db:migrate
+# Apply migrations from the repository root (the runtime image intentionally
+# does not contain migration source files)
+cd ../.. && bun run db:migrate
 
 # Push schema directly (dev only)
 bun run db:push
