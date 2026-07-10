@@ -68,8 +68,8 @@ Copy `.env.example` and fill in:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GRAPH_EXTRACT_ENABLED` | No | `false` | Enable LLM entity extraction into Apache AGE |
-| `GRAPH_SEARCH_ENABLED` | No | `false` | Enable graph-neighbor expansion in search |
+| `GRAPH_EXTRACT_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable LLM entity extraction into Apache AGE |
+| `GRAPH_SEARCH_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable graph-neighbor expansion in search |
 | `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | `https://openrouter.ai/api/v1` | OpenAI-compatible chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | If extraction enabled | — | API key for extraction LLM |
 | `GRAPH_EXTRACT_MODEL` | No | `mistralai/ministral-14b-2512` | Primary extraction model |
@@ -171,15 +171,16 @@ Both models are requested with `dimensions=1024`, matching the pgvector schema. 
 The GraphRAG extraction profile is also preconfigured for OpenRouter, but remains disabled by default:
 
 ```dotenv
-GRAPH_EXTRACT_ENABLED=false
-GRAPH_SEARCH_ENABLED=false
+GRAPH_EXTRACT_ENABLED=true
+GRAPH_SEARCH_ENABLED=true
 GRAPH_EXTRACT_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_MODEL=mistralai/ministral-14b-2512
+GRAPH_EXTRACT_REASONING_EFFORT=none
 GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 ```
 
-When enabled, both extraction providers reuse `OPENROUTER_API_KEY` unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
+Both extraction and graph search are enabled in the copied reference profile because GraphRAG is a core hiai-docs feature. The runtime schema remains fail-safe (`false`) only when no `.env` values are supplied. Both extraction providers reuse `OPENROUTER_API_KEY` unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
 
 ## Production Considerations
 

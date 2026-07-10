@@ -135,13 +135,13 @@ Apache AGE runs in the **same PostgreSQL database** as the rest of the applicati
 ### Required env vars
 
 ```
-GRAPH_EXTRACT_ENABLED=false   # default — set to true to enable extraction
-GRAPH_SEARCH_ENABLED=false    # default — set to true to enable graph search
+GRAPH_EXTRACT_ENABLED=true    # enabled in the OpenRouter reference profile
+GRAPH_SEARCH_ENABLED=true     # enabled in the OpenRouter reference profile
 GRAPH_EXPANSION_BOOST=0.3      # graph-neighbor boost (0..2)
 GRAPH_EXTRACT_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_API_KEY=
 GRAPH_EXTRACT_MODEL=mistralai/ministral-14b-2512
-GRAPH_EXTRACT_REASONING_EFFORT= # optional; use none for Ollama Qwen3
+GRAPH_EXTRACT_REASONING_EFFORT=none # keeps JSON extraction focused for the selected models
 GRAPH_EXTRACT_TIMEOUT_MS=120000 # allows cold local-model loads
 GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_FALLBACK_API_KEY=
@@ -149,7 +149,7 @@ GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
 ```
 
-The public profile uses Ministral as the primary extraction model and Gemma as its fallback. Both reuse `OPENROUTER_API_KEY` unless provider-specific keys are set. GraphRAG remains disabled until `GRAPH_EXTRACT_ENABLED=true` and `GRAPH_SEARCH_ENABLED=true` are explicitly enabled. See [`.env.example`](.env.example) for the local Ollama alternative.
+The public reference profile uses Ministral as the primary extraction model and Gemma as its fallback. Both reuse `OPENROUTER_API_KEY` unless provider-specific keys are set. GraphRAG is enabled in the copied `.env.example` profile so the product's central feature works immediately after a key is added. The runtime schema still defaults both flags to `false` when no environment file is supplied, preventing accidental paid calls in bare deployments. See [`.env.example`](.env.example) for the local Ollama alternative.
 ## Quick Start
 
 ### Option 1: Docker (run the full product)
@@ -438,8 +438,8 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `EMBEDDING_FALLBACK_API_KEY` | — | Optional fallback key; otherwise uses `OPENROUTER_API_KEY` |
 | `EMBEDDING_FALLBACK_MODEL` | `baai/bge-m3` | Fallback 1024-dimensional embedding model |
 | `CORS_ORIGINS` | http://localhost:50701 | Comma-separated allowed origins (required for local dev) |
-| `GRAPH_EXTRACT_ENABLED` | false | Enable LLM entity extraction into AGE |
-| `GRAPH_SEARCH_ENABLED` | false | Enable graph-neighbor expansion in search |
+| `GRAPH_EXTRACT_ENABLED` | `true` in `.env.example`; `false` schema fallback | Enable LLM entity extraction into AGE |
+| `GRAPH_SEARCH_ENABLED` | `true` in `.env.example`; `false` schema fallback | Enable graph-neighbor expansion in search |
 | `GRAPH_EXPANSION_BOOST` | 0.3 | Multiplier on graph-neighbor scores (0..2) |
 | `GRAPH_EXTRACT_BASE_URL` | `https://openrouter.ai/api/v1` | Chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | — | API key for entity extraction LLM |
