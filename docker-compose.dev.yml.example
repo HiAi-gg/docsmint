@@ -21,6 +21,7 @@ services:
       POSTGRES_USER: ${DB_USER:-aiuser}
       # Change this for any non-throwaway environment.
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${DB_NAME:-hiai_docs}"]
       interval: 10s
@@ -108,8 +109,8 @@ services:
       - "cd /mnt/ai_data/projects/hiai-docs/packages/db && DATABASE_URL=postgresql://${DB_USER:-aiuser}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hiai_docs} bun run db:migrate && cd /mnt/ai_data/projects/hiai-docs/backend && bun run --watch src/index.ts"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:-hiai_app_password}@postgres:5432/${DB_NAME:-hiai_docs}
-      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:-hiai_app_password}
+      DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}@postgres:5432/${DB_NAME:-hiai_docs}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: seaweedfs
       STORAGE_PORT: 8333

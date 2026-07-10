@@ -132,6 +132,7 @@ jobs:
             -e POSTGRES_DB=hiai_docs_test \
             -e POSTGRES_USER=aiuser \
             -e POSTGRES_PASSWORD=testpassword \
+            -e HIAI_APP_PASSWORD=test-runtime-password \
             -p 5432:5432 \
             hiai-postgres:18-custom
           # Wait for ready

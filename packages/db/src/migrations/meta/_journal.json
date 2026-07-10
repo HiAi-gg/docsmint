@@ -153,28 +153,21 @@
       "idx": 21,
       "version": "7",
       "when": 1785000000007,
-      "tag": "0021_grant_graph_permissions",
+      "tag": "0021_initialize_graphrag",
       "breakpoints": true
     },
     {
       "idx": 22,
       "version": "7",
       "when": 1785000000008,
-      "tag": "0022_initialize_docs_graph",
+      "tag": "0022_grant_age_catalog_read",
       "breakpoints": true
     },
     {
       "idx": 23,
       "version": "7",
       "when": 1785000000009,
-      "tag": "0023_grant_age_catalog_read",
-      "breakpoints": true
-    },
-    {
-      "idx": 24,
-      "version": "7",
-      "when": 1785000000010,
-      "tag": "0024_preload_age",
+      "tag": "0023_preload_age",
       "breakpoints": true
     }
   ]

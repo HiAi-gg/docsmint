@@ -11,11 +11,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS vectorscale;
 
 -- Knowledge graph (Apache AGE). The ag_catalog schema is created
--- automatically by the extension. We then set `search_path` to make
--- `ag_catalog` reachable for Cypher queries and operator class
--- lookups (`graphid_ops` lives there, and AGE's `cypher()` function
--- has `agtype` parameters that PG can only resolve if ag_catalog
--- is in the search path).
+-- automatically by the extension. Graph objects are deliberately owned by
+-- the Drizzle migration journal, not by this bootstrap script.
 CREATE EXTENSION IF NOT EXISTS age;
 
 -- Load the AGE shared library into every new session so cypher() works.
@@ -27,26 +24,6 @@ CREATE EXTENSION IF NOT EXISTS age;
 DO $$
 BEGIN
   EXECUTE format('ALTER DATABASE %I SET session_preload_libraries = %L', current_database(), 'age');
-END
-$$;
-
--- Set search_path SESSION-LOCAL for the rest of this script so
--- `create_graph` and `cypher()` calls resolve ag_catalog types and
--- operator classes without the schema prefix. `ALTER DATABASE ... SET`
--- alone is not enough — it only affects new sessions, not the one
--- currently running this init script.
-SET search_path = ag_catalog, public;
-
--- Create the AGE graph. Idempotent: `create_graph` raises if the
--- graph already exists, so we wrap in a DO block and swallow
--- "already exists" specifically.
-DO $$
-BEGIN
-  PERFORM create_graph('docs_graph');
-EXCEPTION WHEN OTHERS THEN
-  IF SQLERRM NOT LIKE '%already exists%' THEN
-    RAISE;
-  END IF;
 END
 $$;
 
@@ -76,15 +53,6 @@ GRANT ALL PRIVILEGES ON SCHEMA ag_catalog TO aiuser;
 -- this ALTER ROLE persists across the connection pool.
 ALTER ROLE aiuser SET search_path = public, ag_catalog;
 
--- hiai_app role for dev-compose runtime connection
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'hiai_app') THEN
-    CREATE ROLE hiai_app WITH LOGIN PASSWORD 'hiai_app_password';
-  END IF;
-END
-$$;
-
--- Match aiuser search_path so Drizzle resolves unqualified table names
--- to public.* first (see the aiuser comment above for rationale).
-ALTER ROLE hiai_app SET search_path = public, ag_catalog;
+-- The non-superuser runtime role is created by 01-runtime-role.sh with the
+-- operator-provided HIAI_APP_PASSWORD before Drizzle migrations run. The
+-- role's grants and search_path are finalized by migration 0012.

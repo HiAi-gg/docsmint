@@ -16,6 +16,7 @@ services:
       POSTGRES_DB: ${DB_NAME:-hiai_docs}
       POSTGRES_USER: ${DB_USER:-aiuser}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-aiuser} -d ${DB_NAME:-hiai_docs}"]
       interval: 10s
@@ -105,8 +106,8 @@ services:
       retries: 3
       start_period: 10s
     environment:
-      DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:-hiai_app_password}@postgres:5432/${DB_NAME:-hiai_docs}
-      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:-hiai_app_password}
+      DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}@postgres:5432/${DB_NAME:-hiai_docs}
+      HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-seaweedfs}
       STORAGE_PORT: 8333

@@ -96,7 +96,7 @@ At 583 rows / 84 documents: instant. At 100k+ chunks for one tenant: O(N log N) 
 
 `entityUpsertCypher` does `MERGE (e:Person {name: $name})`. Without an index on `name`, every MERGE does a full sequential scan of the label's backing table. Confirmed: zero indexes on `name` in any `docs_graph` label table.
 
-**Fix:** Add GIN indexes on AGE vertex properties in the canonical Drizzle migration `0022_initialize_docs_graph.sql`.
+**Fix:** Add GIN indexes on AGE vertex properties in the canonical Drizzle migration `0021_initialize_graphrag.sql`.
 
 ### G5. DiskANN index migration never applied
 
@@ -173,10 +173,10 @@ Config schema defaults to `false`, but `.env.example:56-57` sets both graph flag
 
 | Item | Status | Date | Notes |
 |------|--------|------|-------|
-| **G1** — AGE `session_preload_libraries` | ✅ Fixed | 2026-07-10 | Covered for fresh installs by `postgres/init.sql` and existing databases by migration `0024_preload_age.sql` |
+| **G1** — AGE `session_preload_libraries` | ✅ Fixed | 2026-07-10 | Covered for fresh installs by `postgres/init.sql` and existing databases by migration `0023_preload_age.sql` |
 | **G2** — Ollama endpoint misconfigured | ✅ Fixed | 2026-07-10 | Compose example uses the OpenAI-compatible `http://host.docker.internal:11434/v1` endpoint |
 | **G3** — HNSW index bypass in search | ✅ Fixed | 2026-07-01 | Two-stage query rewrites |
-| **G4** — No indexes on AGE entity properties | ✅ Fixed | 2026-07-10 | GIN property indexes added in `0022_initialize_docs_graph.sql` |
+| **G4** — No indexes on AGE entity properties | ✅ Fixed | 2026-07-10 | GIN property indexes added in `0021_initialize_graphrag.sql` |
 | **G5** — DiskANN index never applied | ✅ Fixed | 2026-07-01 | Added to `packages/db/src/schema.ts` |
 | **G6** — `hiai_app` search_path wrong order | ✅ Fixed | 2026-07-01 | `ALTER ROLE hiai_app SET search_path = public, ag_catalog` |
 | **G7** — postgres-js parameterized cypher | ✅ Fixed | 2026-07-01 | `search-expansion.ts` now uses `sql.unsafe()` with `$$` dollar-quoting |

@@ -93,6 +93,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY init.sql /docker-entrypoint-initdb.d/00-extensions.sql
+COPY 01-runtime-role.sh /docker-entrypoint-initdb.d/01-runtime-role.sh
+RUN chmod 0755 /docker-entrypoint-initdb.d/01-runtime-role.sh
 
 EXPOSE 5432
 CMD ["postgres"]
