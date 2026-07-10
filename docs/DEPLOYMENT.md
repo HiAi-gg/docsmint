@@ -6,7 +6,8 @@
 git clone https://github.com/hiai-gg/hiai-docs.git
 cd hiai-docs
 cp .env.example .env
-# Edit .env with your values (see Environment Variables below)
+# Paste your OpenRouter key into OPENROUTER_API_KEY, or replace the
+# EMBEDDING_* values with the local Ollama example (see below).
 
 docker compose up -d
 ```
@@ -49,9 +50,10 @@ Copy `.env.example` and fill in:
 | `STORAGE_ACCESS_KEY` | Yes | `hiai-docs` | SeaweedFS access key |
 | `STORAGE_SECRET_KEY` | Yes | — | SeaweedFS secret key; generate a unique random value |
 | `STORAGE_BUCKET` | Yes | `hiai-docs` | SeaweedFS bucket name |
-| `EMBEDDING_BASE_URL` | If embeddings enabled | — | Base URL for OpenAI-compatible embedding API |
-| `EMBEDDING_API_KEY` | If embeddings enabled | — | API key for embedding provider |
-| `EMBEDDING_MODEL` | No | — | Model name for embeddings |
+| `OPENROUTER_API_KEY` | For the public default | — | OpenRouter key used by both default embedding providers; never commit a real key |
+| `EMBEDDING_BASE_URL` | If embeddings enabled | `https://openrouter.ai/api/v1` | Base URL for the primary OpenAI-compatible embedding API |
+| `EMBEDDING_API_KEY` | No | — | Optional provider-specific key; overrides `OPENROUTER_API_KEY` for the primary provider |
+| `EMBEDDING_MODEL` | No | `openai/text-embedding-3-small` | Primary embedding model (fixed 1024-dimensional output) |
 | `API_PORT` | No | `50700` | Backend port |
 | `WEB_PORT` | No | `50701` | Frontend port |
 | `NODE_ENV` | No | `production` | `development` or `production` |
@@ -131,9 +133,9 @@ Copy `.env.example` and fill in:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `EMBEDDING_FALLBACK_BASE_URL` | No | — | Fallback embedding provider base URL |
-| `EMBEDDING_FALLBACK_API_KEY` | No | — | Fallback embedding provider API key |
-| `EMBEDDING_FALLBACK_MODEL` | No | — | Fallback embedding model name |
+| `EMBEDDING_FALLBACK_BASE_URL` | No | `https://openrouter.ai/api/v1` | Fallback embedding provider base URL |
+| `EMBEDDING_FALLBACK_API_KEY` | No | — | Optional fallback-specific key; otherwise `OPENROUTER_API_KEY` is reused |
+| `EMBEDDING_FALLBACK_MODEL` | No | `baai/bge-m3` | Fallback embedding model (fixed 1024-dimensional output) |
 
 ### Fallback GraphRAG Extraction
 
@@ -151,6 +153,20 @@ Copy `.env.example` and fill in:
 | `STORAGE_PUBLIC_PORT` | No | `9020` | Public SeaweedFS port |
 
 > **⚠️ Secret hygiene:** All secrets in `.env.example` use `change-me` placeholders with `CHANGE-ME` markers. Run `openssl rand -hex 32` to generate values for `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, and `HIAI_DOCS_API_KEY`. The `OWNER_ID` should be your first registered user's UUID from the auth system. Never commit real secrets to `.env.example` or documentation.
+
+### Embedding provider defaults
+
+The checked-in `.env.example` is ready for a public OpenRouter setup:
+
+```dotenv
+OPENROUTER_API_KEY=change-me-paste-your-openrouter-key-here
+EMBEDDING_BASE_URL=https://openrouter.ai/api/v1
+EMBEDDING_MODEL=openai/text-embedding-3-small
+EMBEDDING_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
+EMBEDDING_FALLBACK_MODEL=baai/bge-m3
+```
+
+Both models are requested with `dimensions=1024`, matching the pgvector schema. The runtime uses `OPENROUTER_API_KEY` for both providers unless an explicit `EMBEDDING_API_KEY` or `EMBEDDING_FALLBACK_API_KEY` is supplied. If you prefer local inference, replace both base URLs and model names with an Ollama-compatible 1024-dimensional model (for example `bge-m3`) and remove the OpenRouter key from `.env`.
 
 ## Production Considerations
 

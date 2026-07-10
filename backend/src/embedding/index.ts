@@ -11,6 +11,25 @@ import { getOpenAICompatibleEmbedding } from "./providers/openai-compatible";
 import { EMBEDDING_DIMENSIONS } from "./utils";
 
 /**
+ * Resolve a provider credential while keeping the public OpenRouter profile
+ * ergonomic. Explicit provider keys win; otherwise the shared OpenRouter key
+ * is used for both the primary and fallback embedding providers.
+ */
+function embeddingApiKey(explicitKey?: string): string {
+	return explicitKey?.trim() || config.OPENROUTER_API_KEY?.trim() || "";
+}
+
+function providerApiKey(baseUrl: string, explicitKey?: string): string {
+	const apiKey = embeddingApiKey(explicitKey);
+	if (/openrouter\.ai/i.test(baseUrl) && apiKey.length === 0) {
+		throw new Error(
+			"OpenRouter embedding provider requires OPENROUTER_API_KEY (or a provider-specific EMBEDDING_*_API_KEY)",
+		);
+	}
+	return apiKey;
+}
+
+/**
  * Get an embedding vector for a single text.
  * Tries primary provider, then fallback, then returns a zero vector.
  *
@@ -50,7 +69,7 @@ async function getEmbeddingInner(text: string): Promise<number[]> {
 		const vector = await getOpenAICompatibleEmbedding(
 			text,
 			config.EMBEDDING_BASE_URL,
-			config.EMBEDDING_API_KEY ?? "",
+			providerApiKey(config.EMBEDDING_BASE_URL, config.EMBEDDING_API_KEY),
 			config.EMBEDDING_MODEL,
 			config.EMBEDDING_TIMEOUT_MS,
 		);
@@ -67,7 +86,10 @@ async function getEmbeddingInner(text: string): Promise<number[]> {
 				const vector = await getOpenAICompatibleEmbedding(
 					text,
 					config.EMBEDDING_FALLBACK_BASE_URL,
-					config.EMBEDDING_FALLBACK_API_KEY ?? "",
+					providerApiKey(
+						config.EMBEDDING_FALLBACK_BASE_URL,
+						config.EMBEDDING_FALLBACK_API_KEY,
+					),
 					config.EMBEDDING_FALLBACK_MODEL,
 					config.EMBEDDING_TIMEOUT_MS,
 				);

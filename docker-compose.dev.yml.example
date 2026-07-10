@@ -124,14 +124,16 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-replace-me}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:50700}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:50701,http://127.0.0.1:50701}
-      # Embedding provider (OpenAI-compatible). Leave the *_FALLBACK_* values
-      # empty to disable the secondary provider. Required for ingestion.
-      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-}
+      # Embedding provider (OpenAI-compatible). The public template uses
+      # OpenRouter; replace these values with Ollama settings for local-only
+      # inference and remove OPENROUTER_API_KEY from .env.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://openrouter.ai/api/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
-      EMBEDDING_FALLBACK_BASE_URL: ${EMBEDDING_FALLBACK_BASE_URL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
+      EMBEDDING_FALLBACK_BASE_URL: ${EMBEDDING_FALLBACK_BASE_URL:-https://openrouter.ai/api/v1}
       EMBEDDING_FALLBACK_API_KEY: ${EMBEDDING_FALLBACK_API_KEY:-}
-      EMBEDDING_FALLBACK_MODEL: ${EMBEDDING_FALLBACK_MODEL:-}
+      EMBEDDING_FALLBACK_MODEL: ${EMBEDDING_FALLBACK_MODEL:-baai/bge-m3}
       API_PORT: ${API_PORT:-50700}
       NODE_ENV: development
       BODY_SIZE_LIMIT: "10485760"

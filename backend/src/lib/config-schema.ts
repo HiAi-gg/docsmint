@@ -62,6 +62,10 @@ export const envSchema = z.object({
 	EMBEDDING_BASE_URL: z.string().optional(),
 	EMBEDDING_API_KEY: z.string().optional(),
 	EMBEDDING_MODEL: z.string().optional(),
+	// Shared OpenRouter credential used by the preconfigured public profile.
+	// Explicit EMBEDDING_*_API_KEY values still take precedence, so Ollama and
+	// other local providers remain valid without an API key.
+	OPENROUTER_API_KEY: z.string().optional(),
 	// Local models may need tens of seconds to swap into memory. Keep this
 	// configurable so a cold Ollama load does not silently become a zero vector.
 	EMBEDDING_TIMEOUT_MS: z.coerce

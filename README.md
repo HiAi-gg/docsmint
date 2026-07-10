@@ -155,7 +155,8 @@ See [`.env.example`](.env.example) for the full set, including optional `GRAPH_E
 git clone https://github.com/hiai-gg/hiai-docs.git
 cd hiai-docs
 cp .env.example .env
-# Edit .env with your settings
+# Paste your OpenRouter key into OPENROUTER_API_KEY, or switch the
+# EMBEDDING_* values to the local Ollama example in .env.example.
 
 docker compose up -d
 ```
@@ -426,12 +427,13 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `STORAGE_ACCESS_KEY` | hiai-docs | SeaweedFS access key |
 | `STORAGE_SECRET_KEY` | required | SeaweedFS secret key; generate a unique random value |
 | `STORAGE_BUCKET` | hiai-docs | SeaweedFS bucket name |
-| `EMBEDDING_BASE_URL` | — | Base URL for OpenAI-compatible embedding API (optional) |
-| `EMBEDDING_API_KEY` | — | API key for embedding service (leave empty for local inference) |
-| `EMBEDDING_MODEL` | — | Embedding model name |
-| `EMBEDDING_FALLBACK_BASE_URL` | — | Fallback embedding URL |
-| `EMBEDDING_FALLBACK_API_KEY` | — | Fallback embedding API key |
-| `EMBEDDING_FALLBACK_MODEL` | — | Fallback embedding model |
+| `OPENROUTER_API_KEY` | — | Shared key for the preconfigured OpenRouter embedding profile (never commit a real key) |
+| `EMBEDDING_BASE_URL` | `https://openrouter.ai/api/v1` | Primary OpenAI-compatible embedding URL |
+| `EMBEDDING_API_KEY` | — | Optional primary provider key; overrides `OPENROUTER_API_KEY` |
+| `EMBEDDING_MODEL` | `openai/text-embedding-3-small` | Primary 1024-dimensional embedding model |
+| `EMBEDDING_FALLBACK_BASE_URL` | `https://openrouter.ai/api/v1` | Fallback embedding URL |
+| `EMBEDDING_FALLBACK_API_KEY` | — | Optional fallback key; otherwise uses `OPENROUTER_API_KEY` |
+| `EMBEDDING_FALLBACK_MODEL` | `baai/bge-m3` | Fallback 1024-dimensional embedding model |
 | `CORS_ORIGINS` | http://localhost:50701 | Comma-separated allowed origins (required for local dev) |
 | `GRAPH_EXTRACT_ENABLED` | false | Enable LLM entity extraction into AGE |
 | `GRAPH_SEARCH_ENABLED` | false | Enable graph-neighbor expansion in search |

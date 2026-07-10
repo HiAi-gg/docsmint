@@ -121,6 +121,16 @@ describe("config schema", () => {
 				.success,
 		).toBe(false);
 	});
+
+		test("accepts the shared OpenRouter key used by the public embedding profile", () => {
+		const result = realEnvSchema.safeParse({
+			OPENROUTER_API_KEY: "test-openrouter-key",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.OPENROUTER_API_KEY).toBe("test-openrouter-key");
+		}
+	});
 });
 
 // Production secret guards — the real schema (config-schema.ts) must reject
