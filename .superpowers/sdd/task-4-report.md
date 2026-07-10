@@ -14,7 +14,7 @@ Implemented only the provider-independent search domain primitives requested by 
 
 ## Commit
 
-`53ca90f feat(search): add query confidence and RRF primitives`
+Implementation commit: `4a92db0 feat(search): add query confidence and RRF primitives`
 
 ## Files
 
