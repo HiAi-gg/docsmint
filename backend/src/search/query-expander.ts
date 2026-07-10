@@ -71,22 +71,22 @@ export async function expandQuery(
 							...valid.data.plan,
 							translations: cleanVariants(
 								valid.data.plan.translations,
-								valid.data.plan.normalized,
+								[valid.data.plan.original, valid.data.plan.normalized],
 								config.SEARCH_EXPANSION_MAX_VARIANTS,
 							),
 							synonyms: cleanVariants(
 								valid.data.plan.synonyms,
-								valid.data.plan.normalized,
+								[valid.data.plan.original, valid.data.plan.normalized],
 								config.SEARCH_EXPANSION_MAX_VARIANTS,
 							),
 							concepts: cleanVariants(
 								valid.data.plan.concepts,
-								valid.data.plan.normalized,
+								[valid.data.plan.original, valid.data.plan.normalized],
 								config.SEARCH_EXPANSION_MAX_VARIANTS,
 							),
 							namedEntities: cleanVariants(
 								valid.data.plan.namedEntities,
-								valid.data.plan.normalized,
+								[valid.data.plan.original, valid.data.plan.normalized],
 								config.SEARCH_EXPANSION_MAX_VARIANTS,
 							),
 						},
@@ -127,22 +127,22 @@ export async function expandQuery(
 		detectedLanguage: plan.detectedLanguage,
 		translations: cleanVariants(
 			[...plan.translations, ...result.data.translations],
-			plan.normalized,
+			[plan.original, plan.normalized],
 			config.SEARCH_EXPANSION_MAX_VARIANTS,
 		),
 		synonyms: cleanVariants(
 			[...plan.synonyms, ...result.data.synonyms],
-			plan.normalized,
+			[plan.original, plan.normalized],
 			config.SEARCH_EXPANSION_MAX_VARIANTS,
 		),
 		concepts: cleanVariants(
 			[...plan.concepts, ...result.data.concepts],
-			plan.normalized,
+			[plan.original, plan.normalized],
 			config.SEARCH_EXPANSION_MAX_VARIANTS,
 		),
 		namedEntities: cleanVariants(
 			[...plan.namedEntities, ...result.data.namedEntities],
-			plan.normalized,
+			[plan.original, plan.normalized],
 			config.SEARCH_EXPANSION_MAX_VARIANTS,
 		),
 	};
@@ -216,16 +216,16 @@ function providerConfig(
 
 function cleanVariants(
 	values: string[],
-	original: string,
+	originals: readonly string[],
 	max: number,
 ): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
-	const originalKey = normalizeVariant(original);
+	const originalKeys = new Set(originals.map(normalizeVariant));
 	for (const value of values) {
 		const cleaned = value.trim();
 		const key = normalizeVariant(cleaned);
-		if (!cleaned || !key || key === originalKey || seen.has(key)) continue;
+		if (!cleaned || !key || originalKeys.has(key) || seen.has(key)) continue;
 		seen.add(key);
 		out.push(cleaned);
 		if (out.length >= max) break;

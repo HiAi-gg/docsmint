@@ -328,10 +328,7 @@ async function callEntityExtractionLLM(
 		options.llmBaseUrl ??
 		config.GRAPH_EXTRACT_BASE_URL ??
 		config.EMBEDDING_BASE_URL;
-	const primaryExplicitKey =
-		options.llmApiKey ??
-		config.GRAPH_EXTRACT_API_KEY ??
-		config.EMBEDDING_API_KEY;
+	const primaryExplicitKey = options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY;
 	const primaryModel =
 		options.llmModel ??
 		config.GRAPH_EXTRACT_MODEL ??
@@ -344,8 +341,7 @@ async function callEntityExtractionLLM(
 	const fallbackBase =
 		config.GRAPH_EXTRACT_FALLBACK_BASE_URL ??
 		config.EMBEDDING_FALLBACK_BASE_URL;
-	const fallbackExplicitKey =
-		config.GRAPH_EXTRACT_FALLBACK_API_KEY ?? config.EMBEDDING_FALLBACK_API_KEY;
+	const fallbackExplicitKey = config.GRAPH_EXTRACT_FALLBACK_API_KEY;
 	const fallbackModel =
 		config.GRAPH_EXTRACT_FALLBACK_MODEL ??
 		config.EMBEDDING_FALLBACK_MODEL ??

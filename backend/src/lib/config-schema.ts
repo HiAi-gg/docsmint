@@ -147,8 +147,10 @@ export const envSchema = z.object({
 	// EMBEDDING_BASE_URL — which is usually WRONG (embedding endpoint !=
 	// chat endpoint). Set this explicitly for production.
 	GRAPH_EXTRACT_BASE_URL: z.string().optional(),
-	// API key for the entity extraction LLM. Optional; defaults to
-	// EMBEDDING_API_KEY when absent.
+	// API key for the entity extraction LLM. Optional for the preconfigured
+	// OpenRouter profile (which may use OPENROUTER_API_KEY); custom/local
+	// endpoints must provide this dedicated key and never inherit an embedding
+	// provider credential.
 	GRAPH_EXTRACT_API_KEY: z.string().optional(),
 	// Fallback LLM for entity extraction.
 	GRAPH_EXTRACT_FALLBACK_BASE_URL: z.string().optional(),
@@ -198,7 +200,7 @@ export const envSchema = z.object({
 	SEARCH_EXACT_BOOST: z.coerce.number().min(0).max(1).default(0.02),
 	SEARCH_CHANNEL_AGREEMENT_BOOST: z.coerce.number().min(0).max(1).default(0.01),
 	SEARCH_GRAPH_MAX_CONTRIBUTION: z.coerce.number().min(0).max(1).default(0.03),
-	SEARCH_VECTOR_MIN_SIMILARITY: z.coerce.number().min(-1).max(1).default(0.35),
+	SEARCH_VECTOR_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.35),
 	SEARCH_FUZZY_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.25),
 	SEARCH_MIN_CHANNEL_AGREEMENT: z.coerce
 		.number()

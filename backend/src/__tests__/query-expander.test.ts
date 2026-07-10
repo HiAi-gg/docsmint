@@ -24,8 +24,8 @@ const originalFetch = globalThis.fetch;
 
 function queryPlan(overrides: Partial<Record<string, unknown>> = {}) {
 	return {
-		original: "английский",
-		normalized: "английский",
+		original: "\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439",
+		normalized: "\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439",
 		detectedLanguage: "ru",
 		translations: [],
 		synonyms: [],
@@ -59,7 +59,10 @@ describe("structured query expansion", () => {
 			async () =>
 				completion(
 					JSON.stringify({
-						translations: ["English", "английский"],
+						translations: [
+							"English",
+							"\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439",
+						],
 						synonyms: ["English language"],
 						concepts: ["language settings"],
 						namedEntities: [],
@@ -73,6 +76,35 @@ describe("structured query expansion", () => {
 		expect(result?.plan.synonyms).toEqual(["English language"]);
 		expect(result?.plan.concepts).toEqual(["language settings"]);
 		expect(result?.model).toBe("mistralai/ministral-14b-2512");
+	});
+
+	test("removes both original and normalized query variants", async () => {
+		globalThis.fetch = mock(
+			async () =>
+				completion(
+					JSON.stringify({
+						translations: [
+							"English language",
+							"English Language",
+							"english language",
+						],
+						synonyms: ["English language"],
+						concepts: [],
+						namedEntities: [],
+					}),
+				) as unknown as Response,
+		) as unknown as typeof fetch;
+
+		const { expandQuery } = await import("../search/query-expander");
+		const result = await expandQuery(
+			queryPlan({
+				original: "English Language",
+				normalized: "english language",
+			}),
+			{ tenantScope: "tenant-a" },
+		);
+		expect(result?.plan.translations).toEqual([]);
+		expect(result?.plan.synonyms).toEqual([]);
 	});
 
 	test("deduplicates and caps every variant list", async () => {
@@ -161,7 +193,9 @@ describe("structured query expansion", () => {
 		await expandQuery(queryPlan(), { tenantScope: "tenant-a" });
 		const keyA = String(redisSet.mock.calls[0]?.[0] ?? "");
 		expect(keyA).toMatch(/^hiai-docs:search:expansion:[a-f0-9]{64}$/);
-		expect(keyA).not.toContain("английский");
+		expect(keyA).not.toContain(
+			"\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439",
+		);
 		redisSet.mockClear();
 		await expandQuery(queryPlan(), { tenantScope: "tenant-b" });
 		const keyB = String(redisSet.mock.calls[0]?.[0] ?? "");

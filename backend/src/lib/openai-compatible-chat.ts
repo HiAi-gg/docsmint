@@ -38,7 +38,14 @@ export function resolveChatProviderKey(
 ): string {
 	const explicit = explicitKey?.trim();
 	if (explicit) return explicit;
-	if (!/openrouter\.ai/i.test(baseUrl)) return "";
+	let hostname: string;
+	try {
+		hostname = new URL(baseUrl).hostname.toLowerCase();
+	} catch {
+		return "";
+	}
+	if (hostname !== "openrouter.ai" && hostname !== "www.openrouter.ai")
+		return "";
 	return sharedOpenRouterKey?.trim() ?? "";
 }
 

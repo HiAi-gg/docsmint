@@ -52,3 +52,41 @@ The focused `bun run typecheck` is currently blocked by concurrent Task 1 databa
 - Task 4's `backend/src/search/types.ts` is now consumed directly by the expander; its `QueryPlan` fields must remain provider-independent.
 - The runtime Redis singleton logs its expected connection warning when Redis is not running; cache failures are intentionally non-fatal.
 - The public `.env.example` contains only the existing change-me OpenRouter placeholder and no real credential.
+
+## Reviewer follow-up (2026-07-11)
+
+Applied the Task 6 review corrections without changing schema, migration, worker,
+or Task 4 files:
+
+- `resolveChatProviderKey` now parses the URL and accepts the shared
+  `OPENROUTER_API_KEY` only for the exact `openrouter.ai` or `www.openrouter.ai`
+  hostnames. Invalid URLs, subdomain lookalikes, userinfo tricks, and path
+  lookalikes receive no shared key. Explicit provider keys remain supported.
+- Query expansion removes both `plan.original` and `plan.normalized` from all
+  generated and cached variant lists using NFKC/case/whitespace normalization.
+- `SEARCH_VECTOR_MIN_SIMILARITY` is constrained to `[0, 1]` with default `0.35`.
+- Graph extraction no longer falls back to `EMBEDDING_API_KEY` or
+  `EMBEDDING_FALLBACK_API_KEY`; custom/local graph endpoints require their
+  dedicated `GRAPH_EXTRACT_*_API_KEY`, while exact OpenRouter hosts may use the
+  shared key.
+- Added resolver host-isolation coverage and original/normalized variant
+  regression coverage. The query-expander test source contains no raw Cyrillic
+  literals; Unicode escapes preserve the runtime test values.
+
+Verification after the follow-up:
+
+```text
+cd backend && bun test src/__tests__/query-expander.test.ts src/__tests__/graph-extract.test.ts src/__tests__/config.test.ts src/__tests__/openai-compatible-chat.test.ts
+42 pass, 0 fail, 134 expect() calls
+
+cd backend && bunx biome check src/lib/openai-compatible-chat.ts src/search/query-expander.ts src/lib/config-schema.ts src/lib/graph/extract-entities.ts src/__tests__/query-expander.test.ts src/__tests__/openai-compatible-chat.test.ts src/__tests__/graph-extract.test.ts
+Checked 7 files in 8ms. No fixes applied.
+
+cd backend && git diff --check
+passed
+```
+
+The focused backend typecheck still reports only the pre-existing Task 1
+integration error in `src/embedding/worker.ts`: the insert payload is missing
+the newly required `generationId`. No Task 6 file causes a type error, and no
+worker or database file was modified here.
