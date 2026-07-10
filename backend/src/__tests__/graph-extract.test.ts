@@ -137,6 +137,21 @@ describe("graph extract-entities module", () => {
 		expect(typeof mod._resetDedupCacheForTests).toBe("function");
 	});
 
+	test("GraphRAG provider keys stay scoped to their endpoint", async () => {
+		const { _resolveGraphProviderKeyForTests } = await import(
+			"../lib/graph/extract-entities"
+		);
+		expect(
+			_resolveGraphProviderKeyForTests(
+				"https://openrouter.ai/api/v1",
+				"provider-specific-key",
+			),
+		).toBe("provider-specific-key");
+		expect(
+			_resolveGraphProviderKeyForTests("http://host.docker.internal:11434/v1"),
+		).toBe("");
+	});
+
 	test("module exports confidence on the entity/relationship interfaces", async () => {
 		// Type-level smoke test: compile-time only. If the optional
 		// `confidence` field were missing, the assignment below would

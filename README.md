@@ -138,15 +138,18 @@ Apache AGE runs in the **same PostgreSQL database** as the rest of the applicati
 GRAPH_EXTRACT_ENABLED=false   # default — set to true to enable extraction
 GRAPH_SEARCH_ENABLED=false    # default — set to true to enable graph search
 GRAPH_EXPANSION_BOOST=0.3      # graph-neighbor boost (0..2)
-GRAPH_EXTRACT_BASE_URL=        # OpenAI-compatible chat-completion URL (REQUIRED — do not rely on EMBEDDING_BASE_URL fallback)
+GRAPH_EXTRACT_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_API_KEY=
-GRAPH_EXTRACT_MODEL=           # defaults to EMBEDDING_MODEL when unset
+GRAPH_EXTRACT_MODEL=mistralai/ministral-14b-2512
 GRAPH_EXTRACT_REASONING_EFFORT= # optional; use none for Ollama Qwen3
 GRAPH_EXTRACT_TIMEOUT_MS=120000 # allows cold local-model loads
+GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
+GRAPH_EXTRACT_FALLBACK_API_KEY=
+GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
 ```
 
-See [`.env.example`](.env.example) for the full set, including optional `GRAPH_EXTRACT_FALLBACK_*` mirrors.
+The public profile uses Ministral as the primary extraction model and Gemma as its fallback. Both reuse `OPENROUTER_API_KEY` unless provider-specific keys are set. GraphRAG remains disabled until `GRAPH_EXTRACT_ENABLED=true` and `GRAPH_SEARCH_ENABLED=true` are explicitly enabled. See [`.env.example`](.env.example) for the local Ollama alternative.
 ## Quick Start
 
 ### Option 1: Docker (run the full product)
@@ -438,15 +441,15 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `GRAPH_EXTRACT_ENABLED` | false | Enable LLM entity extraction into AGE |
 | `GRAPH_SEARCH_ENABLED` | false | Enable graph-neighbor expansion in search |
 | `GRAPH_EXPANSION_BOOST` | 0.3 | Multiplier on graph-neighbor scores (0..2) |
-| `GRAPH_EXTRACT_BASE_URL` | — | Chat-completion URL for entity extraction LLM |
+| `GRAPH_EXTRACT_BASE_URL` | `https://openrouter.ai/api/v1` | Chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | — | API key for entity extraction LLM |
-| `GRAPH_EXTRACT_MODEL` | — | Entity extraction model (defaults to EMBEDDING_MODEL) |
+| `GRAPH_EXTRACT_MODEL` | `mistralai/ministral-14b-2512` | Primary entity extraction model |
 | `GRAPH_EXTRACT_REASONING_EFFORT` | — | Optional reasoning control; use `none` for Ollama Qwen3 |
 | `GRAPH_EXTRACT_TIMEOUT_MS` | 120000 | Entity extraction request timeout; accommodates cold local models |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | 0.5 | Minimum entity confidence threshold |
-| `GRAPH_EXTRACT_FALLBACK_BASE_URL` | — | Fallback extraction LLM URL |
+| `GRAPH_EXTRACT_FALLBACK_BASE_URL` | `https://openrouter.ai/api/v1` | Fallback extraction LLM URL |
 | `GRAPH_EXTRACT_FALLBACK_API_KEY` | — | Fallback extraction LLM API key |
-| `GRAPH_EXTRACT_FALLBACK_MODEL` | — | Fallback extraction model |
+| `GRAPH_EXTRACT_FALLBACK_MODEL` | `google/gemma-4-31b-it` | Fallback extraction model |
 | `FOLDER_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per folder mutation |
 | `CATEGORY_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per category mutation |
 | `TAG_REEMBED_BATCH_SIZE` | 500 | Cap on docs re-embedded per tag mutation |

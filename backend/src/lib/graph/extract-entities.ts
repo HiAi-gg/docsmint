@@ -172,6 +172,14 @@ export function _parseExtractionResponseForTests(
 	return parseExtractionResponse(raw);
 }
 
+/** Test-only: verify provider credential scoping without a live AGE database. */
+export function _resolveGraphProviderKeyForTests(
+	baseUrl: string,
+	explicitKey?: string,
+): string {
+	return resolveGraphProviderKey(baseUrl, explicitKey);
+}
+
 /**
  * Extract entities from a single document chunk and persist them to AGE.
  *
@@ -327,16 +335,18 @@ async function callEntityExtractionLLM(
 		options.llmBaseUrl ??
 		config.GRAPH_EXTRACT_BASE_URL ??
 		config.EMBEDDING_BASE_URL;
-	const primaryKey =
+	const primaryExplicitKey =
 		options.llmApiKey ??
 		config.GRAPH_EXTRACT_API_KEY ??
-		config.EMBEDDING_API_KEY ??
-		"";
+		config.EMBEDDING_API_KEY;
 	const primaryModel =
 		options.llmModel ??
 		config.GRAPH_EXTRACT_MODEL ??
 		config.EMBEDDING_MODEL ??
 		"gpt-4o-mini";
+	const primaryKey = primaryBase
+		? resolveGraphProviderKey(primaryBase, primaryExplicitKey)
+		: "";
 	if (primaryBase)
 		endpoints.push({
 			baseUrl: primaryBase,
@@ -347,14 +357,15 @@ async function callEntityExtractionLLM(
 	const fallbackBase =
 		config.GRAPH_EXTRACT_FALLBACK_BASE_URL ??
 		config.EMBEDDING_FALLBACK_BASE_URL;
-	const fallbackKey =
-		config.GRAPH_EXTRACT_FALLBACK_API_KEY ??
-		config.EMBEDDING_FALLBACK_API_KEY ??
-		"";
+	const fallbackExplicitKey =
+		config.GRAPH_EXTRACT_FALLBACK_API_KEY ?? config.EMBEDDING_FALLBACK_API_KEY;
 	const fallbackModel =
 		config.GRAPH_EXTRACT_FALLBACK_MODEL ??
 		config.EMBEDDING_FALLBACK_MODEL ??
 		primaryModel;
+	const fallbackKey = fallbackBase
+		? resolveGraphProviderKey(fallbackBase, fallbackExplicitKey)
+		: "";
 	if (
 		fallbackBase &&
 		(fallbackBase !== primaryBase || fallbackKey !== primaryKey)
@@ -393,6 +404,28 @@ async function callEntityExtractionLLM(
 	}
 	if (lastErr) throw lastErr;
 	return [];
+}
+
+/**
+ * Reuse the shared public-profile key only for OpenRouter URLs. A key meant
+ * for OpenRouter must never be forwarded to Ollama or another custom endpoint
+ * when an operator overrides the GraphRAG URL.
+ */
+function resolveGraphProviderKey(
+	baseUrl: string,
+	explicitKey?: string,
+): string {
+	const providerKey = explicitKey?.trim();
+	if (providerKey) return providerKey;
+	if (!/openrouter\.ai/i.test(baseUrl)) return "";
+
+	const openRouterKey = config.OPENROUTER_API_KEY?.trim();
+	if (!openRouterKey) {
+		throw new Error(
+			"OpenRouter GraphRAG provider requires OPENROUTER_API_KEY (or a provider-specific GRAPH_EXTRACT_*_API_KEY)",
+		);
+	}
+	return openRouterKey;
 }
 
 async function callChatCompletions(params: {

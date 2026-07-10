@@ -70,9 +70,9 @@ Copy `.env.example` and fill in:
 |----------|----------|---------|-------------|
 | `GRAPH_EXTRACT_ENABLED` | No | `false` | Enable LLM entity extraction into Apache AGE |
 | `GRAPH_SEARCH_ENABLED` | No | `false` | Enable graph-neighbor expansion in search |
-| `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | — | OpenAI-compatible chat-completion URL for entity extraction LLM |
+| `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | `https://openrouter.ai/api/v1` | OpenAI-compatible chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | If extraction enabled | — | API key for extraction LLM |
-| `GRAPH_EXTRACT_MODEL` | No | `EMBEDDING_MODEL` | Extraction model name |
+| `GRAPH_EXTRACT_MODEL` | No | `mistralai/ministral-14b-2512` | Primary extraction model |
 | `GRAPH_EXTRACT_REASONING_EFFORT` | No | — | OpenAI-compatible reasoning control; use `none` for Ollama Qwen3 |
 | `GRAPH_EXTRACT_TIMEOUT_MS` | No | `120000` | Entity extraction request timeout in milliseconds |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | No | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
@@ -141,9 +141,9 @@ Copy `.env.example` and fill in:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GRAPH_EXTRACT_FALLBACK_BASE_URL` | No | — | Fallback extraction LLM base URL |
+| `GRAPH_EXTRACT_FALLBACK_BASE_URL` | No | `https://openrouter.ai/api/v1` | Fallback extraction LLM base URL |
 | `GRAPH_EXTRACT_FALLBACK_API_KEY` | No | — | Fallback extraction LLM API key |
-| `GRAPH_EXTRACT_FALLBACK_MODEL` | No | — | Fallback extraction model name |
+| `GRAPH_EXTRACT_FALLBACK_MODEL` | No | `google/gemma-4-31b-it` | Fallback extraction model name |
 
 ### SeaweedFS Public Endpoint
 
@@ -167,6 +167,19 @@ EMBEDDING_FALLBACK_MODEL=baai/bge-m3
 ```
 
 Both models are requested with `dimensions=1024`, matching the pgvector schema. The runtime uses `OPENROUTER_API_KEY` for both OpenRouter providers unless an explicit `EMBEDDING_API_KEY` or `EMBEDDING_FALLBACK_API_KEY` is supplied. The shared key is never forwarded to a non-OpenRouter URL. If you prefer local inference, replace both base URLs and model names with an Ollama-compatible 1024-dimensional model (for example `bge-m3`); the Ollama path does not require an API key.
+
+The GraphRAG extraction profile is also preconfigured for OpenRouter, but remains disabled by default:
+
+```dotenv
+GRAPH_EXTRACT_ENABLED=false
+GRAPH_SEARCH_ENABLED=false
+GRAPH_EXTRACT_BASE_URL=https://openrouter.ai/api/v1
+GRAPH_EXTRACT_MODEL=mistralai/ministral-14b-2512
+GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
+GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
+```
+
+When enabled, both extraction providers reuse `OPENROUTER_API_KEY` unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
 
 ## Production Considerations
 
