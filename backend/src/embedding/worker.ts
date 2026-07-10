@@ -25,11 +25,8 @@ import {
 	failEmbeddingGeneration,
 } from "./generation";
 import { needsChunkRefresh } from "./incremental";
-import {
-	EmbeddingBatchError,
-	type EmbeddingMetadata,
-	embedDocument,
-} from "./index";
+import { type EmbeddingMetadata, embedDocument } from "./index";
+import { EmbeddingBatchError } from "./result";
 
 const QUEUE_KEY = "hiai-docs:embedding-queue";
 const WORKER_TENANT = adminTenantContext(ZERO_UUID);
@@ -136,7 +133,8 @@ async function processDocument(documentId: string): Promise<void> {
 		// + reinsert only the affected slice. Unchanged chunks stay put and
 		// keep their original embeddings — full re-embed was O(N) embeddings
 		// per document save, this is O(changed + 2·changed).
-		const existing = doc.activeEmbeddingGeneration
+		const activeGenerationId = doc.activeEmbeddingGeneration;
+		const existing = activeGenerationId
 			? await withTenant(WORKER_TENANT, (tx) =>
 					tx
 						.select({
@@ -152,10 +150,7 @@ async function processDocument(documentId: string): Promise<void> {
 						.where(
 							and(
 								eq(documentEmbeddings.documentId, documentId),
-								eq(
-									documentEmbeddings.generationId,
-									doc.activeEmbeddingGeneration,
-								),
+								eq(documentEmbeddings.generationId, activeGenerationId),
 							),
 						),
 				)
@@ -252,7 +247,11 @@ async function processDocument(documentId: string): Promise<void> {
 			documentId,
 			pendingGenerationId,
 			embeddings.length,
-			firstEmbedding.profile,
+			{
+				model: firstEmbedding.model,
+				dimensions: firstEmbedding.dimensions,
+				profile: firstEmbedding.profile,
+			},
 		);
 		activated = true;
 
@@ -292,7 +291,7 @@ async function processDocument(documentId: string): Promise<void> {
 			await failEmbeddingGeneration(
 				documentId,
 				generationId,
-				err instanceof EmbeddingBatchError ? err.code : "worker_error",
+				generationFailureCode(err),
 			).catch((failureErr) => {
 				logger.error(
 					{ failureErr, documentId, generationId },
@@ -305,8 +304,7 @@ async function processDocument(documentId: string): Promise<void> {
 					.update(documents)
 					.set({
 						embeddingStatus: "failed",
-						embeddingErrorCode:
-							err instanceof EmbeddingBatchError ? err.code : "worker_error",
+						embeddingErrorCode: generationFailureCode(err),
 					})
 					.where(eq(documents.id, documentId)),
 			).catch((statusErr) => {
@@ -318,6 +316,19 @@ async function processDocument(documentId: string): Promise<void> {
 		}
 		logger.error({ err, documentId }, "Failed to process document embedding");
 	}
+}
+
+function generationFailureCode(error: unknown): string {
+	if (error instanceof EmbeddingBatchError) return error.code;
+	if (!(error instanceof Error)) return "worker_error";
+	const safeCodes = new Set([
+		"empty_chunks",
+		"mixed_embedding_profile",
+		"generation_incomplete",
+		"generation_invalid_profile",
+		"generation_not_pending",
+	]);
+	return safeCodes.has(error.message) ? error.message : "worker_error";
 }
 
 /**

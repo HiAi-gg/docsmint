@@ -16,6 +16,8 @@ import {
 import type { EMBEDDING_DIMENSIONS } from "./utils";
 import { embeddingProfileId, validateEmbeddingVector } from "./validation";
 
+export { EmbeddingBatchError } from "./result";
+
 function providerApiKey(baseUrl: string, explicitKey?: string): string {
 	const providerKey = explicitKey?.trim();
 	if (providerKey) return providerKey;

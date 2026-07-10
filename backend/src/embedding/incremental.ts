@@ -34,5 +34,6 @@ export function needsChunkRefresh(
 		return true;
 	if (stored.isValid === false) return true;
 	if (!stored.embedding || stored.embedding.length === 0) return true;
+	if (!stored.embedding.every((value) => Number.isFinite(value))) return true;
 	return stored.embedding.every((value) => value === 0);
 }

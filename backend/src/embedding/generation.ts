@@ -94,6 +94,8 @@ export async function activateEmbeddingGeneration(
 			.select({
 				isValid: documentEmbeddings.isValid,
 				embeddingProfile: documentEmbeddings.embeddingProfile,
+				embeddingModel: documentEmbeddings.embeddingModel,
+				embeddingDimensions: documentEmbeddings.embeddingDimensions,
 			})
 			.from(documentEmbeddings)
 			.where(
@@ -109,16 +111,25 @@ export async function activateEmbeddingGeneration(
 		const expectedProfile = profile
 			? profileId(profile)
 			: rows[0]?.embeddingProfile;
+		const expectedModel =
+			typeof profile === "object" ? profile.model : rows[0]?.embeddingModel;
+		const expectedDimensions =
+			typeof profile === "object" ? profile.dimensions : 1024;
 		if (
 			!expectedProfile ||
+			expectedDimensions !== 1024 ||
 			rows.some(
-				(row) => !row.isValid || row.embeddingProfile !== expectedProfile,
+				(row) =>
+					!row.isValid ||
+					row.embeddingProfile !== expectedProfile ||
+					row.embeddingModel !== expectedModel ||
+					row.embeddingDimensions !== expectedDimensions,
 			)
 		) {
 			throw new Error("generation_invalid_profile");
 		}
 
-		await tx
+		const activatedRows = await tx
 			.update(documents)
 			.set({
 				activeEmbeddingGeneration: generationId,
@@ -128,7 +139,16 @@ export async function activateEmbeddingGeneration(
 				embeddingErrorCode: null,
 				embeddingUpdatedAt: new Date(),
 			})
-			.where(eq(documents.id, documentId));
+			.where(
+				and(
+					eq(documents.id, documentId),
+					eq(documents.pendingEmbeddingGeneration, generationId),
+				),
+			)
+			.returning({ id: documents.id });
+		if (activatedRows.length !== 1) {
+			throw new Error("generation_not_pending");
+		}
 
 		await tx
 			.delete(documentEmbeddings)
@@ -149,6 +169,15 @@ export async function failEmbeddingGeneration(
 ): Promise<void> {
 	const safeCode = code.slice(0, 64).replace(/[^a-zA-Z0-9_-]/g, "_");
 	await withTenant(WORKER_TENANT, async (tx) => {
+		const state = await tx
+			.select({
+				active: documents.activeEmbeddingGeneration,
+				pending: documents.pendingEmbeddingGeneration,
+			})
+			.from(documents)
+			.where(eq(documents.id, documentId))
+			.limit(1);
+		if (state[0]?.active === generationId) return;
 		await tx
 			.delete(documentEmbeddings)
 			.where(
