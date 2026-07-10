@@ -11,7 +11,7 @@ import {
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
@@ -19,8 +19,17 @@ import { extractEntities } from "../lib/graph/extract-entities";
 import { logger } from "../lib/logger";
 import { incrementCounter, METRIC_NAMES } from "../lib/metrics";
 import { redis } from "../lib/redis";
+import {
+	activateEmbeddingGeneration,
+	beginEmbeddingGeneration,
+	failEmbeddingGeneration,
+} from "./generation";
 import { needsChunkRefresh } from "./incremental";
-import { type EmbeddingMetadata, embedDocument } from "./index";
+import {
+	EmbeddingBatchError,
+	type EmbeddingMetadata,
+	embedDocument,
+} from "./index";
 
 const QUEUE_KEY = "hiai-docs:embedding-queue";
 const WORKER_TENANT = adminTenantContext(ZERO_UUID);
@@ -53,6 +62,8 @@ async function processDocument(documentId: string): Promise<void> {
 	// by the worker" and avoids double-counting on retry.
 	incrementCounter(METRIC_NAMES.EMBEDDING_DOCS_TOTAL);
 
+	let generationId: string | undefined;
+	let activated = false;
 	try {
 		const doc = await withTenant(WORKER_TENANT, (tx) =>
 			tx.query.documents.findFirst({
@@ -63,6 +74,7 @@ async function processDocument(documentId: string): Promise<void> {
 					content: true,
 					folderId: true,
 					categoryId: true,
+					activeEmbeddingGeneration: true,
 				},
 			}),
 		);
@@ -96,9 +108,27 @@ async function processDocument(documentId: string): Promise<void> {
 		const embeddings = await embedDocument(doc.title, content, metadata);
 
 		if (embeddings.length === 0) {
-			logger.warn({ documentId }, "No embeddings produced for document");
-			return;
+			throw new Error("empty_chunks");
 		}
+		const firstEmbedding = embeddings[0];
+		if (!firstEmbedding) throw new Error("empty_chunks");
+		if (
+			embeddings.some(
+				(chunk) =>
+					chunk.profile !== firstEmbedding.profile ||
+					chunk.model !== firstEmbedding.model ||
+					chunk.dimensions !== firstEmbedding.dimensions,
+			)
+		) {
+			throw new Error("mixed_embedding_profile");
+		}
+
+		const pendingGenerationId = await beginEmbeddingGeneration(documentId, {
+			model: firstEmbedding.model,
+			dimensions: firstEmbedding.dimensions,
+			profile: firstEmbedding.profile,
+		});
+		generationId = pendingGenerationId;
 
 		// Incremental re-embed: fetch existing chunk hashes, decide which
 		// chunks changed (hash mismatch), expand to neighbor chunks so the
@@ -106,17 +136,30 @@ async function processDocument(documentId: string): Promise<void> {
 		// + reinsert only the affected slice. Unchanged chunks stay put and
 		// keep their original embeddings — full re-embed was O(N) embeddings
 		// per document save, this is O(changed + 2·changed).
-		const existing = await withTenant(WORKER_TENANT, (tx) =>
-			tx
-				.select({
-					chunkIndex: documentEmbeddings.chunkIndex,
-					chunkHash: documentEmbeddings.chunkHash,
-					embedding: documentEmbeddings.embedding,
-					embeddingModel: documentEmbeddings.embeddingModel,
-				})
-				.from(documentEmbeddings)
-				.where(eq(documentEmbeddings.documentId, documentId)),
-		);
+		const existing = doc.activeEmbeddingGeneration
+			? await withTenant(WORKER_TENANT, (tx) =>
+					tx
+						.select({
+							chunkIndex: documentEmbeddings.chunkIndex,
+							chunkHash: documentEmbeddings.chunkHash,
+							embedding: documentEmbeddings.embedding,
+							embeddingModel: documentEmbeddings.embeddingModel,
+							embeddingProfile: documentEmbeddings.embeddingProfile,
+							embeddingDimensions: documentEmbeddings.embeddingDimensions,
+							isValid: documentEmbeddings.isValid,
+						})
+						.from(documentEmbeddings)
+						.where(
+							and(
+								eq(documentEmbeddings.documentId, documentId),
+								eq(
+									documentEmbeddings.generationId,
+									doc.activeEmbeddingGeneration,
+								),
+							),
+						),
+				)
+			: [];
 
 		const existingByIndex = new Map(existing.map((e) => [e.chunkIndex, e]));
 
@@ -130,7 +173,14 @@ async function processDocument(documentId: string): Promise<void> {
 			if (!chunk) continue;
 			const newHash = chunkHash(chunk.chunkText);
 			const stored = existingByIndex.get(i);
-			if (needsChunkRefresh(stored, newHash, config.EMBEDDING_MODEL ?? "")) {
+			if (
+				needsChunkRefresh(
+					stored,
+					newHash,
+					chunk?.model ?? config.EMBEDDING_MODEL ?? "",
+					chunk?.profile,
+				)
+			) {
 				changedIndices.add(i);
 			}
 		}
@@ -157,73 +207,54 @@ async function processDocument(documentId: string): Promise<void> {
 		);
 
 		await withTenant(WORKER_TENANT, async (tx) => {
-			// Orphan cleanup: if the new chunk count is smaller than the
-			// stored count, the trailing old chunks point at text that no
-			// longer exists. Delete them so they don't leak into search
-			// results or inflate the embedding count.
-			const orphanIndices = existing
-				.map((e) => e.chunkIndex)
-				.filter((idx) => idx >= embeddings.length);
-			if (orphanIndices.length > 0) {
-				await tx
-					.delete(documentEmbeddings)
-					.where(
-						and(
-							eq(documentEmbeddings.documentId, documentId),
-							inArray(documentEmbeddings.chunkIndex, orphanIndices),
-						),
-					);
-			}
-
-			// Delete affected slices in place. We delete by (documentId,
-			// chunkIndex) rather than by a wide WHERE because the
-			// unique index makes this O(1) per row.
-			for (const idx of affectedIndices) {
-				await tx
-					.delete(documentEmbeddings)
-					.where(
-						and(
-							eq(documentEmbeddings.documentId, documentId),
-							eq(documentEmbeddings.chunkIndex, idx),
-						),
-					);
-			}
-
-			// Reinsert only the affected slices. Skip indices that don't
-			// exist in the new chunk set (those are handled by the orphan
-			// cleanup above — they were deleted and should not reappear).
-			const rows: Array<{
-				documentId: string;
-				chunkIndex: number;
-				chunkText: string;
-				chunkHash: string;
-				embedding: number[];
-				charStart: number;
-				charEnd: number;
-				embeddingModel: string;
-			}> = [];
-			for (const idx of affectedIndices) {
-				const chunk = embeddings[idx];
-				if (!chunk) continue;
-				rows.push({
-					documentId,
-					chunkIndex: idx,
-					chunkText: chunk.chunkText,
-					chunkHash: chunkHash(chunk.chunkText),
-					embedding: chunk.embedding,
-					charStart: chunk.charStart,
-					charEnd: chunk.charEnd,
-					// Record which embedding model produced this vector. Empty string
-					// means EMBEDDING_MODEL was not configured when this row was
-					// written (semantic search was disabled) - those rows are also
-					// candidates for targeted reindex once a model becomes available.
-					embeddingModel: config.EMBEDDING_MODEL ?? "",
-				});
-			}
-			if (rows.length > 0) {
-				await tx.insert(documentEmbeddings).values(rows);
-			}
+			const rows = embeddings.flatMap((chunk, idx) => {
+				const stored = existingByIndex.get(idx);
+				const newHash = chunkHash(chunk.chunkText);
+				const refresh = affectedIndices.has(idx);
+				const vector =
+					!refresh && stored?.embedding ? stored.embedding : chunk.embedding;
+				const model =
+					!refresh && stored?.embeddingModel
+						? stored.embeddingModel
+						: chunk.model;
+				const profile =
+					!refresh && stored?.embeddingProfile
+						? stored.embeddingProfile
+						: chunk.profile;
+				const dimensions =
+					!refresh && stored?.embeddingDimensions
+						? stored.embeddingDimensions
+						: chunk.dimensions;
+				return [
+					{
+						documentId,
+						generationId: pendingGenerationId,
+						chunkIndex: idx,
+						chunkText: chunk.chunkText,
+						chunkHash: newHash,
+						embedding: vector,
+						charStart: chunk.charStart,
+						charEnd: chunk.charEnd,
+						embeddingModel: model,
+						embeddingDimensions: dimensions,
+						embeddingProfile: profile,
+						isValid:
+							vector.length === 1024 &&
+							vector.every((value) => Number.isFinite(value)) &&
+							vector.some((value) => value !== 0),
+					},
+				];
+			});
+			await tx.insert(documentEmbeddings).values(rows);
 		});
+
+		await activateEmbeddingGeneration(
+			documentId,
+			pendingGenerationId,
+			embeddings.length,
+			firstEmbedding.profile,
+		);
+		activated = true;
 
 		// Bump the chunks counter AFTER the transaction commits so the
 		// counter reflects chunks that are actually persisted, not chunks
@@ -245,7 +276,7 @@ async function processDocument(documentId: string): Promise<void> {
 		// this point). Runs per-chunk so each chunk contributes its own
 		// entity set to the graph.
 		if (config.GRAPH_EXTRACT_ENABLED) {
-			await runEntityExtraction(embeddings, documentId);
+			await runEntityExtraction(embeddings, documentId, affectedIndices);
 		}
 
 		logger.info(
@@ -257,6 +288,34 @@ async function processDocument(documentId: string): Promise<void> {
 			"All chunk embeddings stored for document",
 		);
 	} catch (err) {
+		if (generationId && !activated) {
+			await failEmbeddingGeneration(
+				documentId,
+				generationId,
+				err instanceof EmbeddingBatchError ? err.code : "worker_error",
+			).catch((failureErr) => {
+				logger.error(
+					{ failureErr, documentId, generationId },
+					"Failed to mark embedding generation failed",
+				);
+			});
+		} else if (!generationId) {
+			await withTenant(WORKER_TENANT, (tx) =>
+				tx
+					.update(documents)
+					.set({
+						embeddingStatus: "failed",
+						embeddingErrorCode:
+							err instanceof EmbeddingBatchError ? err.code : "worker_error",
+					})
+					.where(eq(documents.id, documentId)),
+			).catch((statusErr) => {
+				logger.warn(
+					{ statusErr, documentId },
+					"Failed to record pre-generation embedding failure",
+				);
+			});
+		}
 		logger.error({ err, documentId }, "Failed to process document embedding");
 	}
 }

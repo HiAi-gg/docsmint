@@ -89,6 +89,25 @@ export function resetState(): void {
   resetRedisStore();
 }
 
+/** Seed the minimal document shape used by search-channel integration tests. */
+export function seedSearchDocument(input: {
+  id: string;
+  ownerId: string;
+  title: string;
+  content?: string;
+}): void {
+  state.documents.set(input.id, {
+    id: input.id,
+    ownerId: input.ownerId,
+    title: input.title,
+    content: input.content ?? "",
+    folderId: null,
+    categoryId: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  });
+}
+
 const TAG_EQ = Symbol("eq");
 const TAG_AND = Symbol("and");
 const TAG_OR = Symbol("or");
