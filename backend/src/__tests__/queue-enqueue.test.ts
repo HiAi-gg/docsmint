@@ -4,7 +4,12 @@ import type {
 	PipelineRunStore,
 	PrepareQueueWriter,
 } from "../queue/enqueue";
-import { enqueueDocumentPipeline } from "../queue/enqueue";
+
+// Bun's integration harness mocks the production route import globally. A
+// query-suffixed module identity keeps this unit under test real regardless of
+// file scheduling/order in the combined suite.
+// @ts-expect-error Bun supports query-suffixed TypeScript module imports.
+const { enqueueDocumentPipeline } = await import("../queue/enqueue.ts?unit");
 
 const documentId = "11111111-1111-4111-8111-111111111111";
 const ownerA = "22222222-2222-4222-8222-222222222222";
