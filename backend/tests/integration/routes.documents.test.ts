@@ -245,6 +245,41 @@ describe("GET /api/documents/:id", () => {
   });
 });
 
+describe("GET /api/documents/:id/pipeline", () => {
+	it("requires authentication", async () => {
+		const res = await request(app, "/api/documents/doc-1/pipeline", {
+			method: "GET",
+			headers: noAuthHeaders(),
+		});
+		expect(res.status).toBe(401);
+	});
+
+	it("returns only the owner's latest pipeline progress", async () => {
+		seedDocument({ id: "doc-pipeline", ownerId: OWNER_ID, title: "pipeline" });
+		getState().pipelineRuns.set("run-old", {
+			documentId: "doc-pipeline", ownerId: OWNER_ID, generationId: "gen-old",
+			revision: "rev-old", status: "ready", prepareStatus: "ready", embedStatus: "ready",
+			graphStatus: "skipped", summarizeStatus: "skipped", finalizeStatus: "ready",
+			totalBatches: 1, completedBatches: 1, failedBatches: 0,
+			updatedAt: new Date("2026-01-01"),
+		});
+		getState().pipelineRuns.set("run-new", {
+			documentId: "doc-pipeline", ownerId: OWNER_ID, generationId: "gen-new",
+			revision: "rev-new", status: "processing", prepareStatus: "ready", embedStatus: "processing",
+			graphStatus: "pending", summarizeStatus: "pending", finalizeStatus: "pending",
+			totalBatches: 2, completedBatches: 1, failedBatches: 0,
+			updatedAt: new Date("2026-01-02"),
+		});
+		getState().pipelineRuns.set("run-other", {
+			documentId: "doc-pipeline", ownerId: OTHER_USER_ID, generationId: "gen-other",
+			revision: "rev-other", status: "ready", updatedAt: new Date("2026-01-03"),
+		});
+		const res = await authedGet("/api/documents/doc-pipeline/pipeline");
+		expect(res.status).toBe(200);
+		expect(res.body).toMatchObject({ generationId: "gen-new", status: "processing", batches: { completed: 1, total: 2 } });
+	});
+});
+
 describe("POST /api/documents", () => {
   it("returns 403 from CSRF middleware on POST without Bearer or CSRF token", async () => {
     const res = await request(app, "/api/documents", {
@@ -373,6 +408,7 @@ describe("PATCH /api/documents/:id", () => {
     expect(stored.content).toBe("new body");
 
     // Embedding should have been re-enqueued
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getState().enqueuedEmbeddings).toContain(doc.id);
   });
 

@@ -25,6 +25,7 @@ export interface TestState {
   documents: Map<string, any>;
   tags: Map<string, any>;
   categories: Map<string, any>;
+  pipelineRuns: Map<string, any>;
   documentTags: Array<{ documentId: string; tagId: string }>;
   shareLinks: Map<string, any>;
   guestAccess: any[];
@@ -50,6 +51,7 @@ function createState(): TestState {
     documents: new Map(),
     tags: new Map(),
     categories: new Map(),
+    pipelineRuns: new Map(),
     documentTags: [],
     shareLinks: new Map(),
     guestAccess: [],
@@ -214,6 +216,8 @@ function getCollection(name: string): any[] | Map<string, any> {
       return state.tags;
     case "categories":
       return state.categories;
+    case "document_pipeline_runs":
+      return state.pipelineRuns;
     case "document_tags":
       return state.documentTags;
     case "share_links":
@@ -920,6 +924,15 @@ mock.module("../../src/lib/embedding-queue.js", () => ({
     state.enqueuedEmbeddings.push(id);
   },
   startEmbeddingWorker: () => {},
+}));
+
+// Pipeline producers are mocked to preserve the harness' enqueue assertion
+// while route tests remain independent from Redis and PostgreSQL migrations.
+mock.module("../../src/queue/enqueue.js", () => ({
+  enqueueDocumentPipeline: async ({ documentId }: { documentId: string }) => {
+    state.enqueuedEmbeddings.push(documentId);
+    return { generationId: "00000000-0000-4000-8000-000000000099", deduplicated: false };
+  },
 }));
 
 // Mock only the network-calling embedding helpers. The pure utilities

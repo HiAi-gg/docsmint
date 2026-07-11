@@ -42,9 +42,10 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray } from "drizzle-orm";
 import { config } from "./config";
-import { enqueueEmbedding } from "./embedding-queue";
+import { contentHash } from "./content-hash";
 import { logger } from "./logger";
 import { redis } from "./redis";
+import { enqueueDocumentPipeline } from "../queue/enqueue";
 
 /**
  * Per-doc dedup slot prefix. Combined with a 5-second TTL this absorbs
@@ -107,7 +108,23 @@ export async function enqueueReembed(
 	let pushed = 0;
 	for (const id of unique) {
 		if (await claimEnqueueSlot(id)) {
-			enqueueEmbedding(id);
+			const [document] = await withTenant(REEMBED_ADMIN_TENANT, async (tx) =>
+				tx.select({
+					id: documents.id,
+					ownerId: documents.ownerId,
+					title: documents.title,
+					content: documents.content,
+					contentHash: documents.contentHash,
+				}).from(documents).where(eq(documents.id, id)).limit(1),
+			);
+			if (document) {
+				await enqueueDocumentPipeline({
+					documentId: document.id,
+					ownerId: document.ownerId,
+					revision: document.contentHash ?? contentHash(document.title, document.content ?? ""),
+					source: "reindex",
+				});
+			}
 			pushed += 1;
 		}
 	}

@@ -1,6 +1,7 @@
 import { CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import {
 	attachments,
+	documentPipelineRuns,
 	documents,
 	documentTags,
 	folders,
@@ -25,7 +26,7 @@ import {
 	planDuplicateAttachments,
 	rewriteDuplicateAttachmentReferences,
 } from "../../lib/duplicate-attachments";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
+import { enqueueDocumentPipeline } from "../../queue/enqueue";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { BUCKET, storage } from "../../lib/storage";
@@ -377,7 +378,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return row;
 			});
 
-			enqueueEmbedding(created.id);
+			void enqueueDocumentPipeline({
+				documentId: created.id,
+				ownerId: userId,
+				revision: contentHash(created.title, created.content ?? ""),
+				source: "interactive",
+			}).catch((err) => logger.warn({ err, documentId: created.id }, "Pipeline enqueue failed"));
 			invalidateDocListCache(userId);
 			set.status = 201;
 
@@ -405,6 +411,66 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 	})
 
 	// GET /api/documents/:id — Get document with tags
+	.get("/documents/:id/pipeline", async ({ params, set, request }) => {
+		const ctx = await buildTenantContext(request);
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		try {
+			const [run] = await withTenant(ctx, (tx) =>
+				tx.select({
+					documentId: documentPipelineRuns.documentId,
+					generationId: documentPipelineRuns.generationId,
+					revision: documentPipelineRuns.revision,
+					status: documentPipelineRuns.status,
+					prepareStatus: documentPipelineRuns.prepareStatus,
+					embedStatus: documentPipelineRuns.embedStatus,
+					graphStatus: documentPipelineRuns.graphStatus,
+					summarizeStatus: documentPipelineRuns.summarizeStatus,
+					finalizeStatus: documentPipelineRuns.finalizeStatus,
+					totalBatches: documentPipelineRuns.totalBatches,
+					completedBatches: documentPipelineRuns.completedBatches,
+					failedBatches: documentPipelineRuns.failedBatches,
+					updatedAt: documentPipelineRuns.updatedAt,
+				})
+				.from(documentPipelineRuns)
+				.where(and(
+					eq(documentPipelineRuns.documentId, params.id),
+					eq(documentPipelineRuns.ownerId, ctx.userId),
+				))
+				.orderBy(desc(documentPipelineRuns.updatedAt))
+				.limit(1),
+			);
+			if (!run) {
+				set.status = 404;
+				return { error: "Pipeline run not found" };
+			}
+			return {
+				documentId: run.documentId,
+				generationId: run.generationId,
+				status: run.status,
+				revision: run.revision,
+				stages: {
+					prepare: run.prepareStatus,
+					embed: run.embedStatus,
+					graph: run.graphStatus,
+					summarize: run.summarizeStatus,
+					finalize: run.finalizeStatus,
+				},
+				batches: {
+					total: run.totalBatches,
+					completed: run.completedBatches,
+					failed: run.failedBatches,
+				},
+				updatedAt: run.updatedAt,
+			};
+		} catch (err) {
+			logger.error({ err, documentId: params.id }, "Failed to load pipeline progress");
+			set.status = 500;
+			return { error: "Failed to load pipeline progress" };
+		}
+	})
 	.get("/documents/:id", async ({ params, set, request }) => {
 		const ip =
 			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -772,7 +838,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return row;
 			});
 
-			enqueueEmbedding(copy.id);
+				void enqueueDocumentPipeline({
+					documentId: copy.id,
+					ownerId: userId,
+					revision: contentHash(copy.title, copy.content ?? ""),
+					source: "interactive",
+				}).catch((err) => logger.warn({ err, documentId: copy.id }, "Pipeline enqueue failed"));
 			invalidateDocListCache(userId);
 			set.status = 201;
 			return copy;
@@ -1019,7 +1090,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// `noUncheckedIndexedAccess`).
 			type CreatedEntry = {
 				item: ImportedItem;
-				row: { id: string; title: string };
+				row: { id: string; title: string; revision: string };
 			};
 			const created = await withTenant(ctx, async (tx) => {
 				const out: CreatedEntry[] = [];
@@ -1042,7 +1113,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						content: item.content,
 						createdBy: userId,
 					});
-					out.push({ item, row });
+					out.push({
+						item,
+						row: { ...row, revision: contentHash(item.title, item.content) },
+					});
 				}
 				return out;
 			});
@@ -1052,7 +1126,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// back. We deliberately don't await — embedding is a background
 			// job and shouldn't block the import response.
 			for (const { row } of created) {
-				enqueueEmbedding(row.id);
+				void enqueueDocumentPipeline({
+					documentId: row.id,
+					ownerId: userId,
+					revision: row.revision,
+					source: "import",
+				}).catch((err) => logger.warn({ err, documentId: row.id }, "Pipeline enqueue failed"));
 			}
 
 			set.status = 201;

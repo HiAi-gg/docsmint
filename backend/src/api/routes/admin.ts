@@ -20,7 +20,6 @@ import { Elysia } from "elysia";
 import { getEmbedding } from "../../embedding";
 import { embeddingProfileId } from "../../embedding/validation";
 import { config } from "../../lib/config";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { getGraphDb } from "../../lib/graph/init";
 import { logger } from "../../lib/logger";
 import {
@@ -119,7 +118,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 					.where(eq(documentEmbeddings.documentId, params.docId));
 			});
 
-			enqueueEmbedding(params.docId);
+			void enqueueReembed([params.docId]);
 
 			return {
 				success: true,

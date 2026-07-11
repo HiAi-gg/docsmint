@@ -2,7 +2,7 @@ import { documents, versions } from "@hiai-docs/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
+import { enqueueReembed } from "../../lib/reembed";
 import { logger } from "../../lib/logger";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
@@ -478,7 +478,9 @@ export const versionRoutes = new Elysia({
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			enqueueEmbedding(params.id);
+			void enqueueReembed([params.id]).catch((err) =>
+				logger.warn({ err, documentId: params.id }, "Pipeline enqueue failed"),
+			);
 			return updated;
 		} catch (err) {
 			logger.error(
