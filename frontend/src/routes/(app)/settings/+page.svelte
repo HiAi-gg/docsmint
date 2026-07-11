@@ -9,6 +9,7 @@ import {
 	updateProfile,
 } from "$lib/api/settings";
 import { signOut } from "$lib/auth-client";
+import ApiAccessSettings from "$lib/components/settings/ApiAccessSettings.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { themeStore } from "$lib/stores/theme.svelte";
 
@@ -24,7 +25,7 @@ async function handleLogout() {
 	}
 }
 
-let activeTab = $state<"profile" | "embedding" | "danger">("profile");
+let activeTab = $state<"profile" | "api" | "embedding" | "danger">("profile");
 let saveStatus = $state<"idle" | "saving" | "saved" | "error">("idle");
 
 let name = $state("User");
@@ -108,7 +109,7 @@ async function handleDeleteAccount() {
   <h1 class="mb-6 text-2xl font-semibold">{m.settings_title()}</h1>
 
   <div class="mb-6 flex gap-1 rounded-lg border border-border p-1">
-    {#each [["profile", m.settings_profile()], ["embedding", m.settings_tab_embedding()], ["danger", m.settings_tab_danger()]] as [key, label]}
+    {#each [["profile", m.settings_profile()], ["api", "Global API"], ["embedding", m.settings_tab_embedding()], ["danger", m.settings_tab_danger()]] as [key, label]}
       <button
         onclick={() => { activeTab = key as typeof activeTab; }}
         class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors
@@ -144,6 +145,10 @@ async function handleDeleteAccount() {
         </button>
       </div>
     </div>
+  {/if}
+
+  {#if activeTab === "api"}
+    <ApiAccessSettings />
   {/if}
 
   {#if activeTab === "embedding"}

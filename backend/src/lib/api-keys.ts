@@ -8,6 +8,25 @@ import { and, desc, eq } from "drizzle-orm";
 
 const API_KEY_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 
+export const GLOBAL_API_SCOPE = "global";
+
+export function buildCategoryApiKeyScopes(
+	categoryId: string,
+	permissions: { read: boolean; edit: boolean; write: boolean },
+): string[] {
+	return (["read", "edit", "write"] as const)
+		.filter((permission) => permissions[permission])
+		.map((permission) => `category:${categoryId}:${permission}`);
+}
+
+export function categoryIdFromApiKeyScopes(scopes: string[]): string | null {
+	for (const scope of scopes) {
+		const match = /^category:([0-9a-f-]{36}):(read|edit|write)$/i.exec(scope);
+		if (match?.[1]) return match[1];
+	}
+	return null;
+}
+
 /**
  * Hash a raw API key with SHA-256.
  */

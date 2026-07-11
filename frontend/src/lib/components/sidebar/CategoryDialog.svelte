@@ -30,6 +30,13 @@ import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import { Loader2 } from "lucide-svelte";
+import {
+	type ApiKeySummary,
+	categoryIdFromScopes,
+	createCategoryApiKey,
+	listApiKeys,
+	revokeApiKey,
+} from "$lib/api/api-keys";
 import * as m from "$lib/paraglide/messages.js";
 
 type Mode = "create" | "edit" | "delete";
@@ -84,6 +91,42 @@ let apiMode = $state<ApiMode>("unavailable");
 let apiPermissionRead = $state(false);
 let apiPermissionEdit = $state(false);
 let apiPermissionWrite = $state(false);
+let categoryKeys = $state<ApiKeySummary[]>([]);
+let issuedKey = $state<string | null>(null);
+let keyBusy = $state(false);
+
+async function refreshCategoryKeys(categoryId: string) {
+	const result = await listApiKeys();
+	categoryKeys = result.keys.filter(
+		(key) => categoryIdFromScopes(key.scopes) === categoryId,
+	);
+}
+
+async function issueCategoryKey() {
+	if (!category?.id) return;
+	keyBusy = true;
+	try {
+		const issued = await createCategoryApiKey(category.id);
+		issuedKey = issued.key;
+		await refreshCategoryKeys(category.id);
+	} catch (err) {
+		error =
+			err instanceof Error ? err.message : "Failed to create category API key";
+	} finally {
+		keyBusy = false;
+	}
+}
+
+async function revokeCategoryKey(id: string) {
+	if (!category?.id) return;
+	keyBusy = true;
+	try {
+		await revokeApiKey(id);
+		await refreshCategoryKeys(category.id);
+	} finally {
+		keyBusy = false;
+	}
+}
 
 $effect(() => {
 	// Only reset the input when the dialog actually opens — we don't
@@ -109,6 +152,9 @@ $effect(() => {
 		apiPermissionEdit = false;
 		apiPermissionWrite = false;
 	}
+	issuedKey = null;
+	categoryKeys = [];
+	if (mode === "edit" && category?.id) void refreshCategoryKeys(category.id);
 	error = null;
 });
 
@@ -318,6 +364,31 @@ function close() {
 							<span>Write</span>
 						</label>
 					</div>
+				</div>
+			{/if}
+
+			{#if mode === "edit" && apiMode === "category" && category?.id}
+				<div class="space-y-3 rounded-md border border-border/70 p-3">
+					<div class="flex items-center justify-between gap-2">
+						<div><Label>Category API keys</Label><p class="text-xs text-muted-foreground">Keys inherit the saved permissions above.</p></div>
+						<Button type="button" size="sm" onclick={issueCategoryKey} disabled={busy || keyBusy || category.apiMode !== "category"}>Create key</Button>
+					</div>
+					{#if category.apiMode !== "category"}
+						<p class="text-xs text-muted-foreground">Save Category API access first, then reopen settings to issue a key.</p>
+					{/if}
+					{#if issuedKey}
+						<div class="rounded-md border border-amber-500/40 bg-amber-500/10 p-2">
+							<p class="text-xs font-medium">Copy now — this raw key is shown once.</p>
+							<code class="mt-1 block break-all text-xs">{issuedKey}</code>
+							<Button type="button" size="sm" variant="outline" class="mt-2" onclick={() => navigator.clipboard.writeText(issuedKey ?? "")}>Copy</Button>
+						</div>
+					{/if}
+					{#each categoryKeys as key (key.id)}
+						<div class="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-xs">
+							<span>{key.name} · {key.prefix}…</span>
+							<Button type="button" size="sm" variant="destructive" onclick={() => revokeCategoryKey(key.id)} disabled={keyBusy}>Revoke</Button>
+						</div>
+					{/each}
 				</div>
 			{/if}
 		</form>
