@@ -2,6 +2,7 @@ import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
+import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
 import { withTenant } from "../lib/with-tenant";
 import { evaluateConfidence } from "./confidence";
@@ -49,17 +50,36 @@ export interface SearchResponse {
 	limit: number;
 	queryPlan: QueryPlan;
 	diagnostics: SearchDiagnostics;
+	/** Request-scoped query embedding for authorized result hydration. */
+	queryEmbedding?: EmbeddingResult;
 }
 
 export interface SearchAdapterOptions {
 	retrieveFast?: typeof retrieveFastChannels;
+	getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	retrieveExpanded?: (
 		ctx: TenantContext,
 		plan: QueryPlan,
-		options?: { limit?: number; documentIds?: string[] },
+		options?: {
+			limit?: number;
+			documentIds?: string[];
+			getEmbedding?: (text: string) => Promise<EmbeddingResult>;
+		},
 	) => Promise<ChannelResult[]>;
 	expand?: typeof expandQuery;
 	retrieveGraph?: typeof retrieveGraphCandidates;
+}
+
+/** A folder category is usable only when the joined folder belongs to the caller. */
+export function folderCategoryMatchesOwner(
+	row: {
+		folderCategoryId: string | null;
+		folderOwnerId: string | null;
+	},
+	categoryId: string,
+	ownerId: string,
+): boolean {
+	return row.folderOwnerId === ownerId && row.folderCategoryId === categoryId;
 }
 
 const CHANNELS = ["exact", "fts", "fuzzy", "vector"] as const;
@@ -80,15 +100,29 @@ export async function searchDocuments(
 	const retrieveFast = adapters.retrieveFast ?? retrieveFastChannels;
 	const retrieveExpanded =
 		adapters.retrieveExpanded ?? defaultExpandedRetriever;
+	const embeddingProvider = adapters.getEmbedding ?? getEmbedding;
 	const expand = adapters.expand ?? expandQuery;
 	const retrieveGraph = adapters.retrieveGraph ?? retrieveGraphCandidates;
 	const channelErrors: Record<string, string> = {};
+	// The vector channel and chunk hydration are part of one request. Keep a
+	// promise cache at this boundary so both consumers share the same provider
+	// result (including the active model/profile and failure code).
+	const embeddingCache = new Map<string, Promise<EmbeddingResult>>();
+	const getCachedEmbedding = (text: string): Promise<EmbeddingResult> => {
+		const key = text.normalize("NFKC");
+		const cached = embeddingCache.get(key);
+		if (cached) return cached;
+		const pending = embeddingProvider(text);
+		embeddingCache.set(key, pending);
+		return pending;
+	};
 
 	let fast: ChannelResult[];
 	try {
 		fast = await retrieveFast(ctx, plan, {
 			limit: limit * 2,
 			documentIds: request.documentIds,
+			getEmbedding: getCachedEmbedding,
 		} as Parameters<typeof retrieveFastChannels>[2]);
 	} catch {
 		fast = CHANNELS.map((channel) => ({
@@ -124,6 +158,7 @@ export async function searchDocuments(
 					expanded = await retrieveExpanded(ctx, expandedPlan, {
 						limit: limit * 2,
 						documentIds: request.documentIds,
+						getEmbedding: getCachedEmbedding,
 					});
 				} catch {
 					expanded = [];
@@ -200,13 +235,31 @@ export async function searchDocuments(
 		limit,
 		queryPlan: plan,
 		diagnostics,
+		...(await getCachedQueryEmbedding(embeddingCache, plan.normalized)),
 	};
+}
+
+async function getCachedQueryEmbedding(
+	cache: Map<string, Promise<EmbeddingResult>>,
+	query: string,
+): Promise<{ queryEmbedding: EmbeddingResult } | Record<string, never>> {
+	const pending = cache.get(query.normalize("NFKC"));
+	if (!pending) return {};
+	try {
+		return { queryEmbedding: await pending };
+	} catch {
+		return {};
+	}
 }
 
 async function defaultExpandedRetriever(
 	ctx: TenantContext,
 	plan: QueryPlan,
-	options: { limit?: number; documentIds?: string[] } = {},
+	options: {
+		limit?: number;
+		documentIds?: string[];
+		getEmbedding?: (text: string) => Promise<EmbeddingResult>;
+	} = {},
 ): Promise<ChannelResult[]> {
 	const variants = dedupe([
 		...plan.translations,
@@ -216,20 +269,13 @@ async function defaultExpandedRetriever(
 	]);
 	if (variants.length === 0) return [];
 	const limit = options.limit ?? 20;
-	const embeddingCache = new Map<string, ReturnType<typeof getEmbedding>>();
 	const results = await Promise.allSettled(
 		variants.map(async (variant) => {
 			const variantPlan: QueryPlan = { ...plan, normalized: variant };
 			const result = await retrieveFastChannels(ctx, variantPlan, {
 				limit,
 				documentIds: options.documentIds,
-				getEmbedding: async (text) => {
-					const cached = embeddingCache.get(text);
-					if (cached) return cached;
-					const pending = getEmbedding(text);
-					embeddingCache.set(text, pending);
-					return pending;
-				},
+				getEmbedding: options.getEmbedding,
 			});
 			return result
 				.filter((channel) => EXPANDED_CHANNELS.has(channel.channel))
@@ -263,11 +309,18 @@ async function applySearchFilters(
 				folderId: documents.folderId,
 				categoryId: documents.categoryId,
 				folderCategoryId: folders.categoryId,
+				folderOwnerId: folders.ownerId,
 				title: documents.title,
 				createdAt: documents.createdAt,
 			})
 			.from(documents)
-			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.leftJoin(
+				folders,
+				and(
+					eq(folders.id, documents.folderId),
+					eq(folders.ownerId, ctx.userId),
+				),
+			)
 			.where(
 				and(eq(documents.ownerId, ctx.userId), inArray(documents.id, ids)),
 			),
@@ -280,7 +333,11 @@ async function applySearchFilters(
 		if (
 			filters.categoryId &&
 			row.categoryId !== filters.categoryId &&
-			row.folderCategoryId !== filters.categoryId
+			!folderCategoryMatchesOwner(
+				row,
+				filters.categoryId,
+				ctx.userId,
+			)
 		)
 			return false;
 		const created = new Date(row.createdAt).getTime();

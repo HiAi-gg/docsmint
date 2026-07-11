@@ -3,6 +3,7 @@ import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getEmbedding } from "../../embedding";
+import type { EmbeddingResult } from "../../embedding/result";
 import { logger } from "../../lib/logger";
 import { resolveShareDocumentScope } from "../../lib/share-access";
 import { withTenant } from "../../lib/with-tenant";
@@ -203,8 +204,13 @@ export function createSearchRoutes(
 					includeChunks,
 					q,
 					shareDocumentIds,
+					domain.queryEmbedding,
 				);
-				return { items: rows, total: domain.total, page, limit };
+				// The public count must describe rows that survived authorization and
+				// hydration. A domain candidate can disappear when its document was
+				// deleted, hidden, or fails the share allow-list between retrieval and
+				// hydration; exposing domain.total would leak that count.
+				return { items: rows, total: rows.length, page, limit };
 			} catch (err) {
 				logger.error({ err }, "Search failed");
 				set.status = 500;
@@ -267,6 +273,7 @@ async function hydrateResults(
 	includeChunks: boolean,
 	query: string,
 	allowedDocumentIds?: string[],
+	queryEmbedding?: EmbeddingResult,
 ): Promise<SearchResult[]> {
 	if (items.length === 0) return [];
 	const ids = items.map((item) => item.documentId);
@@ -331,7 +338,7 @@ async function hydrateResults(
 		// Chunk hydration is deliberately best-effort and tenant-scoped. Reuse one
 		// query embedding and rank active, valid chunks by cosine similarity.
 		try {
-			const embedding = await getEmbedding(query);
+			const embedding = queryEmbedding ?? (await getEmbedding(query));
 			if (embedding.ok) {
 				const embeddingString = `[${embedding.vector.join(",")}]`;
 				const chunks = await withTenant(ctx, async (tx) =>

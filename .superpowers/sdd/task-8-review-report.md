@@ -21,3 +21,18 @@
 ## Scope
 
 GraphRAG remains automatic; legacy graph query fields are accepted only for the temporary deprecation header and do not control execution. No credentials, release tags, or pushes were changed.
+
+## Final review follow-up
+
+- The HTTP response now reports the count of authorized, hydrated public items. It never exposes `searchDocuments().total` when a candidate was removed during hydration or share allow-list enforcement.
+- The orchestrator owns a request-scoped embedding promise cache. The vector channel, expanded retrieval, and `includeChunks` hydration reuse the same query embedding and therefore the same active profile; no second provider request is made for the original query.
+- Folder/category filtering now joins folders with both `folder.id = document.folder_id` and `folder.owner_id = ctx.userId`, selects the joined owner, and applies a runtime owner check before using `folder.category_id`.
+- Added regression coverage for the hydrated public count, embedding-provider call count and propagation, and cross-owner folder category rejection.
+
+Focused verification after this follow-up:
+
+- `bun test backend/tests/integration/routes.search.test.ts backend/tests/integration/routes.search-category.test.ts backend/tests/integration/search-retrievers.test.ts` — 43 passed, 0 failed.
+- `bun test backend/src/__tests__/search-orchestrator.test.ts backend/src/__tests__/search-route-helpers.test.ts` — 12 passed, 0 failed.
+- `cd backend && bun run typecheck` — passed.
+- `cd backend && bun run lint` — passed.
+- `git diff --check` — passed.

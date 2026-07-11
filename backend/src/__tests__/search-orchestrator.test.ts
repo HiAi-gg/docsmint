@@ -1,15 +1,28 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
-import { searchDocuments } from "../search/orchestrator";
+import {
+	folderCategoryMatchesOwner,
+	searchDocuments,
+} from "../search/orchestrator";
 import type {
 	ChannelResult,
 	QueryPlan,
 	SearchCandidate,
 	SearchChannel,
 } from "../search/types";
+import type { EmbeddingResult } from "../embedding/result";
 
 const OWNER = "00000000-0000-4000-8000-000000000001";
 const ctx: TenantContext = { userId: OWNER, role: "user" };
+
+const queryEmbedding: EmbeddingResult = {
+	ok: true,
+	vector: Array.from({ length: 1024 }, () => 0.01),
+	model: "openai/text-embedding-3-small",
+	provider: "primary",
+	dimensions: 1024,
+	profile: "openai/text-embedding-3-small:1024:v1",
+};
 
 function candidate(
 	documentId: string,
@@ -58,6 +71,49 @@ function expansion(plan: QueryPlan, variants = ["English"] as string[]) {
 }
 
 describe("automatic GraphRAG search orchestration", () => {
+	test("does not apply a folder category from another owner", () => {
+		expect(
+			folderCategoryMatchesOwner(
+				{
+					folderCategoryId: "category-1",
+					folderOwnerId: "another-owner",
+				},
+				"category-1",
+				OWNER,
+			),
+		).toBe(false);
+		expect(
+			folderCategoryMatchesOwner(
+				{ folderCategoryId: "category-1", folderOwnerId: OWNER },
+				"category-1",
+				OWNER,
+			),
+		).toBe(true);
+	});
+
+	test("shares one request embedding with vector retrieval and hydration", async () => {
+		const provider = mock(async () => queryEmbedding);
+		let requestEmbedding: EmbeddingResult | undefined;
+		const response = await searchDocuments(
+			ctx,
+			{ query: "English", limit: 10 },
+			{
+				getEmbedding: provider,
+				retrieveFast: async (_ctx, _plan, options = {}) => {
+					requestEmbedding = await options.getEmbedding?.("English");
+					return channels({
+						vector: [candidate("doc-1", "vector", 1, 0.9)],
+					});
+				},
+				expand: async () => null,
+				retrieveGraph: async () => [],
+			},
+		);
+		expect(provider).toHaveBeenCalledTimes(1);
+		expect(requestEmbedding).toEqual(queryEmbedding);
+		expect(response.queryEmbedding).toEqual(queryEmbedding);
+	});
+
 	test("confident exact plus vector fast pass does not call the LLM", async () => {
 		const expand = mock(async () => null);
 		const graph = mock(async () => [] as SearchCandidate[]);

@@ -439,6 +439,79 @@ describe("GET /api/search — automatic GraphRAG contract", () => {
 		});
 	});
 
+	it("does not expose domain candidates that fail authorized hydration", async () => {
+		const { Elysia } = await import("elysia");
+		const { createSearchRoutes } = await import("../../src/api/routes/search");
+		const queryEmbedding = {
+			ok: true as const,
+			vector: Array.from({ length: 1024 }, () => 0.01),
+			model: "openai/text-embedding-3-small",
+			provider: "primary" as const,
+			dimensions: 1024 as const,
+			profile: "openai/text-embedding-3-small:1024:v1",
+		};
+		let hydratedEmbedding: unknown;
+		const injected = new Elysia().use(
+			createSearchRoutes(
+				async () => ({
+					items: [
+						{
+							documentId: "visible-doc",
+							score: 0.9,
+							channels: ["vector"],
+							explanations: [{ channel: "vector", label: "Semantic match" }],
+						},
+					],
+					total: 7,
+					page: 1,
+					limit: 20,
+					queryPlan: {
+						original: "English",
+						normalized: "English",
+						detectedLanguage: "en",
+						translations: [],
+						synonyms: [],
+						concepts: [],
+						namedEntities: [],
+					},
+					diagnostics: {
+						fastChannels: [],
+						channelErrors: {},
+						expansionAttempted: false,
+						graphAttempted: true,
+						graphFailed: false,
+						confidenceReasons: [],
+					},
+					queryEmbedding,
+				}),
+				async (_ctx, _items, _includeChunks, _query, _allowedIds, embedding) => {
+					hydratedEmbedding = embedding;
+					return [
+					{
+						id: "visible-doc",
+						title: "English",
+						snippet: "Visible",
+						score: 0.9,
+						folder_id: null,
+						folder_name: null,
+						created_at: "2026-01-01T00:00:00.000Z",
+						updated_at: "2026-01-01T00:00:00.000Z",
+						explanations: [{ channel: "vector", label: "Semantic match" }],
+					},
+					];
+				},
+			),
+		);
+		const res = await request(injected, "/api/search?q=English", {
+			method: "GET",
+			headers: ownerHeaders(),
+		});
+		expect(res.status).toBe(200);
+		expect((res.body as any).items).toHaveLength(1);
+		expect((res.body as any).total).toBe(1);
+		expect(hydratedEmbedding).toEqual(queryEmbedding);
+	});
+
 	it("allows share guests to search only the token document and passes a share graph scope", async () => {
 		const sharedId = "shared-search-doc";
 		const hiddenId = "hidden-search-doc";
