@@ -521,6 +521,7 @@ SEARCH_EXPANSION_FALLBACK_MODEL=google/gemma-4-31b-it
 SEARCH_EXPANSION_TIMEOUT_MS=2000
 SEARCH_EXPANSION_CACHE_TTL_SECONDS=86400
 SEARCH_EXPANSION_MAX_VARIANTS=12
+SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS=0
 SEARCH_RRF_K=60
 SEARCH_EXACT_BOOST=0.02
 SEARCH_CHANNEL_AGREEMENT_BOOST=0.01
@@ -705,7 +706,7 @@ git commit -m "feat(search): expose automatic GraphRAG results"
 
 **Interfaces:**
 - Produces per-channel latency/error/candidate metrics, expansion reason/model metrics, empty-result count, graph contribution, and embedding-state inventory.
-- Produces `bun run benchmark:search -- --base-url=... --api-key=...` with a non-zero exit when a release gate fails.
+- Produces `bun run benchmark:search -- --base-url=...` with a non-zero exit when a release gate fails. The implementation reads the credential from `HIAI_DOCS_API_KEY`/`BENCHMARK_API_KEY`, stdin, or a file and rejects API-key command-line values.
 
 - [ ] **Step 1: Write metric registry tests**
 
@@ -778,7 +779,8 @@ Include exact commands:
 bun run db:migrate
 cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100
 cd backend && bun run src/scripts/reindex-embeddings.ts --batch=100
-cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --api-key="$HIAI_DOCS_API_KEY"
+export HIAI_DOCS_API_KEY
+cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700
 ```
 
 State that the real OpenRouter key belongs only in `.env` or deployment secrets and must not enter Git, package tarballs, Docker layers, logs, screenshots, fixtures, or release notes.

@@ -315,12 +315,15 @@ export function recordSearchChannelMetrics(input: {
 
 export function recordSearchExpansionMetrics(input: {
 	reasons: readonly SearchExpansionReason[];
+	used?: boolean;
 	model?: string;
 	primaryModel?: string;
 	fallbackModel?: string;
 	estimatedCostMicrounits?: number;
 }): void {
-	incrementCounter(METRIC_NAMES.SEARCH_EXPANSION_TOTAL);
+	if (input.used !== false) {
+		incrementCounter(METRIC_NAMES.SEARCH_EXPANSION_TOTAL);
+	}
 	for (const reason of input.reasons) {
 		switch (reason) {
 			case "no_lexical_match":
@@ -344,26 +347,33 @@ export function recordSearchExpansionMetrics(input: {
 				break;
 		}
 	}
-	if (input.model && input.model === input.fallbackModel) {
+	if (
+		input.used !== false &&
+		input.model &&
+		input.model === input.fallbackModel
+	) {
 		incrementCounter(METRIC_NAMES.SEARCH_EXPANSION_FALLBACK_TOTAL);
-	} else if (input.model) {
+	} else if (input.used !== false && input.model) {
 		incrementCounter(METRIC_NAMES.SEARCH_EXPANSION_PRIMARY_TOTAL);
 	}
-	incrementCounterBy(
-		METRIC_NAMES.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS,
-		Math.max(0, input.estimatedCostMicrounits ?? 0),
-	);
+	if (input.used !== false) {
+		incrementCounterBy(
+			METRIC_NAMES.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS,
+			Math.max(0, input.estimatedCostMicrounits ?? 0),
+		);
+	}
 }
 
 export function recordSearchOutcomeMetrics(input: {
 	empty?: boolean;
 	graphContribution?: boolean;
+	crossLanguageEligible?: boolean;
 	crossLanguageSuccess?: boolean;
 }): void {
 	if (input.empty) incrementCounter(METRIC_NAMES.SEARCH_EMPTY_TOTAL);
 	if (input.graphContribution)
 		incrementCounter(METRIC_NAMES.SEARCH_GRAPH_CONTRIBUTION_TOTAL);
-	if (input.crossLanguageSuccess)
+	if (input.crossLanguageEligible && input.crossLanguageSuccess)
 		incrementCounter(METRIC_NAMES.SEARCH_CROSS_LANGUAGE_SUCCESS_TOTAL);
 }
 

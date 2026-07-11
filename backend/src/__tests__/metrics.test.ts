@@ -93,11 +93,13 @@ describe("metrics registry", () => {
 			reasons: ["language_mismatch", "low_vector_similarity"],
 			model: "fallback-model",
 			fallbackModel: "fallback-model",
+			used: true,
 			estimatedCostMicrounits: 42,
 		});
 		recordSearchOutcomeMetrics({
 			empty: true,
 			graphContribution: true,
+			crossLanguageEligible: true,
 			crossLanguageSuccess: true,
 		});
 		incrementCounterBy(METRIC_NAMES.SEARCH_EMPTY_TOTAL, 2);
@@ -110,6 +112,27 @@ describe("metrics registry", () => {
 		expect(metrics[METRIC_NAMES.SEARCH_EMPTY_TOTAL]).toBe(3);
 		expect(metrics[METRIC_NAMES.SEARCH_GRAPH_CONTRIBUTION_TOTAL]).toBe(1);
 		expect(metrics[METRIC_NAMES.SEARCH_CROSS_LANGUAGE_SUCCESS_TOTAL]).toBe(1);
+	});
+
+	test("does not charge or count failed expansion attempts", () => {
+		recordSearchExpansionMetrics({
+			reasons: ["language_mismatch"],
+			model: undefined,
+			used: false,
+			estimatedCostMicrounits: 99,
+		});
+		recordSearchOutcomeMetrics({
+			crossLanguageEligible: false,
+			crossLanguageSuccess: true,
+		});
+		const metrics = getMetrics();
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANSION_TOTAL]).toBeUndefined();
+		expect(
+			metrics[METRIC_NAMES.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS],
+		).toBeUndefined();
+		expect(
+			metrics[METRIC_NAMES.SEARCH_CROSS_LANGUAGE_SUCCESS_TOTAL],
+		).toBeUndefined();
 	});
 
 	test("resetMetrics clears the registry", () => {

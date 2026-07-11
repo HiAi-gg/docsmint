@@ -2,8 +2,9 @@
 /**
  * Release-gate benchmark for the real adaptive search HTTP endpoint.
  *
- * Usage:
- *   bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --api-key="$HIAI_DOCS_API_KEY"
+ * Usage (the credential is read from the environment, never argv):
+ *   export HIAI_DOCS_API_KEY
+ *   bun run benchmark:search -- --base-url=http://127.0.0.1:50700
  *
  * The fixture contains document IDs that a deployment may seed separately.
  * This script never writes documents, never prints query credentials, and
@@ -24,6 +25,7 @@ export interface RelevanceCase {
 	relevantDocumentIds: string[];
 	ownerId: string;
 	forbiddenDocumentIds: string[];
+	crossLanguage?: boolean;
 }
 
 export interface RelevanceFixture {
@@ -31,6 +33,7 @@ export interface RelevanceFixture {
 	description: string;
 	documents: RelevanceDocument[];
 	cases: RelevanceCase[];
+	minimumExpandedProbes?: number;
 }
 
 export interface SearchProbe {
@@ -40,6 +43,7 @@ export interface SearchProbe {
 	latencyMs: number;
 	expanded: boolean;
 	graphContributed: boolean;
+	crossLanguageSuccess?: boolean;
 	allResultsHaveExplanations: boolean;
 	forbiddenResultIds: string[];
 	error?: string;
@@ -50,10 +54,21 @@ export interface BenchmarkSummary {
 	caseCount: number;
 	recallAt10: number;
 	mrrAt10: number;
-	fastP95Ms: number;
-	expandedP95Ms: number;
+	fastP95Ms: number | null;
+	expandedP95Ms: number | null;
+	fastSampleCount: number;
+	expandedSampleCount: number;
+	expandedProbeCount: number;
+	minimumExpandedProbes: number;
+	metricSamplesComplete: boolean;
 	expansionRate: number;
+	expansionEventCount: number;
+	expansionCostMicrounits: number;
+	expansionCostPerQueryMicrounits: number;
 	graphContributionRate: number;
+	graphContributionCount: number;
+	crossLanguageCaseCount: number;
+	crossLanguageSuccessCount: number;
 	emptyCount: number;
 	invalidVectors: number;
 	tenantLeakageCount: number;
@@ -63,11 +78,25 @@ export interface BenchmarkSummary {
 		mrr: boolean;
 		fastP95: boolean;
 		expandedP95: boolean;
+		latencySamples: boolean;
+		expandedProbeCoverage: boolean;
 		invalidVectors: boolean;
 		tenantLeakage: boolean;
 		explanations: boolean;
 	};
 	passed: boolean;
+}
+
+export const HISTOGRAM_SAMPLE_CAP = 10_000;
+
+export interface BenchmarkEvidence {
+	fastSamples?: readonly number[];
+	expandedSamples?: readonly number[];
+	metricSamplesComplete?: boolean;
+	expansionEventCount?: number;
+	graphContributionCount?: number;
+	crossLanguageSuccessCount?: number;
+	estimatedCostMicrounits?: number;
 }
 
 export function recallAtK(
@@ -102,12 +131,12 @@ export function mrrAtK(
 
 /** Nearest-rank percentile; p is expressed as a fraction in [0, 1]. */
 export function percentile(values: readonly number[], p: number): number {
-	if (values.length === 0) return 0;
+	if (values.length === 0) return Number.NaN;
 	const sorted = values
 		.filter((value) => Number.isFinite(value) && value >= 0)
 		.slice()
 		.sort((left, right) => left - right);
-	if (sorted.length === 0) return 0;
+	if (sorted.length === 0) return Number.NaN;
 	const fraction = Math.min(1, Math.max(0, p));
 	const index = Math.ceil(fraction * sorted.length) - 1;
 	return sorted[Math.max(0, Math.min(index, sorted.length - 1))] as number;
@@ -118,6 +147,7 @@ export function summarizeBenchmark(
 	probes: readonly SearchProbe[],
 	invalidVectors: number,
 	k = 10,
+	evidence: BenchmarkEvidence = {},
 ): BenchmarkSummary {
 	const byId = new Map(fixture.cases.map((item) => [item.id, item]));
 	const scored = probes
@@ -135,18 +165,44 @@ export function summarizeBenchmark(
 	const mrr = judged.map((value) =>
 		mrrAtK(value.probe.resultIds, value.expected.relevantDocumentIds, k),
 	);
-	const fast = probes
+	const probeFast = probes
 		.filter((probe) => !probe.expanded)
 		.map((probe) => probe.latencyMs);
-	const expanded = probes
+	const probeExpanded = probes
 		.filter((probe) => probe.expanded)
 		.map((probe) => probe.latencyMs);
+	const fast = evidence.fastSamples ? [...evidence.fastSamples] : probeFast;
+	const expanded = evidence.expandedSamples
+		? [...evidence.expandedSamples]
+		: probeExpanded;
+	const minimumExpandedProbes = Math.max(1, fixture.minimumExpandedProbes ?? 1);
+	const metricSamplesComplete = evidence.metricSamplesComplete ?? true;
+	const expandedProbeCount =
+		evidence.expansionEventCount ?? probeExpanded.length;
+	const expansionEventCount = Math.max(0, expandedProbeCount);
 	const expansionRate =
 		probes.length === 0 ? 0 : expanded.length / probes.length;
+	const graphContributionCount = Math.max(
+		0,
+		evidence.graphContributionCount ??
+			probes.filter((probe) => probe.graphContributed).length,
+	);
 	const graphContributionRate =
-		probes.length === 0
-			? 0
-			: probes.filter((probe) => probe.graphContributed).length / probes.length;
+		probes.length === 0 ? 0 : graphContributionCount / probes.length;
+	const crossLanguageCases = scored.filter(
+		(value) => value.expected.crossLanguage === true,
+	);
+	const crossLanguageCaseCount = crossLanguageCases.length;
+	const crossLanguageSuccessCount = Math.max(
+		0,
+		evidence.crossLanguageSuccessCount ??
+			crossLanguageCases.filter((value) => value.probe.crossLanguageSuccess)
+				.length,
+	);
+	const expansionCostMicrounits = Math.max(
+		0,
+		evidence.estimatedCostMicrounits ?? 0,
+	);
 	const tenantLeakageCount = probes.reduce(
 		(total, probe) => total + probe.forbiddenResultIds.length,
 		0,
@@ -157,14 +213,27 @@ export function summarizeBenchmark(
 	const metrics = {
 		recallAt10: mean(recall),
 		mrrAt10: mean(mrr),
-		fastP95Ms: percentile(fast, 0.95),
-		expandedP95Ms: percentile(expanded, 0.95),
+		fastP95Ms: fast.length > 0 ? percentile(fast, 0.95) : null,
+		expandedP95Ms: expanded.length > 0 ? percentile(expanded, 0.95) : null,
 	};
+	const latencySamples =
+		metricSamplesComplete &&
+		fast.length > 0 &&
+		expanded.length >= minimumExpandedProbes &&
+		fast.length <= HISTOGRAM_SAMPLE_CAP &&
+		expanded.length <= HISTOGRAM_SAMPLE_CAP;
 	const gates = {
 		recall: metrics.recallAt10 >= 0.9,
 		mrr: metrics.mrrAt10 >= 0.8,
-		fastP95: metrics.fastP95Ms <= 500,
-		expandedP95: metrics.expandedP95Ms <= 2500,
+		fastP95:
+			latencySamples && metrics.fastP95Ms !== null && metrics.fastP95Ms <= 500,
+		expandedP95:
+			latencySamples &&
+			metrics.expandedP95Ms !== null &&
+			metrics.expandedP95Ms <= 2500,
+		latencySamples,
+		expandedProbeCoverage:
+			expansionEventCount >= minimumExpandedProbes && expanded.length > 0,
 		invalidVectors: invalidVectors === 0,
 		tenantLeakage: tenantLeakageCount === 0,
 		explanations: explanationFailures === 0,
@@ -173,8 +242,20 @@ export function summarizeBenchmark(
 		fixtureVersion: fixture.version,
 		caseCount: probes.length,
 		...metrics,
+		fastSampleCount: fast.length,
+		expandedSampleCount: expanded.length,
+		expandedProbeCount: expansionEventCount,
+		minimumExpandedProbes,
+		metricSamplesComplete,
 		expansionRate,
+		expansionEventCount,
+		expansionCostMicrounits,
+		expansionCostPerQueryMicrounits:
+			probes.length === 0 ? 0 : expansionCostMicrounits / probes.length,
 		graphContributionRate,
+		graphContributionCount,
+		crossLanguageCaseCount,
+		crossLanguageSuccessCount,
 		emptyCount: probes.filter((probe) => probe.resultIds.length === 0).length,
 		invalidVectors,
 		tenantLeakageCount,
@@ -191,6 +272,8 @@ interface SearchApiResponse {
 	}>;
 	diagnostics?: {
 		expansionAttempted?: boolean;
+		expansionUsed?: boolean;
+		crossLanguageSuccess?: boolean;
 	};
 }
 
@@ -200,15 +283,18 @@ interface AdminMetricsSnapshot {
 
 interface CliArgs {
 	baseUrl: string;
-	apiKey: string;
 	k: number;
+	apiKeyFile?: string;
+	apiKeyStdin: boolean;
 }
 
-function parseArgs(argv: readonly string[] = process.argv.slice(2)): CliArgs {
+export function parseArgs(
+	argv: readonly string[] = process.argv.slice(2),
+): CliArgs {
 	const output: CliArgs = {
 		baseUrl: "http://127.0.0.1:50700",
-		apiKey: "",
 		k: 10,
+		apiKeyStdin: false,
 	};
 	for (let index = 0; index < argv.length; index++) {
 		const arg = argv[index] as string;
@@ -217,15 +303,54 @@ function parseArgs(argv: readonly string[] = process.argv.slice(2)): CliArgs {
 		if (name === "--base-url" && value) {
 			output.baseUrl = value;
 			if (inlineValue === undefined) index += 1;
-		} else if (name === "--api-key" && value) {
-			output.apiKey = value;
+		} else if (name === "--api-key") {
+			throw new Error(
+				"API keys must be provided via environment or --api-key-file/--api-key-stdin; command-line values are forbidden",
+			);
+		} else if (name === "--api-key-file") {
+			if (!value || (inlineValue === undefined && value.startsWith("--"))) {
+				throw new Error("--api-key-file requires a file path");
+			}
+			output.apiKeyFile = value;
 			if (inlineValue === undefined) index += 1;
+		} else if (name === "--api-key-stdin") {
+			output.apiKeyStdin = true;
 		} else if (name === "--k" && value) {
 			output.k = Math.max(1, Number.parseInt(value, 10) || 10);
 			if (inlineValue === undefined) index += 1;
 		}
 	}
 	return output;
+}
+
+export function resolveApiKey(
+	env: Record<string, string | undefined> = process.env,
+	fileValue?: string,
+): string {
+	return (
+		env.HIAI_DOCS_API_KEY ??
+		env.BENCHMARK_API_KEY ??
+		fileValue ??
+		""
+	).trim();
+}
+
+async function loadApiKey(args: CliArgs): Promise<string> {
+	let fileValue: string | undefined;
+	if (args.apiKeyFile) {
+		fileValue = await Bun.file(args.apiKeyFile).text();
+	}
+	if (args.apiKeyStdin) {
+		const stdinValue = await Bun.stdin.text();
+		fileValue = stdinValue;
+	}
+	const key = resolveApiKey(process.env, fileValue);
+	if (!key) {
+		throw new Error(
+			"Missing benchmark API key: set HIAI_DOCS_API_KEY or BENCHMARK_API_KEY, or use --api-key-file/--api-key-stdin",
+		);
+	}
+	return key;
 }
 
 async function loadFixture(): Promise<RelevanceFixture> {
@@ -266,7 +391,8 @@ async function querySearch(
 			query: item.query,
 			resultIds,
 			latencyMs,
-			expanded: body.diagnostics?.expansionAttempted === true,
+			expanded: body.diagnostics?.expansionUsed === true,
+			crossLanguageSuccess: body.diagnostics?.crossLanguageSuccess === true,
 			graphContributed: items.some(
 				(result) =>
 					Array.isArray(result.explanations) &&
@@ -355,33 +481,52 @@ function metricSamples(
 		: [];
 }
 
-function deltaSamples(before: number[], after: number[]): number[] {
-	return after.slice(Math.min(before.length, after.length));
+function deltaSamples(
+	before: number[],
+	after: number[],
+	expectedCount: number,
+): { samples: number[]; complete: boolean } {
+	const capReached =
+		before.length >= HISTOGRAM_SAMPLE_CAP ||
+		after.length >= HISTOGRAM_SAMPLE_CAP;
+	const grew = after.length >= before.length;
+	const samples = grew ? after.slice(before.length) : [];
+	return {
+		samples,
+		complete: !capReached && grew && samples.length >= expectedCount,
+	};
 }
 
 async function main(): Promise<void> {
 	const args = parseArgs();
+	const apiKey = await loadApiKey(args);
 	const fixture = await loadFixture();
-	const metricsBefore = await readMetrics(args.baseUrl, args.apiKey);
+	const metricsBefore = await readMetrics(args.baseUrl, apiKey);
 	const probes = await Promise.all(
 		fixture.cases.map((item) =>
-			querySearch(args.baseUrl, args.apiKey, item, args.k),
+			querySearch(args.baseUrl, apiKey, item, args.k),
 		),
 	);
-	const metricsAfter = await readMetrics(args.baseUrl, args.apiKey);
-	const invalidVectors = await readInvalidVectorCount(
-		args.baseUrl,
-		args.apiKey,
-	);
+	const metricsAfter = await readMetrics(args.baseUrl, apiKey);
+	const invalidVectors = await readInvalidVectorCount(args.baseUrl, apiKey);
 	const summary = summarizeBenchmark(fixture, probes, invalidVectors, args.k);
-	if (metricsAfter) {
-		const fastSamples = deltaSamples(
+	if (!metricsAfter || !metricsBefore) {
+		summary.metricSamplesComplete = false;
+		summary.gates.latencySamples = false;
+		summary.gates.fastP95 = false;
+		summary.gates.expandedP95 = false;
+		summary.passed = Object.values(summary.gates).every(Boolean);
+	}
+	if (metricsAfter && metricsBefore) {
+		const fastDelta = deltaSamples(
 			metricSamples(metricsBefore, "search_fast_duration_ms"),
 			metricSamples(metricsAfter, "search_fast_duration_ms"),
+			probes.filter((probe) => !probe.expanded).length,
 		);
-		const expandedSamples = deltaSamples(
+		const expandedDelta = deltaSamples(
 			metricSamples(metricsBefore, "search_expanded_duration_ms"),
 			metricSamples(metricsAfter, "search_expanded_duration_ms"),
+			probes.filter((probe) => probe.expanded).length,
 		);
 		const searchCount = probes.length;
 		const expansionDelta =
@@ -390,14 +535,50 @@ async function main(): Promise<void> {
 		const graphDelta =
 			metricNumber(metricsAfter, "search_graph_contribution_total") -
 			metricNumber(metricsBefore, "search_graph_contribution_total");
-		summary.fastP95Ms = percentile(fastSamples, 0.95);
-		summary.expandedP95Ms = percentile(expandedSamples, 0.95);
+		const costDelta =
+			metricNumber(metricsAfter, "search_expansion_estimated_cost_microunits") -
+			metricNumber(metricsBefore, "search_expansion_estimated_cost_microunits");
+		const crossLanguageDelta =
+			metricNumber(metricsAfter, "search_cross_language_success_total") -
+			metricNumber(metricsBefore, "search_cross_language_success_total");
+		summary.fastP95Ms =
+			fastDelta.samples.length > 0 ? percentile(fastDelta.samples, 0.95) : null;
+		summary.expandedP95Ms =
+			expandedDelta.samples.length > 0
+				? percentile(expandedDelta.samples, 0.95)
+				: null;
+		summary.fastSampleCount = fastDelta.samples.length;
+		summary.expandedSampleCount = expandedDelta.samples.length;
+		summary.metricSamplesComplete =
+			fastDelta.complete && expandedDelta.complete;
+		summary.expandedProbeCount = Math.max(
+			probes.filter((probe) => probe.expanded).length,
+			Math.max(0, expansionDelta),
+		);
+		summary.expansionEventCount = Math.max(0, expansionDelta);
+		summary.expansionCostMicrounits = Math.max(0, costDelta);
+		summary.expansionCostPerQueryMicrounits =
+			searchCount === 0 ? 0 : Math.max(0, costDelta) / searchCount;
+		summary.graphContributionCount = Math.max(0, graphDelta);
+		summary.crossLanguageSuccessCount = Math.max(0, crossLanguageDelta);
 		summary.expansionRate =
 			searchCount === 0 ? 0 : Math.max(0, expansionDelta) / searchCount;
 		summary.graphContributionRate =
 			searchCount === 0 ? 0 : Math.max(0, graphDelta) / searchCount;
-		summary.gates.fastP95 = summary.fastP95Ms <= 500;
-		summary.gates.expandedP95 = summary.expandedP95Ms <= 2500;
+		summary.gates.latencySamples =
+			summary.metricSamplesComplete &&
+			summary.fastSampleCount > 0 &&
+			summary.expandedSampleCount >= summary.minimumExpandedProbes;
+		summary.gates.expandedProbeCoverage =
+			summary.expansionEventCount >= summary.minimumExpandedProbes;
+		summary.gates.fastP95 =
+			summary.gates.latencySamples &&
+			summary.fastP95Ms !== null &&
+			summary.fastP95Ms <= 500;
+		summary.gates.expandedP95 =
+			summary.gates.latencySamples &&
+			summary.expandedP95Ms !== null &&
+			summary.expandedP95Ms <= 2500;
 		summary.passed = Object.values(summary.gates).every(Boolean);
 	}
 	console.log(JSON.stringify(summary));

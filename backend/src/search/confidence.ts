@@ -33,7 +33,13 @@ export function evaluateConfidence(
 	);
 	const candidates = flatten(results);
 	if (candidates.length === 0)
-		return { confident: false, reasons: ["empty_candidates"] };
+		return {
+			confident: false,
+			reasons: [
+				"empty_candidates",
+				...(thresholds.languageMismatch ? ["language_mismatch" as const] : []),
+			],
+		};
 
 	const reasons: ExpansionReason[] = [];
 	const lexical = candidates.filter((candidate) =>

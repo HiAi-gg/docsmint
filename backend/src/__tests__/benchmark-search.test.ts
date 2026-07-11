@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
 	mrrAtK,
+	parseArgs,
 	percentile,
 	type RelevanceFixture,
 	recallAtK,
+	resolveApiKey,
 	type SearchProbe,
 	summarizeBenchmark,
 } from "../scripts/benchmark-search";
@@ -69,8 +71,10 @@ describe("search benchmark evaluation math", () => {
 					relevantDocumentIds: ["expected"],
 					ownerId: "owner",
 					forbiddenDocumentIds: ["private"],
+					crossLanguage: false,
 				},
 			],
+			minimumExpandedProbes: 1,
 		};
 		const probe: SearchProbe = {
 			caseId: "case-1",
@@ -82,9 +86,132 @@ describe("search benchmark evaluation math", () => {
 			allResultsHaveExplanations: true,
 			forbiddenResultIds: [],
 		};
-		const summary = summarizeBenchmark(fixture, [probe], 0);
+		const expandedProbe = { ...probe, expanded: true };
+		const summary = summarizeBenchmark(fixture, [probe, expandedProbe], 0);
 		expect(summary.passed).toBe(true);
 		expect(summary.recallAt10).toBe(1);
 		expect(summary.mrrAt10).toBe(1);
+		expect(summary.expandedProbeCount).toBe(1);
+		expect(summary.gates.expandedProbeCoverage).toBe(true);
+	});
+
+	test("fails latency gates when fast or expanded samples are missing", () => {
+		const fixture: RelevanceFixture = {
+			version: "test",
+			description: "test",
+			documents: [],
+			cases: [],
+			minimumExpandedProbes: 1,
+		};
+		const summary = summarizeBenchmark(fixture, [], 0);
+		expect(summary.fastP95Ms).toBeNull();
+		expect(summary.expandedP95Ms).toBeNull();
+		expect(summary.gates.latencySamples).toBe(false);
+		expect(summary.gates.fastP95).toBe(false);
+		expect(summary.gates.expandedP95).toBe(false);
+		expect(summary.gates.expandedProbeCoverage).toBe(false);
+	});
+
+	test("fails when the metrics histogram cap makes the delta incomplete", () => {
+		const fixture: RelevanceFixture = {
+			version: "test",
+			description: "test",
+			documents: [],
+			cases: [],
+			minimumExpandedProbes: 1,
+		};
+		const summary = summarizeBenchmark(fixture, [], 0, 10, {
+			fastSamples: [100],
+			expandedSamples: [200],
+			metricSamplesComplete: false,
+			expansionEventCount: 1,
+		});
+		expect(summary.gates.latencySamples).toBe(false);
+		expect(summary.passed).toBe(false);
+	});
+
+	test("requires an actual expanded probe/event and keeps cross-language scope explicit", () => {
+		const fixture: RelevanceFixture = {
+			version: "test",
+			description: "test",
+			documents: [],
+			cases: [
+				{
+					id: "en",
+					description: "normal",
+					query: "test",
+					relevantDocumentIds: ["doc"],
+					ownerId: "owner",
+					forbiddenDocumentIds: [],
+					crossLanguage: false,
+				},
+				{
+					id: "ru",
+					description: "language mismatch",
+					query: "тест",
+					relevantDocumentIds: ["doc"],
+					ownerId: "owner",
+					forbiddenDocumentIds: [],
+					crossLanguage: true,
+				},
+			],
+			minimumExpandedProbes: 1,
+		};
+		const normal = {
+			caseId: "en",
+			query: "test",
+			resultIds: ["doc"],
+			latencyMs: 100,
+			expanded: false,
+			graphContributed: false,
+			crossLanguageSuccess: true,
+			allResultsHaveExplanations: true,
+			forbiddenResultIds: [],
+		};
+		const summary = summarizeBenchmark(fixture, [normal], 0, 10, {
+			expansionEventCount: 0,
+		});
+		expect(summary.crossLanguageCaseCount).toBe(0);
+		expect(summary.gates.expandedProbeCoverage).toBe(false);
+
+		const expanded = {
+			...normal,
+			caseId: "ru",
+			query: "тест",
+			expanded: true,
+			crossLanguageSuccess: true,
+		};
+		const expandedSummary = summarizeBenchmark(
+			fixture,
+			[normal, expanded],
+			0,
+			10,
+			{ expansionEventCount: 1, estimatedCostMicrounits: 12 },
+		);
+		expect(expandedSummary.crossLanguageCaseCount).toBe(1);
+		expect(expandedSummary.crossLanguageSuccessCount).toBe(1);
+		expect(expandedSummary.expansionCostPerQueryMicrounits).toBe(6);
+	});
+
+	test("rejects API-key command-line arguments and resolves only env/file input", () => {
+		expect(() => parseArgs(["--api-key=secret"])).toThrow(
+			"API keys must be provided via environment or --api-key-file/--api-key-stdin",
+		);
+		expect(() => parseArgs(["--api-key", "secret"])).toThrow();
+		expect(resolveApiKey({ HIAI_DOCS_API_KEY: "env-secret" })).toBe(
+			"env-secret",
+		);
+		expect(resolveApiKey({ BENCHMARK_API_KEY: "fallback-secret" })).toBe(
+			"fallback-secret",
+		);
+	});
+
+	test("keeps the package benchmark command free of credential arguments", async () => {
+		const packageJson = (await Bun.file(
+			new URL("../../package.json", import.meta.url),
+		).json()) as { scripts?: { [name: string]: string } };
+		expect(packageJson.scripts?.["benchmark:search"] ?? "").not.toContain(
+			"--api-key",
+		);
 	});
 });

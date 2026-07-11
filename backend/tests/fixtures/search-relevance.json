@@ -1,6 +1,7 @@
 {
   "version": "v1",
   "description": "Deterministic relevance judgments for multilingual adaptive GraphRAG search.",
+  "minimumExpandedProbes": 1,
   "documents": [
     { "id": "bench-search-en", "title": "English Language Setup", "ownerId": "owner-a", "visibility": "private" },
     { "id": "bench-search-auth", "title": "Authentication and Access Control", "ownerId": "owner-a", "visibility": "private" },
@@ -16,6 +17,7 @@
       "id": "ru-english",
       "description": "Cross-language translation from Russian to English documentation.",
       "query": "\u0430\u043d\u0433\u043b\u0438\u0439\u0441\u043a\u0438\u0439",
+      "crossLanguage": true,
       "relevantDocumentIds": ["bench-search-en"],
       "ownerId": "owner-a",
       "forbiddenDocumentIds": ["bench-search-private-b"]
@@ -24,6 +26,7 @@
       "id": "ru-authentication",
       "description": "Cross-language authentication concept retrieval.",
       "query": "\u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u044f",
+      "crossLanguage": true,
       "relevantDocumentIds": ["bench-search-auth"],
       "ownerId": "owner-a",
       "forbiddenDocumentIds": ["bench-search-private-b"]
@@ -32,6 +35,7 @@
       "id": "ru-deployment",
       "description": "Cross-language deployment concept retrieval.",
       "query": "\u0440\u0430\u0437\u0432\u0435\u0440\u0442\u044b\u0432\u0430\u043d\u0438\u0435",
+      "crossLanguage": true,
       "relevantDocumentIds": ["bench-search-deploy"],
       "ownerId": "owner-a",
       "forbiddenDocumentIds": ["bench-search-private-b"]
@@ -40,6 +44,7 @@
       "id": "ru-authentication-typo",
       "description": "Typo-tolerant authentication retrieval.",
       "query": "\u0430\u0443\u0442\u0435\u043d\u0442\u0438\u0444\u043a\u0430\u0446\u0438\u044f",
+      "crossLanguage": true,
       "relevantDocumentIds": ["bench-search-auth"],
       "ownerId": "owner-a",
       "forbiddenDocumentIds": ["bench-search-private-b"]

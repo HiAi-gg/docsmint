@@ -196,6 +196,11 @@ export const envSchema = z.object({
 		.min(1)
 		.max(100)
 		.default(12),
+	SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.default(0),
 	SEARCH_RRF_K: z.coerce.number().int().min(1).default(60),
 	SEARCH_EXACT_BOOST: z.coerce.number().min(0).max(1).default(0.02),
 	SEARCH_CHANNEL_AGREEMENT_BOOST: z.coerce.number().min(0).max(1).default(0.01),

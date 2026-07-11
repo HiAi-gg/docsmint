@@ -47,7 +47,9 @@ export interface SearchDiagnostics {
 	fastChannels: string[];
 	channelErrors: Record<string, string>;
 	expansionAttempted: boolean;
+	expansionUsed?: boolean;
 	expansionModel?: string;
+	crossLanguageSuccess?: boolean;
 	graphAttempted: boolean;
 	graphFailed: boolean;
 	confidenceReasons: string[];
@@ -175,10 +177,13 @@ export async function searchDocuments(
 	const confidence = evaluateConfidence(fast, plan, {
 		vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
 		minChannelAgreement: config.SEARCH_MIN_CHANNEL_AGREEMENT,
+		languageMismatch:
+			plan.detectedLanguage !== "en" && plan.detectedLanguage !== "und",
 	});
 	let expandedPlan: QueryPlan | null = null;
 	let expansionModel: string | undefined;
 	let expansionAttempted = false;
+	let expansionUsed = false;
 	let expanded: ChannelResult[] = [];
 	if (!confidence.confident) {
 		expansionAttempted = true;
@@ -189,6 +194,7 @@ export async function searchDocuments(
 				ownerId: ctx.userId,
 			});
 			if (expansion) {
+				expansionUsed = true;
 				expandedPlan = expansion.plan;
 				expansionModel = expansion.model;
 				try {
@@ -214,9 +220,13 @@ export async function searchDocuments(
 		}
 		recordSearchExpansionMetrics({
 			reasons: confidence.reasons,
+			used: expansionUsed,
 			model: expansionModel,
 			primaryModel: config.SEARCH_EXPANSION_MODEL,
 			fallbackModel: config.SEARCH_EXPANSION_FALLBACK_MODEL,
+			estimatedCostMicrounits: expansionUsed
+				? config.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS
+				: 0,
 		});
 		recordDuration(
 			METRIC_NAMES.SEARCH_EXPANDED_DURATION_MS,
@@ -290,12 +300,20 @@ export async function searchDocuments(
 		: ranked;
 	const offset = (page - 1) * limit;
 	const items = filtered.slice(offset, offset + limit);
+	const graphContribution = items.some((item) =>
+		item.channels.includes("graph"),
+	);
+	const crossLanguageEligible =
+		confidence.reasons.includes("language_mismatch");
+	const crossLanguageSuccess =
+		crossLanguageEligible &&
+		expandedPlan !== null &&
+		expanded.some((result) => result.candidates.length > 0);
 	recordSearchOutcomeMetrics({
 		empty: filtered.length === 0,
-		graphContribution: graph.length > 0,
-		crossLanguageSuccess:
-			expandedPlan !== null &&
-			expanded.some((result) => result.candidates.length > 0),
+		graphContribution,
+		crossLanguageEligible,
+		crossLanguageSuccess,
 	});
 	const diagnostics: SearchDiagnostics = {
 		...(ranked.length === 0
@@ -304,6 +322,8 @@ export async function searchDocuments(
 		fastChannels: fast.map((result) => result.channel),
 		channelErrors,
 		expansionAttempted,
+		expansionUsed,
+		crossLanguageSuccess,
 		...(expansionModel ? { expansionModel } : {}),
 		graphAttempted: true,
 		graphFailed,

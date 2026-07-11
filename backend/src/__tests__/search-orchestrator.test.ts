@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
 import type { EmbeddingResult } from "../embedding/result";
+import { getMetrics, METRIC_NAMES, resetMetrics } from "../lib/metrics";
 import {
 	folderCategoryMatchesOwner,
 	searchDocuments,
@@ -181,6 +182,8 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(expand).toHaveBeenCalledTimes(1);
 		expect(expanded).toHaveBeenCalledTimes(1);
 		expect(response.diagnostics.expansionAttempted).toBe(true);
+		expect(response.diagnostics.expansionUsed).toBe(true);
+		expect(response.diagnostics.crossLanguageSuccess).toBe(true);
 		expect(response.items[0]?.documentId).toBe("doc-2");
 	});
 
@@ -198,6 +201,23 @@ describe("automatic GraphRAG search orchestration", () => {
 		);
 		expect(graph).toHaveBeenCalledTimes(1);
 		expect(response.diagnostics.graphAttempted).toBe(true);
+	});
+
+	test("counts graph contribution only when a graph candidate reaches final items", async () => {
+		resetMetrics();
+		await searchDocuments(
+			ctx,
+			{ query: "topic", page: 2, limit: 1 },
+			{
+				retrieveFast: async () => channels({}),
+				expand: async () => null,
+				retrieveGraph: async () => [candidate("graph-only", "graph")],
+			},
+		);
+		expect(
+			getMetrics()[METRIC_NAMES.SEARCH_GRAPH_CONTRIBUTION_TOTAL] ?? 0,
+		).toBe(0);
+		resetMetrics();
 	});
 
 	test("graph-only results remain below a strong exact result", async () => {
