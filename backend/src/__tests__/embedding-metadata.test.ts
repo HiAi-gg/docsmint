@@ -19,7 +19,21 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildMetadataPreamble, embedDocument } from "../embedding/index";
+import { config } from "../lib/config";
+
+const originalEmbeddingConfig = {
+	baseUrl: config.EMBEDDING_BASE_URL,
+	apiKey: config.EMBEDDING_API_KEY,
+	model: config.EMBEDDING_MODEL,
+	fallbackBaseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
+	fallbackApiKey: config.EMBEDDING_FALLBACK_API_KEY,
+	fallbackModel: config.EMBEDDING_FALLBACK_MODEL,
+};
+
+const { buildMetadataPreamble, embedDocument } = await import(
+	// @ts-expect-error Bun resolves the query-suffixed module at runtime.
+	"../embedding/index?unit"
+);
 
 describe("buildMetadataPreamble", () => {
 	test("returns empty string when no metadata is supplied", () => {
@@ -79,13 +93,32 @@ describe("buildMetadataPreamble", () => {
 
 describe("embedDocument metadata behaviour", () => {
 	test("reports an explicit provider failure instead of storing a zero vector", async () => {
-		await expect(
-			embedDocument("My Title", "Some content here."),
-		).rejects.toMatchObject({
-			name: "EmbeddingBatchError",
-			code: "not_configured",
-			chunkIndex: 0,
+		Object.assign(config, {
+			EMBEDDING_BASE_URL: undefined,
+			EMBEDDING_API_KEY: undefined,
+			EMBEDDING_MODEL: undefined,
+			EMBEDDING_FALLBACK_BASE_URL: undefined,
+			EMBEDDING_FALLBACK_API_KEY: undefined,
+			EMBEDDING_FALLBACK_MODEL: undefined,
 		});
+		try {
+			await expect(
+				embedDocument("My Title", "Some content here."),
+			).rejects.toMatchObject({
+				name: "EmbeddingBatchError",
+				code: "not_configured",
+				chunkIndex: 0,
+			});
+		} finally {
+			Object.assign(config, {
+				EMBEDDING_BASE_URL: originalEmbeddingConfig.baseUrl,
+				EMBEDDING_API_KEY: originalEmbeddingConfig.apiKey,
+				EMBEDDING_MODEL: originalEmbeddingConfig.model,
+				EMBEDDING_FALLBACK_BASE_URL: originalEmbeddingConfig.fallbackBaseUrl,
+				EMBEDDING_FALLBACK_API_KEY: originalEmbeddingConfig.fallbackApiKey,
+				EMBEDDING_FALLBACK_MODEL: originalEmbeddingConfig.fallbackModel,
+			});
+		}
 	});
 
 	test("multi-chunk behaviour is covered by chunker.test.ts", () => {

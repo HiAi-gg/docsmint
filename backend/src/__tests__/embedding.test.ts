@@ -51,10 +51,16 @@ function responseFor(embedding: number[], status = 200): Response {
 	});
 }
 
+async function loadEmbeddingModule() {
+	// Bun query suffix bypasses process-global integration mock.module registrations.
+	// @ts-expect-error Bun resolves the query-suffixed module at runtime.
+	return import("../embedding/index?unit");
+}
+
 describe("embedding providers", () => {
 	test("getEmbedding returns an explicit result when unavailable", async () => {
 		configureEmbeddingProviders({});
-		const mod = await import("../embedding/index");
+		const mod = await loadEmbeddingModule();
 		const result = await mod.getEmbedding("test text");
 		expect(result.ok).toBe(false);
 		if (!result.ok) expect(result.code).toBe("not_configured");
@@ -65,7 +71,7 @@ describe("embedding providers", () => {
 		globalThis.fetch = (async () =>
 			responseFor(vector(0.1))) as unknown as typeof fetch;
 
-		const { getEmbedding } = await import("../embedding/index");
+		const { getEmbedding } = await loadEmbeddingModule();
 		const result = await getEmbedding("primary text");
 
 		expect(result).toMatchObject({
@@ -85,7 +91,7 @@ describe("embedding providers", () => {
 				: responseFor(vector(0.2));
 		}) as unknown as typeof fetch;
 
-		const { getEmbedding } = await import("../embedding/index");
+		const { getEmbedding } = await loadEmbeddingModule();
 		const result = await getEmbedding("fallback text");
 
 		expect(result).toMatchObject({
@@ -103,7 +109,7 @@ describe("embedding providers", () => {
 				: responseFor(vector(0.3));
 		}) as unknown as typeof fetch;
 
-		const { getEmbedding } = await import("../embedding/index");
+		const { getEmbedding } = await loadEmbeddingModule();
 		const result = await getEmbedding("invalid primary");
 
 		expect(result).toMatchObject({ ok: true, provider: "fallback" });
@@ -114,7 +120,7 @@ describe("embedding providers", () => {
 		globalThis.fetch = (async () =>
 			responseFor(vector(0))) as unknown as typeof fetch;
 
-		const { getEmbedding } = await import("../embedding/index");
+		const { getEmbedding } = await loadEmbeddingModule();
 		const result = await getEmbedding("invalid providers");
 
 		expect(result).toMatchObject({
@@ -129,7 +135,7 @@ describe("embedding providers", () => {
 		configureEmbeddingProviders({ primary: true });
 		globalThis.fetch = (async () =>
 			responseFor(vector(0.1))) as unknown as typeof fetch;
-		const mod = await import("../embedding/index");
+		const mod = await loadEmbeddingModule();
 		const result = await mod.embedDocument(
 			"Test Title",
 			"Short content for test.",
