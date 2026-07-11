@@ -9,6 +9,7 @@ DO $$ BEGIN
   CREATE TYPE "pipeline_status" AS ENUM ('pending', 'processing', 'ready', 'retrying', 'failed', 'skipped', 'cancelled');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+ALTER TYPE "pipeline_status" ADD VALUE IF NOT EXISTS 'ready_with_warnings';
 
 CREATE TABLE IF NOT EXISTS "document_pipeline_runs" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,

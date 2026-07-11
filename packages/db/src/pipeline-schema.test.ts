@@ -22,6 +22,7 @@ describe("BullMQ pipeline state schema", () => {
 			"ready",
 			"retrying",
 			"failed",
+			"ready_with_warnings",
 			"skipped",
 			"cancelled",
 		]);

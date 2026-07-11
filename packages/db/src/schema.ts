@@ -52,6 +52,7 @@ export const pipelineStatusEnum = pgEnum("pipeline_status", [
   "ready",
   "retrying",
   "failed",
+  "ready_with_warnings",
   "skipped",
   "cancelled",
 ]);
