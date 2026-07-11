@@ -433,7 +433,13 @@ function parseExtractionResponse(raw: string): ExtractedEntity[] {
 
 	const out: ExtractedEntity[] = [];
 	const seen = new Set<string>();
-	const minConf = config.GRAPH_EXTRACT_MIN_CONFIDENCE;
+	// Keep the parser deterministic even when a test/provider supplies a
+	// partial config object (Bun module mocks and embedded consumers may omit
+	// optional fields). The public runtime schema defaults this to 0.5.
+	const minConf =
+		typeof config.GRAPH_EXTRACT_MIN_CONFIDENCE === "number"
+			? config.GRAPH_EXTRACT_MIN_CONFIDENCE
+			: 0.5;
 	for (const entry of entities) {
 		if (!entry || typeof entry !== "object") continue;
 		const e = entry as Record<string, unknown>;
