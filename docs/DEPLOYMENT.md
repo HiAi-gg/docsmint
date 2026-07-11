@@ -71,7 +71,7 @@ Copy `.env.example` and fill in:
 | `GRAPH_EXTRACT_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Extract entities after a complete valid embedding generation |
 | `GRAPH_SEARCH_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable automatic graph-neighbor expansion in normal search; operator kill switch |
 | `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | `https://openrouter.ai/api/v1` | OpenAI-compatible chat-completion URL for entity extraction LLM |
-| `GRAPH_EXTRACT_API_KEY` | If extraction enabled | — | API key for extraction LLM |
+| `GRAPH_EXTRACT_API_KEY` | If extraction enabled for a custom/non-OpenRouter host | — | Dedicated API key for the extraction LLM; OpenRouter hosts may inherit `OPENROUTER_API_KEY` |
 | `GRAPH_EXTRACT_MODEL` | No | `mistralai/ministral-14b-2512` | Primary extraction model |
 | `GRAPH_EXTRACT_REASONING_EFFORT` | No | — | OpenAI-compatible reasoning control; use `none` for Ollama Qwen3 |
 | `GRAPH_EXTRACT_TIMEOUT_MS` | No | `120000` | Entity extraction request timeout in milliseconds |
@@ -159,7 +159,7 @@ Copy `.env.example` and fill in:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `GRAPH_EXTRACT_FALLBACK_BASE_URL` | No | `https://openrouter.ai/api/v1` | Fallback extraction LLM base URL |
-| `GRAPH_EXTRACT_FALLBACK_API_KEY` | No | — | Fallback extraction LLM API key |
+| `GRAPH_EXTRACT_FALLBACK_API_KEY` | If fallback uses a custom/non-OpenRouter host | — | Dedicated fallback extraction key; an exact OpenRouter fallback may inherit `OPENROUTER_API_KEY` |
 | `GRAPH_EXTRACT_FALLBACK_MODEL` | No | `google/gemma-4-31b-it` | Fallback extraction model name |
 
 ### SeaweedFS Public Endpoint
@@ -197,7 +197,7 @@ GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 ```
 
-Both extraction and graph search are enabled in the copied reference profile because GraphRAG is a core hiai-docs feature. The runtime schema retains fail-safe `false` fallbacks only when no environment file is supplied. Both extraction providers reuse `OPENROUTER_API_KEY` only for exact OpenRouter hosts unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
+Both extraction and graph search are enabled in the copied reference profile because GraphRAG is a core hiai-docs feature. The runtime schema retains fail-safe `false` fallbacks only when no environment file is supplied. For an exact OpenRouter base URL, each extraction provider may inherit `OPENROUTER_API_KEY`; a custom or non-OpenRouter base URL requires its own dedicated `GRAPH_EXTRACT_API_KEY` or `GRAPH_EXTRACT_FALLBACK_API_KEY`. The shared OpenRouter key is never forwarded to a non-OpenRouter URL.
 
 ## Production Considerations
 
@@ -259,12 +259,26 @@ until a complete replacement is validated and atomically activated:
 bun run db:migrate
 cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100
 cd backend && bun run src/scripts/reindex-embeddings.ts --batch=100
-cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700
+cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/run/secrets/hiai-docs-benchmark-owners.json
 ```
 
-The benchmark resolves `HIAI_DOCS_API_KEY` (or `BENCHMARK_API_KEY`) from the
-environment, stdin, or an explicitly configured file. Do not pass credentials
-on the command line. The benchmark fixture checks multilingual recall,
+The benchmark requires two separate credential scopes. The operator credential
+for admin metrics is resolved from `HIAI_DOCS_API_KEY` (or `BENCHMARK_API_KEY`)
+via the environment, stdin, or an explicitly configured file. Search probes
+require a JSON map keyed by every fixture owner ID; keep that file outside the
+repository with restrictive permissions. Safe example (placeholders only):
+
+```json
+{
+  "owner-a": { "authorization": "Bearer replace-with-owner-a-token" },
+  "owner-b": { "cookie": "better-auth.session_token=replace-with-owner-b-session" }
+}
+```
+
+The command above reads that map from
+`/run/secrets/hiai-docs-benchmark-owners.json`. Never pass the operator API key
+or an owner credential as an argv value (`--api-key=...` is rejected); argv is
+visible to process inspection and shell history. The benchmark fixture checks multilingual recall,
 typos, thematic and graph retrieval, explanation labels, invalid-vector
 exclusion, expansion coverage, latency, and tenant leakage. Release gates are
 Recall@10 ≥ 0.90, MRR@10 ≥ 0.80, zero active invalid vectors, fast p95 ≤ 500 ms,

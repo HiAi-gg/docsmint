@@ -2,6 +2,21 @@
 
 > Use this checklist for every release. Tick items as they are completed.
 
+## Current Task 10 Verification Status (2026-07-11)
+
+This section records the current evidence before any public release action:
+
+| Check | Status |
+|-------|--------|
+| Backend tests | 569 passed / 7 known embedding-provider mock failures |
+| Frontend tests | 55 passed / 0 failed |
+| Docker image export | Incomplete; backend/web builds reached the final runtime `chown` layers, but export was interrupted |
+| Fresh database migration | Blocked by migration `0008_streaming_diskann_index.sql`; the local PostgreSQL image lacks the required `diskann` access method |
+| Public release actions | Not performed: no publish, tag, GitHub release, Docker push, npm publish, or Git push |
+
+These blockers must remain visible in the release evidence; they are not
+release approvals or reasons to mark the corresponding checklist items done.
+
 ## Pre-Release
 
 - [ ] **Bump version** — Update version in all 9 files:
@@ -30,7 +45,7 @@
 - [ ] **Run lint** — `bun run lint` (0 errors)
 - [ ] **Run secret scans** — no real OpenRouter token values or real `OPENROUTER_API_KEY` outside ignored local `.env`; no unfinished markers in release files
 - [ ] **Run migration/reindex dry-run** — `bun run db:migrate` then `cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100`
-- [ ] **Run relevance benchmark** — `cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700`; credential must come from environment/stdin/file, never argv
+- [ ] **Run relevance benchmark** — `cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/run/secrets/hiai-docs-benchmark-owners.json`; operator credential comes from `HIAI_DOCS_API_KEY`/`BENCHMARK_API_KEY` via environment/stdin/file, owner credentials come from the protected JSON map, and no credential is ever passed in argv
 - [ ] **Verify benchmark gates** — Recall@10 ≥ 0.90, MRR@10 ≥ 0.80, fast p95 ≤ 500 ms, expanded p95 ≤ 2.5 s, zero active invalid vectors, and zero tenant leakage
 - [ ] **Verify fresh and upgraded databases** — apply migrations 0000–0025, reindex fixtures, and record the DiskANN access-method blocker if the configured image cannot provide it
 
