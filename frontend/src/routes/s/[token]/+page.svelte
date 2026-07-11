@@ -13,7 +13,11 @@ import {
 	Lock,
 } from "lucide-svelte";
 import { tick, untrack } from "svelte";
-import { createDocxImageFetcher } from "$lib/components/editor/docx-export";
+import {
+	createDocxImageFetcher,
+	createPlainTextDocxBlob,
+	normalizeDocxDocumentJson,
+} from "$lib/components/editor/docx-export";
 import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
@@ -233,7 +237,7 @@ async function handleExportDocx() {
 			json = markdownToJson(doc.content || "");
 		}
 		const schema = getSchema(editorExtensions);
-		const docNode = Node.fromJSON(schema, json);
+		const docNode = Node.fromJSON(schema, normalizeDocxDocumentJson(json));
 		const imageFetcher = createDocxImageFetcher({
 			headers: sharedAttachmentHeaders(data.token ?? "", verifiedPassword),
 		});
@@ -257,29 +261,14 @@ async function handleExportDocx() {
 		URL.revokeObjectURL(url);
 	} catch (err) {
 		console.error("Failed to export to DOCX:", err);
-		fallbackHtmlDocx(doc);
+		await fallbackPlainTextDocx(doc);
 	}
 
-	function fallbackHtmlDocx(docItem: { title: string; content: string }) {
-		const htmlContent = renderDocumentContent(docItem);
-		const docHtml = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head><title>${docItem.title}</title>
-<style>
-body { font-family: Arial, sans-serif; line-height: 1.6; }
-h1 { font-size: 24pt; font-weight: bold; margin-top: 12pt; margin-bottom: 6pt; }
-p { margin-bottom: 6pt; }
-</style>
-</head>
-<body>
-<h1>${docItem.title}</h1>
-${htmlContent}
-</body>
-</html>
-		`;
-		const blob = new Blob([docHtml], {
-			type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		});
+	async function fallbackPlainTextDocx(docItem: {
+		title: string;
+		content: string;
+	}) {
+		const blob = await createPlainTextDocxBlob(docItem.title, docItem.content);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;

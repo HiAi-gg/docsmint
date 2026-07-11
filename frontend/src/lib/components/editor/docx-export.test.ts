@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { createDocxImageFetcher } from "./docx-export";
+import {
+	createDocxImageFetcher,
+	createPlainTextDocxBlob,
+	normalizeDocxDocumentJson,
+} from "./docx-export";
 
 const ONE_PIXEL_PNG =
 	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
@@ -92,5 +96,41 @@ describe("createDocxImageFetcher", () => {
 		await expect(
 			fetcher.getImageBuffer("/api/attachments/1/raw"),
 		).rejects.toThrow("size limit");
+	});
+});
+
+describe("DOCX document compatibility", () => {
+	test("converts task lists into supported bullet lists", () => {
+		const normalized = normalizeDocxDocumentJson({
+			type: "doc",
+			content: [
+				{
+					type: "taskList",
+					content: [
+						{
+							type: "taskItem",
+							attrs: { checked: true },
+							content: [
+								{
+									type: "paragraph",
+									content: [{ type: "text", text: "done" }],
+								},
+							],
+						},
+					],
+				},
+			],
+		});
+
+		expect(normalized.content[0]?.type).toBe("bulletList");
+		expect(normalized.content[0]?.content?.[0]?.type).toBe("listItem");
+		expect(normalized.content[0]?.content?.[0]?.attrs).toBeUndefined();
+	});
+
+	test("plain-text fallback is a valid ZIP-based DOCX", async () => {
+		const blob = await createPlainTextDocxBlob("Title", "Line one\nLine two");
+		const bytes = new Uint8Array(await blob.arrayBuffer());
+		expect(String.fromCharCode(...bytes.slice(0, 2))).toBe("PK");
+		expect(blob.type).toContain("wordprocessingml.document");
 	});
 });

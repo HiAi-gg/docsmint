@@ -1,3 +1,5 @@
+import { Document, Packer, Paragraph, TextRun } from "docx";
+
 const DEFAULT_MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 
 export type DocxImageType = "jpg" | "png" | "gif" | "bmp";
@@ -21,6 +23,56 @@ export interface DocxImageFetcher {
 interface ResolvedImage {
 	buffer: Uint8Array;
 	type: DocxImageType;
+}
+
+type ProseMirrorJsonNode = {
+	type?: string;
+	attrs?: Record<string, unknown>;
+	content?: ProseMirrorJsonNode[];
+	[key: string]: unknown;
+};
+
+/** Convert editor-only task nodes to structures supported by prosemirror-docx. */
+export function normalizeDocxDocumentJson<T extends object>(document: T): T {
+	const normalizeNode = (node: ProseMirrorJsonNode): ProseMirrorJsonNode => {
+		const normalizedType =
+			node.type === "taskList"
+				? "bulletList"
+				: node.type === "taskItem"
+					? "listItem"
+					: node.type;
+		const normalized: ProseMirrorJsonNode = {
+			...node,
+			...(normalizedType ? { type: normalizedType } : {}),
+			...(node.content
+				? { content: node.content.map((child) => normalizeNode(child)) }
+				: {}),
+		};
+		if (node.type === "taskItem") delete normalized.attrs;
+		return normalized;
+	};
+
+	return normalizeNode(document as ProseMirrorJsonNode) as T;
+}
+
+/** Always produce a valid DOCX if the rich serializer rejects an unknown node. */
+export async function createPlainTextDocxBlob(
+	title: string,
+	content: string,
+): Promise<Blob> {
+	const document = new Document({
+		sections: [
+			{
+				children: [
+					new Paragraph({
+						children: [new TextRun({ text: title, bold: true })],
+					}),
+					...content.split(/\r?\n/).map((line) => new Paragraph(line)),
+				],
+			},
+		],
+	});
+	return Packer.toBlob(document);
 }
 
 const MIME_TO_TYPE: Record<string, DocxImageType> = {
