@@ -12,7 +12,7 @@
 | Build | PASS |
 | SDK build | PASS |
 | Compose config | PASS |
-| Backend tests | 569 passed / 7 known embedding-provider mock failures |
+| Backend tests | PASS — 576 passed / 0 failed |
 | Frontend tests | 55 passed / 0 failed |
 | Health checks | BLOCKED — live stack and in-container health probe not run |
 | Browser smoke | BLOCKED — agent-browser visual verification not run |
@@ -31,10 +31,10 @@ The assembled-worktree verification on 2026-07-11 is not a release approval:
 
 | Check | Current evidence |
 |-------|------------------|
-| Backend tests | 569 passed / 7 known embedding-provider mock failures; failures are recorded and are not documentation regressions |
+| Backend tests | 576 passed / 0 failed after isolating the process-global integration mock from provider unit tests |
 | Frontend tests | 55 passed / 0 failed |
 | Typecheck, lint, build, SDK build | PASS in the assembled worktree |
-| Compose config | PASS (`docker compose config --quiet`) |
+| Compose config | PASS (`docker compose --env-file .env.example config --quiet`) |
 | Health checks | Not run against the assembled stack |
 | Search benchmark | Not run against a live API; Recall/MRR/latency/leakage gates are therefore unverified |
 | Browser smoke | Not run with agent-browser |
@@ -82,7 +82,8 @@ bun run db:migrate
 ## Testing and release gates
 
 Run `bun run test`, `bun run lint`, `bun run typecheck`, `bun run --filter '*'
-build`, and `docker compose config --quiet` from the repository root. Run the
+build`, and `docker compose --env-file .env.example config --quiet` from the
+repository root. Run the
 generation-aware reindex dry-run and then:
 
 ```bash
@@ -113,8 +114,6 @@ count, and tenant-leakage result in the release report.
   migration 0008. Fresh-chain migration verification remains blocked until the
   configured image exposes that access method or the migration is made
   conditional.
-- The existing provider-mock suite may retain seven pre-existing failures when
-  no live embedding endpoint is configured. Report those failures verbatim.
 - No public release, tag, npm publish, Docker push, or GitHub push is authorized
   by this document; those are separate explicit release actions.
 
