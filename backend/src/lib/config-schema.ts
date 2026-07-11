@@ -12,6 +12,99 @@ export const envSchema = z.object({
 		.string()
 		.default("postgresql://hiai_app:changeme@localhost:5437/hiai_docs"),
 	REDIS_URL: z.string().default("redis://localhost:6384"),
+	AI_PROVIDER: z.enum(["openrouter", "ollama"]).default("openrouter"),
+	OLLAMA_PORT: z.coerce.number().int().min(1).max(65535).default(11_434),
+	EMBEDDING_OLLAMA_URL: z.string().url().optional(),
+	QUEUE_PREPARE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_EMBED_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(3),
+	QUEUE_GRAPH_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_SUMMARY_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(1),
+	QUEUE_FINALIZE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_EMBED_BATCH_SIZE: z.coerce.number().int().min(1).max(32).default(5),
+	QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(2),
+	QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(2),
+	QUEUE_MAX_ACTIVE_EMBED_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(4),
+	QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(1),
+	QUEUE_JOB_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+	QUEUE_RETRY_BASE_DELAY_MS: z.coerce
+		.number()
+		.int()
+		.min(100)
+		.max(300_000)
+		.default(1_000),
+	QUEUE_RECOVERY_STALE_AFTER_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(86_400_000)
+		.default(120_000),
+	QUEUE_COMPLETED_RETENTION_COUNT: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(1_000),
+	QUEUE_FAILED_RETENTION_COUNT: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(5_000),
+	QUEUE_SHUTDOWN_GRACE_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(300_000)
+		.default(30_000),
+	PROVIDER_LIMITER_MODE: z
+		.enum(["disabled", "local", "remote"])
+		.default("remote"),
+	PROVIDER_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+	PROVIDER_REQUESTS_PER_MINUTE: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(0),
+	PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+	PROVIDER_RETRY_BASE_DELAY_MS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(300_000)
+		.default(250),
+	PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(100)
+		.default(5),
+	PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(3_600_000)
+		.default(30_000),
 	STORAGE_ENDPOINT: z.string().default("localhost"),
 	STORAGE_PORT: z.coerce.number().default(9020),
 	STORAGE_PUBLIC_ENDPOINT: z.string().default("localhost"),

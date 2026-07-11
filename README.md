@@ -43,6 +43,9 @@ is the only file a user ever needs to edit:
 | OpenRouter (default) | Set `OPENROUTER_API_KEY=sk-or-...` | `text-embedding-3-small` → `bge-m3`; Ministral → Gemma for GraphRAG/search |
 | Ollama | Set `AI_PROVIDER=ollama`; optionally change `OLLAMA_PORT` | `bge-m3` embeddings; `qwen3:8b` for extraction/search |
 
+Queue concurrency, retry, recovery, and provider limiter knobs are documented in
+[Deployment: BullMQ pipeline and local Ollama](docs/DEPLOYMENT.md#bullmq-pipeline-and-local-ollama).
+
 After changing the provider value later, run the same command again:
 
 ```bash

@@ -57,7 +57,7 @@ Redis/BullMQ is the execution transport. Local API usage has no artificial
 per-user document or job quota. Authentication, payload-size limits, database
 constraints, and infrastructure backpressure still apply.
 
-The planned worker defaults are:
+The validated runtime worker defaults are:
 
 | Knob | Default |
 |------|---------|

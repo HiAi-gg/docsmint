@@ -156,6 +156,34 @@ describe("config schema", () => {
 		}
 	});
 
+	test("loads bounded BullMQ and provider limiter defaults", () => {
+		const result = realEnvSchema.safeParse({});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.data.QUEUE_EMBED_CONCURRENCY).toBe(3);
+		expect(result.data.QUEUE_EMBED_BATCH_SIZE).toBe(5);
+		expect(result.data.QUEUE_JOB_ATTEMPTS).toBe(5);
+		expect(result.data.PROVIDER_LIMITER_MODE).toBe("remote");
+		expect(result.data.PROVIDER_REQUESTS_PER_MINUTE).toBe(0);
+		expect(result.data.OLLAMA_PORT).toBe(11434);
+	});
+
+	test("rejects unsafe queue and provider runtime bounds", () => {
+		expect(
+			realEnvSchema.safeParse({ QUEUE_EMBED_CONCURRENCY: 0 }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ QUEUE_EMBED_BATCH_SIZE: 33 }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ PROVIDER_LIMITER_MODE: "invalid" }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ PROVIDER_REQUESTS_PER_MINUTE: -1 }).success,
+		).toBe(false);
+		expect(realEnvSchema.safeParse({ OLLAMA_PORT: 70000 }).success).toBe(false);
+	});
+
 	test("accepts custom search expansion provider settings", () => {
 		const result = realEnvSchema.safeParse({
 			OWNER_ID: "00000000-0000-4000-8000-000000000001",
