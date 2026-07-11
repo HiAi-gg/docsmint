@@ -26,12 +26,12 @@ import {
 	planDuplicateAttachments,
 	rewriteDuplicateAttachmentReferences,
 } from "../../lib/duplicate-attachments";
-import { enqueueDocumentPipeline } from "../../queue/enqueue";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { BUCKET, storage } from "../../lib/storage";
 import { maybePruneVersions } from "../../lib/version-prune";
 import { withTenant } from "../../lib/with-tenant";
+import { enqueueDocumentPipeline } from "../../queue/enqueue";
 import {
 	documentRateLimiter,
 	rateLimitHeaders,
@@ -383,7 +383,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				ownerId: userId,
 				revision: contentHash(created.title, created.content ?? ""),
 				source: "interactive",
-			}).catch((err) => logger.warn({ err, documentId: created.id }, "Pipeline enqueue failed"));
+			}).catch((err) =>
+				logger.warn({ err, documentId: created.id }, "Pipeline enqueue failed"),
+			);
 			invalidateDocListCache(userId);
 			set.status = 201;
 
@@ -419,28 +421,31 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const [run] = await withTenant(ctx, (tx) =>
-				tx.select({
-					documentId: documentPipelineRuns.documentId,
-					generationId: documentPipelineRuns.generationId,
-					revision: documentPipelineRuns.revision,
-					status: documentPipelineRuns.status,
-					prepareStatus: documentPipelineRuns.prepareStatus,
-					embedStatus: documentPipelineRuns.embedStatus,
-					graphStatus: documentPipelineRuns.graphStatus,
-					summarizeStatus: documentPipelineRuns.summarizeStatus,
-					finalizeStatus: documentPipelineRuns.finalizeStatus,
-					totalBatches: documentPipelineRuns.totalBatches,
-					completedBatches: documentPipelineRuns.completedBatches,
-					failedBatches: documentPipelineRuns.failedBatches,
-					updatedAt: documentPipelineRuns.updatedAt,
-				})
-				.from(documentPipelineRuns)
-				.where(and(
-					eq(documentPipelineRuns.documentId, params.id),
-					eq(documentPipelineRuns.ownerId, ctx.userId),
-				))
-				.orderBy(desc(documentPipelineRuns.updatedAt))
-				.limit(1),
+				tx
+					.select({
+						documentId: documentPipelineRuns.documentId,
+						generationId: documentPipelineRuns.generationId,
+						revision: documentPipelineRuns.revision,
+						status: documentPipelineRuns.status,
+						prepareStatus: documentPipelineRuns.prepareStatus,
+						embedStatus: documentPipelineRuns.embedStatus,
+						graphStatus: documentPipelineRuns.graphStatus,
+						summarizeStatus: documentPipelineRuns.summarizeStatus,
+						finalizeStatus: documentPipelineRuns.finalizeStatus,
+						totalBatches: documentPipelineRuns.totalBatches,
+						completedBatches: documentPipelineRuns.completedBatches,
+						failedBatches: documentPipelineRuns.failedBatches,
+						updatedAt: documentPipelineRuns.updatedAt,
+					})
+					.from(documentPipelineRuns)
+					.where(
+						and(
+							eq(documentPipelineRuns.documentId, params.id),
+							eq(documentPipelineRuns.ownerId, ctx.userId),
+						),
+					)
+					.orderBy(desc(documentPipelineRuns.updatedAt))
+					.limit(1),
 			);
 			if (!run) {
 				set.status = 404;
@@ -466,7 +471,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				updatedAt: run.updatedAt,
 			};
 		} catch (err) {
-			logger.error({ err, documentId: params.id }, "Failed to load pipeline progress");
+			logger.error(
+				{ err, documentId: params.id },
+				"Failed to load pipeline progress",
+			);
 			set.status = 500;
 			return { error: "Failed to load pipeline progress" };
 		}
@@ -838,12 +846,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return row;
 			});
 
-				void enqueueDocumentPipeline({
-					documentId: copy.id,
-					ownerId: userId,
-					revision: contentHash(copy.title, copy.content ?? ""),
-					source: "interactive",
-				}).catch((err) => logger.warn({ err, documentId: copy.id }, "Pipeline enqueue failed"));
+			void enqueueDocumentPipeline({
+				documentId: copy.id,
+				ownerId: userId,
+				revision: contentHash(copy.title, copy.content ?? ""),
+				source: "interactive",
+			}).catch((err) =>
+				logger.warn({ err, documentId: copy.id }, "Pipeline enqueue failed"),
+			);
 			invalidateDocListCache(userId);
 			set.status = 201;
 			return copy;
@@ -1131,7 +1141,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					ownerId: userId,
 					revision: row.revision,
 					source: "import",
-				}).catch((err) => logger.warn({ err, documentId: row.id }, "Pipeline enqueue failed"));
+				}).catch((err) =>
+					logger.warn({ err, documentId: row.id }, "Pipeline enqueue failed"),
+				);
 			}
 
 			set.status = 201;
