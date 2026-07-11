@@ -22,6 +22,7 @@ import {
 	type ProseMirrorDoc,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
+	waitForSharedDocumentImages,
 } from "$lib/components/editor/shared-document";
 import ScrollToTop from "$lib/components/ScrollToTop.svelte";
 import * as m from "$lib/paraglide/messages.js";
@@ -288,10 +289,17 @@ ${htmlContent}
 	}
 }
 
-function handleExportPdf() {
+async function handleExportPdf() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const htmlContent = renderDocumentContent(doc);
+	const printRoot = document.createElement("div");
+	printRoot.innerHTML = renderDocumentContent(doc);
+	const objectUrls = await hydrateSharedAttachmentImages(
+		printRoot,
+		data.token ?? "",
+		verifiedPassword,
+	);
+	const htmlContent = printRoot.innerHTML;
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -303,7 +311,11 @@ function handleExportPdf() {
 	document.body.appendChild(iframe);
 
 	const iframeDoc = iframe.contentWindow?.document;
-	if (!iframeDoc) return;
+	if (!iframeDoc) {
+		iframe.remove();
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+		return;
+	}
 
 	iframeDoc.open();
 	iframeDoc.write(`
@@ -356,18 +368,24 @@ img { max-width: 100%; height: auto; }
 <body>
 <h1>${doc.title}</h1>
 ${htmlContent}
-\x3Cscript>
-window.onload = function() {
-	window.print();
-	setTimeout(function() {
-		window.frameElement.remove();
-	}, 100);
-};
-\x3C/script>
 </body>
 </html>
 	`);
 	iframeDoc.close();
+	await waitForSharedDocumentImages(iframeDoc);
+
+	let cleanedUp = false;
+	const cleanup = () => {
+		if (cleanedUp) return;
+		cleanedUp = true;
+		iframe.remove();
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+	};
+	iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+	iframe.contentWindow?.focus();
+	iframe.contentWindow?.print();
+	// Some browsers do not emit afterprint when the print dialog is cancelled.
+	setTimeout(cleanup, 60_000);
 }
 
 async function fetchShareSubResource(path: string) {

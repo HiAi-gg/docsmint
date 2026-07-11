@@ -3,6 +3,7 @@ import {
 	hydrateSharedAttachmentImages,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
+	waitForSharedDocumentImages,
 } from "./shared-document";
 
 describe("shared document renderer", () => {
@@ -171,5 +172,23 @@ describe("shared document renderer", () => {
 			globalThis.fetch = originalFetch;
 			globalThis.URL = originalUrl;
 		}
+	});
+
+	test("waits for print images before export", async () => {
+		let decoded = 0;
+		const root = {
+			querySelectorAll: () => [
+				{ complete: true },
+				{
+					complete: false,
+					async decode() {
+						decoded += 1;
+					},
+				},
+			],
+		};
+
+		await waitForSharedDocumentImages(root as unknown as ParentNode);
+		expect(decoded).toBe(1);
 	});
 });

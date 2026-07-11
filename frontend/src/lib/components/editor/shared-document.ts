@@ -204,3 +204,23 @@ export async function hydrateSharedAttachmentImages(
 	);
 	return objectUrls;
 }
+
+/** Wait until every image in a print/export subtree has finished loading. */
+export async function waitForSharedDocumentImages(
+	root: ParentNode,
+): Promise<void> {
+	const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+	await Promise.all(
+		images.map(async (image) => {
+			if (image.complete) return;
+			if (typeof image.decode === "function") {
+				await image.decode().catch(() => undefined);
+				return;
+			}
+			await new Promise<void>((resolve) => {
+				image.addEventListener("load", () => resolve(), { once: true });
+				image.addEventListener("error", () => resolve(), { once: true });
+			});
+		}),
+	);
+}
