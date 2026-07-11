@@ -315,6 +315,7 @@ interface CliArgs {
 	apiKeyFile?: string;
 	apiKeyStdin: boolean;
 	ownerCredentialsFile?: string;
+	fixtureMapFile?: string;
 }
 
 export function parseArgs(
@@ -350,12 +351,59 @@ export function parseArgs(
 			}
 			output.ownerCredentialsFile = value;
 			if (inlineValue === undefined) index += 1;
+		} else if (name === "--fixture-map-file") {
+			if (!value || (inlineValue === undefined && value.startsWith("--"))) {
+				throw new Error("--fixture-map-file requires a file path");
+			}
+			output.fixtureMapFile = value;
+			if (inlineValue === undefined) index += 1;
 		} else if (name === "--k" && value) {
 			output.k = Math.max(1, Number.parseInt(value, 10) || 10);
 			if (inlineValue === undefined) index += 1;
 		}
 	}
 	return output;
+}
+
+interface FixtureMap {
+	version?: string;
+	owners?: Record<string, string>;
+	documents?: Record<string, string>;
+}
+
+async function loadFixtureMap(args: CliArgs): Promise<FixtureMap | null> {
+	const path = args.fixtureMapFile ?? process.env.BENCHMARK_FIXTURE_MAP_FILE;
+	if (!path) return null;
+	const raw = (await Bun.file(path).json()) as FixtureMap;
+	if (!raw || typeof raw !== "object" || !raw.documents) {
+		throw new Error("Fixture map must contain a documents object");
+	}
+	for (const [alias, id] of Object.entries(raw.documents)) {
+		if (!alias || !/^[0-9a-f-]{36}$/i.test(id)) {
+			throw new Error(`Fixture map document ${alias} must map to a UUID`);
+		}
+	}
+	return raw;
+}
+
+function applyFixtureMap(
+	fixture: RelevanceFixture,
+	map: FixtureMap | null,
+): RelevanceFixture {
+	if (!map?.documents) return fixture;
+	const resolve = (id: string): string => map.documents?.[id] ?? id;
+	return {
+		...fixture,
+		documents: fixture.documents.map((doc) => ({
+			...doc,
+			id: resolve(doc.id),
+		})),
+		cases: fixture.cases.map((item) => ({
+			...item,
+			relevantDocumentIds: item.relevantDocumentIds.map(resolve),
+			forbiddenDocumentIds: item.forbiddenDocumentIds.map(resolve),
+		})),
+	};
 }
 
 /** Convert one owner credential input into request headers without logging it. */
@@ -656,7 +704,10 @@ function deltaSamples(
 async function main(): Promise<void> {
 	const args = parseArgs();
 	const apiKey = await loadApiKey(args);
-	const fixture = await loadFixture();
+	const fixture = applyFixtureMap(
+		await loadFixture(),
+		await loadFixtureMap(args),
+	);
 	const ownerCredentials = await loadOwnerCredentials(args, fixture);
 	const metricsBefore = await readMetrics(args.baseUrl, apiKey);
 	const probes = await Promise.all(

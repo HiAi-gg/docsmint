@@ -14,7 +14,8 @@
     "test": "bun test --path-ignore-patterns='*node_modules*' src/ tests/",
     "reembed": "bun run scripts/reembed-all.ts",
     "benchmark:graph": "bun run src/scripts/benchmark-graph.ts",
-    "benchmark:search": "bun run src/scripts/benchmark-search.ts"
+    "benchmark:search": "bun run src/scripts/benchmark-search.ts",
+    "seed:benchmark-search": "bun run src/scripts/seed-benchmark-search.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.2",

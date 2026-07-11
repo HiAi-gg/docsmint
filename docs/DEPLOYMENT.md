@@ -257,10 +257,18 @@ until a complete replacement is validated and atomically activated:
 
 ```bash
 bun run db:migrate
+cd backend && bun run seed:benchmark-search -- --output-dir=/tmp/hiai-docs-benchmark --reset
 cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100
 cd backend && bun run src/scripts/reindex-embeddings.ts --batch=100
-cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/run/secrets/hiai-docs-benchmark-owners.json
+cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/tmp/hiai-docs-benchmark/owner-credentials.json --fixture-map-file=/tmp/hiai-docs-benchmark/fixture-map.json
 ```
+
+The seed command is disposable and refuses to run without `--reset`. It creates
+two real UUID-backed users, eight UUID-backed documents, one chunk per document,
+and writes a 0600 owner credential file plus alias-to-UUID fixture map under
+`/tmp` (never in the repository). The seed vectors are deterministic valid
+1024-dimensional rows so the database shape can be smoke-tested; run the real
+embedding reindex shown above before treating semantic recall gates as valid.
 
 The benchmark requires two separate credential scopes. The operator credential
 for admin metrics is resolved from `HIAI_DOCS_API_KEY` (or `BENCHMARK_API_KEY`)
