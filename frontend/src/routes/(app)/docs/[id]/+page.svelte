@@ -49,6 +49,7 @@ import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { markMarkdownTaskItems } from "$lib/components/editor/shared-document";
 import FolderTreeSelector from "$lib/components/FolderTreeSelector.svelte";
 import SaveAsDialog from "$lib/components/SaveAsDialog.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
@@ -445,7 +446,9 @@ ${htmlContent}
 
 function handleExportPdf() {
 	showMenu = false;
-	const htmlContent = marked.parse(content || "", { async: false }) as string;
+	const htmlContent = markMarkdownTaskItems(
+		marked.parse(content || "", { async: false }) as string,
+	);
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -477,6 +480,7 @@ h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
 p { margin-bottom: 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
+li.task-list-item { list-style: none; margin-left: -20px; }
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;

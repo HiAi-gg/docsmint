@@ -161,6 +161,11 @@ export function renderSharedDocument(doc: ProseMirrorDoc): string {
 	return (doc.content ?? []).map(renderNode).join("");
 }
 
+/** Mark Markdown task items so print/PDF CSS can suppress the regular bullet. */
+export function markMarkdownTaskItems(html: string): string {
+	return html.replace(/<li>(\s*<input\b[^>]*type=["']checkbox["'][^>]*>)/gi, '<li class="task-list-item">$1');
+}
+
 export function sharedAttachmentHeaders(
 	token: string,
 	password = "",

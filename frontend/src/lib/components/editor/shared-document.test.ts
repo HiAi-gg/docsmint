@@ -1,10 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import {
 	hydrateSharedAttachmentImages,
+	markMarkdownTaskItems,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
 	waitForSharedDocumentImages,
 } from "./shared-document";
+
+describe("PDF task-list HTML normalization", () => {
+	test("marks checkbox list items so they do not render a second bullet", () => {
+		const html = '<ul><li><input checked type="checkbox"> done</li></ul>';
+		const normalized = markMarkdownTaskItems(html);
+		expect(normalized).toContain('<li class="task-list-item"><input');
+		expect(normalized).not.toContain('<li><input');
+	});
+});
 
 describe("shared document renderer", () => {
 	test("preserves paragraph and heading alignment", () => {

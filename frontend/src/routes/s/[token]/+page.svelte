@@ -324,6 +324,8 @@ h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
 p { margin-bottom: 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
+ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+ul[data-type="taskList"] li { list-style: none; display: flex; gap: 8px; }
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;
