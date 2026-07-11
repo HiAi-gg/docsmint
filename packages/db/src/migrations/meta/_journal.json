@@ -183,6 +183,13 @@
       "when": 1785000000011,
       "tag": "0025_search_embedding_generations",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785000000012,
+      "tag": "0026_add_chunk_hash",
+      "breakpoints": true
     }
   ]
 }
