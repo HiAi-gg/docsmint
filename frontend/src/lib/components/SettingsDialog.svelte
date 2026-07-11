@@ -23,6 +23,8 @@ let activeTab = $state("profile");
 // Profile
 let name = $state("");
 let email = $state("");
+let currentEmail = $state("");
+let pendingEmail = $state("");
 let profileStatus = $state<"idle" | "saving" | "saved" | "error">("idle");
 let profileError = $state("");
 
@@ -37,7 +39,10 @@ onMount(async () => {
 	try {
 		const profile = await getProfile();
 		if (profile.name) name = profile.name;
-		if (profile.email) email = profile.email;
+		if (profile.email) {
+			email = profile.email;
+			currentEmail = profile.email;
+		}
 	} catch {
 		// use defaults
 	}
@@ -48,6 +53,14 @@ async function saveProfile() {
 	profileError = "";
 	try {
 		await updateProfile({ name });
+		if (email.trim() !== "" && email.trim().toLowerCase() !== currentEmail.toLowerCase()) {
+			const { error } = await authClient.changeEmail({
+				newEmail: email.trim(),
+				callbackURL: "/",
+			});
+			if (error) throw new Error(error.message ?? m.error_generic());
+			pendingEmail = email.trim();
+		}
 		profileStatus = "saved";
 		setTimeout(() => {
 			profileStatus = "idle";
@@ -169,7 +182,11 @@ function close() {
 				</div>
 				<div class="space-y-2">
 					<Label for="settings-email">{m.settings_email()}</Label>
-					<Input id="settings-email" type="email" name="email" bind:value={email} autocomplete="email" disabled />
+			<Input id="settings-email" type="email" name="email" bind:value={email} autocomplete="email" />
+			<p class="text-xs text-muted-foreground">{m.settings_email_change_warning()}</p>
+			{#if pendingEmail}
+				<p class="text-xs text-muted-foreground">Verification is required before the new address becomes active.</p>
+			{/if}
 				</div>
 				{#if profileError}
 					<p class="text-sm text-destructive">{profileError}</p>
