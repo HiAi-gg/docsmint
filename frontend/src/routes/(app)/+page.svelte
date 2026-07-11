@@ -60,6 +60,8 @@ import ImportProgress, {
 } from "$lib/components/ImportProgress.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import * as m from "$lib/paraglide/messages.js";
+import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
 import type { Document, Folder as FolderType } from "$lib/types.js";
 
 const { data } = $props();
@@ -142,6 +144,7 @@ async function saveFolder(name: string) {
 		});
 	}
 	showFolderDialog = false;
+	refreshFolders();
 	await invalidateAll();
 }
 
@@ -159,6 +162,8 @@ async function confirmDeleteFolder() {
 		showDeleteFolderDialog = false;
 		deleteFolderTargetId = null;
 		await invalidateAll();
+		refreshFolders();
+		refreshDocs();
 	} catch (e) {
 		console.error("Failed to delete folder", e);
 	} finally {
@@ -171,6 +176,7 @@ async function handleDeleteDocument(id: string) {
 	try {
 		await apiFetch(`/api/documents/${id}`, { method: "DELETE" });
 		await invalidateAll();
+		refreshDocs();
 	} catch (e) {
 		console.error("Failed to delete document", e);
 	}
@@ -180,6 +186,7 @@ async function handleDuplicateDocument(id: string) {
 	try {
 		await apiFetch(`/api/documents/${id}/duplicate`, { method: "POST" });
 		await invalidateAll();
+		refreshDocs();
 	} catch (e) {
 		console.error("Failed to duplicate document", e);
 	}
@@ -222,6 +229,7 @@ async function handleImportFile(e: Event) {
 		});
 
 		await invalidateAll();
+		refreshDocs();
 	} catch (err) {
 		console.error("Import failed:", err);
 		importItems = importItems.map((item) => ({

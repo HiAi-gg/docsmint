@@ -24,6 +24,11 @@ import {
 } from "@hiai-gg/hiai-ui/components/ui/dialog";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
 import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
+import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
+import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
+import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
+import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import { Loader2 } from "lucide-svelte";
 import * as m from "$lib/paraglide/messages.js";
 
@@ -43,6 +48,14 @@ type SavePayload = {
 	apiPermissionRead: boolean;
 	apiPermissionEdit: boolean;
 	apiPermissionWrite: boolean;
+};
+
+const Select = {
+	Root: SelectRoot,
+	Content: SelectContent,
+	Item: SelectItem,
+	Trigger: SelectTrigger,
+	Value: SelectValue,
 };
 
 let {
@@ -77,16 +90,21 @@ $effect(() => {
 	// want to clobber the user's in-progress text while typing.
 	if (!open) return;
 	name = category?.name ?? "";
-	apiMode =
+	const initialApiMode: ApiMode =
 		category?.apiMode === "category"
 			? "category"
 			: category?.apiMode === "global" || category?.apiMode === "general"
 				? "general"
 				: "unavailable";
+	apiMode = initialApiMode;
 	apiPermissionRead = Boolean(category?.apiPermissionRead);
 	apiPermissionEdit = Boolean(category?.apiPermissionEdit);
 	apiPermissionWrite = Boolean(category?.apiPermissionWrite);
-	if (apiMode === "unavailable") {
+	// Use the non-reactive initial value here. Reading `apiMode` after
+	// assigning it made this effect subscribe to the editable form state,
+	// so every selection immediately reran the reset and appeared not to
+	// persist.
+	if (initialApiMode === "unavailable") {
 		apiPermissionRead = false;
 		apiPermissionEdit = false;
 		apiPermissionWrite = false;
@@ -250,17 +268,27 @@ function close() {
 
 			<div class="space-y-2">
 				<Label for="category-dialog-api-mode">API access</Label>
-				<select
-					id="category-dialog-api-mode"
-					name="apiMode"
-					bind:value={apiMode}
+				<Select.Root
+					type="single"
+					value={apiMode}
 					disabled={busy}
-					class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+					onValueChange={(value: string) => {
+						if (value === "unavailable" || value === "general" || value === "category") {
+							apiMode = value;
+						}
+					}}
 				>
-					<option value="unavailable">Unavailable</option>
-					<option value="general">General</option>
-					<option value="category">Category API</option>
-				</select>
+					<Select.Trigger id="category-dialog-api-mode" class="h-10 w-full">
+						<Select.Value placeholder="Select API access">
+							{apiMode === "unavailable" ? "Unavailable" : apiMode === "general" ? "General" : "Category API"}
+						</Select.Value>
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="unavailable">Unavailable</Select.Item>
+						<Select.Item value="general">General</Select.Item>
+						<Select.Item value="category">Category API</Select.Item>
+					</Select.Content>
+				</Select.Root>
 			</div>
 
 			{#if apiMode !== "unavailable"}

@@ -27,7 +27,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { ChevronRight, Folder, MoreVertical, Share2 } from "lucide-svelte";
+import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";
 import { goto } from "$app/navigation";
@@ -272,7 +272,6 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 					{m.dashboard_new_document()}
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => onShare(folder.id, folder.name)}>
-					<Share2 class="size-3.5" />
 					{m.doc_share()}
 				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => onRename(folder.id, folder.name)}>

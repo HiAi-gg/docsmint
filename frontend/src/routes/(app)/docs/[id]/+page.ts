@@ -1,5 +1,6 @@
 import { redirect } from "@sveltejs/kit";
 import { createDocument, getDocument } from "$lib/api/documents";
+import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
 import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ params, fetch, url }) => {
@@ -22,6 +23,7 @@ export const load: PageLoad = async ({ params, fetch, url }) => {
 		}
 
 		if (doc) {
+			refreshDocs();
 			throw redirect(303, `/docs/${doc.id}`);
 		}
 

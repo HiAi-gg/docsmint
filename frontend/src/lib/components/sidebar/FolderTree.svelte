@@ -44,7 +44,6 @@ import {
 	MoreVertical,
 	Pencil,
 	Plus,
-	Share2,
 	Trash2,
 } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
@@ -1469,7 +1468,6 @@ const buckets = $derived.by(() => {
         {m.folders_rename()}
       </DropdownMenuItem>
       <DropdownMenuItem onSelect={() => openShareDialogForDocument(doc.id, doc.title)}>
-        <Share2 class="size-3.5" />
         {m.doc_share()}
       </DropdownMenuItem>
       <DropdownMenuItem

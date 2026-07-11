@@ -55,6 +55,7 @@ import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
+import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
@@ -649,6 +650,7 @@ async function handleCreateFolder() {
 	try {
 		const created = await createFolder({ name });
 		folders = [...folders, created];
+		refreshFolders();
 		await moveToFolder(created.id);
 	} catch (_e) {
 		setError(m.error_generic());
