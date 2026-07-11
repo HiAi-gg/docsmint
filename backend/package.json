@@ -18,6 +18,8 @@
     "seed:benchmark-search": "bun run src/scripts/seed-benchmark-search.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.750.0",
+    "@aws-sdk/s3-request-presigner": "^3.750.0",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/swagger": "^1.3.1",
     "@hiai-docs/db": "workspace:*",
@@ -28,13 +30,12 @@
     "@tiptap/html": "^3.27.1",
     "@tiptap/starter-kit": "^3.27.1",
     "better-auth": "^1.6.22",
+    "bullmq": "^5.80.2",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.29",
     "ioredis": "^5.11.1",
     "mammoth": "^1.9.0",
     "marked": "^18.0.5",
-    "@aws-sdk/client-s3": "^3.750.0",
-    "@aws-sdk/s3-request-presigner": "^3.750.0",
     "nanoid": "^5.1.16",
     "pino": "^10.3.1",
     "postgres": "^3.4.9",
