@@ -342,3 +342,12 @@ describe("Search API key contract", () => {
     expect(API_KEY).toBe("test-api-key-for-routes-32chars-xxx");
   });
 });
+
+describe("GET /api/search — automatic GraphRAG contract", () => {
+  it("keeps legacy graph parameters non-authoritative and marks them deprecated", async () => {
+    const res = await authedGet("/api/search?q=hello&graph=true&graphHops=3&graphBoost=1");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("deprecation")).toBe("true");
+    expect((res.body as any).items).toEqual([]);
+  });
+});

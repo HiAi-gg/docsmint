@@ -747,6 +747,7 @@ function goToPage(page: number) {
           tags={result.tags ?? []}
           createdAt={result.created_at}
           query={data.query}
+          explanations={result.explanations ?? []}
         />
       {/each}
     </div>

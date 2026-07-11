@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Calendar, Check, Folder, Tag } from "lucide-svelte";
 import { goto } from "$app/navigation";
+import type { SearchExplanation } from "$lib/api/search";
 import * as m from "$lib/paraglide/messages.js";
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
 	 * the result is at the top of the list.
 	 */
 	titleMatch?: boolean;
+	explanations?: SearchExplanation[];
 }
 
 const {
@@ -31,6 +33,7 @@ const {
 	createdAt,
 	query = "",
 	titleMatch = false,
+	explanations = [],
 }: Props = $props();
 
 const highlightedSnippet = $derived(highlightText(snippet, query));
@@ -113,6 +116,16 @@ function highlightText(text: string, q: string): string {
   >
     {@html highlightedSnippet}
   </p>
+
+  {#if explanations.length > 0}
+    <div class="mt-3 flex flex-wrap gap-1.5" aria-label="Search match explanations">
+      {#each explanations.slice(0, 3) as explanation, index (index)}
+        <span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+          {explanation.label}
+        </span>
+      {/each}
+    </div>
+  {/if}
 
   <!-- Meta row: folder + tags + date -->
   <div

@@ -2,6 +2,20 @@ import { apiFetch } from "$lib/api/client";
 
 // --- Types -------------------------------------------------------------------
 
+export interface SearchExplanation {
+	channel:
+		| "exact"
+		| "fts"
+		| "fuzzy"
+		| "vector"
+		| "expanded_fts"
+		| "expanded_fuzzy"
+		| "expanded_vector"
+		| "graph";
+	label: string;
+	queryVariant?: string;
+}
+
 export interface SearchResult {
 	id: string;
 	title: string;
@@ -11,6 +25,7 @@ export interface SearchResult {
 	folder_name?: string | null;
 	created_at: string;
 	updated_at: string;
+	explanations?: SearchExplanation[];
 	tags?: Array<{ id: string; name: string; color: string | null }>;
 }
 
@@ -43,7 +58,8 @@ export type SearchSort =
 	| "name_desc";
 
 /**
- * Full hybrid search (text + semantic).
+ * Adaptive multilingual search. GraphRAG is selected automatically by the
+ * backend when it improves confidence; callers do not pass a graph toggle.
  *
  * `category` is an optional UUID that, when supplied, narrows results to
  * documents whose own `category_id` matches OR whose folder's
