@@ -42,11 +42,20 @@ import {
 } from "../../lib/with-tenant";
 
 export type { TenantContext };
-// Re-export from the canonical source in @hiai-docs/db/with-tenant.
-// Pass `config.OWNER_ID` explicitly so `packages/db` does not need to
-// read `process.env` directly.
+
+// Re-export from the canonical source in @hiai-docs/db/with-tenant. The admin
+// role bypasses tenant RLS, but PostgreSQL still casts current_user_id to UUID
+// in policy expressions. A fresh install intentionally ships with a textual
+// OWNER_ID placeholder until the first account is registered, so internal
+// admin reads (notably public share-token lookup) need a valid neutral UUID in
+// that state rather than failing every query with an invalid UUID cast.
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const adminTenantContextBound = () =>
-	adminTenantContext(config.OWNER_ID);
+	adminTenantContext(
+		UUID_PATTERN.test(config.OWNER_ID) ? config.OWNER_ID : ZERO_UUID,
+	);
 export {
 	adminTenantContextBound as adminTenantContext,
 	shareGuestTenantContext,
