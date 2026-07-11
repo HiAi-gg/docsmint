@@ -66,3 +66,33 @@ Additional regression coverage lives in `graph-expand.test.ts`,
 ## Handoff
 
 Task 8 can now replace the HTTP route's legacy merge with `searchDocuments()` and hydrate the returned owner-scoped IDs. The orchestrator intentionally does not change HTTP request validation or frontend behavior.
+
+## Follow-up Review Fix: Seed Authorization
+
+The remaining GraphRAG review finding is closed. Direct document seeds are now
+resolved through the same visibility-aware `visibleDocumentIds(ctx, ids, scope)`
+path used for graph result hydration before any AGE traversal starts. AGE
+receives only the authorized seed subset, while admin, tenant, public, and share
+scope semantics remain unchanged. If every direct seed is filtered out, the
+retriever preserves the query-plan concept/entity expansion fallback.
+
+Added regression coverage for:
+
+- an unauthorized seed never reaching the AGE expand adapter;
+- query-plan graph expansion when no direct document seed is visible.
+
+Verification:
+
+```text
+cd backend && bun test src/__tests__/search-orchestrator.test.ts src/__tests__/graph-expand.test.ts src/__tests__/graph-routes.test.ts src/__tests__/graph-retriever.test.ts
+22 pass, 0 fail
+
+cd backend && bun run typecheck
+PASS
+
+cd backend && bunx biome check src/search/graph-retriever.ts src/__tests__/graph-retriever.test.ts
+PASS
+
+git diff --check
+PASS
+```

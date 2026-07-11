@@ -67,10 +67,22 @@ export async function retrieveGraphCandidates(
 	const maxHops = clampHops(
 		request.maxHops ?? config.SEARCH_GRAPH_MAX_HOPS ?? DEFAULT_HOPS,
 	);
-	const seeds = dedupe(request.documentSeeds).slice(
+	const requestedSeeds = dedupe(request.documentSeeds).slice(
 		0,
 		config.SEARCH_GRAPH_SEED_LIMIT,
 	);
+	const visibilityScope =
+		request.visibilityScope ?? _buildGraphVisibilityScope(ctx);
+	const authorizedSeeds =
+		requestedSeeds.length === 0
+			? new Set<string>()
+			: await resolveVisibleIds(
+					ctx,
+					requestedSeeds,
+					adapters.visibleDocumentIds,
+					visibilityScope,
+				);
+	const seeds = requestedSeeds.filter((id) => authorizedSeeds.has(id));
 	const expand = adapters.expandResults ?? expandResults;
 	const expandQuery = adapters.expandFromQueryPlan ?? expandFromQueryPlan;
 
@@ -98,7 +110,7 @@ export async function retrieveGraphCandidates(
 		ctx,
 		ids,
 		adapters.visibleDocumentIds,
-		request.visibilityScope ?? _buildGraphVisibilityScope(ctx),
+		visibilityScope,
 	);
 
 	return ids
