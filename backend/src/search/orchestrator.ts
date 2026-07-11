@@ -4,6 +4,13 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
+import {
+	METRIC_NAMES,
+	recordDuration,
+	recordSearchChannelMetrics,
+	recordSearchExpansionMetrics,
+	recordSearchOutcomeMetrics,
+} from "../lib/metrics";
 import { withTenant } from "../lib/with-tenant";
 import { evaluateConfidence } from "./confidence";
 import {
@@ -136,6 +143,7 @@ export async function searchDocuments(
 	};
 
 	let fast: ChannelResult[];
+	const fastStarted = performance.now();
 	try {
 		fast = await retrieveFast(ctx, plan, {
 			limit: limit * 2,
@@ -152,7 +160,17 @@ export async function searchDocuments(
 	}
 	for (const result of fast) {
 		if (result.errorCode) channelErrors[result.channel] = result.errorCode;
+		recordSearchChannelMetrics({
+			channel: result.channel,
+			durationMs: result.durationMs,
+			candidateCount: result.candidates.length,
+			errorCode: result.errorCode,
+		});
 	}
+	recordDuration(
+		METRIC_NAMES.SEARCH_FAST_DURATION_MS,
+		performance.now() - fastStarted,
+	);
 
 	const confidence = evaluateConfidence(fast, plan, {
 		vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
@@ -164,6 +182,7 @@ export async function searchDocuments(
 	let expanded: ChannelResult[] = [];
 	if (!confidence.confident) {
 		expansionAttempted = true;
+		const expandedStarted = performance.now();
 		try {
 			const expansion = await expand(plan, {
 				tenantScope: ctx.userId,
@@ -185,6 +204,24 @@ export async function searchDocuments(
 		} catch {
 			// Expansion is optional; fast-pass results remain valid.
 		}
+		for (const result of expanded) {
+			recordSearchChannelMetrics({
+				channel: result.channel,
+				durationMs: result.durationMs,
+				candidateCount: result.candidates.length,
+				errorCode: result.errorCode,
+			});
+		}
+		recordSearchExpansionMetrics({
+			reasons: confidence.reasons,
+			model: expansionModel,
+			primaryModel: config.SEARCH_EXPANSION_MODEL,
+			fallbackModel: config.SEARCH_EXPANSION_FALLBACK_MODEL,
+		});
+		recordDuration(
+			METRIC_NAMES.SEARCH_EXPANDED_DURATION_MS,
+			performance.now() - expandedStarted,
+		);
 	}
 
 	const direct = fuseCandidates(
@@ -203,6 +240,7 @@ export async function searchDocuments(
 		.map((result) => result.documentId);
 	let graph: SearchCandidate[] = [];
 	let graphFailed = false;
+	const graphStarted = performance.now();
 	try {
 		graph = await retrieveGraph(ctx, {
 			documentSeeds: graphSeeds,
@@ -214,6 +252,12 @@ export async function searchDocuments(
 	} catch {
 		graphFailed = true;
 	}
+	recordSearchChannelMetrics({
+		channel: "graph",
+		durationMs: performance.now() - graphStarted,
+		candidateCount: graph.length,
+		errorCode: graphFailed ? "query_failed" : undefined,
+	});
 
 	const ranked = fuseCandidates(
 		[
@@ -246,6 +290,13 @@ export async function searchDocuments(
 		: ranked;
 	const offset = (page - 1) * limit;
 	const items = filtered.slice(offset, offset + limit);
+	recordSearchOutcomeMetrics({
+		empty: filtered.length === 0,
+		graphContribution: graph.length > 0,
+		crossLanguageSuccess:
+			expandedPlan !== null &&
+			expanded.some((result) => result.candidates.length > 0),
+	});
 	const diagnostics: SearchDiagnostics = {
 		...(ranked.length === 0
 			? { reason: "no_relevant_candidates" as const }

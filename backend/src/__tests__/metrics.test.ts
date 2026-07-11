@@ -2,8 +2,12 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
 	getMetrics,
 	incrementCounter,
+	incrementCounterBy,
 	METRIC_NAMES,
 	recordDuration,
+	recordSearchChannelMetrics,
+	recordSearchExpansionMetrics,
+	recordSearchOutcomeMetrics,
 	resetMetrics,
 } from "../lib/metrics";
 
@@ -51,9 +55,61 @@ describe("metrics registry", () => {
 		expect(METRIC_NAMES.EMBEDDING_SUCCESS).toBe("embedding_success");
 		expect(METRIC_NAMES.EMBEDDING_FALLBACK).toBe("embedding_fallback");
 		expect(METRIC_NAMES.EMBEDDING_ZERO).toBe("embedding_zero");
+		expect(METRIC_NAMES.EMBEDDING_INVALID).toBe("embedding_invalid");
 		expect(METRIC_NAMES.EMBEDDING_DURATION_MS).toBe("embedding_duration_ms");
 		expect(METRIC_NAMES.EMBEDDING_CHUNKS_TOTAL).toBe("embedding_chunks_total");
 		expect(METRIC_NAMES.EMBEDDING_DOCS_TOTAL).toBe("embedding_docs_total");
+	});
+
+	test("renames zero-vector metrics while retaining a read alias", () => {
+		incrementCounter(METRIC_NAMES.EMBEDDING_ZERO);
+		const metrics = getMetrics();
+		expect(metrics[METRIC_NAMES.EMBEDDING_INVALID]).toBe(1);
+		expect(metrics[METRIC_NAMES.EMBEDDING_ZERO]).toBe(1);
+	});
+
+	test("records fixed search channel metrics without dynamic labels", () => {
+		recordSearchChannelMetrics({
+			channel: "expanded_vector",
+			durationMs: 18,
+			candidateCount: 3,
+			errorCode: "provider_error",
+		});
+		const metrics = getMetrics();
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANDED_VECTOR_DURATION_MS]).toEqual([
+			18,
+		]);
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANDED_VECTOR_CANDIDATES_TOTAL]).toBe(
+			3,
+		);
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANDED_VECTOR_ERRORS_TOTAL]).toBe(1);
+		expect(
+			Object.keys(metrics).some((key) => key.includes("provider_error")),
+		).toBe(false);
+	});
+
+	test("records bounded expansion and outcome counters", () => {
+		recordSearchExpansionMetrics({
+			reasons: ["language_mismatch", "low_vector_similarity"],
+			model: "fallback-model",
+			fallbackModel: "fallback-model",
+			estimatedCostMicrounits: 42,
+		});
+		recordSearchOutcomeMetrics({
+			empty: true,
+			graphContribution: true,
+			crossLanguageSuccess: true,
+		});
+		incrementCounterBy(METRIC_NAMES.SEARCH_EMPTY_TOTAL, 2);
+		const metrics = getMetrics();
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANSION_TOTAL]).toBe(1);
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANSION_FALLBACK_TOTAL]).toBe(1);
+		expect(
+			metrics[METRIC_NAMES.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS],
+		).toBe(42);
+		expect(metrics[METRIC_NAMES.SEARCH_EMPTY_TOTAL]).toBe(3);
+		expect(metrics[METRIC_NAMES.SEARCH_GRAPH_CONTRIBUTION_TOTAL]).toBe(1);
+		expect(metrics[METRIC_NAMES.SEARCH_CROSS_LANGUAGE_SUCCESS_TOTAL]).toBe(1);
 	});
 
 	test("resetMetrics clears the registry", () => {
