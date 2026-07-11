@@ -18,15 +18,16 @@
 - **Vector index (optional):** pgvectorscale StreamingDiskANN with SbqCompression, loaded in the unified PostgreSQL image (see `postgres/Dockerfile`)
 - **Cache:** Redis 8.6+
 - **Storage:** SeaweedFS (S3-compatible)
-- **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; hybrid search `HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine`
-- **GraphRAG:** optional; LLM entity extraction + AGE graph expansion in search. Off by default.
+- **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; every provider result must be a finite, non-zero 1024-dimensional vector
+- **Search:** exact/title, multilingual lexical, fuzzy, vector, adaptive expansion, and GraphRAG channels fused with reciprocal rank fusion (RRF)
+- **GraphRAG:** automatic LLM entity extraction + AGE graph expansion in normal search; the operator flag remains a kill switch for degraded deployments
 - **Re-embed invariant:** metadata mutations (tag / folder / category rename and delete) MUST trigger re-embed via `backend/src/lib/reembed.ts`.
 - **Logging:** Pino
 - **Lint:** Biome 2.5+ (`bun run lint`)
 - **Tests:** Vitest (`bun test --path-ignore-patterns="*node_modules*"`)
 - **Structure:** `backend/src/` (`api/`, `embedding/`, `lib/`) + `frontend/` (SvelteKit) + `packages/db/` (Drizzle)
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
-- **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
+- **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `SEARCH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
 - **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
 - **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · SeaweedFS `9020/9021` · Caddy `80/443`
 - **No Playwright** — use `agent-browser` for E2E
@@ -70,7 +71,7 @@
 | **Auth** | Better Auth |
 | **Storage** | SeaweedFS (S3-compatible) |
 | **Embeddings** | External embedding API (configurable, optional self-hosted Ollama) |
-| **GraphRAG** | Optional; LLM entity extraction + AGE traversal in search |
+| **GraphRAG** | Automatic LLM entity extraction + AGE traversal in normal search; graceful degradation when unavailable |
 | **Logging** | Pino |
 | **Validation** | Zod |
 | **API port** | 50700 |
@@ -135,9 +136,11 @@ backend/src/
 document.save()
   -> chunk(CHUNK_TARGET_TOKENS, CHUNK_OVERLAP_TOKENS)
   -> embed(provider)
-  -> store(document_embeddings { embeddingModel: config.EMBEDDING_MODEL ?? "" })
-       v on failure
-    fallback(provider) -> dummy zero vector
+  -> stage a pending embedding generation
+       v on provider failure
+    mark the candidate failed and keep the last active generation queryable
+       v on complete valid batch
+    atomically activate the new generation, then run GraphRAG extraction
 ```
 
 The worker does **incremental** re-embed on every save: it hashes each new chunk, compares against the stored `chunkHash`, deletes + reinserts only changed slices (plus their immediate neighbors so overlap regions stay consistent). Unchanged chunks keep their original embeddings.
@@ -181,14 +184,14 @@ Set any to `0` to disable the cap (not recommended for production with large dat
 
 ### GraphRAG with Apache AGE
 
-GraphRAG layers a knowledge graph over vector search to surface related documents beyond semantic similarity. Both feature flags default to `false` — the graph code paths remain dormant until explicitly enabled.
+GraphRAG layers a knowledge graph over the retrieval channels to surface related documents beyond exact, lexical, fuzzy, and vector similarity. The reference profile enables extraction and automatic graph expansion for every non-empty search. `GRAPH_SEARCH_ENABLED=false` remains an operator kill switch for deployments without AGE or a graph provider; search degrades to available channels.
 
 #### Configuration
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GRAPH_EXTRACT_ENABLED` | `false` | Enable LLM entity extraction after embeddings |
-| `GRAPH_SEARCH_ENABLED` | `false` | Enable graph-neighbor expansion in search |
+| `GRAPH_EXTRACT_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable LLM entity extraction after ready generations |
+| `GRAPH_SEARCH_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable automatic graph-neighbor expansion in normal search; kill switch for degraded deployments |
 | `GRAPH_EXPANSION_BOOST` | `0.3` | Multiplier on graph-discovered neighbor scores (range: 0–2) |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
 | `GRAPH_EXTRACT_BASE_URL` | — | OpenAI-compatible chat-completion URL (REQUIRED for extraction) |
@@ -203,16 +206,11 @@ When enabled, the embedding worker calls the extraction LLM after each successfu
 
 #### Graph-Enhanced Search
 
-When `GRAPH_SEARCH_ENABLED=true`, search queries with `?graph=true&graphHops=N` walk the AGE graph from seed documents (1–3 hops controlled by `graphHops`). Discovered neighbors are merged into results with multiplicative boost of `GRAPH_EXPANSION_BOOST`. Documents already in results receive the same boost if they appear as graph neighbors.
+After the fast retrieval pass and any adaptive query expansion, the search orchestrator walks the AGE graph from authorized seed documents (1–3 hops controlled by `SEARCH_GRAPH_MAX_HOPS`). It also seeds from translated terms, synonyms, concepts, and named entities when direct seeds are unavailable. Graph candidates are fused with the other channels through RRF and capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`; graph neighbors cannot overwhelm strong exact or semantic matches. Graph and provider failures are recorded and never make the entire search fail.
 
 #### Search Configuration
 
-Hybrid search combines full-text and semantic signals:
-```
-HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine
-```
-
-Defaults: `HYBRID_TEXT_WEIGHT=0.4`, `HYBRID_SEMANTIC_WEIGHT=0.6`. When graph expansion is enabled via query parameters, neighbors are merged and boosted according to `GRAPH_EXPANSION_BOOST`.
+The current ranking contract is reciprocal rank fusion (RRF) across exact/title, FTS, fuzzy, vector, expanded, and graph channels. `SEARCH_RRF_K`, exact-title boost, channel-agreement boost, vector/fuzzy thresholds, graph contribution cap, and graph seed/hop limits are validated through the environment schema. `HYBRID_*` variables remain legacy compatibility inputs and do not control the current orchestrator.
 
 ### CORS
 
@@ -265,7 +263,7 @@ All configuration via `.env`. The Zod schema in `backend/src/lib/config.ts` is t
 Notable groups:
 
 - **Embedding provider:** `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, plus optional `*_FALLBACK_*`
-- **Hybrid search weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`)
+- **Legacy hybrid weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`) remain compatibility inputs; current ranking uses `SEARCH_*` RRF controls
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
 - **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)

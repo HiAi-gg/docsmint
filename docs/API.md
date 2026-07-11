@@ -277,7 +277,7 @@ curl -X POST http://localhost:50700/api/folders \
 ## Search
 
 ```
-GET /api/search           # Full-text + semantic search (PUBLIC)
+GET /api/search           # Automatic multilingual RRF + GraphRAG search (PUBLIC)
 GET /api/search/suggest   # Quick title suggestions (PUBLIC)
 ```
 
@@ -299,9 +299,9 @@ Query parameters:
 | `sort`         | enum     | `relevance`, `date_desc`, `date_asc`, `name_asc`, `name_desc` |
 | `page`         | int      | Page number (default 1)                                       |
 | `limit`        | int      | Per page (default 20, max 100)                                |
-| `includeChunks` | boolean  | If true, include top-3 chunk snippets per result (default false) |
+| `includeChunks` | boolean  | If true, include top-3 finite-scored chunk snippets per result (default false) |
 
-Response: `{ items: SearchResult[], total, page, limit }` where each item has `id, title, snippet, score, folderId, createdAt, updatedAt`. When `includeChunks=true`, each item also includes a `chunks` array with `charStart`, `charEnd`, and `text` fields.
+Response: `{ items: SearchResult[], total, page, limit }` where each item has `id, title, snippet, score, folderId, createdAt, updatedAt`, plus up to three safe `explanations` labels. The server runs exact/title, multilingual FTS, fuzzy, vector, adaptive expansion, and automatic GraphRAG channels, then fuses candidates with RRF. Provider prompts, raw tenant identifiers, credentials, and internal scores are never returned. When `includeChunks=true`, each item also includes a `chunks` array with `charStart`, `charEnd`, and `text` fields.
 
 ### Quick suggest
 
@@ -548,12 +548,11 @@ curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
 ### Semantic Search (RAG)
 
 ```bash
-# Search documents by meaning (hybrid full-text + vector)
+# Search documents by meaning across lexical, vector, expansion, and graph channels
 curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/search?q=how+to+deploy+docker"
 
-# Response includes relevance scores:
-# { items: [{ id, title, content, score, rank }] }
+# Each item includes a finite fused score, channels, and safe explanation labels.
 ```
 
 ### Document CRUD for Agents
@@ -625,7 +624,7 @@ cd packages/mcp-server && bun install
 
 | Tool                  | Description                        |
 | --------------------- | ---------------------------------- |
-| `search_documents`    | Hybrid full-text + semantic search |
+| `search_documents`    | Automatic multilingual RRF search with adaptive expansion and GraphRAG |
 | `get_document`        | Read document by ID                |
 | `create_document`     | Create new document                |
 | `update_document`     | Update document content            |
@@ -704,7 +703,7 @@ Response:
 
 ### `GET /api/admin/embedding-stats`
 
-Pipeline observability: documents with embeddings, total chunks, and zero-vector (provider-failed) chunks.
+Pipeline observability for generation-aware embeddings. The response reports lifecycle counts (`pending`, `processing`, `ready`, `failed`, `stale`), active invalid rows, inactive generations, profile mismatches, and pending age. A zero vector is never a successful embedding.
 
 ```bash
 curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
@@ -713,24 +712,14 @@ curl -H "x-api-key: $HIAI_DOCS_API_KEY" \
 
 Response:
 
-```json
-{
-  "stats": {
-    "docsWithEmbeddings": 142,
-    "totalChunks": 873,
-    "emptyChunks": 0
-  }
-}
-```
-
-A non-zero `emptyChunks` count is a strong signal that `EMBEDDING_BASE_URL` / `EMBEDDING_MODEL` / `EMBEDDING_API_KEY` are missing or wrong.
+The release invariant is `active_invalid_rows = 0`; any non-zero value requires a resumable reindex before release.
 
 ### `GET /api/admin/health/embeddings`
 
 Live probe of the configured embedding provider. Status is one of:
 
-- `ok` — provider returned a non-zero vector.
-- `degraded` — provider returned a zero vector (auth failure or wrong model name) OR the provider raised and the fallback also failed. Pipeline runs but produces useless vectors.
+- `ok` — provider returned a finite, non-zero 1024-dimensional vector.
+- `degraded` — the provider or fallback failed validation/transport; no fabricated vector is stored and the last active generation remains queryable.
 - `not-configured` — `EMBEDDING_BASE_URL` or `EMBEDDING_MODEL` is unset; semantic search degrades to text-only.
 
 ```bash
@@ -748,13 +737,13 @@ Response (healthy):
     "model": "text-embedding-3-small"
   },
   "latencyMs": 124,
-  "dimensions": 1536
+  "dimensions": 1024
 }
 ```
 
 ### `POST /api/admin/reindex/model?dryRun=true`
 
-Targeted re-embed for documents whose stored `embedding_model` does not match the currently configured `EMBEDDING_MODEL`. Use this after changing `EMBEDDING_MODEL` in `.env` and restarting.
+Generation-aware targeted reindex for documents with a profile/model/dimension mismatch, invalid rows, stale lifecycle state, or missing active generation. Use this after changing an embedding model or profile.
 
 **Always run with `?dryRun=true` first** to preview the affected count.
 
@@ -762,15 +751,15 @@ Targeted re-embed for documents whose stored `embedding_model` does not match th
 # Preview
 curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/model?dryRun=true"
-# {"dryRun": true, "currentModel": "text-embedding-3-small", "affectedDocs": 142}
+# {"dryRun": true, "currentProfile": "openai/text-embedding-3-small:1024:v1", "affectedDocs": 142}
 
 # Commit
 curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/model"
-# {"success": true, "currentModel": "text-embedding-3-small", "affectedDocs": 142, "enqueued": 142}
+# {"success": true, "currentProfile": "openai/text-embedding-3-small:1024:v1", "affectedDocs": 142, "enqueued": 142}
 ```
 
-Dedup is handled by the shared `enqueueReembed` helper (Redis `SET NX EX 5`), so a rapid re-trigger coalesces into a single worker tick.
+The queue is resumable and generation-aware. A pending candidate is built beside the active generation; only a complete valid candidate is atomically activated. A failed candidate is removed while the previous active generation stays queryable. Redis deduplication coalesces rapid re-triggers.
 
 ### `GET /api/admin/graph/stats`
 
@@ -830,24 +819,13 @@ curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/tag/$TAG_ID?dryRun=true"
 ```
 
-## Search Graph Parameters
+## Automatic GraphRAG search
 
-`GET /api/search` accepts three optional graph parameters, all gated by the `GRAPH_SEARCH_ENABLED` feature flag. When `GRAPH_SEARCH_ENABLED=false`, passing `graph=true` is a no-op (results are returned as if `graph=false`).
+`GET /api/search` automatically runs GraphRAG after direct retrieval and any one-pass adaptive query expansion. There is no user-facing graph toggle. Legacy `graph`, `graphHops`, and `graphBoost` query fields are accepted only for compatibility and emit a deprecation header; they do not turn GraphRAG on or off.
 
-| Param        | Type        | Default                 | Description                                                                                                                                                |
-| ------------ | ----------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `graph`      | boolean     | `false`                 | When `true`, expand the merged result list with related documents discovered through the AGE graph.                                                        |
-| `graphHops`  | int (1-3)   | `2`                     | Maximum graph traversal depth from each seed document. Higher hops surface more neighbors but with diminishing signal and `O(branching^hops)` cost in AGE. |
-| `graphBoost` | float (0-2) | `GRAPH_EXPANSION_BOOST` | Override for the graph-neighbor score multiplier. When omitted, falls back to the operator-configured env var (default `0.3`).                             |
+The orchestrator authorizes direct seeds through the same owner/share visibility scope as result hydration, then traverses AGE for 1–3 hops (`SEARCH_GRAPH_MAX_HOPS`). Query-plan translations, synonyms, concepts, and named entities can seed graph lookup when direct lexical/vector channels have no authorized seeds. Graph candidates are fused with RRF and capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`, so graph neighbors cannot outrank strong exact/title or semantic matches solely because of traversal.
 
-Example (graph-augmented search, 2-hop, default boost):
-
-```bash
-curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
-  "http://localhost:50700/api/search?q=GraphRAG+architecture&graph=true&graphHops=2"
-```
-
-Graph expansion is best-effort: a graph outage logs a warning and returns the non-graph result list. Search never breaks because the graph is unavailable.
+Graph outages, missing AGE, and LLM expansion failures are graceful-degradation events: direct results remain available, `diagnostics.graphFailed` records graph failure internally, and no provider prompt, credential, tenant identifier, or relationship internals are exposed in the public result. `GRAPH_SEARCH_ENABLED=false` is an operator kill switch for environments that cannot provide AGE; the `.env.example` reference profile enables it.
 
 ## Smart Re-embed System
 

@@ -24,7 +24,7 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 
 - [Features](#features)
 - [Screenshots](#screenshots)
-- [GraphRAG (optional)](#graphrag-optional)
+- [Automatic GraphRAG search](#automatic-graphrag-search)
 - [Quick Start](#quick-start)
 - [Stack](#stack)
 - [Comparison](#comparison-with-other-self-hosted-solutions)
@@ -46,8 +46,8 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 
 - **Smart Re-embed System** — automatic vector refresh on metadata changes (tags, folders, categories) with Redis-deduplicated batch processing to prevent embedding storms
 - **Incremental Chunk Updates** — hash-based chunk comparison ensures only changed content is re-embedded; overlap regions maintain semantic continuity
-- **GraphRAG with Apache AGE** — optional entity extraction and graph-based search expansion for discovering related documents beyond vector similarity
-- **Hybrid Search** — configurable full-text + semantic search with tunable weights (`HYBRID_TEXT_WEIGHT`, `HYBRID_SEMANTIC_WEIGHT`)
+- **Automatic GraphRAG with Apache AGE** — entity extraction after ready embeddings and graph expansion on every normal search, with graceful degradation when AGE or an LLM is unavailable
+- **Multilingual adaptive search** — exact/title, lexical, fuzzy, vector, one-pass LLM expansion, and graph channels fused with reciprocal rank fusion (RRF)
 - **Chunk Versioning** — `embedding_model` column tracks which model produced each vector, enabling targeted reindex operations when models change
 - **Admin Tooling** — `/api/admin/*` endpoints for reindexing, embedding stats, provider health checks, and AGE inventory queries
 - **Operator Controls** — `ADMIN_CROSS_TENANT` flag and `?ownerId=` parameter for multi-tenant deployments
@@ -56,9 +56,9 @@ If you are looking for a **local LLM knowledge base** or a **lightweight Outline
 
 - **Rich WYSIWYG editor** — powerful visual editing with TipTap v3 + svelte-tiptap
 - **AI-native** — automatic chunking + vector embeddings on every save, with folder / tag / category metadata enriched into the chunk text for sharper semantic recall
-- **Unified search stack** — `pgvector` for dense embeddings, `pgvectorscale` StreamingDiskANN with binary quantization for index speed and recall, and Apache AGE for graph expansion, all living in a single PostgreSQL 18 database. Hybrid ranking = full-text + semantic + graph-neighbor boost; optional `includeChunks` returns top-3 chunk snippets with character-offset tracking
+- **Unified search stack** — `pgvector` for dense embeddings, `pgvectorscale` StreamingDiskANN with binary quantization for index speed and recall, and Apache AGE for graph expansion, all living in a single PostgreSQL 18 database. RRF combines exact/title, multilingual lexical, fuzzy, vector, expanded, and graph candidates; optional `includeChunks` returns top-3 chunk snippets with character-offset tracking
 - **System-wide re-embed** — every metadata mutation (tag / folder / category rename or delete) automatically refreshes affected vectors, with Redis-coalesced PATCH-storm dedup so rapid edits never spike embedding costs
-- **GraphRAG (optional)** — entity extraction + AGE graph expansion surfaces related documents beyond vector similarity, gated by feature flags and fully off by default
+- **GraphRAG** — entity extraction + AGE graph expansion surfaces related documents beyond vector similarity; the reference profile enables it automatically and `GRAPH_SEARCH_ENABLED=false` is the operational kill switch
 - **Categories** — collapsible sidebar groups that classify folders and documents independently of the folder hierarchy, filterable from the search page
 - **Folder hierarchy** — nested folders to organize your documents
 - **Keyboard-first** — `Ctrl+K` QuickSearch, `?` ShortcutHelp, editor shortcuts (`Ctrl+Shift+7` toggle markdown, `Ctrl+Shift+E` export), and `Esc` to close any dialog
@@ -99,21 +99,15 @@ CREATE INDEX ON document_embeddings
   USING diskann (embedding vector_cosine_ops);
 ```
 
-**Search ranking** is a weighted sum of the three signals:
+**Search ranking** uses reciprocal rank fusion (RRF), not a raw weighted sum. The fast pass retrieves exact/title, multilingual lexical, fuzzy, and vector candidates in parallel. When confidence is low, one structured query-expansion pass adds translated, synonymous, conceptual, and named-entity variants. Graph candidates are then added automatically and fused with all channels. Exact-title and channel-agreement boosts protect strong direct matches, while vector thresholds and a graph contribution cap prevent invalid or weak candidates from ranking.
 
-```
-score = HYBRID_TEXT_WEIGHT * full_text_score
-      + HYBRID_SEMANTIC_WEIGHT * semantic_cosine
-      + (graph_neighbors) * GRAPH_EXPANSION_BOOST
-```
-
-Defaults: `0.4` text, `0.6` semantic, `0.3` graph boost. With `?graph=true&graphHops=N` (1-3), graph neighbors that aren't in the merged set are inserted with a fixed `GRAPH_EXPANSION_BOOST * 1.0` score; neighbors that are already present get the same factor multiplied onto their existing score.
+`HYBRID_TEXT_WEIGHT` and `HYBRID_SEMANTIC_WEIGHT` remain accepted as legacy configuration values for older integrations; they do not control the current orchestrator. See `SEARCH_*` values in [`.env.example`](.env.example) for the active profile.
 
 ---
 
-## GraphRAG (optional)
+## Automatic GraphRAG search
 
-GraphRAG layers a knowledge graph over the existing vector search. It is optional and off by default — the rest of hiai-docs works exactly the same when GraphRAG is disabled.
+GraphRAG is a core hiai-docs search layer. The reference profile performs entity extraction after a document has a complete, valid embedding generation, then automatically expands every non-empty search through Apache AGE. No user-facing GraphRAG toggle or `?graph=true` parameter is required.
 
 ### When to enable it
 
@@ -122,11 +116,11 @@ GraphRAG layers a knowledge graph over the existing vector search. It is optiona
 
 ### How it works
 
-1. **Extraction** — when `GRAPH_EXTRACT_ENABLED=true`, the embedding worker calls an OpenAI-compatible chat-completion API after every successful embed. The LLM extracts entities and relations from each chunk; entities with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE` (default `0.5`) are persisted to Apache AGE as graph nodes and edges.
-2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, `GET /api/search?graph=true` walks the graph from each merged seed document (1-3 hops, controlled by `?graphHops=N`). Discovered neighbors are merged into the result list with a multiplicative boost of `GRAPH_EXPANSION_BOOST` (default `0.3`).
+1. **Extraction** — when `GRAPH_EXTRACT_ENABLED=true`, the embedding worker calls an OpenAI-compatible chat-completion API only after a complete generation is activated. The LLM extracts entities and relations from each chunk; entities with confidence >= `GRAPH_EXTRACT_MIN_CONFIDENCE` (default `0.5`) are persisted to Apache AGE as graph nodes and edges.
+2. **Search** — when `GRAPH_SEARCH_ENABLED=true`, the orchestrator walks the graph from authorized direct result seeds (1–3 hops, controlled by `SEARCH_GRAPH_MAX_HOPS`). If direct seeds are unavailable, translations, synonyms, concepts, and named entities seed graph lookup. Graph results are fused with RRF and capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`.
 3. **Operator tooling** — `GET /api/admin/graph/stats` reports current AGE inventory (node and edge counts).
 
-> **✅ GraphRAG status:** All GraphRAG audit findings (G1–G9, N1) are resolved. GraphRAG remains **optional and off by default** — it requires an AGE-enabled PostgreSQL instance and explicit `GRAPH_EXTRACT_BASE_URL` configuration for production use. See [GraphRAG Infrastructure Audit](docs/GRAPHRAG_AUDIT.md) for the full resolution log.
+> **✅ GraphRAG status:** All GraphRAG audit findings (G1–G9, N1) are resolved. GraphRAG is enabled in the copied `.env.example` reference profile and degrades gracefully when AGE or an LLM is unavailable. Set `GRAPH_SEARCH_ENABLED=false` only as an operator kill switch.
 
 ### Where AGE lives
 
@@ -149,7 +143,7 @@ GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 GRAPH_EXTRACT_MIN_CONFIDENCE=0.5
 ```
 
-The public reference profile uses Ministral as the primary extraction model and Gemma as its fallback. Both reuse `OPENROUTER_API_KEY` unless provider-specific keys are set. GraphRAG is enabled in the copied `.env.example` profile so the product's central feature works immediately after a key is added. The runtime schema still defaults both flags to `false` when no environment file is supplied, preventing accidental paid calls in bare deployments. See [`.env.example`](.env.example) for the local Ollama alternative.
+The public reference profile uses Ministral as the primary extraction model and Gemma as its fallback. Both reuse `OPENROUTER_API_KEY` only for exact OpenRouter hosts unless provider-specific keys are set. GraphRAG is enabled in the copied `.env.example` profile so the product's central feature works immediately after a key is added. The runtime schema retains safe `false` fallbacks when no environment file is supplied; deployments that want automatic GraphRAG must copy the reference profile or set the flags explicitly. See [`.env.example`](.env.example) for the local Ollama alternative.
 ## Quick Start
 
 ### Option 1: Docker (run the full product)
@@ -450,6 +444,22 @@ All configuration via environment variables. Copy `.env.example` to `.env` and c
 | `GRAPH_EXTRACT_FALLBACK_BASE_URL` | `https://openrouter.ai/api/v1` | Fallback extraction LLM URL |
 | `GRAPH_EXTRACT_FALLBACK_API_KEY` | — | Fallback extraction LLM API key |
 | `GRAPH_EXTRACT_FALLBACK_MODEL` | `google/gemma-4-31b-it` | Fallback extraction model |
+| `SEARCH_EXPANSION_ENABLED` | `true` | One-pass multilingual query expansion when confidence is low |
+| `SEARCH_EXPANSION_MODEL` | `mistralai/ministral-14b-2512` | Primary expansion model |
+| `SEARCH_EXPANSION_FALLBACK_MODEL` | `google/gemma-4-31b-it` | Expansion fallback model |
+| `SEARCH_EXPANSION_TIMEOUT_MS` | `2000` | Expansion request timeout |
+| `SEARCH_EXPANSION_CACHE_TTL_SECONDS` | `86400` | Tenant-scoped expansion cache lifetime |
+| `SEARCH_EXPANSION_MAX_VARIANTS` | `12` | Maximum variants per expansion list |
+| `SEARCH_RRF_K` | `60` | RRF rank constant |
+| `SEARCH_EXACT_BOOST` | `0.02` | Exact/title boost |
+| `SEARCH_CHANNEL_AGREEMENT_BOOST` | `0.01` | Agreement boost for documents found by multiple channels |
+| `SEARCH_VECTOR_MIN_SIMILARITY` | `0.35` | Minimum finite vector similarity |
+| `SEARCH_FUZZY_MIN_SIMILARITY` | `0.25` | Minimum fuzzy similarity |
+| `SEARCH_MIN_CHANNEL_AGREEMENT` | `2` | Fast-pass confidence threshold |
+| `SEARCH_GRAPH_MAX_CONTRIBUTION` | `0.03` | Maximum graph contribution to fused score |
+| `SEARCH_GRAPH_SEED_LIMIT` | `10` | Maximum authorized direct seeds for AGE |
+| `SEARCH_GRAPH_MAX_HOPS` | `2` | AGE traversal depth (1–3) |
+| `SEARCH_GRAPH_RESULT_LIMIT` | `20` | Maximum graph candidates |
 | `FOLDER_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per folder mutation |
 | `CATEGORY_REEMBED_BATCH_SIZE` | 100 | Cap on docs re-embedded per category mutation |
 | `TAG_REEMBED_BATCH_SIZE` | 500 | Cap on docs re-embedded per tag mutation |
@@ -469,7 +479,9 @@ See [`.env.example`](.env.example) for the full list with comments and defaults.
 
 ## Embedding Lifecycle
 
-Every document save triggers an embedding pipeline that produces chunk-level vectors and (optionally) graph entities. The pipeline is best-effort — failures never block document saves, but they do leave stale vectors that the operator must refresh explicitly.
+Every document save triggers an embedding pipeline that produces chunk-level vectors and graph entities. The pipeline is best-effort — failures never block document saves, and the last active valid generation remains queryable while a replacement is pending or failed.
+
+Each document transitions through `pending → processing → ready` or `failed/stale`. A generation is queryable only when every stored row is finite, non-zero, exactly 1024-dimensional, profile-consistent, and marked valid. Graph extraction runs only after activation. Zero vectors are never treated as successful embeddings.
 
 ### When re-embed fires automatically
 
@@ -505,7 +517,7 @@ Use the admin endpoints for bulk re-embed that does not fit the metadata-trigger
 curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/model?dryRun=true"
 
-# Commit: re-embed every doc whose stored embedding_model does not match the current EMBEDDING_MODEL
+# Commit: queue a resumable generation-aware reindex; the active generation remains queryable
 curl -X POST -H "x-api-key: $HIAI_DOCS_API_KEY" \
   "http://localhost:50700/api/admin/reindex/model"
 
@@ -531,8 +543,7 @@ REST API available at `http://localhost:50700/api/`.
 Key endpoints:
 - `POST /api/documents` — Create document
 - `GET /api/documents/:id` — Get document with tags
-- `GET /api/search?q=query` — Hybrid full-text + semantic search
-- `GET /api/search?graph=true&graphHops=2&graphBoost=0.3` — Graph-augmented search (requires `GRAPH_SEARCH_ENABLED=true`)
+- `GET /api/search?q=query` — Automatic multilingual RRF search with adaptive expansion and GraphRAG
 - `POST /api/share` — Create share link
 - `GET /api/share/:token` — Access shared content (public)
 - `POST /api/documents/:id/attachments` — Upload image
@@ -548,7 +559,7 @@ The admin surface at `/api/admin` provides operator-only endpoints for embedding
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/admin/embedding-stats` | Total chunks, distinct docs with embeddings, zero-vector (provider-failed) chunks |
+| `GET /api/admin/embedding-stats` | Generation lifecycle counts, active invalid rows, profile mismatches, and pending age |
 | `GET /api/admin/health/embeddings` | Live probe of the configured embedding provider (returns `ok` / `degraded` / `not-configured`) |
 | `POST /api/admin/reindex/:docId` | Force re-embed one document |
 | `POST /api/admin/reindex/model?dryRun=true` | Targeted re-embed for embedding-model mismatch |

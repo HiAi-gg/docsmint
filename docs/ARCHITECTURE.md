@@ -73,7 +73,9 @@ The RLS tenant context (`with-tenant.ts`) lives in `packages/db/` so it can be s
 | Frontend | SvelteKit 2.60+ / Svelte 5.55+ |
 | UI | shadcn-svelte (new-york) + Tailwind v4 |
 | Editor | TipTap + svelte-tiptap |
-| Embeddings | OpenAI-compatible API (optional) |
+| Embeddings | OpenAI-compatible API with optional self-hosted Ollama; validated 1024-dimensional generations |
+| Search | Exact/title, multilingual FTS, fuzzy, vector, adaptive expansion, GraphRAG, and RRF |
+| Graph | Apache AGE in the same PostgreSQL instance; automatic in the reference profile |
 | Storage | SeaweedFS (S3-compatible) |
 
 ## Data Flow
@@ -82,17 +84,28 @@ The RLS tenant context (`with-tenant.ts`) lives in `packages/db/` so it can be s
 User → SvelteKit Frontend → REST API (Elysia) → PostgreSQL
                                               → Redis (queue/cache)
                                                → SeaweedFS (attachments)
-                                              → [Optional] Embedding API
+                                              → Embedding API or Ollama (graceful fallback)
+                                              → Apache AGE (automatic GraphRAG expansion)
 ```
 
 1. User creates/edits document in TipTap editor
 2. Frontend PATCHes document via API
 3. API saves content + version to PostgreSQL
-4. If embeddings are configured, API enqueues embedding job to Redis
-5. Background worker fetches document, chunks text, generates vector via OpenAI-compatible API
-6. Worker stores vector in pgvector column (if embeddings enabled)
+4. API enqueues an embedding generation job to Redis
+5. Background worker fetches document, chunks text, validates provider vectors, and stages a candidate generation
+6. Worker atomically activates a complete finite/non-zero 1024-dimensional generation; failed candidates leave the prior generation active
+7. After activation, the worker performs GraphRAG entity extraction into AGE
 
-Search queries run hybrid: full-text (tsvector) + semantic (pgvector cosine) when embeddings are configured. Without embeddings configured, only full-text search is available.
+Search queries run exact/title, language-neutral lexical, fuzzy, and active-generation vector retrieval in parallel. A deterministic confidence gate invokes at most one structured multilingual expansion pass when direct evidence is weak. Authorized AGE graph expansion then contributes related documents. Reciprocal rank fusion combines all channels with exact-title and channel-agreement boosts, finite-score/vector thresholds, and a graph contribution cap. If embeddings, expansion, or AGE are unavailable, the remaining channels still return results.
+
+### Search and embedding invariants
+
+- Every queryable embedding row belongs to `documents.active_embedding_generation`.
+- A generation is ready only when every chunk row is valid, finite, non-zero, exactly 1024-dimensional, and profile-consistent.
+- A failed or stale candidate never deletes the last active generation.
+- Graph extraction runs only after generation activation.
+- Query expansion cache keys are tenant-scoped hashes; provider credentials and raw prompts never enter metrics or public responses.
+- Graph seed authorization and result hydration use the same owner/public/share visibility scope.
 
 ## Module Boundaries
 

@@ -1,32 +1,40 @@
 # Production Status Report
 
-> **Status:** 🟡 Release Candidate — v0.2.6
-> **Last verified:** 2026-07-10
+> **Status:** Release Candidate — adaptive multilingual GraphRAG search
+> **Last verified:** 2026-07-11
 
----
-
-## 1. Verification Results
+## Verification results
 
 | Check | Status |
 |-------|--------|
-| Typecheck | ✅ PASS — 0 errors across all packages |
-| Tests | ✅ PASS — 531/531 passing (backend 483 + frontend 48) |
-| Build | ✅ PASS — backend, frontend, SDK, and custom PostgreSQL images |
-| Health checks | ✅ PASS |
+| Typecheck | Pending final assembled-worktree run |
+| Tests | Focused task suites pass; release run must record the complete matrix |
+| Build | Pending final assembled-worktree run |
+| Health checks | Pending stack and browser smoke |
+| Search benchmark | Must meet Recall@10 >= 0.90, MRR@10 >= 0.80, fast p95 <= 500 ms, expanded p95 <= 2.5 s, zero active invalid vectors, and zero tenant leakage |
 
-## 2. Architecture
+## Architecture
 
-17 route files: admin, attachments, auth, categories, collaboration, documents, folders, graph, keys, metrics, plugins, search, share, tags, versions, visibility, webhooks.
+The search contour contains exact/title, multilingual lexical, fuzzy, vector,
+adaptive expansion, and automatic GraphRAG channels. Reciprocal rank fusion
+(RRF) combines candidates with exact-title and channel-agreement boosts. Graph
+contribution is capped and graph failures degrade to direct results.
 
-Security: rate limiting, Zod validation, owner_id scoping, CSRF protection, CORS, security headers.
+Embedding generations transition through `pending`, `processing`, `ready`,
+`failed`, and `stale`. Only complete finite, non-zero 1024-dimensional
+generations are queryable. A failed replacement never removes the last active
+generation, and GraphRAG extraction runs only after activation.
 
-## 3. Deployment
+Security includes rate limiting, Zod validation, owner/share scoping, CSRF
+protection, CORS, security headers, tenant-scoped expansion cache keys, and
+safe public result explanations without prompts, credentials, or tenant data.
+
+## Deployment
 
 ```bash
 git clone https://github.com/hiai-gg/hiai-docs.git && cd hiai-docs
 cp .env.example .env
 docker compose pull && docker compose up -d
-# From the repository root; the runtime image does not ship migration source.
 bun run db:migrate
 ```
 
@@ -41,21 +49,36 @@ bun run db:migrate
 | 9020 | SeaweedFS S3 |
 | 80/443 | Caddy |
 
-## 4. Testing
+## Testing and release gates
 
-531 tests passing (backend 483 + frontend 48). Run: `bun run test`.
+Run `bun run test`, `bun run lint`, `bun run typecheck`, `bun run --filter '*'
+build`, and `docker compose config --quiet` from the repository root. Run the
+generation-aware reindex dry-run and then:
 
-## 5. Security Checklist
+```bash
+cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700
+```
 
-Authentication, CSRF, rate limiting, Zod validation, owner scoping, CORS, HSTS, CSP, X-Frame-Options, password hashing (Argon2id), API key auth, non-root containers, parameterized queries — all in place.
+The benchmark reads credentials from environment/stdin/file and never accepts
+an API key as a command-line argument. Record the exact counts, latency
+percentiles, expansion coverage, graph contribution, invalid-vector count, and
+tenant-leakage result in the release report.
 
-## 6. Known Issues
+## Known blockers to report, not hide
 
-- **Typebox pin:** required for Elysia 1.4.28 compatibility
-- **Embedding provider:** configure EMBEDDING_BASE_URL, EMBEDDING_API_KEY, and EMBEDDING_MODEL in .env (optional for Ollama self-hosting)
-- **No automated backups:** operator responsibility
-- **GraphRAG:** All G1-G9 and N1 audit items resolved. See GRAPHRAG_AUDIT.md.
+- The local PostgreSQL image may lack the `diskann` access method required by
+  migration 0008. Fresh-chain migration verification remains blocked until the
+  configured image exposes that access method or the migration is made
+  conditional.
+- The existing provider-mock suite may retain seven pre-existing failures when
+  no live embedding endpoint is configured. Report those failures verbatim.
+- No public release, tag, npm publish, Docker push, or GitHub push is authorized
+  by this document; those are separate explicit release actions.
+
+GraphRAG audit findings G1–G9 and N1 remain resolved. GraphRAG is automatic in
+the reference profile and can be disabled only with `GRAPH_SEARCH_ENABLED=false`
+as an operator kill switch.
 
 ---
 
-*Status: 🟡 Release Candidate — v0.2.6*
+*Status: Release Candidate — adaptive multilingual GraphRAG search*

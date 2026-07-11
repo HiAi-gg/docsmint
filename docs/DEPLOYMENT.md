@@ -68,22 +68,39 @@ Copy `.env.example` and fill in:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GRAPH_EXTRACT_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable LLM entity extraction into Apache AGE |
-| `GRAPH_SEARCH_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable graph-neighbor expansion in search |
+| `GRAPH_EXTRACT_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Extract entities after a complete valid embedding generation |
+| `GRAPH_SEARCH_ENABLED` | No | `true` in `.env.example`; `false` schema fallback | Enable automatic graph-neighbor expansion in normal search; operator kill switch |
 | `GRAPH_EXTRACT_BASE_URL` | If extraction enabled | `https://openrouter.ai/api/v1` | OpenAI-compatible chat-completion URL for entity extraction LLM |
 | `GRAPH_EXTRACT_API_KEY` | If extraction enabled | — | API key for extraction LLM |
 | `GRAPH_EXTRACT_MODEL` | No | `mistralai/ministral-14b-2512` | Primary extraction model |
 | `GRAPH_EXTRACT_REASONING_EFFORT` | No | — | OpenAI-compatible reasoning control; use `none` for Ollama Qwen3 |
 | `GRAPH_EXTRACT_TIMEOUT_MS` | No | `120000` | Entity extraction request timeout in milliseconds |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | No | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
-| `GRAPH_EXPANSION_BOOST` | No | `0.3` | Multiplier on graph-neighbor discovery scores (0–2) |
+| `GRAPH_EXPANSION_BOOST` | No | `0.3` | Legacy multiplier retained for older integrations; current ranking uses RRF and `SEARCH_GRAPH_MAX_CONTRIBUTION` |
 
-### Hybrid Search Weights
+### Adaptive Search and RRF
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `HYBRID_TEXT_WEIGHT` | No | `0.4` | Weight for full-text search score |
-| `HYBRID_SEMANTIC_WEIGHT` | No | `0.6` | Weight for semantic cosine score |
+| `SEARCH_EXPANSION_ENABLED` | No | `true` | Run one structured multilingual expansion pass when confidence is low |
+| `SEARCH_EXPANSION_MODEL` | No | `mistralai/ministral-14b-2512` | Primary expansion model |
+| `SEARCH_EXPANSION_FALLBACK_MODEL` | No | `google/gemma-4-31b-it` | Fallback expansion model |
+| `SEARCH_EXPANSION_TIMEOUT_MS` | No | `2000` | Expansion timeout |
+| `SEARCH_EXPANSION_CACHE_TTL_SECONDS` | No | `86400` | Tenant-scoped expansion cache TTL |
+| `SEARCH_EXPANSION_MAX_VARIANTS` | No | `12` | Maximum generated variants per category |
+| `SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS` | No | `0` | Operator-supplied successful-expansion cost estimate for metrics |
+| `SEARCH_RRF_K` | No | `60` | Reciprocal rank fusion constant |
+| `SEARCH_EXACT_BOOST` | No | `0.02` | Exact/title boost |
+| `SEARCH_CHANNEL_AGREEMENT_BOOST` | No | `0.01` | Boost when multiple channels agree |
+| `SEARCH_VECTOR_MIN_SIMILARITY` | No | `0.35` | Minimum finite vector similarity |
+| `SEARCH_FUZZY_MIN_SIMILARITY` | No | `0.25` | Minimum fuzzy similarity |
+| `SEARCH_MIN_CHANNEL_AGREEMENT` | No | `2` | Fast-pass agreement threshold |
+| `SEARCH_GRAPH_MAX_CONTRIBUTION` | No | `0.03` | Graph contribution cap in fused ranking |
+| `SEARCH_GRAPH_SEED_LIMIT` | No | `10` | Maximum AGE seeds |
+| `SEARCH_GRAPH_MAX_HOPS` | No | `2` | AGE traversal depth (1–3) |
+| `SEARCH_GRAPH_RESULT_LIMIT` | No | `20` | Maximum graph candidates |
+
+`HYBRID_TEXT_WEIGHT` and `HYBRID_SEMANTIC_WEIGHT` are retained only for compatibility with older clients; the current search path uses exact/title, FTS, fuzzy, vector, expanded, and graph channels fused with RRF.
 
 ### Chunking Configuration
 
@@ -168,7 +185,7 @@ EMBEDDING_FALLBACK_MODEL=baai/bge-m3
 
 Both models are requested with `dimensions=1024`, matching the pgvector schema. The runtime uses `OPENROUTER_API_KEY` for both OpenRouter providers unless an explicit `EMBEDDING_API_KEY` or `EMBEDDING_FALLBACK_API_KEY` is supplied. The shared key is never forwarded to a non-OpenRouter URL. If you prefer local inference, replace both base URLs and model names with an Ollama-compatible 1024-dimensional model (for example `bge-m3`); the Ollama path does not require an API key.
 
-The GraphRAG extraction profile is also preconfigured for OpenRouter, but remains disabled by default:
+The GraphRAG extraction profile is preconfigured for OpenRouter and is enabled in the copied reference profile:
 
 ```dotenv
 GRAPH_EXTRACT_ENABLED=true
@@ -180,7 +197,7 @@ GRAPH_EXTRACT_FALLBACK_BASE_URL=https://openrouter.ai/api/v1
 GRAPH_EXTRACT_FALLBACK_MODEL=google/gemma-4-31b-it
 ```
 
-Both extraction and graph search are enabled in the copied reference profile because GraphRAG is a core hiai-docs feature. The runtime schema remains fail-safe (`false`) only when no `.env` values are supplied. Both extraction providers reuse `OPENROUTER_API_KEY` unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
+Both extraction and graph search are enabled in the copied reference profile because GraphRAG is a core hiai-docs feature. The runtime schema retains fail-safe `false` fallbacks only when no environment file is supplied. Both extraction providers reuse `OPENROUTER_API_KEY` only for exact OpenRouter hosts unless provider-specific keys are supplied. The shared key is never forwarded to a non-OpenRouter URL.
 
 ## Production Considerations
 
@@ -231,6 +248,40 @@ cd ../.. && bun run db:migrate
 # Push schema directly (dev only)
 bun run db:push
 ```
+
+### Generation-aware reindex and relevance benchmark
+
+Run migrations before starting the API on a fresh or upgraded database. The
+reindex command is resumable and keeps the previous active generation queryable
+until a complete replacement is validated and atomically activated:
+
+```bash
+bun run db:migrate
+cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100
+cd backend && bun run src/scripts/reindex-embeddings.ts --batch=100
+cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700
+```
+
+The benchmark resolves `HIAI_DOCS_API_KEY` (or `BENCHMARK_API_KEY`) from the
+environment, stdin, or an explicitly configured file. Do not pass credentials
+on the command line. The benchmark fixture checks multilingual recall,
+typos, thematic and graph retrieval, explanation labels, invalid-vector
+exclusion, expansion coverage, latency, and tenant leakage. Release gates are
+Recall@10 ≥ 0.90, MRR@10 ≥ 0.80, zero active invalid vectors, fast p95 ≤ 500 ms,
+expanded p95 ≤ 2.5 s, and zero tenant leakage.
+
+Embedding lifecycle states are `pending`, `processing`, `ready`, `failed`, and
+`stale`. A document is ready only when its active generation has valid,
+finite, non-zero 1024-dimensional rows for every chunk. Graph extraction runs
+only after activation; a failed replacement never deletes the last active
+generation.
+
+### Secret hygiene
+
+The real OpenRouter key belongs only in `.env` or deployment-secret storage.
+Never place it in Git, package tarballs, Docker layers, logs, screenshots,
+fixtures, benchmark output, or release notes. The checked-in `.env.example`
+contains only the `change-me-paste-your-openrouter-key-here` placeholder.
 
 ## Services
 
