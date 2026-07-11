@@ -136,8 +136,8 @@ services:
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:50700}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:50701,http://127.0.0.1:50701}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${API_PORT:-50700}}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:${WEB_PORT:-50701},http://127.0.0.1:${WEB_PORT:-50701}}
       # OpenRouter is the public default; override these three values for
       # Ollama or another OpenAI-compatible embedding service.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

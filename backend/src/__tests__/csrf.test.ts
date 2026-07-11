@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { createHmac, randomBytes } from "node:crypto";
+import { isAllowedCsrfOrigin } from "../api/middleware/csrf";
 
 const _CSRF_COOKIE = "hiai-csrf";
 const _CSRF_HEADER = "x-csrf-token";
@@ -62,6 +63,25 @@ describe("CSRF token generation and verification", () => {
 });
 
 describe("CSRF middleware behavior", () => {
+	it("accepts the exact configured custom web port without allowing other origins", () => {
+		const allowed = ["http://localhost:57001", "http://127.0.0.1:57001"];
+		expect(
+			isAllowedCsrfOrigin(
+				"http://localhost:57001",
+				"localhost:57000",
+				allowed,
+				"development",
+			),
+		).toBe(true);
+		expect(
+			isAllowedCsrfOrigin(
+				"http://localhost:57002",
+				"localhost:57000",
+				allowed,
+				"development",
+			),
+		).toBe(false);
+	});
 	it("isUnsafeMethod correctly identifies unsafe methods", () => {
 		const unsafe = ["POST", "PUT", "PATCH", "DELETE"];
 		const safe = ["GET", "HEAD", "OPTIONS"];
