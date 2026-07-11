@@ -14,16 +14,16 @@
 | Compose config | PASS |
 | Backend tests | PASS — 576 passed / 0 failed |
 | Frontend tests | 55 passed / 0 failed |
-| Health checks | PARTIAL — API image `/api/health` returned 200 in-container; full compose stack not run |
+| Health checks | PASS for the disposable core Compose stack — API and web containers healthy; Caddy profile not started |
 | Browser smoke | BLOCKED — agent-browser daemon could not start in this sandbox |
 | Search benchmark | BLOCKED — live benchmark and release gates not run |
 | Docker image export | PASS — API, web, and Caddy images exported locally |
-| Fresh database | BLOCKED — migration `0008_streaming_diskann_index.sql` requires unavailable `diskann` access method |
+| Fresh database | PASS through migrations 0000–0025 on custom image; optional DiskANN and HNSW both verified; 0026 chunk-hash migration added afterward |
 | Upgraded database | NOT RUN |
 
 Passing static checks do not constitute release approval. The current release
-remains blocked by the missing live benchmark, full-stack health, browser, and
-fresh-database evidence.
+remains blocked by the missing live benchmark, upgraded-database evidence, and
+browser smoke.
 
 ### Current Task 10 verification status
 
@@ -35,11 +35,11 @@ The assembled-worktree verification on 2026-07-11 is not a release approval:
 | Frontend tests | 55 passed / 0 failed |
 | Typecheck, lint, build, SDK build | PASS in the assembled worktree |
 | Compose config | PASS (`docker compose --env-file .env.example config --quiet`) |
-| Health checks | API image smoke returned `status: ok`/HTTP 200 in-container (isolated storage is expected to report `error`); full compose health not run |
+| Health checks | Core disposable Compose stack is healthy; in-container API health returned `status: ok`/HTTP 200 and web served `/login` on port 57001 |
 | Search benchmark | Not run against a live API; Recall/MRR/latency/leakage gates are therefore unverified |
 | Browser smoke | Blocked: `agent-browser` daemon exits during startup even with its socket redirected to `/tmp` |
 | Docker images | API, web, and Caddy images built and imported successfully; frontend image serves `/` on port 50701 after the `PORT` default fix |
-| Fresh database | Blocked by migration `0008_streaming_diskann_index.sql`; the configured local PostgreSQL image does not expose the required `diskann` access method |
+| Fresh database | Custom image applied migrations 0000–0025 with AGE/GraphRAG labels and DiskANN; migration 0026 restores nullable `chunk_hash` and still needs a journaled rerun |
 | Upgraded database | Not run |
 | Public release actions | Not performed: no publish, tag, GitHub release, Docker push, npm publish, or Git push |
 

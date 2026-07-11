@@ -14,15 +14,16 @@ This section records the current evidence before any public release action:
 | Compose config | Passed with `.env.example` |
 | Docker image export | Passed; API, web, and Caddy images exported locally |
 | API image smoke | Passed in-container: `/api/health` returned HTTP 200 with `status: ok` |
-| Fresh database migration | Blocked by migration `0008_streaming_diskann_index.sql`; the local PostgreSQL image lacks the required `diskann` access method |
+| Fresh database migration | PASS for migrations 0000–0025 on custom image; AGE/GraphRAG labels and DiskANN verified; 0026 `chunk_hash` migration added and journaled rerun pending |
 | Upgraded database migration | Not run |
 | Live relevance benchmark | Not run; Recall/MRR/latency/tenant-leakage gates remain unverified |
 | Full Compose health | Not run |
 | Browser smoke | Blocked; `agent-browser` daemon could not start in this sandbox |
 | Public release actions | Not performed: no publish, tag, GitHub release, Docker push, npm publish, or Git push |
 
-These blockers must remain visible in the release evidence; they are not
-release approvals or reasons to mark the corresponding checklist items done.
+These remaining blockers must stay visible in the release evidence; they are
+not release approvals or reasons to mark the corresponding checklist items
+done.
 This file describes a v0.2.7 release candidate, not a completed public release.
 
 ## Pre-Release
@@ -55,7 +56,7 @@ This file describes a v0.2.7 release candidate, not a completed public release.
 - [ ] **Run migration/reindex dry-run** — `bun run db:migrate` then `cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100`
 - [ ] **Run relevance benchmark** — `cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/run/secrets/hiai-docs-benchmark-owners.json`; operator credential comes from `HIAI_DOCS_API_KEY`/`BENCHMARK_API_KEY` via environment/stdin/file, owner credentials come from the protected JSON map, and no credential is ever passed in argv
 - [ ] **Verify benchmark gates** — Recall@10 ≥ 0.90, MRR@10 ≥ 0.80, fast p95 ≤ 500 ms, expanded p95 ≤ 2.5 s, zero active invalid vectors, and zero tenant leakage
-- [ ] **Verify fresh and upgraded databases** — apply migrations 0000–0025, reindex fixtures, and record the DiskANN access-method blocker if the configured image cannot provide it
+- [ ] **Verify fresh and upgraded databases** — apply migrations 0000–0026, reindex fixtures, and record both DiskANN/HNSW paths plus upgrade invariants
 
 ## Build
 
