@@ -140,7 +140,7 @@ export const envSchema = z.object({
 		.int()
 		.min(1_000)
 		.max(300_000)
-		.default(120_000),
+		.default(30_000),
 	// Base URL for the LLM that performs entity extraction. This endpoint
 	// MUST accept OpenAI-compatible chat completion requests
 	// (POST {url}/chat/completions). When absent, falls back to
