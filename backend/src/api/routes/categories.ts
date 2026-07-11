@@ -271,6 +271,11 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			};
 		}
 		const newName = parsed.data.name;
+		const hasApiAccessUpdate =
+			parsed.data.apiMode !== undefined ||
+			parsed.data.apiPermissionRead !== undefined ||
+			parsed.data.apiPermissionEdit !== undefined ||
+			parsed.data.apiPermissionWrite !== undefined;
 		try {
 			const updated = await withTenant(ctx, async (tx) => {
 				if (newName !== undefined) {
@@ -292,12 +297,14 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						...(parsed.data.order !== undefined && {
 							order: parsed.data.order,
 						}),
-						...buildApiAccessValues({
-							apiMode: parsed.data.apiMode,
-							apiPermissionRead: parsed.data.apiPermissionRead,
-							apiPermissionEdit: parsed.data.apiPermissionEdit,
-							apiPermissionWrite: parsed.data.apiPermissionWrite,
-						}),
+						...(hasApiAccessUpdate
+							? buildApiAccessValues({
+									apiMode: parsed.data.apiMode,
+									apiPermissionRead: parsed.data.apiPermissionRead,
+									apiPermissionEdit: parsed.data.apiPermissionEdit,
+									apiPermissionWrite: parsed.data.apiPermissionWrite,
+								})
+							: {}),
 						updatedAt: new Date(),
 					})
 					.where(

@@ -33,7 +33,7 @@ import { Loader2 } from "lucide-svelte";
 import * as m from "$lib/paraglide/messages.js";
 
 type Mode = "create" | "edit" | "delete";
-type ApiMode = "unavailable" | "general" | "category";
+type ApiMode = "unavailable" | "global" | "category";
 
 type CategoryAccessState = {
 	apiMode?: string | null;
@@ -94,7 +94,7 @@ $effect(() => {
 		category?.apiMode === "category"
 			? "category"
 			: category?.apiMode === "global" || category?.apiMode === "general"
-				? "general"
+				? "global"
 				: "unavailable";
 	apiMode = initialApiMode;
 	apiPermissionRead = Boolean(category?.apiPermissionRead);
@@ -136,7 +136,7 @@ function normalizeApiMode(
 	value: ApiMode,
 ): "unavailable" | "global" | "category" {
 	if (value === "category") return "category";
-	if (value === "general") return "global";
+	if (value === "global") return "global";
 	return "unavailable";
 }
 
@@ -273,19 +273,19 @@ function close() {
 					value={apiMode}
 					disabled={busy}
 					onValueChange={(value: string) => {
-						if (value === "unavailable" || value === "general" || value === "category") {
+						if (value === "unavailable" || value === "global" || value === "category") {
 							apiMode = value;
 						}
 					}}
 				>
 					<Select.Trigger id="category-dialog-api-mode" class="h-10 w-full">
 						<Select.Value placeholder="Select API access">
-							{apiMode === "unavailable" ? "Unavailable" : apiMode === "general" ? "General" : "Category API"}
+							{apiMode === "unavailable" ? "Unavailable" : apiMode === "global" ? "Global" : "Category API"}
 						</Select.Value>
 					</Select.Trigger>
 					<Select.Content>
 						<Select.Item value="unavailable">Unavailable</Select.Item>
-						<Select.Item value="general">General</Select.Item>
+						<Select.Item value="global">Global</Select.Item>
 						<Select.Item value="category">Category API</Select.Item>
 					</Select.Content>
 				</Select.Root>

@@ -71,13 +71,13 @@ function authedDelete(path: string) {
 }
 
 function seedCategory(id: string, ownerId: string, name: string): void {
-  getState().categories.set(id, {
+	getState().categories.set(id, {
     id,
     ownerId,
     name,
     createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+		updatedAt: new Date(),
+	});
 }
 
 describe("GET /api/categories", () => {
@@ -127,14 +127,31 @@ describe("POST /api/categories", () => {
     expect(res.status).toBe(403);
   });
 
-  it("creates a category and returns 201", async () => {
+	it("creates a category and returns 201", async () => {
     const res = await authedPost("/api/categories", { name: "research" });
     expect(res.status).toBe(201);
     const body = res.body as { id: string; name: string; ownerId: string };
     expect(body.name).toBe("research");
     expect(body.ownerId).toBe(OWNER_ID);
     expect(body.id).toBeTruthy();
-  });
+	});
+
+	it("persists global API access and its permissions", async () => {
+		const res = await authedPost("/api/categories", {
+			name: "public-docs",
+			apiMode: "global",
+			apiPermissionRead: true,
+			apiPermissionEdit: true,
+			apiPermissionWrite: false,
+		});
+		expect(res.status).toBe(201);
+		expect(res.body).toMatchObject({
+			apiMode: "global",
+			apiPermissionRead: true,
+			apiPermissionEdit: true,
+			apiPermissionWrite: false,
+		});
+	});
 
   it("rejects an empty name with 400", async () => {
     const res = await authedPost("/api/categories", { name: "" });
@@ -221,13 +238,34 @@ describe("PATCH /api/categories/:id", () => {
     );
   });
 
-  it("allows renaming to the same name (idempotent)", async () => {
+	it("allows renaming to the same name (idempotent)", async () => {
     seedCategory("cat-1", OWNER_ID, "stable");
     const res = await authedPatch("/api/categories/cat-1", {
       name: "stable",
     });
-    expect(res.status).toBe(200);
-  });
+		expect(res.status).toBe(200);
+	});
+
+	it("does not clear API access when only the name changes", async () => {
+		seedCategory("cat-1", OWNER_ID, "old");
+		const category = getState().categories.get("cat-1");
+		Object.assign(category, {
+			apiMode: "global",
+			apiPermissionRead: true,
+			apiPermissionEdit: false,
+			apiPermissionWrite: true,
+		});
+		const res = await authedPatch("/api/categories/cat-1", {
+			name: "renamed",
+		});
+		expect(res.status).toBe(200);
+		expect(res.body).toMatchObject({
+			name: "renamed",
+			apiMode: "global",
+			apiPermissionRead: true,
+			apiPermissionWrite: true,
+		});
+	});
 });
 
 describe("DELETE /api/categories/:id", () => {
