@@ -47,6 +47,9 @@ COPY --from=build /app/frontend/build /app/frontend/build
 COPY frontend/package.json /app/frontend/
 
 ENV NODE_ENV=production
+# adapter-node reads PORT at runtime; keep the standalone image aligned with
+# the compose mapping and its healthcheck instead of falling back to 3000.
+ENV PORT=50701
 ENV WEB_PORT=50701
 WORKDIR /app/frontend
 
