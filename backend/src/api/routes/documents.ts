@@ -79,7 +79,7 @@ const MAX_EXTRACTED_CONTENT_SIZE = 25 * 1024 * 1024;
 class ImportInputError extends Error {
 	constructor(
 		message: string,
-		readonly status: 413 | 422,
+		readonly status: 400 | 413 | 422,
 	) {
 		super(message);
 		this.name = "ImportInputError";
@@ -96,26 +96,39 @@ function assertImportContentSize(content: string, filename: string): void {
 	}
 }
 
-function importErrorDetails(err: unknown): {
-	name: string;
-	message: string;
+const ALLOWED_IMPORT_ERROR_CODES = new Set([
+	"22001",
+	"23503",
+	"23505",
+	"42501",
+	"54000",
+]);
+
+function importErrorTelemetry(err: unknown): {
+	kind: "database" | "syntax" | "unknown";
 	code?: string;
 } {
-	if (!(err instanceof Error)) {
-		return { name: "UnknownError", message: "Non-error import failure" };
-	}
-	const cause = err.cause;
-	if (cause instanceof Error) {
-		return {
-			name: cause.name,
-			message: cause.message,
-			code:
-				"code" in cause && typeof cause.code === "string"
-					? cause.code
-					: undefined,
-		};
-	}
-	return { name: err.name, message: err.message };
+	const candidate =
+		err instanceof Error && err.cause instanceof Error ? err.cause : err;
+	const rawCode =
+		candidate instanceof Error &&
+		"code" in candidate &&
+		typeof candidate.code === "string"
+			? candidate.code
+			: undefined;
+	const code =
+		rawCode && ALLOWED_IMPORT_ERROR_CODES.has(rawCode) ? rawCode : undefined;
+	if (code) return { kind: "database", code };
+	if (candidate instanceof SyntaxError) return { kind: "syntax" };
+	return { kind: "unknown" };
+}
+
+function byteSizeBucket(bytes: number): string {
+	if (bytes < 1024 * 1024) return "lt_1mb";
+	if (bytes < 5 * 1024 * 1024) return "1_to_5mb";
+	if (bytes < 10 * 1024 * 1024) return "5_to_10mb";
+	if (bytes < 25 * 1024 * 1024) return "10_to_25mb";
+	return "gte_25mb";
 }
 
 const importJsonSchema = z.object({
@@ -157,11 +170,17 @@ async function importFileToItem(file: File): Promise<{
 	}
 	if (name.toLowerCase().endsWith(".json")) {
 		const text = await file.text();
-		const jsonBody = JSON.parse(text);
+		let jsonBody: unknown;
+		try {
+			jsonBody = JSON.parse(text);
+		} catch {
+			throw new ImportInputError("Invalid JSON syntax in uploaded file", 400);
+		}
 		const jsonParsed = importJsonSchema.safeParse(jsonBody);
 		if (!jsonParsed.success) {
-			throw new Error(
-				`Invalid JSON format in "${name}": ${JSON.stringify(jsonParsed.error.flatten())}`,
+			throw new ImportInputError(
+				"Uploaded JSON does not match the document import schema",
+				422,
 			);
 		}
 		assertImportContentSize(jsonParsed.data.content, name);
@@ -1031,6 +1050,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 	})
 
 	.post("/documents/import", async ({ request, set }) => {
+		const importRequestId = crypto.randomUUID();
 		const ip =
 			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
 			request.headers.get("x-real-ip") ??
@@ -1042,6 +1062,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Too many requests" };
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
+		set.headers["X-Request-ID"] = importRequestId;
 
 		const ctx = await buildTenantContext(request);
 		if (ctx.role === "none") {
@@ -1049,6 +1070,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Unauthorized" };
 		}
 		const userId = ctx.userId;
+		let importItemCount = 0;
+		let importByteCount = 0;
 		try {
 			const contentType = request.headers.get("content-type") ?? "";
 			const contentLength = Number(request.headers.get("content-length"));
@@ -1076,7 +1099,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			let folderId: string | null = null;
 
 			if (contentType.includes("application/json")) {
-				const body = await request.json();
+				let body: unknown;
+				try {
+					body = await request.json();
+				} catch {
+					set.status = 400;
+					return { error: "Invalid JSON syntax" };
+				}
 				const parsed = importJsonSchema.safeParse(body);
 				if (!parsed.success) {
 					set.status = 400;
@@ -1087,6 +1116,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				}
 				const jsonTitle = parsed.data.title ?? "Imported Document";
 				assertImportContentSize(parsed.data.content, `${jsonTitle}.md`);
+				importItemCount = 1;
+				importByteCount = Buffer.byteLength(parsed.data.content, "utf8");
 				items = [
 					{
 						filename: `${jsonTitle}.md`,
@@ -1112,6 +1143,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					};
 				}
 				const totalFileSize = files.reduce((sum, file) => sum + file.size, 0);
+				importItemCount = files.length;
+				importByteCount = totalFileSize;
 				if (totalFileSize > MAX_IMPORT_REQUEST_SIZE) {
 					set.status = 413;
 					return {
@@ -1262,18 +1295,29 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// rather than collapsing them into a generic 500.
 			if (err instanceof DocxParseError) {
 				logger.warn(
-					{ err, fileName: err.fileName },
+					{
+						requestId: importRequestId,
+						kind: "docx_parse",
+						itemCount: importItemCount,
+						sizeBucket: byteSizeBucket(importByteCount),
+					},
 					"DOCX parse failure during import",
 				);
 				set.status = 422;
 				return { error: err.message };
 			}
-			const details = importErrorDetails(err);
-			logger.error({ importError: details }, "Failed to import document");
-			if (
-				details.code === "54000" ||
-				details.message.includes("string is too long for tsvector")
-			) {
+			const telemetry = importErrorTelemetry(err);
+			logger.error(
+				{
+					requestId: importRequestId,
+					kind: telemetry.kind,
+					code: telemetry.code,
+					itemCount: importItemCount,
+					sizeBucket: byteSizeBucket(importByteCount),
+				},
+				"Failed to import document",
+			);
+			if (telemetry.code === "54000") {
 				set.status = 422;
 				return {
 					error:

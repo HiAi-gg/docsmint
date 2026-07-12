@@ -136,6 +136,26 @@ lexical search strips inline `data:` image payloads and indexes a bounded text
 prefix so large supported documents cannot exceed PostgreSQL's 1 MiB `tsvector`
 limit.
 
+### Migration 0033 operational note
+
+Migration `0033_bound_document_search_vectors` replaces both stored generated
+`tsvector` columns and rebuilds their GIN indexes. PostgreSQL takes an
+`ACCESS EXCLUSIVE` lock on `documents` while replacing the columns, and the
+index rebuild scans the table. Writes and reads that touch `documents` can
+therefore wait until the migration transaction completes.
+
+For a new installation this is part of initial bootstrap and needs no separate
+maintenance step. For an upgraded installation with a large `documents` table,
+schedule a maintenance window and allow disk headroom for rebuilding both GIN
+indexes. Runtime is proportional to total document text; measure a production
+snapshot or staging clone rather than extrapolating from an empty database.
+Do not start API containers until the one-shot `migrate` service reports
+success; the provided Compose dependency already enforces this ordering.
+The rollback-only verification in
+`packages/db/scripts/large-document-search-smoke.sql` exercises a document
+larger than 1 MiB, a large inline data image, multilingual insert/update
+search, both generated columns, and both GIN indexes.
+
 ## Errors
 
 | Status | When |
