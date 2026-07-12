@@ -576,6 +576,10 @@ function rollbackDocumentPlacement(
 	documentId: string,
 	placement: SidebarDocumentPlacement,
 ) {
+	// Invalidate a refresh that may have captured a newer optimistic placement
+	// before this latest mutation failed. Its late response must not overwrite
+	// the rollback to the last server-confirmed placement.
+	documentsLoadGeneration++;
 	registerDocument(documentId, placement.folderId, placement.categoryId);
 	documents = documents.map((doc) =>
 		doc.id === documentId ? { ...doc, ...placement } : doc,

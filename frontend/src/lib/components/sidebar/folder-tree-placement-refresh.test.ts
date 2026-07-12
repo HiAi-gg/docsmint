@@ -44,4 +44,13 @@ describe("FolderTree placement refresh", () => {
 		expect(folderTree).toContain("createDocumentPlacementWriter({");
 		expect(folderTree).toContain("acknowledge: acknowledgeDocumentPlacement");
 	});
+
+	test("invalidates a late refresh before rolling back a failed move", () => {
+		const rollbackStart = folderTree.indexOf(
+			"function rollbackDocumentPlacement",
+		);
+		const rollbackEnd = folderTree.indexOf("const writeDocumentPlacement");
+		const rollback = folderTree.slice(rollbackStart, rollbackEnd);
+		expect(rollback).toContain("documentsLoadGeneration++");
+	});
 });
