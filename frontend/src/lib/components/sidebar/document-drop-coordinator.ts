@@ -80,7 +80,8 @@ export function createDocumentDropCoordinator(options: {
 	let active:
 		| {
 				id: string;
-				headerClaimed: boolean;
+				token: number;
+				resolved: boolean;
 				pending: ReturnType<typeof setTimeout> | null;
 		  }
 		| undefined;
@@ -88,35 +89,35 @@ export function createDocumentDropCoordinator(options: {
 	function ensure(id: string) {
 		if (!active || active.id !== id) {
 			if (active?.pending) cancel(active.pending);
-			active = { id, headerClaimed: false, pending: null };
+			active = { id, token: -1, resolved: false, pending: null };
 		}
 		return active;
 	}
 
 	return {
-		begin(id: string) {
-			if (active?.id === id && active.headerClaimed) {
-				active = { id, headerClaimed: false, pending: null };
-			} else {
-				ensure(id);
-			}
+		begin(id: string, token: number) {
+			if (active?.id === id && active.token === token) return;
+			if (active?.pending) cancel(active.pending);
+			active = { id, token, resolved: false, pending: null };
 		},
 		zone(id: string, placement: SidebarDocumentPlacement) {
 			const transaction = ensure(id);
-			if (transaction.headerClaimed) return;
+			if (transaction.resolved) return;
 			if (transaction.pending) cancel(transaction.pending);
 			transaction.pending = defer(() => {
-				if (active === transaction && !transaction.headerClaimed) {
+				if (active === transaction && !transaction.resolved) {
 					transaction.pending = null;
+					transaction.resolved = true;
 					options.persist(id, placement);
 				}
 			});
 		},
 		header(id: string, placement: SidebarDocumentPlacement) {
 			const transaction = ensure(id);
-			transaction.headerClaimed = true;
+			if (transaction.resolved) return;
 			if (transaction.pending) cancel(transaction.pending);
 			transaction.pending = null;
+			transaction.resolved = true;
 			options.persist(id, placement);
 		},
 	};

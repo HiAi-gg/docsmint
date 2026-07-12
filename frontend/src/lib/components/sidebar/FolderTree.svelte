@@ -200,6 +200,7 @@ let isDraggingGlobal = $state(false);
 let isDraggingFolder = $state(false);
 let isDraggingDoc = $state(false);
 let draggedDocId = $state<string | null>(null);
+let documentDragGeneration = 0;
 // Concurrency guard for `persistFolderChanges`. `svelte-dnd-action`
 // dispatches `finalize` on BOTH source and destination zones for
 // cross-zone drops; even though `handleFolderFinalize` already skips
@@ -807,11 +808,17 @@ function setZoneItems(zone: DocZone, next: DndDoc[]) {
 function handleConsider(zone: DocZone) {
 	return (e: CustomEvent<DndEvent<DndDoc>>) => {
 		e.stopPropagation();
+		const startsNewDrag = !isDraggingDoc;
 		isDraggingGlobal = true;
 		isDraggingDoc = true;
 		if (e.detail.info?.id) {
 			draggedDocId = e.detail.info.id;
-			documentDropCoordinator.begin(e.detail.info.id);
+			if (startsNewDrag) {
+				documentDropCoordinator.begin(
+					e.detail.info.id,
+					++documentDragGeneration,
+				);
+			}
 		}
 		const next = sanitizeItems(e.detail.items);
 		setZoneItems(zone, next);
