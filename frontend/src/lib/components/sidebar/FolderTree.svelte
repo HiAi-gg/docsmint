@@ -1223,16 +1223,24 @@ function handleCategoryConsider(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
 	isDraggingGlobal = true;
 	categoryDragActive = true;
-	orderedBuckets = sanitizeBuckets(e.detail.items);
+	orderedBuckets = withUncategorizedBucket(sanitizeBuckets(e.detail.items));
 }
 
 function handleCategoryFinalize(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
-	const next = sanitizeBuckets(e.detail.items);
+	const next = withUncategorizedBucket(sanitizeBuckets(e.detail.items));
 	orderedBuckets = next;
 	isDraggingGlobal = false;
 	categoryDragActive = false;
 	queueCategoryOrder(next);
+}
+
+function withUncategorizedBucket(items: CategoryBucket[]): CategoryBucket[] {
+	const realCategories = items.filter((item) => item.id !== UNCATEGORIZED_KEY);
+	const uncategorized =
+		orderedBuckets.find((item) => item.id === UNCATEGORIZED_KEY) ??
+		buckets.find((item) => item.id === UNCATEGORIZED_KEY);
+	return uncategorized ? [...realCategories, uncategorized] : realCategories;
 }
 
 function sanitizeBuckets(raw: unknown): CategoryBucket[] {

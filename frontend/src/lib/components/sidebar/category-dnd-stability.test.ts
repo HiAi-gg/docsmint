@@ -18,4 +18,16 @@ describe("category drag-and-drop stability", () => {
 		expect(source).toContain("generation === categoryOrderGeneration");
 		expect(source).toContain("categoryDragActive || categoryOrderPending");
 	});
+
+	test("keeps the synthetic Uncategorized bucket pinned during events", () => {
+		expect(source).toContain(
+			"orderedBuckets = withUncategorizedBucket(sanitizeBuckets(e.detail.items))",
+		);
+		expect(source).toContain(
+			"const realCategories = items.filter((item) => item.id !== UNCATEGORIZED_KEY)",
+		);
+		expect(source).toContain(
+			"return uncategorized ? [...realCategories, uncategorized]",
+		);
+	});
 });
