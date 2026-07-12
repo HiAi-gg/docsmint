@@ -5,7 +5,6 @@ import {
 	DEFAULT_EMBED_CHUNKS_PER_JOB,
 	type EmbedBatchJob,
 	JOB_IDS,
-	PIPELINE_SCHEMA_VERSION,
 	type PrepareJob,
 	prepareJobSchema,
 } from "../contracts";
@@ -27,6 +26,7 @@ export interface PrepareWorkerDependencies {
 		}>;
 	}): Promise<"prepared" | "duplicate" | "stale">;
 	markStale(job: PrepareJob, errorCode: string): Promise<void>;
+	claimPendingBatches(job: PrepareJob, limit: number): Promise<EmbedBatchJob[]>;
 	enqueueEmbed(
 		data: EmbedBatchJob,
 		options: typeof DEFAULT_JOB_OPTIONS & { jobId: string; priority: number },
@@ -37,6 +37,7 @@ export async function processPrepareJob(
 	rawJob: Pick<Job<PrepareJob>, "data">,
 	deps: PrepareWorkerDependencies,
 	batchSize = DEFAULT_EMBED_CHUNKS_PER_JOB,
+	maxActiveBatches = 2,
 ): Promise<{ status: "prepared" | "duplicate" | "stale"; batches: number }> {
 	const job = prepareJobSchema.parse(rawJob.data);
 	const document = await deps.loadDocument(job);
@@ -62,25 +63,15 @@ export async function processPrepareJob(
 		if (state === "stale") await deps.markStale(job, "stale_prepare");
 		return { status: state, batches: batches.length };
 	}
+	const initial = await deps.claimPendingBatches(job, maxActiveBatches);
 	await Promise.all(
-		batches.map((batch) => {
-			const data: EmbedBatchJob = {
-				...job,
-				schemaVersion: PIPELINE_SCHEMA_VERSION,
-				stage: "embed",
-				batchIndex: batch.batchIndex,
-				totalBatches: batches.length,
-				chunkIndexes: Array.from(
-					{ length: batch.chunkEnd - batch.chunkStart },
-					(_, offset) => batch.chunkStart + offset,
-				),
-			};
-			return deps.enqueueEmbed(data, {
+		initial.map((data) =>
+			deps.enqueueEmbed(data, {
 				...DEFAULT_JOB_OPTIONS,
-				jobId: JOB_IDS.embed(job.generationId, batch.batchIndex),
+				jobId: JOB_IDS.embed(job.generationId, data.batchIndex),
 				priority: SOURCE_PRIORITY[job.source],
-			});
-		}),
+			}),
+		),
 	);
 	return { status: "prepared", batches: batches.length };
 }
@@ -88,13 +79,22 @@ export async function processPrepareJob(
 export function createPrepareWorker(
 	redisUrl: string,
 	deps: PrepareWorkerDependencies,
-	options: { concurrency?: number; batchSize?: number } = {},
+	options: {
+		concurrency?: number;
+		batchSize?: number;
+		maxActiveBatches?: number;
+	} = {},
 ): Worker<PrepareJob> {
 	return new Worker<PrepareJob>(
 		QUEUE_NAMES.prepare,
 		(job) =>
 			withOwnerSlot(job.data.ownerId, "prepare", () =>
-				processPrepareJob(job, deps, options.batchSize),
+				processPrepareJob(
+					job,
+					deps,
+					options.batchSize,
+					options.maxActiveBatches,
+				),
 			),
 		{
 			connection: createBullMqConnection(redisUrl),

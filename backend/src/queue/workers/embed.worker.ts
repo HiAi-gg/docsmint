@@ -41,6 +41,14 @@ export interface EmbedWorkerDependencies {
 		job: EmbedBatchJob;
 		profile: { model: string; profile: string; dimensions: number };
 	}): Promise<{ allBatchesComplete: boolean; totalChunks: number }>;
+	claimPendingBatches(
+		job: EmbedBatchJob,
+		limit: number,
+	): Promise<EmbedBatchJob[]>;
+	enqueueEmbed(
+		data: EmbedBatchJob,
+		options: typeof DEFAULT_JOB_OPTIONS & { jobId: string; priority: number },
+	): Promise<unknown>;
 	activateGeneration(input: {
 		documentId: string;
 		generationId: string;
@@ -118,8 +126,19 @@ export async function processEmbedJob(
 		dimensions: first.dimensions,
 	};
 	const completion = await deps.completeBatch({ job, profile });
-	if (!completion.allBatchesComplete)
+	if (!completion.allBatchesComplete) {
+		const next = await deps.claimPendingBatches(job, 1);
+		await Promise.all(
+			next.map((data) =>
+				deps.enqueueEmbed(data, {
+					...DEFAULT_JOB_OPTIONS,
+					jobId: JOB_IDS.embed(job.generationId, data.batchIndex),
+					priority: SOURCE_PRIORITY[job.source],
+				}),
+			),
+		);
 		return { status: "stored", activated: false };
+	}
 	await deps.activateGeneration({
 		documentId: job.documentId,
 		generationId: job.generationId,

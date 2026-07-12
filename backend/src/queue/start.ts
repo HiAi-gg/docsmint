@@ -69,6 +69,7 @@ export interface PipelineWorkerSettings {
 	summarizeConcurrency: number;
 	finalizeConcurrency: number;
 	embedBatchSize: number;
+	maxActiveBatchesPerDocument: number;
 }
 
 const STAGE_ORDER: readonly PipelineStage[] = [
@@ -89,6 +90,7 @@ export function createPipelineWorkerFactories(
 		summarizeConcurrency: 1,
 		finalizeConcurrency: 2,
 		embedBatchSize: 5,
+		maxActiveBatchesPerDocument: 2,
 	},
 ): Record<PipelineStage, PipelineWorkerFactory> {
 	const connection = () => createBullMqConnection(redisUrl);
@@ -100,6 +102,7 @@ export function createPipelineWorkerFactories(
 			createPrepareWorker(redisUrl, deps.prepare, {
 				concurrency: settings.prepareConcurrency,
 				batchSize: settings.embedBatchSize,
+				maxActiveBatches: settings.maxActiveBatchesPerDocument,
 			}),
 		embed: () =>
 			createEmbedWorker(redisUrl, deps.embed, {

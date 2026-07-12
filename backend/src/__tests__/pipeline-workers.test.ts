@@ -19,6 +19,11 @@ const base = {
 describe("prepare pipeline worker", () => {
 	test("creates deterministic bounded batches and is idempotent", async () => {
 		const jobs: EmbedBatchJob[] = [];
+		let preparedBatches: Array<{
+			batchIndex: number;
+			chunkStart: number;
+			chunkEnd: number;
+		}> = [];
 		let calls = 0;
 		const job: PrepareJob = { ...base, stage: "prepare" };
 		const deps = {
@@ -30,8 +35,21 @@ describe("prepare pipeline worker", () => {
 				).join("\n\n"),
 				revision: base.revision,
 			}),
-			prepareRun: async () =>
-				++calls === 1 ? ("prepared" as const) : ("duplicate" as const),
+			prepareRun: async ({ batches }: { batches: typeof preparedBatches }) => {
+				preparedBatches = batches;
+				return ++calls === 1 ? ("prepared" as const) : ("duplicate" as const);
+			},
+			claimPendingBatches: async (_job: PrepareJob, limit: number) =>
+				preparedBatches.slice(0, limit).map((batch) => ({
+					...job,
+					stage: "embed" as const,
+					batchIndex: batch.batchIndex,
+					totalBatches: preparedBatches.length,
+					chunkIndexes: Array.from(
+						{ length: batch.chunkEnd - batch.chunkStart },
+						(_, offset) => batch.chunkStart + offset,
+					),
+				})),
 			markStale: async () => undefined,
 			enqueueEmbed: async (data: EmbedBatchJob) => jobs.push(data),
 		};
@@ -40,7 +58,7 @@ describe("prepare pipeline worker", () => {
 		expect(first.batches).toBeGreaterThan(1);
 		expect(jobs.every((queued) => queued.chunkIndexes.length <= 5)).toBe(true);
 		expect(second.status).toBe("duplicate");
-		expect(jobs).toHaveLength(first.batches);
+		expect(jobs).toHaveLength(Math.min(2, first.batches));
 	});
 
 	test("rejects a superseded revision before creating batches", async () => {
@@ -61,6 +79,7 @@ describe("prepare pipeline worker", () => {
 				markStale: async (_job, errorCode) => {
 					staleCode = errorCode;
 				},
+				claimPendingBatches: async () => [],
 				enqueueEmbed: async () => undefined,
 			},
 		);
@@ -68,7 +87,6 @@ describe("prepare pipeline worker", () => {
 		expect(prepared).toBe(false);
 		expect(staleCode).toBe("stale_revision");
 	});
-
 });
 
 describe("embed pipeline worker", () => {
@@ -94,6 +112,8 @@ describe("embed pipeline worker", () => {
 			}),
 			storeBatch: async () => "stored",
 			completeBatch: async () => ({ allBatchesComplete: true, totalChunks: 1 }),
+			claimPendingBatches: async () => [],
+			enqueueEmbed: async () => undefined,
 			activateGeneration: async () => {
 				order.push("activate");
 			},
@@ -150,5 +170,38 @@ describe("embed pipeline worker", () => {
 		expect(result.status).toBe("stale");
 		expect(embedded).toBe(false);
 		expect(order).toEqual(["stale:stale_revision"]);
+	});
+
+	test("schedules one replacement batch per completion until all are active", async () => {
+		const { deps } = harness();
+		const scheduled: number[] = [0, 1];
+		let next = 2;
+		let completed = 0;
+		deps.completeBatch = async () => ({
+			allBatchesComplete: ++completed === 5,
+			totalChunks: 1,
+		});
+		deps.claimPendingBatches = async (job, limit) =>
+			limit > 0 && next < 5
+				? [{ ...job, batchIndex: next++, chunkIndexes: [0] }]
+				: [];
+		deps.enqueueEmbed = async (job) => {
+			scheduled.push(job.batchIndex);
+		};
+		for (let batchIndex = 0; batchIndex < 5; batchIndex += 1) {
+			await processEmbedJob(
+				{
+					data: {
+						...base,
+						stage: "embed",
+						batchIndex,
+						totalBatches: 5,
+						chunkIndexes: [0],
+					},
+				},
+				deps,
+			);
+		}
+		expect(scheduled).toEqual([0, 1, 2, 3, 4]);
 	});
 });

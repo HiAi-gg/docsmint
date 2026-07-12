@@ -15,8 +15,13 @@ import { getEmbedding } from "../embedding/index";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { extractEntities } from "../lib/graph/extract-entities";
-import type { PipelineJob, PipelineStage } from "./contracts";
-import { JOB_IDS } from "./contracts";
+import type {
+	EmbedBatchJob,
+	PipelineJob,
+	PipelineStage,
+	PrepareJob,
+} from "./contracts";
+import { JOB_IDS, PIPELINE_SCHEMA_VERSION } from "./contracts";
 import { resolveDocumentRevision } from "./document-revision";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
 import {
@@ -106,12 +111,73 @@ async function markRunStale(
 	);
 }
 
+async function claimPendingBatches(
+	job: PrepareJob | EmbedBatchJob,
+	limit: number,
+): Promise<EmbedBatchJob[]> {
+	return withTenant(admin, async (tx) => {
+		const [run] = await tx
+			.select({ totalBatches: documentPipelineRuns.totalBatches })
+			.from(documentPipelineRuns)
+			.where(eq(documentPipelineRuns.generationId, job.generationId))
+			.limit(1);
+		if (!run || limit < 1) return [];
+		const candidates = await tx
+			.select({
+				batchIndex: documentPipelineBatches.batchIndex,
+				chunkStart: documentPipelineBatches.chunkStart,
+				chunkEnd: documentPipelineBatches.chunkEnd,
+			})
+			.from(documentPipelineBatches)
+			.where(
+				and(
+					eq(documentPipelineBatches.generationId, job.generationId),
+					eq(documentPipelineBatches.status, "pending"),
+				),
+			)
+			.orderBy(documentPipelineBatches.batchIndex)
+			.limit(limit);
+		const claimed: EmbedBatchJob[] = [];
+		for (const batch of candidates) {
+			const rows = await tx
+				.update(documentPipelineBatches)
+				.set({
+					status: "processing",
+					startedAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.where(
+					and(
+						eq(documentPipelineBatches.generationId, job.generationId),
+						eq(documentPipelineBatches.batchIndex, batch.batchIndex),
+						eq(documentPipelineBatches.status, "pending"),
+					),
+				)
+				.returning({ batchIndex: documentPipelineBatches.batchIndex });
+			if (rows.length !== 1) continue;
+			claimed.push({
+				...job,
+				schemaVersion: PIPELINE_SCHEMA_VERSION,
+				stage: "embed",
+				batchIndex: batch.batchIndex,
+				totalBatches: run.totalBatches,
+				chunkIndexes: Array.from(
+					{ length: batch.chunkEnd - batch.chunkStart },
+					(_, offset) => batch.chunkStart + offset,
+				),
+			});
+		}
+		return claimed;
+	});
+}
+
 export function createPipelineStageDependencies(
 	redisUrl: string,
 ): PipelineStageDependencies {
 	const queue = (stage: PipelineStage) => getPipelineQueue(stage, redisUrl);
 	return {
 		prepare: {
+			claimPendingBatches,
 			markStale: (job, errorCode) =>
 				markRunStale(job.generationId, "prepare", errorCode),
 			async loadDocument({ documentId, ownerId }) {
@@ -202,6 +268,10 @@ export function createPipelineStageDependencies(
 			},
 		},
 		embed: {
+			claimPendingBatches,
+			enqueueEmbed(data, options) {
+				return queue("embed").add("embed", data, options);
+			},
 			markStale: (job, errorCode) =>
 				markRunStale(job.generationId, "embed", errorCode),
 			async loadDocument({ documentId, ownerId, generationId }) {

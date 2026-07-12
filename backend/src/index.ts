@@ -66,6 +66,7 @@ const pipelineRuntime = await startRegisteredPipelineWorkers({
 		summarizeConcurrency: config.QUEUE_SUMMARY_CONCURRENCY,
 		finalizeConcurrency: config.QUEUE_FINALIZE_CONCURRENCY,
 		embedBatchSize: config.QUEUE_EMBED_BATCH_SIZE,
+		maxActiveBatchesPerDocument: config.QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT,
 	},
 	shutdownGraceMs: config.QUEUE_SHUTDOWN_GRACE_MS,
 	recover: async () => {

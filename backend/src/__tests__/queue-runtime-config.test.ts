@@ -5,6 +5,11 @@ import { processPrepareJob } from "../queue/workers/prepare.worker";
 describe("queue runtime configuration", () => {
 	test("honors the configured embedding batch size", async () => {
 		const jobs: EmbedBatchJob[] = [];
+		let prepared: Array<{
+			batchIndex: number;
+			chunkStart: number;
+			chunkEnd: number;
+		}> = [];
 		const job: PrepareJob = {
 			schemaVersion: 1,
 			stage: "prepare",
@@ -26,13 +31,29 @@ describe("queue runtime configuration", () => {
 					).join("\n\n"),
 					revision: job.revision,
 				}),
-				prepareRun: async () => "prepared",
+				prepareRun: async ({ batches }) => {
+					prepared = batches;
+					return "prepared";
+				},
 				markStale: async () => undefined,
+				claimPendingBatches: async (_job, limit) =>
+					prepared.slice(0, limit).map((batch) => ({
+						...job,
+						stage: "embed",
+						batchIndex: batch.batchIndex,
+						totalBatches: prepared.length,
+						chunkIndexes: Array.from(
+							{ length: batch.chunkEnd - batch.chunkStart },
+							(_, offset) => batch.chunkStart + offset,
+						),
+					})),
 				enqueueEmbed: async (data) => jobs.push(data),
 			},
+			2,
 			2,
 		);
 		expect(result.batches).toBeGreaterThan(1);
 		expect(jobs.every((queued) => queued.chunkIndexes.length <= 2)).toBe(true);
+		expect(jobs).toHaveLength(2);
 	});
 });
