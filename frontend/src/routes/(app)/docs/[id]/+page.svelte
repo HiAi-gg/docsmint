@@ -638,28 +638,44 @@ async function loadCategories() {
 }
 
 async function moveToFolder(folderId: string | null, propagateError = false) {
-	try {
-		const placement = placementForFolder(folderId, folders, currentCategoryId);
+	const previousFolderId = currentFolderId;
+	const previousCategoryId = currentCategoryId;
+	const placement = placementForFolder(folderId, folders, currentCategoryId);
 
+	// Placement changes are document mutations in their own right. Apply them
+	// optimistically and persist immediately instead of waiting for the content
+	// autosave timer (which only runs after an editor text change).
+	currentFolderId = placement.folderId;
+	currentCategoryId = placement.categoryId;
+	saveStatus = "saving";
+	try {
 		await updateDocument(data.document.id, placement);
-		currentFolderId = placement.folderId;
-		currentCategoryId = placement.categoryId;
 		saveStatus = "saved";
 		refreshDocs();
 	} catch (error) {
+		currentFolderId = previousFolderId;
+		currentCategoryId = previousCategoryId;
+		saveStatus = "unsaved";
 		setError(m.doc_save_content_error());
 		if (propagateError) throw error;
 	}
 }
 
 async function moveToCategory(categoryId: string | null) {
+	const previousFolderId = currentFolderId;
+	const previousCategoryId = currentCategoryId;
+
+	currentCategoryId = categoryId;
+	currentFolderId = null;
+	saveStatus = "saving";
 	try {
 		await updateDocument(data.document.id, { categoryId, folderId: null });
-		currentCategoryId = categoryId;
-		currentFolderId = null;
 		saveStatus = "saved";
 		refreshDocs();
 	} catch (_e) {
+		currentFolderId = previousFolderId;
+		currentCategoryId = previousCategoryId;
+		saveStatus = "unsaved";
 		setError(m.doc_save_content_error());
 	}
 }
@@ -678,6 +694,9 @@ async function handleCreateFolder(name: string) {
 
 	await moveToFolder(folderId, true);
 	pendingCreatedFolderId = null;
+	// The editor flow is a create-and-place action, not a multi-create flow.
+	// Close it explicitly after the folder and document placement both persist.
+	showCreateFolderDialog = false;
 }
 
 // --- Keyboard shortcuts wired by the editor ---------------------------------
