@@ -9,22 +9,36 @@ let password = $state("");
 let error = $state("");
 let loading = $state(false);
 
+const LOGIN_TIMEOUT_MS = 15_000;
+
 async function handleSubmit(e: SubmitEvent) {
 	e.preventDefault();
 	loading = true;
 	error = "";
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS);
 
-	const result = await signIn.email({
-		email,
-		password,
-		callbackURL: "/",
-	});
+	try {
+		const result = await signIn.email(
+			{
+				email,
+				password,
+				callbackURL: "/",
+			},
+			{ signal: controller.signal },
+		);
 
-	if (result.error) {
-		error = result.error.message ?? m.auth_login_error();
+		if (result.error) {
+			error = result.error.message ?? m.auth_login_error();
+			return;
+		}
+
+		await goto("/");
+	} catch {
+		error = controller.signal.aborted ? m.error_timeout() : m.error_network();
+	} finally {
+		clearTimeout(timeout);
 		loading = false;
-	} else {
-		goto("/");
 	}
 }
 </script>
