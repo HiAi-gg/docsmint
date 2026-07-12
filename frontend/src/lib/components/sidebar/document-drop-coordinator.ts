@@ -74,24 +74,31 @@ export function createDocumentDropCoordinator(options: {
 	persist: (id: string, placement: SidebarDocumentPlacement) => void;
 	defer?: (callback: () => void) => ReturnType<typeof setTimeout>;
 	cancel?: (handle: ReturnType<typeof setTimeout>) => void;
+	expire?: (callback: () => void) => ReturnType<typeof setTimeout>;
+	cancelExpire?: (handle: ReturnType<typeof setTimeout>) => void;
 }) {
 	const defer = options.defer ?? ((callback) => setTimeout(callback, 0));
 	const cancel = options.cancel ?? clearTimeout;
+	const expire = options.expire ?? ((callback) => setTimeout(callback, 1000));
+	const cancelExpire = options.cancelExpire ?? clearTimeout;
 	let active:
 		| {
 				id: string;
 				token: number;
 				resolved: boolean;
 				pending: ReturnType<typeof setTimeout> | null;
+				expiry: ReturnType<typeof setTimeout> | null;
 		  }
 		| undefined;
 
-	function ensure(id: string) {
-		if (!active || active.id !== id) {
-			if (active?.pending) cancel(active.pending);
-			active = { id, token: -1, resolved: false, pending: null };
-		}
-		return active;
+	function clearActive() {
+		if (active?.pending) cancel(active.pending);
+		if (active?.expiry) cancelExpire(active.expiry);
+		active = undefined;
+	}
+
+	function lookup(id: string) {
+		return active?.id === id ? active : undefined;
 	}
 
 	return {
@@ -100,31 +107,57 @@ export function createDocumentDropCoordinator(options: {
 		 * destination. UI state may already have been cleared by the source
 		 * zone's finalize event before a category-header drop is delivered.
 		 */
-		pendingId() {
-			return active && !active.resolved ? active.id : null;
+		pendingId(token: number) {
+			return active && !active.resolved && active.token === token
+				? active.id
+				: null;
 		},
 		begin(id: string, token: number) {
 			if (active?.id === id && active.token === token) return;
-			if (active?.pending) cancel(active.pending);
-			active = { id, token, resolved: false, pending: null };
+			clearActive();
+			active = { id, token, resolved: false, pending: null, expiry: null };
+		},
+		end(id: string, token: number) {
+			const transaction = active;
+			if (
+				!transaction ||
+				transaction.id !== id ||
+				transaction.token !== token ||
+				transaction.resolved ||
+				transaction.expiry
+			) {
+				return;
+			}
+			transaction.expiry = expire(() => {
+				if (active === transaction && !transaction.resolved) clearActive();
+			});
+		},
+		cancel() {
+			clearActive();
 		},
 		zone(id: string, placement: SidebarDocumentPlacement) {
-			const transaction = ensure(id);
-			if (transaction.resolved) return;
+			const transaction = lookup(id);
+			if (!transaction || transaction.resolved) return;
 			if (transaction.pending) cancel(transaction.pending);
 			transaction.pending = defer(() => {
 				if (active === transaction && !transaction.resolved) {
 					transaction.pending = null;
+					if (transaction.expiry) {
+						cancelExpire(transaction.expiry);
+						transaction.expiry = null;
+					}
 					transaction.resolved = true;
 					options.persist(id, placement);
 				}
 			});
 		},
 		header(id: string, placement: SidebarDocumentPlacement) {
-			const transaction = ensure(id);
-			if (transaction.resolved) return;
+			const transaction = lookup(id);
+			if (!transaction || transaction.resolved) return;
 			if (transaction.pending) cancel(transaction.pending);
 			transaction.pending = null;
+			if (transaction.expiry) cancelExpire(transaction.expiry);
+			transaction.expiry = null;
 			transaction.resolved = true;
 			options.persist(id, placement);
 		},

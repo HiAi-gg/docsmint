@@ -156,19 +156,72 @@ describe("document drop coordinator", () => {
 
 	test("retains an unresolved source id for a delayed category-root header drop", () => {
 		const writes: Array<[string, SidebarDocumentPlacement]> = [];
+		const zoneTasks: Array<() => void> = [];
+		const expiryTasks: Array<() => void> = [];
+		const cancelled = new Set<() => void>();
 		const coordinator = createDocumentDropCoordinator({
 			persist: (id, placement) => writes.push([id, placement]),
+			defer: (callback) => {
+				zoneTasks.push(callback);
+				return callback as unknown as ReturnType<typeof setTimeout>;
+			},
+			cancel: (handle) => cancelled.add(handle as unknown as () => void),
+			expire: (callback) => {
+				expiryTasks.push(callback);
+				return callback as unknown as ReturnType<typeof setTimeout>;
+			},
+			cancelExpire: (handle) => cancelled.add(handle as unknown as () => void),
 		});
 		coordinator.begin("doc-from-folder", 1);
+		// Model the source fallback being queued before the native header event.
+		coordinator.zone("doc-from-folder", root);
+		coordinator.end("doc-from-folder", 1);
 
 		// The source dndzone finalize has already cleared FolderTree's local
 		// draggedDocId. The native header drop is delivered in a later event turn.
-		expect(coordinator.pendingId()).toBe("doc-from-folder");
-		const delayedId = coordinator.pendingId();
+		expect(coordinator.pendingId(1)).toBe("doc-from-folder");
+		const delayedId = coordinator.pendingId(1);
 		if (delayedId) coordinator.header(delayedId, category);
+		for (const task of zoneTasks) if (!cancelled.has(task)) task();
+		for (const task of expiryTasks) if (!cancelled.has(task)) task();
 
 		expect(writes).toEqual([["doc-from-folder", category]]);
-		expect(coordinator.pendingId()).toBeNull();
+		expect(coordinator.pendingId(1)).toBeNull();
+	});
+
+	test("expires cancelled drags and never reuses their document id", () => {
+		const expiryTasks: Array<() => void> = [];
+		const writes: string[] = [];
+		const coordinator = createDocumentDropCoordinator({
+			persist: (id) => writes.push(id),
+			expire: (callback) => {
+				expiryTasks.push(callback);
+				return callback as unknown as ReturnType<typeof setTimeout>;
+			},
+		});
+		coordinator.begin("cancelled-doc", 4);
+		coordinator.end("cancelled-doc", 4);
+		for (const task of expiryTasks) task();
+		coordinator.header("cancelled-doc", category);
+		coordinator.zone("unrelated-doc", root);
+
+		expect(coordinator.pendingId(4)).toBeNull();
+		expect(coordinator.pendingId(5)).toBeNull();
+		expect(writes).toEqual([]);
+	});
+
+	test("a new drag token supersedes the prior unresolved transaction", () => {
+		const writes: string[] = [];
+		const coordinator = createDocumentDropCoordinator({
+			persist: (id) => writes.push(id),
+		});
+		coordinator.begin("old-doc", 8);
+		coordinator.begin("new-doc", 9);
+
+		expect(coordinator.pendingId(8)).toBeNull();
+		expect(coordinator.pendingId(9)).toBe("new-doc");
+		coordinator.header("new-doc", category);
+		expect(writes).toEqual(["new-doc"]);
 	});
 
 	test("category root targets always detach the document from its folder", () => {
@@ -191,5 +244,15 @@ describe("document drop coordinator", () => {
 			{ folderId: null, categoryId: "category-a" },
 			{ folderId: null, categoryId: "category-b" },
 		]);
+	});
+
+	test("Uncategorized header detaches both category and folder", () => {
+		const writes: SidebarDocumentPlacement[] = [];
+		const coordinator = createDocumentDropCoordinator({
+			persist: (_id, placement) => writes.push(placement),
+		});
+		coordinator.begin("categorized-folder-doc", 2);
+		coordinator.header("categorized-folder-doc", root);
+		expect(writes).toEqual([{ folderId: null, categoryId: null }]);
 	});
 });

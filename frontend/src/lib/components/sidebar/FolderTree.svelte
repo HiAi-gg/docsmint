@@ -641,6 +641,7 @@ onMount(() => {
 });
 
 onDestroy(() => {
+	documentDropCoordinator.cancel();
 	// Clear the pending dnd-error auto-dismiss timer so we don't write
 	// to a destroyed component's state if the user navigates away
 	// mid-delay.
@@ -845,6 +846,9 @@ function handleFinalize(zone: DocZone) {
 		if (!isSourceZone && finalizedDocumentId) {
 			documentDropCoordinator.zone(finalizedDocumentId, placementForZone(zone));
 		}
+		if (finalizedDocumentId) {
+			documentDropCoordinator.end(finalizedDocumentId, documentDragGeneration);
+		}
 		isDraggingGlobal = false;
 		isDraggingDoc = false;
 		// Native `drop` on a folder/category header can be delivered after the
@@ -873,7 +877,10 @@ function placementForZone(zone: DocZone): SidebarDocumentPlacement {
 }
 
 function handleDragOver(e: DragEvent) {
-	if (draggedDocId ?? documentDropCoordinator.pendingId()) {
+	if (
+		draggedDocId ??
+		documentDropCoordinator.pendingId(documentDragGeneration)
+	) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = "move";
@@ -882,7 +889,8 @@ function handleDragOver(e: DragEvent) {
 }
 
 function handleDropOnCategory(e: DragEvent, categoryId: string) {
-	const documentId = draggedDocId ?? documentDropCoordinator.pendingId();
+	const documentId =
+		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
 	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
@@ -904,7 +912,8 @@ function handleDropOnCategory(e: DragEvent, categoryId: string) {
 }
 
 function handleDropOnFolder(e: DragEvent, folderId: string) {
-	const documentId = draggedDocId ?? documentDropCoordinator.pendingId();
+	const documentId =
+		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
 	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
