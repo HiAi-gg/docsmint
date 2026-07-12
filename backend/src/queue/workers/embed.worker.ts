@@ -23,6 +23,7 @@ export interface EmbedWorkerDependencies {
 		pendingGenerationId: string | null;
 	} | null>;
 	getEmbedding(text: string): Promise<EmbeddingResult>;
+	markStale(job: EmbedBatchJob, errorCode: string): Promise<void>;
 	storeBatch(input: {
 		job: EmbedBatchJob;
 		rows: Array<{
@@ -63,6 +64,7 @@ export async function processEmbedJob(
 		document.revision !== job.revision ||
 		document.pendingGenerationId !== job.generationId
 	) {
+		await deps.markStale(job, "stale_revision");
 		return { status: "stale", activated: false };
 	}
 	const chunks = chunkText(`${document.title}\n\n${document.content}`);
@@ -70,8 +72,10 @@ export async function processEmbedJob(
 		index,
 		chunk: chunks[index],
 	}));
-	if (selected.some(({ chunk }) => !chunk))
+	if (selected.some(({ chunk }) => !chunk)) {
+		await deps.markStale(job, "stale_chunks");
 		return { status: "stale", activated: false };
+	}
 	const results = await Promise.all(
 		selected.map(async ({ index, chunk }) => {
 			if (!chunk) throw new Error("chunk_missing");
@@ -104,7 +108,10 @@ export async function processEmbedJob(
 			dimensions: result.dimensions,
 		})),
 	});
-	if (stored !== "stored") return { status: stored, activated: false };
+	if (stored !== "stored") {
+		if (stored === "stale") await deps.markStale(job, "stale_batch");
+		return { status: stored, activated: false };
+	}
 	const profile = {
 		model: first.model,
 		profile: first.profile,
@@ -133,6 +140,7 @@ export async function processEmbedJob(
 export function createEmbedWorker(
 	redisUrl: string,
 	deps: EmbedWorkerDependencies,
+	options: { concurrency?: number } = {},
 ): Worker<EmbedBatchJob> {
 	return new Worker<EmbedBatchJob>(
 		QUEUE_NAMES.embed,
@@ -140,6 +148,9 @@ export function createEmbedWorker(
 			withOwnerSlot(job.data.ownerId, "embed", () =>
 				processEmbedJob(job, deps),
 			),
-		{ connection: createBullMqConnection(redisUrl), concurrency: 4 },
+		{
+			connection: createBullMqConnection(redisUrl),
+			concurrency: options.concurrency ?? 3,
+		},
 	);
 }

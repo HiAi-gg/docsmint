@@ -32,6 +32,7 @@ describe("prepare pipeline worker", () => {
 			}),
 			prepareRun: async () =>
 				++calls === 1 ? ("prepared" as const) : ("duplicate" as const),
+			markStale: async () => undefined,
 			enqueueEmbed: async (data: EmbedBatchJob) => jobs.push(data),
 		};
 		const first = await processPrepareJob({ data: job }, deps);
@@ -44,6 +45,7 @@ describe("prepare pipeline worker", () => {
 
 	test("rejects a superseded revision before creating batches", async () => {
 		let prepared = false;
+		let staleCode = "";
 		const result = await processPrepareJob(
 			{ data: { ...base, stage: "prepare" } },
 			{
@@ -56,18 +58,26 @@ describe("prepare pipeline worker", () => {
 					prepared = true;
 					return "prepared";
 				},
+				markStale: async (_job, errorCode) => {
+					staleCode = errorCode;
+				},
 				enqueueEmbed: async () => undefined,
 			},
 		);
 		expect(result.status).toBe("stale");
 		expect(prepared).toBe(false);
+		expect(staleCode).toBe("stale_revision");
 	});
+
 });
 
 describe("embed pipeline worker", () => {
 	function harness() {
 		const order: string[] = [];
 		const deps: EmbedWorkerDependencies = {
+			markStale: async (_job, errorCode) => {
+				order.push(`stale:${errorCode}`);
+			},
 			loadDocument: async () => ({
 				title: "Languages",
 				content: "English French Portuguese",
@@ -139,6 +149,6 @@ describe("embed pipeline worker", () => {
 		);
 		expect(result.status).toBe("stale");
 		expect(embedded).toBe(false);
-		expect(order).toEqual([]);
+		expect(order).toEqual(["stale:stale_revision"]);
 	});
 });

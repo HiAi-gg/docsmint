@@ -17,6 +17,7 @@ import { config } from "../lib/config";
 import { extractEntities } from "../lib/graph/extract-entities";
 import type { PipelineJob, PipelineStage } from "./contracts";
 import { JOB_IDS } from "./contracts";
+import { resolveDocumentRevision } from "./document-revision";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
 import {
 	type ProviderLimiterProfile,
@@ -87,12 +88,32 @@ async function setStageStatus(
 	);
 }
 
+async function markRunStale(
+	generationId: string,
+	stage: "prepare" | "embed",
+	errorCode: string,
+) {
+	await withTenant(admin, (tx) =>
+		tx
+			.update(documentPipelineRuns)
+			.set({
+				...stagePatch(stage, "failed"),
+				status: "failed",
+				errorCode,
+				updatedAt: new Date(),
+			})
+			.where(eq(documentPipelineRuns.generationId, generationId)),
+	);
+}
+
 export function createPipelineStageDependencies(
 	redisUrl: string,
 ): PipelineStageDependencies {
 	const queue = (stage: PipelineStage) => getPipelineQueue(stage, redisUrl);
 	return {
 		prepare: {
+			markStale: (job, errorCode) =>
+				markRunStale(job.generationId, "prepare", errorCode),
 			async loadDocument({ documentId, ownerId }) {
 				return withTenant(admin, async (tx) => {
 					const [doc] = await tx
@@ -106,11 +127,15 @@ export function createPipelineStageDependencies(
 							and(eq(documents.id, documentId), eq(documents.ownerId, ownerId)),
 						)
 						.limit(1);
-					if (!doc?.revision) return null;
+					if (!doc) return null;
 					return {
 						title: doc.title,
 						content: doc.content ?? "",
-						revision: doc.revision,
+						revision: resolveDocumentRevision(
+							doc.revision,
+							doc.title,
+							doc.content ?? "",
+						),
 					};
 				});
 			},
@@ -177,6 +202,8 @@ export function createPipelineStageDependencies(
 			},
 		},
 		embed: {
+			markStale: (job, errorCode) =>
+				markRunStale(job.generationId, "embed", errorCode),
 			async loadDocument({ documentId, ownerId, generationId }) {
 				return withTenant(admin, async (tx) => {
 					const [doc] = await tx
@@ -195,11 +222,15 @@ export function createPipelineStageDependencies(
 							),
 						)
 						.limit(1);
-					if (!doc?.revision) return null;
+					if (!doc) return null;
 					return {
 						title: doc.title,
 						content: doc.content ?? "",
-						revision: doc.revision,
+						revision: resolveDocumentRevision(
+							doc.revision,
+							doc.title,
+							doc.content ?? "",
+						),
 						pendingGenerationId: doc.pendingGenerationId,
 					};
 				});

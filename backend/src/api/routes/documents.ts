@@ -346,6 +346,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// helper can rehydrate the JSON view from the authoritative
 			// markdown on the next open.
 			const initialContent = body.data.content ?? "";
+			const initialHash = contentHash(body.data.title, initialContent);
 			const initialDocJson = null;
 			const folderId = body.data.folderId ?? null;
 			let categoryId = body.data.categoryId ?? null;
@@ -360,6 +361,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						ownerId: userId,
 						title: body.data.title,
 						content: initialContent,
+						contentHash: initialHash,
 						contentJson: initialDocJson,
 						folderId,
 						categoryId,
@@ -806,6 +808,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				source.contentJson,
 				attachmentPlans,
 			);
+			const copyTitle = `${source.title} (Copy)`;
+			const copyHash = contentHash(copyTitle, rewrittenContent);
 			const copy = await withTenant(ctx, async (tx) => {
 				const [row] = await tx
 					.insert(documents)
@@ -814,8 +818,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						ownerId: userId,
 						folderId: source.folderId,
 						categoryId: source.categoryId,
-						title: `${source.title} (Copy)`,
+						title: copyTitle,
 						content: rewrittenContent,
+						contentHash: copyHash,
 						contentJson: rewrittenContentJson,
 						metadata: source.metadata,
 					})
@@ -1105,12 +1110,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const created = await withTenant(ctx, async (tx) => {
 				const out: CreatedEntry[] = [];
 				for (const item of items) {
+					const revision = contentHash(item.title, item.content);
 					const [row] = await tx
 						.insert(documents)
 						.values({
 							ownerId: userId,
 							title: item.title,
 							content: item.content,
+							contentHash: revision,
 							folderId,
 							categoryId: resolvedCategoryId,
 						})
@@ -1125,7 +1132,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					});
 					out.push({
 						item,
-						row: { ...row, revision: contentHash(item.title, item.content) },
+						row: { ...row, revision },
 					});
 				}
 				return out;

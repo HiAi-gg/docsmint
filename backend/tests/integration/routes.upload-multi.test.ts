@@ -41,6 +41,7 @@ import {
   resetState,
   setupHarness,
 } from "./_harness";
+import { contentHash } from "../../src/lib/content-hash";
 
 // The harness's `sql` mock returns plain `{ [Symbol(sql)]: true }` objects
 // without an `.as()` method. The document list query does
@@ -160,6 +161,17 @@ describe("POST /api/documents/import — JSON single-item path", () => {
     ).items[0]?.document?.id;
     expect(id).toBeTruthy();
     expect(getState().enqueuedEmbeddings).toContain(id);
+  });
+
+  it("persists the exact revision used by the import pipeline", async () => {
+    const title = "Revision source";
+    const content = "Pipeline content";
+    const res = await jsonImport({ title, content });
+    expect(res.status).toBe(201);
+    const stored = [...getState().documents.values()][0] as {
+      contentHash?: string;
+    };
+    expect(stored.contentHash).toBe(contentHash(title, content));
   });
 
   it("rejects an empty content body with 400", async () => {
