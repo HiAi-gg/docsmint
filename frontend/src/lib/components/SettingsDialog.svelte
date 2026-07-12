@@ -174,7 +174,7 @@ function close() {
 				selected={activeTab === "api"}
 				onclick={(v) => (activeTab = v)}
 			>
-				Global API
+				API
 			</Tabs.TabsTrigger>
 			<Tabs.TabsTrigger
 				value="appearance"

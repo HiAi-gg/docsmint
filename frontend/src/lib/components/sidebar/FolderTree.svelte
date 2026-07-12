@@ -1357,8 +1357,9 @@ async function handleCategorySave(payload: {
 			apiPermissionEdit: payload.apiPermissionEdit,
 			apiPermissionWrite: payload.apiPermissionWrite,
 		};
+		let savedCategory: { id: string; name: string };
 		if (categoryDialogMode === "edit" && selectedCategory) {
-			await apiFetch(
+			savedCategory = await apiFetch<{ id: string; name: string }>(
 				`/api/categories/${encodeURIComponent(selectedCategory.id)}`,
 				{
 					method: "PATCH",
@@ -1366,12 +1367,16 @@ async function handleCategorySave(payload: {
 				},
 			);
 		} else {
-			await apiFetch("/api/categories", {
-				method: "POST",
-				body,
-			});
+			savedCategory = await apiFetch<{ id: string; name: string }>(
+				"/api/categories",
+				{
+					method: "POST",
+					body,
+				},
+			);
 		}
 		await refresh();
+		return savedCategory;
 	} finally {
 		categoryBusy = false;
 	}

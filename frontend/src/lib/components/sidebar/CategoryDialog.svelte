@@ -29,7 +29,7 @@ import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
-import { Loader2 } from "lucide-svelte";
+import { CheckCircle2, Copy, Loader2 } from "lucide-svelte";
 import {
 	type ApiKeySummary,
 	apiKeyClipboardValue,
@@ -40,6 +40,7 @@ import {
 	revokeApiKey,
 } from "$lib/api/api-keys";
 import * as m from "$lib/paraglide/messages.js";
+import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 
 type Mode = "create" | "edit" | "delete";
 type ApiMode = "unavailable" | "global" | "category";
@@ -78,7 +79,12 @@ let {
 	open: boolean;
 	mode: Mode;
 	category?: { id: string; name: string } & CategoryAccessState;
-	onSave?: (payload: SavePayload) => Promise<void> | void;
+	onSave?: (
+		payload: SavePayload,
+	) =>
+		| Promise<{ id: string; name: string } | undefined>
+		| { id: string; name: string }
+		| undefined;
 	onDelete?: () => Promise<void> | void;
 	onClose?: () => void;
 } = $props();
@@ -97,6 +103,8 @@ let categoryKeys = $state<ApiKeySummary[]>([]);
 let issuedKeys = $state<Record<string, string>>({});
 let latestIssuedId = $state<string | null>(null);
 let keyBusy = $state(false);
+let createdCategoryName = $state<string | null>(null);
+let createdCategoryKey = $state<string | null>(null);
 const latestIssuedKey = $derived(
 	latestIssuedId ? issuedKeys[latestIssuedId] : undefined,
 );
@@ -170,6 +178,8 @@ $effect(() => {
 	issuedKeys = {};
 	latestIssuedId = null;
 	categoryKeys = [];
+	createdCategoryName = null;
+	createdCategoryKey = null;
 	if (mode === "edit" && category?.id) void refreshCategoryKeys(category.id);
 	error = null;
 });
@@ -261,9 +271,10 @@ async function handleSubmit(e?: Event) {
 		close();
 		return;
 	}
+	error = null;
 	busy = true;
 	try {
-		await onSave({
+		const savedCategory = await onSave({
 			name: trimmedName,
 			apiMode: normalizeApiMode(apiMode),
 			apiPermissionRead: apiMode === "unavailable" ? false : apiPermissionRead,
@@ -271,15 +282,27 @@ async function handleSubmit(e?: Event) {
 			apiPermissionWrite:
 				apiMode === "unavailable" ? false : apiPermissionWrite,
 		});
+		if (mode === "create" && savedCategory) {
+			createdCategoryName = savedCategory.name;
+			if (apiMode === "category") {
+				try {
+					const issued = await createCategoryApiKey(savedCategory.id);
+					createdCategoryKey = issued.key;
+				} catch (keyError) {
+					error = `Category created, but its API key could not be created: ${categoryDialogErrorMessage(keyError, "Unknown error")}`;
+				}
+			}
+			return;
+		}
 		close();
 	} catch (err) {
 		console.error("CategoryDialog: save failed", err);
-		error =
-			err instanceof Error
-				? err.message
-				: mode === "edit"
-					? m.categories_update_error()
-					: m.categories_create_error();
+		error = categoryDialogErrorMessage(
+			err,
+			mode === "edit"
+				? m.categories_update_error()
+				: m.categories_create_error(),
+		);
 	} finally {
 		busy = false;
 	}
@@ -306,7 +329,27 @@ function close() {
 		{/if}
 	</DialogHeader>
 
-	{#if !isDeleteMode}
+	{#if createdCategoryName}
+		<div class="space-y-3 rounded-lg border border-primary/30 bg-primary/10 p-4" role="status" aria-live="polite">
+			<div class="flex items-start gap-3">
+				<CheckCircle2 class="mt-0.5 size-5 shrink-0 text-primary" />
+				<div>
+					<p class="text-sm font-medium text-foreground">Category created</p>
+					<p class="text-sm text-muted-foreground">{createdCategoryName} is ready to use.</p>
+				</div>
+			</div>
+			{#if createdCategoryKey}
+				<div class="rounded-md border border-primary/20 bg-background/80 p-3">
+					<p class="text-xs font-medium text-foreground">Copy the API key now. It remains available in Settings → API.</p>
+					<code class="mt-2 block break-all rounded bg-muted p-2 text-xs text-foreground">{createdCategoryKey}</code>
+					<Button type="button" size="sm" variant="outline" class="mt-2" onclick={() => navigator.clipboard.writeText(createdCategoryKey ?? "")}>
+						<Copy class="mr-1 size-3.5" /> Copy API key
+					</Button>
+				</div>
+			{/if}
+			{#if error}<p class="text-xs text-destructive" role="alert">{error}</p>{/if}
+		</div>
+	{:else if !isDeleteMode}
 		<form onsubmit={handleSubmit} class="space-y-4">
 			<div class="space-y-2">
 				<Label for="category-dialog-name">{m.categories_name_placeholder()}</Label>
@@ -418,19 +461,21 @@ function close() {
 	{/if}
 
 	<DialogFooter>
-		<Button variant="outline" type="button" onclick={close} disabled={busy}>
-			{m.action_cancel()}
-		</Button>
+		{#if !createdCategoryName}
+			<Button variant="outline" type="button" onclick={close} disabled={busy}>
+				{m.action_cancel()}
+			</Button>
+		{/if}
 		<Button
 			type={isDeleteMode ? "button" : "submit"}
 			variant={isDeleteMode ? "destructive" : "default"}
-			onclick={isDeleteMode ? handleSubmit : handleSubmit}
-			disabled={busy || (!isDeleteMode && trimmedName.length === 0)}
+			onclick={createdCategoryName ? close : handleSubmit}
+			disabled={busy || (!isDeleteMode && !createdCategoryName && trimmedName.length === 0)}
 		>
 			{#if busy}
 				<Loader2 class="mr-1 size-4 animate-spin" />
 			{/if}
-			{submitLabel}
+			{createdCategoryName ? "Done" : submitLabel}
 		</Button>
 	</DialogFooter>
 </Dialog>
