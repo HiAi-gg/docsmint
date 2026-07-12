@@ -117,7 +117,12 @@ describe("DOCX document compatibility", () => {
 						{
 							type: "taskItem",
 							attrs: { checked: false },
-							content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }],
+							content: [
+								{
+									type: "paragraph",
+									content: [{ type: "text", text: "todo" }],
+								},
+							],
 						},
 					],
 				},
@@ -126,7 +131,9 @@ describe("DOCX document compatibility", () => {
 		const wordDoc = await customSerializerAsync.serializeAsync(docNode, {
 			sections: [{ properties: {} }],
 		} as Parameters<typeof customSerializerAsync.serializeAsync>[1]);
-		const bytes = new Uint8Array(await (await Packer.toBlob(wordDoc)).arrayBuffer());
+		const bytes = new Uint8Array(
+			await (await Packer.toBlob(wordDoc)).arrayBuffer(),
+		);
 		expect(String.fromCharCode(...bytes.slice(0, 2))).toBe("PK");
 	});
 
