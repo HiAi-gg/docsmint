@@ -10,6 +10,13 @@ const privilegeMigration = readFileSync(
 	new URL("./migrations/0029_grant_pipeline_runtime.sql", import.meta.url),
 	"utf8",
 );
+const relocationMigration = readFileSync(
+	new URL(
+		"./migrations/0030_move_pipeline_tables_to_public.sql",
+		import.meta.url,
+	),
+	"utf8",
+);
 const journal = JSON.parse(
 	readFileSync(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
 ) as { entries: Array<{ idx: number; tag: string }> };
@@ -68,13 +75,24 @@ describe("BullMQ pipeline state schema", () => {
 		expect(migration).toContain(
 			'("stage", "status", "available_at")',
 		);
-		expect(migration.match(/REFERENCES "documents"\("id"\) ON DELETE CASCADE/g)).toHaveLength(2);
+		expect(
+			migration.match(
+				/REFERENCES public\."documents"\("id"\) ON DELETE CASCADE/g,
+			),
+		).toHaveLength(2);
+		expect(migration).toContain(
+			'CREATE TABLE IF NOT EXISTS public."document_pipeline_runs"',
+		);
+		expect(migration).toContain(
+			'CREATE TABLE IF NOT EXISTS public."document_pipeline_batches"',
+		);
+		expect(migration).toContain('CREATE TYPE public."pipeline_stage"');
+		expect(migration).toContain('CREATE TYPE public."pipeline_status"');
 	});
 
 	it("grants pipeline runtime access in fresh and upgraded migration chains", () => {
-		expect(privilegeMigration).toContain(
-			"public.document_pipeline_runs, public.document_pipeline_batches",
-		);
+		expect(privilegeMigration).toContain("to_regclass('public.' || table_name)");
+		expect(privilegeMigration).toContain("to_regclass('ag_catalog.' || table_name)");
 		expect(privilegeMigration).toContain(
 			"GRANT SELECT, INSERT, UPDATE, DELETE",
 		);
@@ -82,9 +100,21 @@ describe("BullMQ pipeline state schema", () => {
 		expect(privilegeMigration).toContain(
 			"ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public",
 		);
+		expect(relocationMigration).toContain(
+			"ALTER TABLE ag_catalog.document_pipeline_runs SET SCHEMA public",
+		);
+		expect(relocationMigration).toContain(
+			"ALTER TABLE ag_catalog.document_pipeline_batches SET SCHEMA public",
+		);
+		expect(relocationMigration).toContain(
+			"ALTER TYPE ag_catalog.pipeline_stage SET SCHEMA public",
+		);
+		expect(relocationMigration).toContain(
+			"ALTER TYPE ag_catalog.pipeline_status SET SCHEMA public",
+		);
 		expect(journal.entries.at(-1)).toMatchObject({
-			idx: 29,
-			tag: "0029_grant_pipeline_runtime",
+			idx: 30,
+			tag: "0030_move_pipeline_tables_to_public",
 		});
 	});
 });
