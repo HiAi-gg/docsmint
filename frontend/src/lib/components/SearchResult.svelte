@@ -119,7 +119,7 @@ function highlightText(text: string, q: string): string {
 
   <!-- Snippet with highlighted terms -->
   <p
-    class="mt-2 text-sm leading-relaxed text-muted-foreground [&_mark]:rounded-sm [&_mark]:bg-yellow-200 [&_mark]:px-0.5 [&_mark]:text-foreground dark:[&_mark]:bg-yellow-900/60"
+    class="mt-2 text-sm leading-relaxed text-muted-foreground [&_mark]:rounded-sm [&_mark]:bg-yellow-200 [&_mark]:px-0.5 [&_mark]:text-gray-950 dark:[&_mark]:bg-yellow-300 dark:[&_mark]:text-gray-950"
   >
     {@html highlightedSnippet}
   </p>
