@@ -14,6 +14,32 @@ describe("PDF task-list HTML normalization", () => {
 		expect(normalized).toContain('<li class="task-list-item"><input');
 		expect(normalized).not.toContain("<li><input");
 	});
+
+	test("renders task content beside its checkbox for print layouts", () => {
+		const html = renderSharedDocument({
+			type: "doc",
+			content: [
+				{
+					type: "taskList",
+					content: [
+						{
+							type: "taskItem",
+							attrs: { checked: true },
+							content: [
+								{
+									type: "paragraph",
+									content: [{ type: "text", text: "done" }],
+								},
+							],
+						},
+					],
+				},
+			],
+		});
+		expect(html).toContain(
+			'<li data-type="taskItem" data-checked="true"><label><input type="checkbox" disabled checked /></label><div><p>done</p></div></li>',
+		);
+	});
 });
 
 describe("shared document renderer", () => {

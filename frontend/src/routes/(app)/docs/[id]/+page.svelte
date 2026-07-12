@@ -477,10 +477,20 @@ body {
 h1 { font-size: 28px; font-weight: bold; margin-bottom: 20px; }
 h2 { font-size: 22px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
 h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-p { margin-bottom: 12px; }
+p { margin: 0 0 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
-li.task-list-item { list-style: none; margin-left: -20px; }
+li.task-list-item {
+	list-style: none;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-left: -20px;
+}
+li.task-list-item > input[type="checkbox"] {
+	flex: 0 0 auto;
+	margin: 0.35em 0 0;
+}
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;

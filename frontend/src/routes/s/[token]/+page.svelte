@@ -325,7 +325,25 @@ p { margin-bottom: 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
 ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-ul[data-type="taskList"] li { list-style: none; display: flex; gap: 8px; }
+ul[data-type="taskList"] li {
+	list-style: none;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+ul[data-type="taskList"] li > label {
+	display: flex;
+	align-items: flex-start;
+	flex: 0 0 auto;
+	padding-top: 0.25em;
+}
+ul[data-type="taskList"] li > div {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+ul[data-type="taskList"] li > div > p {
+	margin: 0 0 12px;
+}
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;
