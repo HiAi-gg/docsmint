@@ -6,6 +6,13 @@ const migration = readFileSync(
 	new URL("./migrations/0028_bullmq_pipeline_state.sql", import.meta.url),
 	"utf8",
 );
+const privilegeMigration = readFileSync(
+	new URL("./migrations/0029_grant_pipeline_runtime.sql", import.meta.url),
+	"utf8",
+);
+const journal = JSON.parse(
+	readFileSync(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
+) as { entries: Array<{ idx: number; tag: string }> };
 
 describe("BullMQ pipeline state schema", () => {
 	it("exports the planned stage and status contracts", () => {
@@ -62,5 +69,22 @@ describe("BullMQ pipeline state schema", () => {
 			'("stage", "status", "available_at")',
 		);
 		expect(migration.match(/REFERENCES "documents"\("id"\) ON DELETE CASCADE/g)).toHaveLength(2);
+	});
+
+	it("grants pipeline runtime access in fresh and upgraded migration chains", () => {
+		expect(privilegeMigration).toContain(
+			"public.document_pipeline_runs, public.document_pipeline_batches",
+		);
+		expect(privilegeMigration).toContain(
+			"GRANT SELECT, INSERT, UPDATE, DELETE",
+		);
+		expect(privilegeMigration).toContain("TO hiai_app");
+		expect(privilegeMigration).toContain(
+			"ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public",
+		);
+		expect(journal.entries.at(-1)).toMatchObject({
+			idx: 29,
+			tag: "0029_grant_pipeline_runtime",
+		});
 	});
 });
