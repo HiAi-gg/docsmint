@@ -873,7 +873,7 @@ function placementForZone(zone: DocZone): SidebarDocumentPlacement {
 }
 
 function handleDragOver(e: DragEvent) {
-	if (draggedDocId) {
+	if (draggedDocId ?? documentDropCoordinator.pendingId()) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = "move";
@@ -882,8 +882,8 @@ function handleDragOver(e: DragEvent) {
 }
 
 function handleDropOnCategory(e: DragEvent, categoryId: string) {
-	if (!draggedDocId) return;
-	const documentId = draggedDocId;
+	const documentId = draggedDocId ?? documentDropCoordinator.pendingId();
+	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
 
@@ -904,8 +904,8 @@ function handleDropOnCategory(e: DragEvent, categoryId: string) {
 }
 
 function handleDropOnFolder(e: DragEvent, folderId: string) {
-	if (!draggedDocId) return;
-	const documentId = draggedDocId;
+	const documentId = draggedDocId ?? documentDropCoordinator.pendingId();
+	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
 

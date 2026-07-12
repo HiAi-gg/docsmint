@@ -153,4 +153,43 @@ describe("document drop coordinator", () => {
 			expect(writes).toEqual([scenario.expected]);
 		});
 	}
+
+	test("retains an unresolved source id for a delayed category-root header drop", () => {
+		const writes: Array<[string, SidebarDocumentPlacement]> = [];
+		const coordinator = createDocumentDropCoordinator({
+			persist: (id, placement) => writes.push([id, placement]),
+		});
+		coordinator.begin("doc-from-folder", 1);
+
+		// The source dndzone finalize has already cleared FolderTree's local
+		// draggedDocId. The native header drop is delivered in a later event turn.
+		expect(coordinator.pendingId()).toBe("doc-from-folder");
+		const delayedId = coordinator.pendingId();
+		if (delayedId) coordinator.header(delayedId, category);
+
+		expect(writes).toEqual([["doc-from-folder", category]]);
+		expect(coordinator.pendingId()).toBeNull();
+	});
+
+	test("category root targets always detach the document from its folder", () => {
+		const writes: SidebarDocumentPlacement[] = [];
+		const coordinator = createDocumentDropCoordinator({
+			persist: (_id, placement) => writes.push(placement),
+		});
+
+		for (const [id, target] of [
+			["folder-to-category", "category-b"],
+			["uncategorized-to-category", "category-a"],
+			["category-a-to-category-b", "category-b"],
+		] as const) {
+			coordinator.begin(id, 1);
+			coordinator.header(id, { folderId: null, categoryId: target });
+		}
+
+		expect(writes).toEqual([
+			{ folderId: null, categoryId: "category-b" },
+			{ folderId: null, categoryId: "category-a" },
+			{ folderId: null, categoryId: "category-b" },
+		]);
+	});
 });

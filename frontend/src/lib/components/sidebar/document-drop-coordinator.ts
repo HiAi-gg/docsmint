@@ -95,6 +95,14 @@ export function createDocumentDropCoordinator(options: {
 	}
 
 	return {
+		/**
+		 * Returns the document whose drag transaction is still awaiting a
+		 * destination. UI state may already have been cleared by the source
+		 * zone's finalize event before a category-header drop is delivered.
+		 */
+		pendingId() {
+			return active && !active.resolved ? active.id : null;
+		},
 		begin(id: string, token: number) {
 			if (active?.id === id && active.token === token) return;
 			if (active?.pending) cancel(active.pending);
