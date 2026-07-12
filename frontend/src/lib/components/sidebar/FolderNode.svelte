@@ -70,6 +70,7 @@ let {
 	onClearExpandTimer,
 	onRename,
 	onDelete,
+	onCreateSubfolder,
 	onShare,
 	onConsiderDocs,
 	onFinalizeDocs,
@@ -95,6 +96,7 @@ let {
 	onClearExpandTimer: () => void;
 	onRename: (id: string, name: string) => void;
 	onDelete: (id: string, name: string) => void;
+	onCreateSubfolder: (parentId: string) => void;
 	onShare: (id: string, name: string) => void;
 	onConsiderDocs: (zone: {
 		kind: "folder";
@@ -188,7 +190,7 @@ function handleExpandClick() {
 $effect(() => {
 	const signal = getSubfoldersRefresh(folder.id);
 	if (signal === 0) return;
-	if (!subfoldersLoaded) return;
+	if (!subfoldersLoaded && !isExpanded) return;
 	void loadSubfolders();
 });
 
@@ -271,6 +273,9 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 				<DropdownMenuItem onSelect={() => goto(`/docs/new?folder=${folder.id}`)}>
 					{m.dashboard_new_document()}
 				</DropdownMenuItem>
+				<DropdownMenuItem onSelect={() => onCreateSubfolder(folder.id)}>
+					{m.folders_new()}
+				</DropdownMenuItem>
 				<DropdownMenuItem onSelect={() => onShare(folder.id, folder.name)}>
 					{m.doc_share()}
 				</DropdownMenuItem>
@@ -324,6 +329,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 							{onRename}
 							{onShare}
 							{onDelete}
+							{onCreateSubfolder}
 							{onConsiderDocs}
 							{onFinalizeDocs}
 							{onConsiderSubfolders}

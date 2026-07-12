@@ -341,6 +341,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const result = await withTenant(ctx, async (tx) => {
+				const [current] = await tx
+					.select({ id: folders.id })
+					.from(folders)
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
+					.limit(1);
+				if (!current) {
+					return { notFound: true as const };
+				}
 				if (parsed.data.parentId) {
 					if (parsed.data.parentId === params.id) {
 						return { selfParent: true as const };
@@ -357,6 +365,40 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						.limit(1);
 					if (parent.length === 0) {
 						return { parentMissing: true as const };
+					}
+
+					// Walk upward from the proposed parent. If the folder being moved
+					// is encountered, the move would make it an ancestor of itself.
+					const ownedFolders = await tx
+						.select({ id: folders.id, parentId: folders.parentId })
+						.from(folders)
+						.where(eq(folders.ownerId, userId));
+					const parentById = new Map(
+						ownedFolders.map((folder) => [folder.id, folder.parentId]),
+					);
+					const visited = new Set<string>();
+					let ancestorId: string | null = parsed.data.parentId;
+					while (ancestorId && !visited.has(ancestorId)) {
+						if (ancestorId === params.id) {
+							return { cycle: true as const };
+						}
+						visited.add(ancestorId);
+						ancestorId = parentById.get(ancestorId) ?? null;
+					}
+				}
+				if (parsed.data.parentId === null && parsed.data.categoryId) {
+					const [category] = await tx
+						.select({ id: categories.id })
+						.from(categories)
+						.where(
+							and(
+								eq(categories.id, parsed.data.categoryId),
+								eq(categories.ownerId, userId),
+							),
+						)
+						.limit(1);
+					if (!category) {
+						return { categoryMissing: true as const };
 					}
 				}
 				const [updated] = await tx
@@ -390,6 +432,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			if ("parentMissing" in result) {
 				set.status = 404;
 				return { error: "Parent folder not found" };
+			}
+			if ("cycle" in result) {
+				set.status = 400;
+				return { error: "Folder cannot be moved into its descendant" };
+			}
+			if ("categoryMissing" in result) {
+				set.status = 404;
+				return { error: "Category not found" };
 			}
 			if ("notFound" in result) {
 				set.status = 404;

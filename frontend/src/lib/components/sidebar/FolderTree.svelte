@@ -236,6 +236,8 @@ let orderedBuckets = $state<
 >([]);
 
 let showNewFolderDialog = $state(false);
+let newFolderParentId = $state<string | null>(null);
+let newFolderCategoryId = $state<string | null>(null);
 
 // Rename dialog state (shared by folders and documents).
 let showRenameDialog = $state(false);
@@ -671,12 +673,31 @@ function toggleUncategorized() {
 }
 
 function openNewFolderDialog() {
+	newFolderParentId = null;
+	newFolderCategoryId = null;
+	showNewFolderDialog = true;
+}
+
+function openNewFolderInCategory(categoryId: string) {
+	newFolderParentId = null;
+	newFolderCategoryId = categoryId;
+	showNewFolderDialog = true;
+}
+
+function openNewSubfolder(parentId: string) {
+	newFolderParentId = parentId;
+	newFolderCategoryId = null;
 	showNewFolderDialog = true;
 }
 
 async function handleCreateFolder(name: string) {
-	await createFolder({ name, parentId: null, categoryId: null });
+	const parentId = newFolderParentId;
+	await createFolder({ name, parentId, categoryId: newFolderCategoryId });
 	await loadFolders();
+	if (parentId) {
+		expandedFolderIds = new Set(expandedFolderIds).add(parentId);
+		bumpSubfoldersRefresh(parentId);
+	}
 }
 
 function setZoneItems(zone: DocZone, next: DndDoc[]) {
@@ -993,29 +1014,17 @@ function sanitizeFolderItems(raw: unknown): FolderItem[] {
 }
 
 // Compute the set of folder ids that would form a cycle if `targetParentId`
-// became their parent. Includes `targetParentId` itself, plus every folder
-// (transitively) whose `parentId` chain leads back to it. Used by the
+// became their parent. Includes `targetParentId` itself and every ancestor
+// reached by walking its `parentId` chain. Used by the
 // parent-zone persist path to refuse invalid drops before they round-trip
 // to the backend.
-function computeBlockedAncestors(
-	all: FolderItem[],
-	targetParentId: string | null,
-): Set<string> {
+function computeBlockedAncestors(targetParentId: string | null): Set<string> {
 	const blocked = new Set<string>();
 	if (!targetParentId) return blocked;
-	blocked.add(targetParentId);
-	// Walk the flat list until the blocked set stops growing — bounded
-	// by the number of folders the user actually owns.
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const f of all) {
-			const pid = f.parentId ?? null;
-			if (pid && blocked.has(pid) && !blocked.has(f.id)) {
-				blocked.add(f.id);
-				changed = true;
-			}
-		}
+	let currentId: string | null = targetParentId;
+	while (currentId && !blocked.has(currentId)) {
+		blocked.add(currentId);
+		currentId = getFolderFromRegistry(currentId)?.parentId ?? null;
 	}
 	return blocked;
 }
@@ -1044,7 +1053,7 @@ async function persistFolderChanges(zoneKey: string, zoneItems: FolderItem[]) {
 	>();
 
 	const blocked: Set<string> = isParentZone
-		? computeBlockedAncestors(folders, targetParentId)
+		? computeBlockedAncestors(targetParentId)
 		: new Set();
 
 	if (isParentZone) {
@@ -1541,6 +1550,7 @@ const buckets = $derived.by(() => {
     onToggleFolder={toggleFolder}
     onRename={(id, name) => startRename("folder", id, name)}
     onDelete={(id, name) => startDelete("folder", id, name)}
+    onCreateSubfolder={openNewSubfolder}
     onShare={openShareDialogForFolder}
     {dragDisabled}
     {isDraggingGlobal}
@@ -1656,6 +1666,9 @@ const buckets = $derived.by(() => {
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => goto(`/docs/new?category=${bucket.category.id}`)}>
                 {m.dashboard_new_document()}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openNewFolderInCategory(bucket.category.id)}>
+                {m.folders_new()}
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openEditCategoryDialog(bucket.category)}>
                 {m.action_edit()}

@@ -373,6 +373,56 @@ describe("PATCH /api/folders/:id", () => {
     expect(res.status).toBe(400);
     expect((res.body as any).error).toMatch(/cannot be its own parent/);
   });
+
+  it("rejects moving a folder into its descendant", async () => {
+    const state = getState();
+    const parentId = "66666666-6666-4666-8666-666666666666";
+    const childId = "77777777-7777-4777-8777-777777777777";
+    state.folders.set(parentId, {
+      id: parentId,
+      ownerId: OWNER_ID,
+      name: "Parent",
+      parentId: null,
+    });
+    state.folders.set(childId, {
+      id: childId,
+      ownerId: OWNER_ID,
+      name: "Child",
+      parentId,
+    });
+
+    const res = await authedPatch(`/api/folders/${parentId}`, {
+      parentId: childId,
+    });
+
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toMatch(/descendant/);
+    expect((state.folders.get(parentId) as any).parentId).toBeNull();
+  });
+
+  it("moves a sibling folder under another owned folder", async () => {
+    const state = getState();
+    const folderId = "88888888-8888-4888-8888-888888888888";
+    const parentId = "99999999-9999-4999-8999-999999999999";
+    state.folders.set(folderId, {
+      id: folderId,
+      ownerId: OWNER_ID,
+      name: "Movable",
+      parentId: null,
+    });
+    state.folders.set(parentId, {
+      id: parentId,
+      ownerId: OWNER_ID,
+      name: "Destination",
+      parentId: null,
+    });
+
+    const res = await authedPatch(`/api/folders/${folderId}`, { parentId });
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).parentId).toBe(parentId);
+    expect((res.body as any).categoryId).toBeNull();
+  });
 });
 
 describe("DELETE /api/folders/:id", () => {
