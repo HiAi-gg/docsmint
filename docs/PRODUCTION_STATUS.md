@@ -8,7 +8,7 @@
 
 | Check | Result |
 |-------|--------|
-| Backend tests | PASS — 660 passed / 0 failed (1 intentional skip; 661 tests across 75 files) |
+| Backend tests | PASS — 661 passed / 0 failed (1 intentional skip; 662 tests across 75 files) |
 | Frontend tests | PASS — 68 passed / 0 failed |
 | Lint / typecheck / build / SDK build | PASS |
 | Compose validation | PASS |
