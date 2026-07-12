@@ -56,6 +56,7 @@ import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
 import { createPlacementMutationQueue } from "$lib/components/editor/placement-mutation-queue";
 import { markMarkdownTaskItems } from "$lib/components/editor/shared-document";
 import FolderDialog from "$lib/components/FolderDialog.svelte";
@@ -396,7 +397,10 @@ async function handleSaveAsConfirm(
 
 function handleExport() {
 	showMenu = false;
-	const blob = new Blob([content], { type: "text/markdown" });
+	const markdown = serializeMarkdownExport(contentJson, content, {
+		baseUrl: window.location.href,
+	});
+	const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;

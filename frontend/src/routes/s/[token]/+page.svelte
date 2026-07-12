@@ -21,6 +21,7 @@ import {
 import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
 import {
 	hydrateSharedAttachmentImages,
 	type ProseMirrorDoc,
@@ -221,7 +222,10 @@ async function copyText() {
 function handleExportMd() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const blob = new Blob([doc.content], { type: "text/markdown" });
+	const markdown = serializeMarkdownExport(doc.contentJson, doc.content, {
+		baseUrl: window.location.href,
+	});
+	const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;
