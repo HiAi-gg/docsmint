@@ -248,6 +248,29 @@ function renderBlock(
 	}
 }
 
+function containsNodeType(node: JSONContent, type: string): boolean {
+	if (node.type === type) return true;
+	return children(node).some((child) => containsNodeType(child, type));
+}
+
+function shouldPreserveStoredMarkdown(
+	json: JSONContent,
+	fallbackMarkdown: string,
+): boolean {
+	// Older imports may contain a raw/malformed GFM table or image in the
+	// Markdown column that the historical Markdown -> ProseMirror parser could
+	// not represent. Exporting only JSON would silently delete that source data.
+	// Prefer the stored source whenever it contains a structural construct that
+	// is absent from JSON; this is lossless and lets users repair imperfect
+	// imported Markdown outside the editor.
+	const sourceHasTable = /\|\s*:?-{3,}:?\s*\|/.test(fallbackMarkdown);
+	const sourceHasImage = /!\[[^\]]*\]\([^\n)]+\)/.test(fallbackMarkdown);
+	return (
+		(sourceHasTable && !containsNodeType(json, "table")) ||
+		(sourceHasImage && !containsNodeType(json, "image"))
+	);
+}
+
 /** Serialize authoritative editor JSON without falling back to lossy plain text. */
 export function serializeMarkdownExport(
 	contentJson: object | null | undefined,
@@ -255,6 +278,10 @@ export function serializeMarkdownExport(
 	options: MarkdownExportOptions = {},
 ): string {
 	if (!contentJson || typeof contentJson !== "object") return fallbackMarkdown;
-	const rendered = renderBlock(contentJson as JSONContent, options).trimEnd();
+	const json = contentJson as JSONContent;
+	if (shouldPreserveStoredMarkdown(json, fallbackMarkdown)) {
+		return fallbackMarkdown;
+	}
+	const rendered = renderBlock(json, options).trimEnd();
 	return rendered ? `${rendered}\n` : fallbackMarkdown;
 }

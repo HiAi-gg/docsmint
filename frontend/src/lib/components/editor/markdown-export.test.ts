@@ -137,4 +137,17 @@ describe("Markdown export", () => {
 		expect(markdown).toContain("![image](#)");
 		expect(markdown).toContain("[unsafe](#)");
 	});
+
+	test("preserves a raw imported table when legacy JSON lost the table node", () => {
+		const imported =
+			"|\n| | | | | ----- | :---: | | **Products** | | Milk - 120 ml | |";
+		const markdown = serializeMarkdownExport(
+			{
+				type: "doc",
+				content: [{ type: "paragraph", content: [] }],
+			},
+			imported,
+		);
+		expect(markdown).toBe(imported);
+	});
 });
