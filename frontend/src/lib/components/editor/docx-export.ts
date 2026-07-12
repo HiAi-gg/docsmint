@@ -134,7 +134,18 @@ function decodeDataUrl(src: string): ResolvedImage | undefined {
 export function createDocxImageFetcher(
 	options: DocxImageFetcherOptions = {},
 ): DocxImageFetcher {
-	const fetchImpl = options.fetchImpl ?? fetch;
+	// Resolve the platform fetch lazily through globalThis. Referencing the bare
+	// `fetch` identifier makes the helper throw during SSR/Bun test collection
+	// when that runtime does not install a fetch binding, even for inline data
+	// URLs that never perform a network request.
+	const fetchImpl: DocxFetch =
+		options.fetchImpl ??
+		((input, init) => {
+			if (typeof globalThis.fetch !== "function") {
+				throw new Error("DOCX export requires a fetch implementation");
+			}
+			return globalThis.fetch(input, init);
+		});
 	const maxBytes = options.maxBytes ?? DEFAULT_MAX_IMAGE_BYTES;
 	const cache = new Map<string, Promise<ResolvedImage>>();
 
