@@ -31,6 +31,8 @@ import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { logger } from "./lib/logger";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
 import { createPipelineStageDependencies } from "./queue/adapters";
+import { configureOwnerStageLimits } from "./queue/fair-scheduler";
+import { configureDefaultJobOptions } from "./queue/names";
 import {
 	createBullMqRecoveryWriter,
 	postgresRecoveryStore,
@@ -42,14 +44,39 @@ import { startRegisteredPipelineWorkers } from "./queue/start";
 // it before accepting writes so a clean quickstart cannot fail owner FKs.
 await ensureApiKeyOwner();
 
+configureDefaultJobOptions({
+	attempts: config.QUEUE_JOB_ATTEMPTS,
+	retryBaseDelayMs: config.QUEUE_RETRY_BASE_DELAY_MS,
+	completedRetentionCount: config.QUEUE_COMPLETED_RETENTION_COUNT,
+	failedRetentionCount: config.QUEUE_FAILED_RETENTION_COUNT,
+});
+configureOwnerStageLimits({
+	prepare: config.QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER,
+	embed: config.QUEUE_MAX_ACTIVE_EMBED_PER_OWNER,
+	graph: config.QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER,
+});
+
 const pipelineRuntime = await startRegisteredPipelineWorkers({
 	redisUrl: config.REDIS_URL,
 	dependencies: createPipelineStageDependencies(config.REDIS_URL),
+	settings: {
+		prepareConcurrency: config.QUEUE_PREPARE_CONCURRENCY,
+		embedConcurrency: config.QUEUE_EMBED_CONCURRENCY,
+		graphConcurrency: config.QUEUE_GRAPH_CONCURRENCY,
+		summarizeConcurrency: config.QUEUE_SUMMARY_CONCURRENCY,
+		finalizeConcurrency: config.QUEUE_FINALIZE_CONCURRENCY,
+		embedBatchSize: config.QUEUE_EMBED_BATCH_SIZE,
+	},
+	shutdownGraceMs: config.QUEUE_SHUTDOWN_GRACE_MS,
 	recover: async () => {
 		const legacy = await drainLegacyEmbeddingQueue();
 		const recovery = await recoverStalledPipeline(
 			postgresRecoveryStore,
 			createBullMqRecoveryWriter(config.REDIS_URL),
+			{
+				staleAfterMs: config.QUEUE_RECOVERY_STALE_AFTER_MS,
+				maxAttempts: config.QUEUE_JOB_ATTEMPTS,
+			},
 		);
 		logger.info({ legacy, recovery }, "Pipeline recovery completed");
 	},

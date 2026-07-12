@@ -17,9 +17,26 @@ export const SOURCE_PRIORITY = {
 	backfill: 20,
 } as const satisfies Record<PipelineSource, number>;
 
-export const DEFAULT_JOB_OPTIONS = {
+export const DEFAULT_JOB_OPTIONS: JobsOptions & {
+	attempts: number;
+	backoff: { type: "exponential"; delay: number };
+	removeOnComplete: { count: number };
+	removeOnFail: { count: number };
+} = {
 	attempts: 5,
 	backoff: { type: "exponential", delay: 1_000 },
 	removeOnComplete: { count: 1_000 },
 	removeOnFail: { count: 5_000 },
-} as const satisfies JobsOptions;
+};
+
+export function configureDefaultJobOptions(input: {
+	attempts: number;
+	retryBaseDelayMs: number;
+	completedRetentionCount: number;
+	failedRetentionCount: number;
+}): void {
+	DEFAULT_JOB_OPTIONS.attempts = input.attempts;
+	DEFAULT_JOB_OPTIONS.backoff.delay = input.retryBaseDelayMs;
+	DEFAULT_JOB_OPTIONS.removeOnComplete.count = input.completedRetentionCount;
+	DEFAULT_JOB_OPTIONS.removeOnFail.count = input.failedRetentionCount;
+}

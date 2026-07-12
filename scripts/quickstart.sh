@@ -67,6 +67,7 @@ set_value OLLAMA_PORT "$ollama_port"
 
 case "$provider" in
 	openrouter)
+		set_value PROVIDER_LIMITER_MODE "remote"
 		set_value EMBEDDING_BASE_URL "https://openrouter.ai/api/v1"
 		set_value EMBEDDING_MODEL "openai/text-embedding-3-small"
 		set_value EMBEDDING_FALLBACK_BASE_URL "https://openrouter.ai/api/v1"
@@ -81,6 +82,7 @@ case "$provider" in
 		set_value SEARCH_EXPANSION_FALLBACK_MODEL "google/gemma-4-31b-it"
 		;;
 	ollama)
+		set_value PROVIDER_LIMITER_MODE "local"
 		ollama_url="http://host.docker.internal:${ollama_port}/v1"
 		set_value OPENROUTER_API_KEY ""
 		set_value EMBEDDING_BASE_URL "$ollama_url"

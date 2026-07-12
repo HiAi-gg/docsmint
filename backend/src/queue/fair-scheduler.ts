@@ -25,6 +25,16 @@ export const DEFAULT_OWNER_STAGE_LIMITS = {
 	finalize: 2,
 } as const satisfies Record<PipelineStage, number>;
 
+let configuredOwnerStageLimits: Record<PipelineStage, number> = {
+	...DEFAULT_OWNER_STAGE_LIMITS,
+};
+
+export function configureOwnerStageLimits(
+	limits: Partial<Record<PipelineStage, number>>,
+): void {
+	configuredOwnerStageLimits = { ...configuredOwnerStageLimits, ...limits };
+}
+
 const ACQUIRE_LEASE_SCRIPT = `
 local key = KEYS[1]
 local now = tonumber(ARGV[1])
@@ -65,7 +75,7 @@ export function createOwnerFairScheduler(
 	client: RedisLeaseClient,
 	options: OwnerFairnessOptions = {},
 ) {
-	const limits = { ...DEFAULT_OWNER_STAGE_LIMITS, ...options.limits };
+	const limits = { ...configuredOwnerStageLimits, ...options.limits };
 	const leaseTtlMs = options.leaseTtlMs ?? 60_000;
 	const pollIntervalMs = options.pollIntervalMs ?? 25;
 	const keyPrefix = options.keyPrefix ?? "hiai-docs:owner-slots:v1";

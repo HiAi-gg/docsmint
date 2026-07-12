@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const PIPELINE_SCHEMA_VERSION = 1 as const;
 export const DEFAULT_EMBED_CHUNKS_PER_JOB = 5;
+export const MAX_EMBED_CHUNKS_PER_JOB = 32;
 
 export const pipelineSourceSchema = z.enum([
 	"interactive",
@@ -28,7 +29,7 @@ export const prepareJobSchema = basePipelineJobSchema.extend({
 export type PrepareJob = z.infer<typeof prepareJobSchema>;
 
 export function createEmbedBatchJobSchema(
-	maxChunkCount = DEFAULT_EMBED_CHUNKS_PER_JOB,
+	maxChunkCount = MAX_EMBED_CHUNKS_PER_JOB,
 ) {
 	return basePipelineJobSchema.extend({
 		stage: z.literal("embed"),

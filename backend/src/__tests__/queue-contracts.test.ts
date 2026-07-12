@@ -5,13 +5,38 @@ import {
 	JOB_IDS,
 	prepareJobSchema,
 } from "../queue/contracts";
-import { QUEUE_NAMES } from "../queue/names";
+import {
+	configureDefaultJobOptions,
+	DEFAULT_JOB_OPTIONS,
+	QUEUE_NAMES,
+} from "../queue/names";
 
 const documentId = "11111111-1111-4111-8111-111111111111";
 const ownerId = "22222222-2222-4222-8222-222222222222";
 const generationId = "33333333-3333-4333-8333-333333333333";
 
 describe("versioned queue contracts", () => {
+	test("applies validated runtime retry and retention settings", () => {
+		configureDefaultJobOptions({
+			attempts: 7,
+			retryBaseDelayMs: 2_500,
+			completedRetentionCount: 12,
+			failedRetentionCount: 34,
+		});
+		expect(DEFAULT_JOB_OPTIONS).toMatchObject({
+			attempts: 7,
+			backoff: { delay: 2_500 },
+			removeOnComplete: { count: 12 },
+			removeOnFail: { count: 34 },
+		});
+		configureDefaultJobOptions({
+			attempts: 5,
+			retryBaseDelayMs: 1_000,
+			completedRetentionCount: 1_000,
+			failedRetentionCount: 5_000,
+		});
+	});
+
 	test("uses BullMQ-valid queue names without Redis key separators", () => {
 		expect(Object.values(QUEUE_NAMES)).toEqual([
 			"hiai-docs-prepare-v1",

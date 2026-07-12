@@ -62,6 +62,15 @@ export interface PipelineStageDependencies {
 	finalize: FinalizeWorkerDependencies;
 }
 
+export interface PipelineWorkerSettings {
+	prepareConcurrency: number;
+	embedConcurrency: number;
+	graphConcurrency: number;
+	summarizeConcurrency: number;
+	finalizeConcurrency: number;
+	embedBatchSize: number;
+}
+
 const STAGE_ORDER: readonly PipelineStage[] = [
 	"prepare",
 	"embed",
@@ -73,14 +82,29 @@ const STAGE_ORDER: readonly PipelineStage[] = [
 export function createPipelineWorkerFactories(
 	redisUrl: string,
 	deps: PipelineStageDependencies,
+	settings: PipelineWorkerSettings = {
+		prepareConcurrency: 2,
+		embedConcurrency: 3,
+		graphConcurrency: 2,
+		summarizeConcurrency: 1,
+		finalizeConcurrency: 2,
+		embedBatchSize: 5,
+	},
 ): Record<PipelineStage, PipelineWorkerFactory> {
 	const connection = () => createBullMqConnection(redisUrl);
 	const graphProcessor = createGraphWorker(deps.graph);
 	const summarizeProcessor = createSummarizeWorker(deps.summarize);
 	const finalizeProcessor = createFinalizeWorker(deps.finalize);
 	return {
-		prepare: () => createPrepareWorker(redisUrl, deps.prepare),
-		embed: () => createEmbedWorker(redisUrl, deps.embed),
+		prepare: () =>
+			createPrepareWorker(redisUrl, deps.prepare, {
+				concurrency: settings.prepareConcurrency,
+				batchSize: settings.embedBatchSize,
+			}),
+		embed: () =>
+			createEmbedWorker(redisUrl, deps.embed, {
+				concurrency: settings.embedConcurrency,
+			}),
 		graph: () =>
 			new Worker<PipelineJob>(
 				QUEUE_NAMES.graph,
@@ -98,7 +122,7 @@ export function createPipelineWorkerFactories(
 							},
 						);
 					}),
-				{ connection: connection(), concurrency: 2 },
+				{ connection: connection(), concurrency: settings.graphConcurrency },
 			),
 		summarize: () =>
 			new Worker<PipelineJob>(
@@ -107,7 +131,10 @@ export function createPipelineWorkerFactories(
 					withOwnerSlot(job.data.ownerId, "summarize", () =>
 						summarizeProcessor(job.data),
 					),
-				{ connection: connection(), concurrency: 1 },
+				{
+					connection: connection(),
+					concurrency: settings.summarizeConcurrency,
+				},
 			),
 		finalize: () =>
 			new Worker<PipelineJob>(
@@ -116,7 +143,7 @@ export function createPipelineWorkerFactories(
 					withOwnerSlot(job.data.ownerId, "finalize", () =>
 						finalizeProcessor(job.data),
 					),
-				{ connection: connection(), concurrency: 2 },
+				{ connection: connection(), concurrency: settings.finalizeConcurrency },
 			),
 	};
 }
@@ -125,6 +152,7 @@ export async function startRegisteredPipelineWorkers(input: {
 	redisUrl: string;
 	dependencies: PipelineStageDependencies;
 	recover: () => Promise<void>;
+	settings?: PipelineWorkerSettings;
 	shutdownGraceMs?: number;
 }): Promise<PipelineRuntime> {
 	const queues = {} as Record<PipelineStage, ManagedPipelineQueue>;
@@ -136,6 +164,7 @@ export async function startRegisteredPipelineWorkers(input: {
 		workerFactories: createPipelineWorkerFactories(
 			input.redisUrl,
 			input.dependencies,
+			input.settings,
 		),
 		queues,
 		closeQueues: closePipelineQueues,
