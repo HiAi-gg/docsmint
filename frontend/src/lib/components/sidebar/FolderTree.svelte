@@ -140,6 +140,11 @@ type DocZone =
 	| { kind: "root" };
 
 const FLIP_MS = 200;
+// Document rows are short and frequently cross several nested drop zones.
+// A full 200 ms FLIP makes the dragged row visibly trail the pointer and can
+// make an already completed drop look as though it is still pending. Keep the
+// slower animation for folders/categories, but settle document rows quickly.
+const DOCUMENT_FLIP_MS = 80;
 const FOLDER_EXPAND_DELAY_MS = 400;
 // Tiny initial-fetch delay so the sidebar lists don't fire their
 // listDocuments calls at exactly the same instant on a cold page load
@@ -1615,7 +1620,7 @@ const buckets = $derived.by(() => {
     onFinalizeSubfolders={handleNestedFolderFinalize}
     onDropOnFolder={handleDropOnFolder}
     folderDocsMap={folderDocsMap}
-    flipDurationMs={FLIP_MS}
+    flipDurationMs={DOCUMENT_FLIP_MS}
     {docRowInner}
     {copyButton}
     {docMenu}
@@ -1771,16 +1776,18 @@ const buckets = $derived.by(() => {
               )}
               use:dndzone={{
                 items: rootDocs,
-                flipDurationMs: FLIP_MS,
+                flipDurationMs: DOCUMENT_FLIP_MS,
                 type: "doc",
                 dropTargetStyle: {},
                 dragDisabled,
+                useCursorForDetection: true,
+                centreDraggedOnCursor: true,
               }}
               onconsider={handleConsider({ kind: "category", id: bucket.id })}
               onfinalize={handleFinalize({ kind: "category", id: bucket.id })}
             >
               {#each rootDocs as doc (doc.id)}
-                <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
+                <div animate:flip={{ duration: DOCUMENT_FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
                   {@render docRowInner(doc)}
                   {@render copyButton(doc)}
                   {@render docMenu(doc)}
@@ -1862,12 +1869,20 @@ const buckets = $derived.by(() => {
               "min-h-[8px] space-y-0.5 transition-all duration-150",
               isDraggingDoc && rootItems.length === 0 && "min-h-[36px] bg-accent/20 rounded border border-dashed border-muted-foreground/20"
             )}
-            use:dndzone={{ items: rootItems, flipDurationMs: FLIP_MS, type: "doc", dropTargetStyle: {}, dragDisabled }}
+            use:dndzone={{
+              items: rootItems,
+              flipDurationMs: DOCUMENT_FLIP_MS,
+              type: "doc",
+              dropTargetStyle: {},
+              dragDisabled,
+              useCursorForDetection: true,
+              centreDraggedOnCursor: true,
+            }}
             onconsider={handleConsider({ kind: "root" })}
             onfinalize={handleFinalize({ kind: "root" })}
           >
             {#each rootItems as doc (doc.id)}
-              <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
+              <div animate:flip={{ duration: DOCUMENT_FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
                 {@render docRowInner(doc)}
                 {@render copyButton(doc)}
                 {@render docMenu(doc)}

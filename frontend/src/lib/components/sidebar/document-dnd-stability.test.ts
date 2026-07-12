@@ -25,4 +25,14 @@ describe("document drag-and-drop stability", () => {
 		expect(source).toContain("createDocumentPlacementWriter({");
 		expect(source).toContain("acknowledge: acknowledgeDocumentPlacement");
 	});
+
+	test("uses fast cursor-based detection for every document drop zone", () => {
+		expect(source).toContain("const DOCUMENT_FLIP_MS = 80");
+		const documentZones = source.match(/type: "doc"/g) ?? [];
+		const cursorDetection = source.match(/useCursorForDetection: true/g) ?? [];
+		const cursorCentering = source.match(/centreDraggedOnCursor: true/g) ?? [];
+		expect(cursorDetection).toHaveLength(documentZones.length);
+		expect(cursorCentering).toHaveLength(documentZones.length);
+		expect(source).toContain("flipDurationMs={DOCUMENT_FLIP_MS}");
+	});
 });
