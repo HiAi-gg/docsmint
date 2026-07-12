@@ -78,6 +78,9 @@ $effect(() => {
 
 let searchResponse = $state<SearchResponse | null>(null);
 let loading = $state(false);
+// Search requests can overlap when the query, filters, or sort order change
+// quickly. Only the newest request may publish results or end the loading state.
+let searchRequestGeneration = 0;
 let showFilters = $state(false);
 
 let folders = $state<string[]>([]);
@@ -160,11 +163,16 @@ $effect(() => {
 		sharedTag && !tags.includes(sharedTag) ? [...tags, sharedTag] : tags;
 
 	if (!q) {
+		searchRequestGeneration += 1;
 		searchResponse = null;
 		loading = false;
 		return;
 	}
 
+	const requestGeneration = ++searchRequestGeneration;
+	// Never leave the previous query's empty response visible while the adaptive
+	// semantic channels are still working on the current query.
+	searchResponse = null;
 	loading = true;
 
 	search(q, p, pageSize, sort, {
@@ -173,10 +181,19 @@ $effect(() => {
 		category: category || undefined,
 		dateFrom: from || undefined,
 		dateTo: to || undefined,
-	}).then((res) => {
-		searchResponse = res;
-		loading = false;
-	});
+	})
+		.then((res) => {
+			if (requestGeneration !== searchRequestGeneration) return;
+			searchResponse = res;
+			loading = false;
+		})
+		.catch(() => {
+			if (requestGeneration !== searchRequestGeneration) return;
+			// Preserve the existing terminal empty-state fallback on request failure,
+			// but never let a stale failure interrupt a newer in-flight search.
+			searchResponse = { items: [], total: 0, page: p, limit: pageSize };
+			loading = false;
+		});
 });
 
 // --- Helpers -----------------------------------------------------------------
@@ -632,7 +649,19 @@ function goToPage(page: number) {
 
 <!-- Loading state -->
 {#snippet loadingState()}
-  <div class="space-y-4">
+  <div class="space-y-4" aria-live="polite" aria-busy="true">
+    <div class="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-primary/5 px-5 py-4">
+      <div class="absolute inset-y-0 left-0 w-1 bg-primary"></div>
+      <div class="flex items-center gap-3">
+        <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Loader2 class="size-5 animate-spin" />
+        </div>
+        <div>
+          <p class="font-medium text-foreground">{m.search_semantic_search_in_progress()}</p>
+          <p class="mt-0.5 text-sm text-muted-foreground">{m.search_semantic_search_detail()}</p>
+        </div>
+      </div>
+    </div>
     {#each Array(3) as _, i}
       <div class="animate-pulse rounded-lg border border-border bg-card p-5">
         <div class="flex items-start justify-between gap-3">
@@ -650,10 +679,6 @@ function goToPage(page: number) {
         </div>
       </div>
     {/each}
-    <div class="flex items-center justify-center gap-2 py-4 text-sm text-muted-foreground">
-      <Loader2 class="size-4 animate-spin" />
-      {m.search_searching()}
-    </div>
   </div>
 {/snippet}
 

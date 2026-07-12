@@ -374,6 +374,8 @@
   "search_folders": "Folders",
   "search_date_range": "Date range",
   "search_searching": "Searching...",
+  "search_semantic_search_in_progress": "Semantic search is still working",
+  "search_semantic_search_detail": "Checking meaning, related concepts, and knowledge graph connections. Results will appear automatically.",
   "search_result_for": "{count} result for",
   "search_results_for": "{count} results for",
   "search_pages_aria": "Search results pages",
