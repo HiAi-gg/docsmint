@@ -791,8 +791,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				// would queue the same doc id once per PATCH.
 				enqueueReembed([params.id]);
 			}
-			invalidateDocCache(params.id);
-			invalidateDocListCache(userId);
+			// Preserve read-after-write consistency for placement changes. A
+			// fire-and-forget invalidation allowed the sidebar's immediate list
+			// request to repopulate itself from the stale Redis entry, making a
+			// successful move appear only after a later cache expiry/refresh.
+			await Promise.all([
+				invalidateDocCache(params.id),
+				invalidateDocListCache(userId),
+			]);
 
 			const ipAddress =
 				request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??

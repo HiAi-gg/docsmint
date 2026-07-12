@@ -45,6 +45,19 @@ describe("FolderTree placement refresh", () => {
 		expect(folderTree).toContain("acknowledge: acknowledgeDocumentPlacement");
 	});
 
+	test("does not refetch the full tree after an acknowledged sidebar move", () => {
+		const writerStart = folderTree.indexOf(
+			"const writeDocumentPlacement = createDocumentPlacementWriter({",
+		);
+		const writerEnd = folderTree.indexOf(
+			"function persistDocumentPlacement",
+			writerStart,
+		);
+		const writer = folderTree.slice(writerStart, writerEnd);
+		expect(writer).not.toContain("\n\trefresh,");
+		expect(writer).not.toContain("post-move refresh failed");
+	});
+
 	test("invalidates a late refresh before rolling back a failed move", () => {
 		const rollbackStart = folderTree.indexOf(
 			"function rollbackDocumentPlacement",

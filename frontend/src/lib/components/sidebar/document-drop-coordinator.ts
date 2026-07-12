@@ -14,7 +14,7 @@ export function createDocumentPlacementWriter(options: {
 	optimistic: (id: string, placement: SidebarDocumentPlacement) => number;
 	acknowledge: (id: string, token: number) => void;
 	rollback: (id: string, placement: SidebarDocumentPlacement) => void;
-	refresh: () => Promise<unknown>;
+	refresh?: () => Promise<unknown>;
 	onError: (error: unknown) => void;
 	onRefreshError?: (error: unknown) => void;
 }) {
@@ -53,9 +53,11 @@ export function createDocumentPlacementWriter(options: {
 				options.acknowledge(id, request.token);
 				// A committed PATCH must never be rolled back because a list refresh
 				// failed. Refresh is only a best-effort reconciliation step.
-				void options
-					.refresh()
-					.catch(options.onRefreshError ?? (() => undefined));
+				if (options.refresh) {
+					void options
+						.refresh()
+						.catch(options.onRefreshError ?? (() => undefined));
+				}
 			} catch (error) {
 				options.acknowledge(id, request.token);
 				if (request.generation === state.generation) {

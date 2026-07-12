@@ -603,13 +603,9 @@ const writeDocumentPlacement = createDocumentPlacementWriter({
 		),
 	acknowledge: acknowledgeDocumentPlacement,
 	rollback: rollbackDocumentPlacement,
-	refresh,
 	onError: (error) => {
 		console.error("FolderTree: document move failed", error);
 		setDndError(error instanceof Error ? error.message : "Move failed");
-	},
-	onRefreshError: (error) => {
-		console.error("FolderTree: post-move refresh failed", error);
 	},
 });
 

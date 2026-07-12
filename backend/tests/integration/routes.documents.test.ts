@@ -426,6 +426,36 @@ describe("PATCH /api/documents/:id", () => {
     expect((res.body as any).folderId).toBe(newFolder);
   });
 
+  it("invalidates the cached list before acknowledging a placement update", async () => {
+    const doc = seedDocument({
+      id: "abcdef03-0000-4000-8000-000000000000",
+      folderId: null,
+      categoryId: null,
+    });
+    const newFolder = "abcdef04-0000-4000-8000-000000000000";
+    const newCategory = "abcdef05-0000-4000-8000-000000000000";
+
+    const before = await authedGet("/api/documents?limit=100");
+    expect(before.status).toBe(200);
+    expect(
+      (before.body as any).items.find((item: any) => item.id === doc.id)
+        .folderId,
+    ).toBeNull();
+
+    const moved = await authedPatch(`/api/documents/${doc.id}`, {
+      folderId: newFolder,
+      categoryId: newCategory,
+    });
+    expect(moved.status).toBe(200);
+
+    const after = await authedGet("/api/documents?limit=100");
+    const listed = (after.body as any).items.find(
+      (item: any) => item.id === doc.id,
+    );
+    expect(listed.folderId).toBe(newFolder);
+    expect(listed.categoryId).toBe(newCategory);
+  });
+
   it("returns 404 when updating a document owned by another user", async () => {
     seedDocument({
       id: "abcdef02-0000-4000-8000-000000000000",

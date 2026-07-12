@@ -94,6 +94,14 @@ mock.module("../lib/logger", () => ({
 
 const mod = await import("../lib/doc-cache");
 
+describe("docListKey", () => {
+	it("uses the same tenant prefix matched by list invalidation", () => {
+		const key = mod.docListKey("user-A", undefined, undefined, 1, 100);
+		expect(key).toBe("hiai-docs:cache:docs:list:user-A:p:1:l:100");
+		expect(key).not.toContain("list::");
+	});
+});
+
 describe("docSingleKey", () => {
 	it("includes userId in the key so two users get distinct entries", () => {
 		const keyA = mod.docSingleKey("doc-1", "user-A");

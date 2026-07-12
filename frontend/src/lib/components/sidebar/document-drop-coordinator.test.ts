@@ -74,6 +74,27 @@ describe("sidebar document placement writer", () => {
 		expect(rollbacks).toEqual([]);
 		expect(errors).toHaveLength(1);
 	});
+
+	test("commits immediately when no reconciliation refresh is configured", async () => {
+		const acknowledgements: Array<[string, number]> = [];
+		const writer = createDocumentPlacementWriter({
+			patch: async () => {},
+			optimistic: () => 11,
+			acknowledge: (id, token) => acknowledgements.push([id, token]),
+			rollback: () => {
+				throw new Error("unexpected rollback");
+			},
+			onError: () => {},
+		});
+
+		await writer(
+			"doc",
+			{ folderId: null, categoryId: "category" },
+			{ folderId: "old", categoryId: "category" },
+		);
+
+		expect(acknowledgements).toEqual([["doc", 11]]);
+	});
 });
 
 describe("document drop coordinator", () => {

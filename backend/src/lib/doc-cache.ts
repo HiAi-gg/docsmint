@@ -11,7 +11,12 @@ export function docListKey(
 	page = 1,
 	limit = 20,
 ): string {
-	const parts = [LIST_PREFIX, userId];
+	// LIST_PREFIX already ends with `:`. Starting with it as a separate
+	// `join(":")` segment produced a double-colon key (`list::user`) while
+	// invalidation scans `list:user:*`. Those keys never matched, so placement
+	// PATCHes could succeed while the sidebar kept reading the stale list until
+	// Redis TTL expiry.
+	const parts = [`${LIST_PREFIX}${userId}`];
 	if (folderId) parts.push(`f:${folderId}`);
 	if (tag) parts.push(`t:${tag}`);
 	parts.push(`p:${page}`, `l:${limit}`);
