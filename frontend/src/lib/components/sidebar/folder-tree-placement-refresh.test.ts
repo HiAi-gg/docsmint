@@ -23,6 +23,16 @@ describe("FolderTree placement refresh", () => {
 		expect(folderTree).toContain("resyncZonesFromDocuments()");
 	});
 
+	test("does not subscribe the placement effect to the document array it mutates", () => {
+		expect(folderTree).toContain(
+			'import { onDestroy, onMount, untrack } from "svelte"',
+		);
+		expect(folderTree).toContain("untrack(() => {");
+		expect(folderTree.indexOf("untrack(() => {")).toBeLessThan(
+			folderTree.indexOf("const index = documents.findIndex"),
+		);
+	});
+
 	test("merges the optimistic placement into a late server response", () => {
 		expect(folderTree).toContain("getPendingDocumentPlacement(doc.id)");
 		expect(folderTree).toContain(

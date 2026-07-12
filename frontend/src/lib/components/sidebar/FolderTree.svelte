@@ -46,7 +46,7 @@ import {
 	Plus,
 	Trash2,
 } from "lucide-svelte";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, untrack } from "svelte";
 import { flip } from "svelte/animate";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
@@ -609,21 +609,29 @@ $effect(() => {
 	const placement = getLatestDocumentPlacement();
 	if (!placement) return;
 
-	// Invalidate an older list request before applying the optimistic move so
-	// its late response cannot put the document back in the previous bucket.
-	documentsLoadGeneration++;
-	const index = documents.findIndex((doc) => doc.id === placement.id);
-	if (index === -1) return;
-	documents = documents.map((doc, docIndex) =>
-		docIndex === index
-			? {
-					...doc,
-					folderId: placement.folderId,
-					categoryId: placement.categoryId,
-				}
-			: doc,
-	);
-	resyncZonesFromDocuments();
+	// Only the placement nonce and payload are dependencies of this effect.
+	// Reading `documents` while applying the optimistic update would subscribe
+	// the effect to the array it replaces below. A placement published by the
+	// editor would then make the effect retrigger itself until Svelte aborted
+	// with `effect_update_depth_exceeded`. Keep the local sidebar projection
+	// outside dependency tracking while still applying every published move.
+	untrack(() => {
+		// Invalidate an older list request before applying the optimistic move so
+		// its late response cannot put the document back in the previous bucket.
+		documentsLoadGeneration++;
+		const index = documents.findIndex((doc) => doc.id === placement.id);
+		if (index === -1) return;
+		documents = documents.map((doc, docIndex) =>
+			docIndex === index
+				? {
+						...doc,
+						folderId: placement.folderId,
+						categoryId: placement.categoryId,
+					}
+				: doc,
+		);
+		resyncZonesFromDocuments();
+	});
 });
 
 let firstTagRun = true;
