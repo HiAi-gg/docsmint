@@ -13,7 +13,6 @@ interface Props {
 	tags: Array<{ id: string; name: string; color: string | null }>;
 	createdAt: string;
 	query?: string;
-	explanations?: SearchExplanation[];
 	/**
 	 * When `true`, the result's title was a strong match for the query
 	 * and the backend's title-first boost applied a 3x score multiplier.
