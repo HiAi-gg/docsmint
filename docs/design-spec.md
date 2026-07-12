@@ -92,7 +92,7 @@ All tables use `owner_id` for user-scoped isolation. `tenant_id` is reserved (nu
 - id (uuid, PK), owner_id (FK users), folder_id (FK folders, nullable)
 - title (text), content (text — markdown source), content_tipex (jsonb — Tipex AST, retained for backward compatibility after svelte-tiptap migration)
 - metadata (jsonb — frontmatter, custom fields)
-- embedding (vector(768) — pgvector)
+- embedding (vector(1024) — pgvector)
 - created_at, updated_at
 
 **tags** — Document tags

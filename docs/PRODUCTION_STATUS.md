@@ -2,19 +2,19 @@
 
 > **Status:** RELEASE CANDIDATE — pending GitHub CI and operator browser acceptance
 > **Version:** v0.2.7
-> **Last verified:** 2026-07-11
+> **Last verified:** 2026-07-12
 
 ## Verified release evidence
 
 | Check | Result |
 |-------|--------|
-| Backend tests | PASS — 577 passed / 0 failed |
-| Frontend tests | PASS — 59 passed / 0 failed |
+| Backend tests | PASS — 656 passed / 0 failed (1 intentional skip; 657 tests across 75 files) |
+| Frontend tests | PASS — 68 passed / 0 failed |
 | Lint / typecheck / build / SDK build | PASS |
 | Compose validation | PASS |
 | Docker images | PASS — API, web, PostgreSQL/migration, and Caddy built locally |
 | API health | PASS — in-container `/api/health` returned `status: ok` |
-| Fresh database | PASS — migrations `0000–0026`, AGE graph labels, vector indexes, RLS |
+| Fresh database | PASS — migrations `0000–0030`, AGE graph labels, vector indexes, RLS, and BullMQ pipeline state |
 | Upgraded database | PASS — v0.2.6 fixture preserved through current migrations |
 | Live GraphRAG | PASS — Recall@10 1.0, MRR@10 1.0, cross-language 4/4 |
 | GraphRAG data | PASS — 8 ready 1024-dim embeddings, 52 nodes, 92 edges |
@@ -106,6 +106,18 @@ owner credential in argv (`--api-key=...` is rejected), because argv is
 visible to process inspection and shell history. Record the exact counts,
 latency percentiles, expansion coverage, graph contribution, invalid-vector
 count, and tenant-leakage result in the release report.
+
+### Quickstart environment policy
+
+`.env.example` is the public, placeholder-only template. The user owns the
+ignored root `.env`: they copy the template and enter exactly one provider
+input (an OpenRouter key or the Ollama provider/port). `scripts/quickstart.sh`
+may then replace placeholder infrastructure/auth/storage values with random
+local secrets, while preserving non-placeholder provider values. It never
+prints secret values. Agents and CI must not read, create, edit, rotate, or
+commit `.env`; they may only report the required variable names and ask the
+user to provide the provider input. Never include `.env` contents in release
+notes, logs, screenshots, or package artifacts.
 
 ## Release notes
 

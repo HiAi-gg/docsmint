@@ -10,9 +10,14 @@ cp .env.example .env
 bash scripts/quickstart.sh
 ```
 
-The script creates the ignored root `.env`, generates local DB/auth/storage
-secrets, builds the custom PostgreSQL image, applies all migrations, and starts
-the complete stack. The only user-facing provider configuration is:
+The user creates the ignored root `.env` from the public template and enters
+the provider input below. `scripts/quickstart.sh` then fills placeholder
+DB/auth/storage values with random local secrets, builds the custom PostgreSQL
+image, applies all migrations, and starts the complete stack. It never prints
+secret values. Agents and CI must not create, read, edit, rotate, or commit
+`.env`; they should ask the user to perform the provider step.
+
+The only user-facing provider configuration is:
 
 ```dotenv
 # OpenRouter (default): paste the key only
@@ -24,7 +29,7 @@ OLLAMA_PORT=11434
 ```
 
 Do not edit source code or migration files for a normal installation. The
-generated `.env` is the only file that needs to be kept for subsequent starts.
+user-owned `.env` is the only file that needs to be kept for subsequent starts.
 
 The app will be available at:
 - Frontend: `http://localhost:50701`

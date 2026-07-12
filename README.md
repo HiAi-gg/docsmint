@@ -33,10 +33,11 @@ cp .env.example .env
 bash scripts/quickstart.sh
 ```
 
-The script creates the ignored root `.env`. During an agentic installation the
-agent may create this file and write only the provider input supplied by the
-user; it must never print or overwrite generated infrastructure secrets. That
-is the only file a user ever needs to edit:
+The user-owned ignored root `.env` is copied from `.env.example`. During an
+agentic installation, the agent must not create, read, edit, rotate, or print
+this file; the user supplies the provider input. `scripts/quickstart.sh` then
+fills only placeholder infrastructure/auth/storage values with random local
+secrets and never prints them. That is the only file a user ever needs to edit:
 
 | Provider | Change in `.env` | Models already configured |
 |---|---|---|
@@ -74,32 +75,30 @@ docker compose --env-file .env --profile caddy up -d
 ## Agentic installation rules
 
 Give the following instruction to your coding agent. It is intentionally
-provider-first: the agent may create and edit only the ignored root `.env`, not
-application source files, to complete a normal installation.
+provider-first: the agent may inspect the repository and run verification, but
+must not create, read, or edit `.env` or application source files. The user
+creates `.env` and enters the provider input.
 
 ```text
 Install and launch hiai-docs from https://github.com/hiai-gg/hiai-docs.
 
 1. Check Docker Engine/Desktop and Docker Compose v2. Do not install Node or
    replace the Bun/Docker workflow.
-2. Clone the repository if it is not already present, then create the ignored
-   provider file without changing source code:
-      cp .env.example .env
-3. Ask for exactly one provider input: an OpenRouter API key, or Ollama host
-   port (default 11434). Never ask the user to edit source code.
-4. Write only the provider input to the ignored root `.env`:
-   - OpenRouter: OPENROUTER_API_KEY=<user-provided-key>
-   - Ollama: AI_PROVIDER=ollama and OLLAMA_PORT=<port>
-5. Run bash scripts/quickstart.sh. It generates all DB/auth/storage
+2. Clone the repository if it is not already present. Ask the user to run
+   `cp .env.example .env` and provide exactly one provider input: an OpenRouter
+   API key, or Ollama host port (default 11434). Never ask the user to edit
+   source code.
+3. Do not read or write `.env`. After the user has entered the provider input,
+   ask them to run `bash scripts/quickstart.sh`; it generates all DB/auth/storage
    secrets, builds the custom PostgreSQL image, runs migrations 0000 through
    the current journal, and starts API, web, Redis, and SeaweedFS.
-6. Verify, without printing secrets:
+4. Verify, without printing secrets:
    - http://localhost:50701 loads;
    - http://localhost:50700/api/health returns status=ok and storage=ok;
    - docker compose ps reports healthy services.
-7. If a provider is unavailable, report it as a provider/configuration issue;
+5. If a provider is unavailable, report it as a provider/configuration issue;
    do not replace GraphRAG, disable RLS, drop volumes, or rewrite migrations.
-8. Report the UI URL, API health result, container status, and any remaining
+6. Report the UI URL, API health result, container status, and any remaining
    provider prerequisite. Never print the contents of .env.
 ```
 

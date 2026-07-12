@@ -10,13 +10,13 @@ left to the operator on the running local build.
 
 | Check | Evidence |
 |-------|----------|
-| Backend tests | **577 passed / 0 failed** |
-| Frontend tests | **59 passed / 0 failed** |
+| Backend tests | **656 passed / 0 failed** (1 intentional skip; 657 tests across 75 files) |
+| Frontend tests | **68 passed / 0 failed** |
 | Lint, typecheck, build, SDK build | Passed |
 | Compose config | Passed with the documented quickstart profile |
 | Docker images | API, web, PostgreSQL/migration, and Caddy built locally |
 | API image smoke | In-container `/api/health` returned HTTP 200 and `status: ok` |
-| Fresh database | Full Drizzle journal `0000–0026` applied; AGE labels, graph indexes, and vector indexes verified |
+| Fresh database | Full Drizzle journal `0000–0030` applied; AGE labels, graph indexes, vector indexes, RLS, and BullMQ pipeline state verified |
 | Upgraded database | v0.2.6 fixture upgraded to current schema; legacy document and 1024-dim embedding preserved |
 | Live GraphRAG benchmark | **Passed**: Recall@10 1.0, MRR@10 1.0, cross-language 4/4, leakage 0, invalid vectors 0, explanation failures 0 |
 | Live GraphRAG latency | Fast p95 411ms; expanded p95 2485ms in the passing serialized run; provider latency remains environment-dependent |
@@ -51,14 +51,14 @@ GitHub Actions and the operator confirms the browser flow.
 - [ ] **Verify PostgreSQL bootstrap** — `postgres/init.sql` contains infrastructure setup only; application schema and graph/labels/indexes are created by Drizzle migrations
 - [ ] **Build SDK** — `cd packages/sdk && bun run build` (ensures `dist/` is current before publishing)
 - [ ] **Run full typecheck** — `bun run typecheck` (0 errors)
-- [ ] **Run full test suite** — `bun run test` (backend 577/0 and frontend 59/0 in the current candidate)
+- [ ] **Run full test suite** — `bun run test` (backend 656/0 with 1 intentional skip and frontend 68/0 in the current candidate)
 - [ ] **Run lint** — `bun run lint` (0 errors)
 - [ ] **Run clean npm consumer smoke** — pack `package.public.json`, install in an empty npm project, import the SDK, run `hiai-docs --help`, and start `hiai-docs-mcp` without missing runtime dependencies
 - [ ] **Run secret scans** — no real OpenRouter token values or real `OPENROUTER_API_KEY` outside ignored local `.env`; no unfinished markers in release files
 - [ ] **Run migration/reindex dry-run** — `bun run db:migrate` then `cd backend && bun run src/scripts/reindex-embeddings.ts --dry-run --batch=100`
 - [ ] **Run relevance benchmark** — `cd backend && bun run benchmark:search -- --base-url=http://127.0.0.1:50700 --owner-credentials-file=/run/secrets/hiai-docs-benchmark-owners.json`; operator credential comes from `HIAI_DOCS_API_KEY`/`BENCHMARK_API_KEY` via environment/stdin/file, owner credentials come from the protected JSON map, and no credential is ever passed in argv
 - [ ] **Verify benchmark gates** — Recall@10 ≥ 0.90, MRR@10 ≥ 0.80, fast p95 ≤ 500 ms, expanded p95 ≤ 2.5 s, zero active invalid vectors, and zero tenant leakage
-- [ ] **Verify fresh and upgraded databases** — apply migrations 0000–0028, reindex fixtures, and record both DiskANN/HNSW paths plus upgrade invariants
+- [ ] **Verify fresh and upgraded databases** — apply migrations 0000–0030, reindex fixtures, and record both DiskANN/HNSW paths plus upgrade invariants
 - [ ] **Verify pipeline migration** — confirm legacy list entries become one deterministic prepare job per active document revision
 - [ ] **Verify restart recovery** — terminate workers during prepare/embed/graph/finalize, reconcile from PostgreSQL, and confirm no lost jobs, duplicate active generations, or cross-owner recovery
 - [ ] **Verify rollback safety** — pause BullMQ producers/workers, preserve pipeline tables, and re-enqueue only nonterminal documents into the legacy list; never delete generation records
