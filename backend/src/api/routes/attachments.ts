@@ -5,17 +5,65 @@ import {
 	PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { attachments, documents } from "@hiai-docs/db/schema";
+import { attachments, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { config } from "../../lib/config";
+import {
+	canAccessContent,
+	effectiveDocumentCategory,
+	isAuthorizedCategory,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { logger } from "../../lib/logger";
-import { shareTokenAccessForDocument } from "../../lib/share-access";
+import { fetchRemoteImage } from "../../lib/remote-image";
+import {
+	documentReferencesRemoteImage,
+	resolveShareDocumentScope,
+	shareTokenAccessForDocument,
+	shareTokenReferencesAttachment,
+	verifyShareScopePassword,
+} from "../../lib/share-access";
 import { BUCKET, storage, storagePublic } from "../../lib/storage";
 import { withTenant } from "../../lib/with-tenant";
-import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
+import {
+	documentRateLimiter,
+	rateLimitHeaders,
+	writeRateLimiter,
+} from "../middleware/rate-limit";
+
+async function authorizeDocument(
+	request: Request,
+	documentId: string,
+	action: "read" | "edit",
+) {
+	const access = await resolveContentAccess(request);
+	if (access.ctx.role === "none" || !canAccessContent(access, action)) {
+		return { access, authorized: false as const };
+	}
+	const row = await withTenant(access.ctx, async (tx) => {
+		const [document] = await tx
+			.select({
+				id: documents.id,
+				categoryId: documents.categoryId,
+				folderCategoryId: folders.categoryId,
+			})
+			.from(documents)
+			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.where(
+				and(eq(documents.id, documentId), eq(documents.ownerId, access.userId)),
+			)
+			.limit(1);
+		return document ?? null;
+	});
+	return {
+		access,
+		authorized:
+			!!row && isAuthorizedCategory(access, effectiveDocumentCategory(row)),
+		row,
+	};
+}
 
 /**
  * Legacy upload limit — kept as a safety net for the in-process
@@ -215,28 +263,23 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 			set.headers = rateLimitHeaders(rl.remaining);
 
-			const ctx = await buildTenantContext(request);
-			if (ctx.role === "none") {
+			const documentId = params.id;
+			const authorization = await authorizeDocument(
+				request,
+				documentId,
+				"edit",
+			);
+			if (authorization.access.ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
-			const userId = ctx.userId;
-
-			const documentId = params.id;
-			const docExists = await withTenant(ctx, async (tx) => {
-				const [doc] = await tx
-					.select({ id: documents.id })
-					.from(documents)
-					.where(
-						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
-					)
-					.limit(1);
-				return !!doc;
-			});
-			if (!docExists) {
-				set.status = 404;
-				return { error: "Document not found" };
+			if (!authorization.authorized) {
+				set.status = authorization.row ? 403 : 404;
+				return {
+					error: authorization.row ? "Forbidden" : "Document not found",
+				};
 			}
+			const userId = authorization.access.userId;
 
 			const payload = body as
 				| { filename?: unknown; contentType?: unknown; size?: unknown }
@@ -313,28 +356,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 			set.headers = rateLimitHeaders(rl.remaining);
 
-			const ctx = await buildTenantContext(request);
-			if (ctx.role === "none") {
+			const documentId = params.id;
+			const authorization = await authorizeDocument(
+				request,
+				documentId,
+				"edit",
+			);
+			if (authorization.access.ctx.role === "none") {
 				set.status = 401;
 				return { error: "Unauthorized" };
 			}
-			const userId = ctx.userId;
-
-			const documentId = params.id;
-			const docExists = await withTenant(ctx, async (tx) => {
-				const [doc] = await tx
-					.select({ id: documents.id })
-					.from(documents)
-					.where(
-						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
-					)
-					.limit(1);
-				return !!doc;
-			});
-			if (!docExists) {
-				set.status = 404;
-				return { error: "Document not found" };
+			if (!authorization.authorized) {
+				set.status = authorization.row ? 403 : 404;
+				return {
+					error: authorization.row ? "Forbidden" : "Document not found",
+				};
 			}
+			const ctx = authorization.access.ctx;
+			const userId = authorization.access.userId;
 
 			const payload = body as
 				| {
@@ -459,28 +498,19 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
-		if (ctx.role === "none") {
+		const authorization = await authorizeDocument(request, params.id, "edit");
+		if (authorization.access.ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		const userId = ctx.userId;
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
+		}
+		const ctx = authorization.access.ctx;
+		const userId = authorization.access.userId;
 
 		const documentId = params.id;
-
-		// Verify document exists and user owns it
-		const docExists = await withTenant(ctx, async (tx) => {
-			const [doc] = await tx
-				.select({ id: documents.id })
-				.from(documents)
-				.where(and(eq(documents.id, documentId), eq(documents.ownerId, userId)))
-				.limit(1);
-			return !!doc;
-		});
-		if (!docExists) {
-			set.status = 404;
-			return { error: "Document not found" };
-		}
 
 		// Parse multipart form data
 		let file: File | null;
@@ -592,12 +622,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 	// GET /api/documents/:id/attachments — List attachments for a document
 	.get("/documents/:id/attachments", async ({ params, set, request }) => {
-		const ctx = await buildTenantContext(request);
-		if (ctx.role === "none") {
+		const authorization = await authorizeDocument(request, params.id, "read");
+		if (authorization.access.ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		const userId = ctx.userId;
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
+		}
+		const ctx = authorization.access.ctx;
+		const userId = authorization.access.userId;
 
 		const documentId = params.id;
 
@@ -653,10 +688,15 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "edit")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 
@@ -677,9 +717,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					id: attachments.id,
 					storageKey: attachments.storageKey,
 					ownerId: documents.ownerId,
+					categoryId: documents.categoryId,
+					folderCategoryId: folders.categoryId,
 				})
 				.from(attachments)
 				.innerJoin(documents, eq(documents.id, attachments.documentId))
+				.leftJoin(folders, eq(folders.id, documents.folderId))
 				.where(eq(attachments.id, attachmentId))
 				.limit(1);
 			return r ?? null;
@@ -690,6 +733,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Attachment not found" };
 		}
 		if (row.ownerId !== userId) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		if (!isAuthorizedCategory(access, effectiveDocumentCategory(row))) {
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
@@ -751,7 +798,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// matters here. We accept either an authenticated session
 			// OR a share-token header; the lookup below differs by
 			// which path we took.
-			const ctx = await buildTenantContext(request);
+			const access = await resolveContentAccess(request);
+			const ctx = access.ctx;
 			const shareToken =
 				ctx.role === "none" ? request.headers.get("x-share-token") : null;
 			if (ctx.role === "none" && !shareToken) {
@@ -775,9 +823,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						mimeType: attachments.mimeType,
 						storageKey: attachments.storageKey,
 						ownerId: documents.ownerId,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
 					})
 					.from(attachments)
 					.innerJoin(documents, eq(documents.id, attachments.documentId))
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(eq(attachments.id, params.id))
 					.limit(1);
 				return r ?? null;
@@ -789,16 +840,31 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			if (ctx.role !== "none") {
-				if (row.ownerId !== ctx.userId) {
+				if (
+					!canAccessContent(access, "read") ||
+					row.ownerId !== ctx.userId ||
+					!isAuthorizedCategory(access, effectiveDocumentCategory(row))
+				) {
 					set.status = 403;
 					return { error: "Forbidden" };
 				}
 			} else if (shareToken) {
-				const verdict = await shareTokenAccessForDocument(
+				let verdict = await shareTokenAccessForDocument(
 					lookupCtx,
 					row.documentId,
 					shareToken,
 				);
+				if (
+					verdict === "no-access" &&
+					(await shareTokenReferencesAttachment(
+						lookupCtx,
+						shareToken,
+						row.id,
+						row.ownerId,
+					))
+				) {
+					verdict = "granted";
+				}
 				if (verdict !== "granted") {
 					// "missing", "expired", and "no-access" all collapse
 					// to 401 with the same generic message — leaking
@@ -840,5 +906,106 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			logger.error({ err }, "Failed to stream attachment");
 			set.status = 500;
 			return { error: "Failed to stream attachment" };
+		}
+	})
+	// Same-origin bridge used only by DOCX export. The requested URL must be
+	// present in a document the caller can read; the fetcher additionally
+	// rejects private networks, redirects to private networks, non-images,
+	// oversized responses, and slow upstreams.
+	.get("/attachments/remote-image", async ({ request, set }) => {
+		try {
+			const rateLimit = await documentRateLimiter(
+				await getClientIp(request),
+				request,
+			);
+			if (!rateLimit.allowed) {
+				set.status = 429;
+				set.headers = rateLimitHeaders(0, rateLimit.retryAfter);
+				return { error: "Too many requests" };
+			}
+			set.headers = rateLimitHeaders(rateLimit.remaining);
+			const requestUrl = new URL(request.url);
+			const documentId = requestUrl.searchParams.get("documentId")?.trim();
+			const source = requestUrl.searchParams.get("url")?.trim();
+			if (!documentId || !source || source.length > 4096) {
+				set.status = 400;
+				return { error: "documentId and a valid image URL are required" };
+			}
+
+			const access = await resolveContentAccess(request);
+			const ctx = access.ctx;
+			const shareToken =
+				ctx.role === "none" ? request.headers.get("x-share-token") : null;
+			if (ctx.role === "none" && !shareToken) {
+				set.status = 401;
+				return { error: "Authentication required" };
+			}
+			const lookupCtx =
+				ctx.role === "admin"
+					? ctx
+					: { userId: ctx.userId, role: "admin" as const };
+			const document = await withTenant(lookupCtx, async (tx) => {
+				const [row] = await tx
+					.select({
+						ownerId: documents.ownerId,
+						content: documents.content,
+						contentJson: documents.contentJson,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
+					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
+					.where(eq(documents.id, documentId))
+					.limit(1);
+				return row ?? null;
+			});
+			if (!document) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+			if (ctx.role !== "none") {
+				if (
+					!canAccessContent(access, "read") ||
+					document.ownerId !== ctx.userId ||
+					!isAuthorizedCategory(access, effectiveDocumentCategory(document))
+				) {
+					set.status = 403;
+					return { error: "Forbidden" };
+				}
+			} else {
+				const scope = shareToken
+					? await resolveShareDocumentScope(lookupCtx, shareToken)
+					: null;
+				if (!scope?.documentIds.includes(documentId)) {
+					set.status = 401;
+					return { error: "Authentication required" };
+				}
+				if (
+					!(await verifyShareScopePassword(
+						scope,
+						request.headers.get("x-share-password"),
+					))
+				) {
+					set.status = 401;
+					return { error: "Authentication required" };
+				}
+			}
+			if (!documentReferencesRemoteImage(document, source)) {
+				set.status = 403;
+				return { error: "Image URL is not referenced by this document" };
+			}
+
+			const image = await fetchRemoteImage(source);
+			return new Response(Buffer.from(image.bytes), {
+				headers: {
+					"Content-Type": image.contentType,
+					"Cache-Control": "private, max-age=300",
+					"X-Content-Type-Options": "nosniff",
+				},
+			});
+		} catch (err) {
+			logger.warn({ err }, "Remote DOCX image fetch rejected");
+			set.status = 422;
+			return { error: "Remote image could not be fetched safely" };
 		}
 	});

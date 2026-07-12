@@ -44,7 +44,9 @@ frontend/src/lib/paraglide
 docker-compose.dev.yml
 
 # --- Local data volumes (host-only) ---
+# `minio_data` is retained only for cleanup compatibility with older clones.
 minio_data
+seaweedfs_data
 ollama_data
 backup
 docker-data
@@ -81,9 +83,10 @@ pytest-qa.ini
 .DS_Store
 Thumbs.db
 
-# --- OpenCode workspace metadata ---
+# --- Agent workspace metadata ---
 .opencode
 .bob
+.superpowers
 
 # --- Docs (only README.md ships into the image per Wave 0 spec) ---
 # Exclude all *.md, but make an exception for README.md (per W0.5 spec: "*.md (except README)")

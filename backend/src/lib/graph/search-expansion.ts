@@ -8,13 +8,15 @@
  * hits, so the user-visible ordering still favors semantic matches while
  * surface area is broadened by entity/relationship context.
  *
- * Feature-flagged: returns an empty Map when GRAPH_SEARCH_ENABLED is false,
- * when AGE is unreachable, or when no seed ids are provided.
+ * Feature-flagged: returns an empty Map when GRAPH_SEARCH_ENABLED is false
+ * or when no seed ids are provided. AGE query errors are rethrown so the
+ * search orchestrator can mark graphFailed while degrading to direct hits.
  */
 
+import type { QueryPlan } from "../../search/types";
 import { config } from "../config";
 import { logger } from "../logger";
-import { type GraphSqlClient, getGraphDb } from "./init";
+import { type GraphSqlClient, getGraphDbRequired } from "./init";
 
 const DEFAULT_MAX_HOPS = 2;
 
@@ -22,6 +24,59 @@ export interface RelatedDoc {
 	docId: string;
 	relationType: string;
 	hopDistance: number;
+}
+
+/**
+ * Resolve query-plan concepts and named entities to document vertices. This
+ * is deliberately separate from document-seed expansion: a query with no
+ * lexical/vector hit still gets one bounded AGE lookup without exposing any
+ * hidden document metadata to the caller.
+ */
+export async function expandFromQueryPlan(
+	plan: QueryPlan,
+	limit = 20,
+): Promise<RelatedDoc[]> {
+	if (!config.GRAPH_SEARCH_ENABLED) return [];
+	const terms = dedupe([
+		...plan.concepts,
+		...plan.namedEntities,
+		...plan.translations,
+		...plan.synonyms,
+	]).map((term) => term.toLocaleLowerCase());
+	if (terms.length === 0) return [];
+	const sql = await getGraphDbRequired();
+	const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+
+	try {
+		const cypher = buildQuerySeedCypher(terms, boundedLimit);
+		const queryString = buildCypherSql(
+			cypher,
+			"neighbor_id agtype, relation agtype, hops agtype",
+		);
+		const rows = (await sql.unsafe(queryString)) as Array<{
+			neighbor_id: string;
+			relation: string;
+			hops: number;
+		}>;
+		const seen = new Set<string>();
+		const out: RelatedDoc[] = [];
+		for (const row of rows) {
+			const docId = stripQuotes(String(row.neighbor_id ?? ""));
+			if (!docId || seen.has(docId)) continue;
+			seen.add(docId);
+			const hops = Number(row.hops);
+			out.push({
+				docId,
+				relationType: stripQuotes(String(row.relation ?? "QUERY_ENTITY")),
+				hopDistance: Number.isFinite(hops) ? Math.max(1, hops) : 1,
+			});
+			if (out.length >= boundedLimit) break;
+		}
+		return out;
+	} catch (err) {
+		logger.warn({ err, terms: terms.length }, "Graph query seed lookup failed");
+		throw err;
+	}
 }
 
 /**
@@ -48,15 +103,17 @@ export async function expandResults(
 
 	const clampedHops = Math.max(1, Math.min(Math.floor(maxHops), 3));
 
-	const sql = await getGraphDb();
-	if (!sql) return out;
+	const sql = await getGraphDbRequired();
 
 	try {
 		const cypher = buildTraversalCypher(seeds, clampedHops);
 		// AGE's cypher() requires a literal dollar-quoted string constant,
 		// not a bind parameter. The seed ids are already JSON.stringify-
 		// escaped in buildTraversalCypher, so inlining is safe.
-		const queryString = `SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (seed_id agtype, neighbor_id agtype, relation agtype, hops agtype)`;
+		const queryString = buildCypherSql(
+			cypher,
+			"seed_id agtype, neighbor_id agtype, relation agtype, hops agtype",
+		);
 		const rows = (await sql.unsafe(queryString)) as Array<{
 			seed_id: string;
 			neighbor_id: string;
@@ -77,6 +134,7 @@ export async function expandResults(
 		}
 	} catch (err) {
 		logger.warn({ err, seeds: seeds.length }, "Graph expansion query failed");
+		throw err;
 	}
 
 	return out;
@@ -98,21 +156,14 @@ export async function expandResults(
  */
 function buildTraversalCypher(seedIds: string[], maxHops: number): string {
 	const seedList = seedIds.map((id) => JSON.stringify(id)).join(", ");
-	if (maxHops < 2) {
-		return `
-			MATCH (seed:Document) WHERE seed.id IN [${seedList}]
-			RETURN seed.id AS seed_id, seed.id AS neighbor_id,
-			       'MENTIONS' AS relation, 0 AS hops
-		`;
-	}
 	return `
-		MATCH (seed:Document)-[:MENTIONS]->(entity)<-[:MENTIONS]-(neighbor:Document)
-		WHERE seed.id IN [${seedList}] AND seed <> neighbor
-		RETURN DISTINCT seed.id AS seed_id,
-		       neighbor.id AS neighbor_id,
-		       'MENTIONS' AS relation,
-		       2 AS hops
-	`;
+			MATCH path=(seed:Document)-[:MENTIONS*1..${maxHops}]-(neighbor:Document)
+			WHERE seed.id IN [${seedList}] AND seed <> neighbor
+			RETURN DISTINCT seed.id AS seed_id,
+			       neighbor.id AS neighbor_id,
+			       'MENTIONS' AS relation,
+			       length(path) AS hops
+		`;
 }
 
 /**
@@ -129,6 +180,30 @@ function dedupe(ids: string[]): string[] {
 		out.push(trimmed);
 	}
 	return out;
+}
+
+function buildQuerySeedCypher(terms: string[], limit: number): string {
+	const termList = terms.map((term) => JSON.stringify(term)).join(", ");
+	return `
+		MATCH (entity)-[:MENTIONS]-(document:Document)
+		WHERE toLower(entity.name) IN [${termList}]
+		RETURN DISTINCT document.id AS neighbor_id,
+		       'QUERY_ENTITY' AS relation,
+		       1 AS hops
+		LIMIT ${limit}
+	`;
+}
+
+/**
+ * AGE's cypher() accepts a literal dollar-quoted string, but a fixed `$$`
+ * delimiter is unsafe when an LLM or user term contains the same sequence.
+ * Select a deterministic tag that cannot occur in the generated body.
+ */
+function buildCypherSql(cypher: string, columns: string): string {
+	let tag = "hiai";
+	while (cypher.includes(`$${tag}$`)) tag = `${tag}_x`;
+	const quoted = `$${tag}$ ${cypher} $${tag}$`;
+	return `SELECT * FROM cypher('docs_graph', ${quoted}) AS (${columns})`;
 }
 
 /**
@@ -152,6 +227,23 @@ export function _buildTraversalCypher(
 	maxHops: number = DEFAULT_MAX_HOPS,
 ): string {
 	return buildTraversalCypher(seedIds, maxHops);
+}
+
+/** Test-only query-seed cypher helper. */
+export function _buildQuerySeedCypher(terms: string[], limit = 20): string {
+	return buildQuerySeedCypher(
+		dedupe(terms),
+		Math.max(1, Math.min(Math.floor(limit), 100)),
+	);
+}
+
+/** Test-only SQL wrapper used to lock down dollar-quote injection safety. */
+export function _buildQuerySeedSql(terms: string[], limit = 20): string {
+	const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 100));
+	return buildCypherSql(
+		buildQuerySeedCypher(dedupe(terms), boundedLimit),
+		"neighbor_id agtype, relation agtype, hops agtype",
+	);
 }
 
 /**

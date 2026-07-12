@@ -2,11 +2,20 @@ import { categories, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import {
+	canAccessContent,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { logger } from "../../lib/logger";
 import { reembedDocsInCategory } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
+
+function isCategoryManager(
+	principal: Awaited<ReturnType<typeof resolveContentAccess>>["principal"],
+): boolean {
+	return principal?.kind === "session" || principal?.kind === "operator";
+}
 
 /**
  * Zod schemas for categories.
@@ -118,14 +127,24 @@ function buildApiAccessValues(input: {
  */
 export const categoryRoutes = new Elysia({ prefix: "/api" })
 	.get("/categories", async ({ set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const userId = ctx.userId;
 		try {
 			const rows = await withTenant(ctx, async (tx) => {
+				const conditions = [eq(categories.ownerId, userId)];
+				if (access.restricted) {
+					if (!access.categoryId) return [];
+					conditions.push(eq(categories.id, access.categoryId));
+				}
 				return tx
 					.select({
 						id: categories.id,
@@ -162,9 +181,20 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						)`,
 					})
 					.from(categories)
-					.where(eq(categories.ownerId, userId))
+					.where(and(...conditions))
 					.orderBy(categories.order, categories.name);
 			});
+			if (access.principal?.kind === "api-key") {
+				return rows.map(
+					({
+						apiMode: _apiMode,
+						apiPermissionRead: _apiPermissionRead,
+						apiPermissionEdit: _apiPermissionEdit,
+						apiPermissionWrite: _apiPermissionWrite,
+						...metadata
+					}) => metadata,
+				);
+			}
 			return rows;
 		} catch (err) {
 			logger.error({ err }, "Failed to list categories");
@@ -182,10 +212,15 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!isCategoryManager(access.principal)) {
+			set.status = 403;
+			return { error: "Browser session or operator credential required" };
 		}
 		const userId = ctx.userId;
 		const parsed = createCategorySchema.safeParse(await request.json());
@@ -245,10 +280,15 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!isCategoryManager(access.principal)) {
+			set.status = 403;
+			return { error: "Browser session or operator credential required" };
 		}
 		const userId = ctx.userId;
 		const parsed = updateCategorySchema.safeParse(await request.json());
@@ -271,6 +311,11 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			};
 		}
 		const newName = parsed.data.name;
+		const hasApiAccessUpdate =
+			parsed.data.apiMode !== undefined ||
+			parsed.data.apiPermissionRead !== undefined ||
+			parsed.data.apiPermissionEdit !== undefined ||
+			parsed.data.apiPermissionWrite !== undefined;
 		try {
 			const updated = await withTenant(ctx, async (tx) => {
 				if (newName !== undefined) {
@@ -292,12 +337,14 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						...(parsed.data.order !== undefined && {
 							order: parsed.data.order,
 						}),
-						...buildApiAccessValues({
-							apiMode: parsed.data.apiMode,
-							apiPermissionRead: parsed.data.apiPermissionRead,
-							apiPermissionEdit: parsed.data.apiPermissionEdit,
-							apiPermissionWrite: parsed.data.apiPermissionWrite,
-						}),
+						...(hasApiAccessUpdate
+							? buildApiAccessValues({
+									apiMode: parsed.data.apiMode,
+									apiPermissionRead: parsed.data.apiPermissionRead,
+									apiPermissionEdit: parsed.data.apiPermissionEdit,
+									apiPermissionWrite: parsed.data.apiPermissionWrite,
+								})
+							: {}),
 						updatedAt: new Date(),
 					})
 					.where(
@@ -345,10 +392,15 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!isCategoryManager(access.principal)) {
+			set.status = 403;
+			return { error: "Browser session or operator credential required" };
 		}
 		const userId = ctx.userId;
 		try {

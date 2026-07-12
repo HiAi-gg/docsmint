@@ -1,12 +1,49 @@
-import { documents, versions } from "@hiai-docs/db/schema";
+import { documents, folders, versions } from "@hiai-docs/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
+import {
+	canAccessContent,
+	effectiveDocumentCategory,
+	isAuthorizedCategory,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { logger } from "../../lib/logger";
+import { enqueueReembed } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
+
+async function authorizeVersionDocument(
+	request: Request,
+	documentId: string,
+	action: "read" | "edit",
+) {
+	const access = await resolveContentAccess(request);
+	if (access.ctx.role === "none" || !canAccessContent(access, action)) {
+		return { access, authorized: false as const, row: null };
+	}
+	const row = await withTenant(access.ctx, async (tx) => {
+		const [document] = await tx
+			.select({
+				id: documents.id,
+				categoryId: documents.categoryId,
+				folderCategoryId: folders.categoryId,
+			})
+			.from(documents)
+			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.where(
+				and(eq(documents.id, documentId), eq(documents.ownerId, access.userId)),
+			)
+			.limit(1);
+		return document ?? null;
+	});
+	return {
+		access,
+		row,
+		authorized:
+			!!row && isAuthorizedCategory(access, effectiveDocumentCategory(row)),
+	};
+}
 
 /**
  * Whole-file line-based diff. For two strings `a` and `b`, returns a
@@ -175,10 +212,19 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeVersionDocument(
+			request,
+			params.id,
+			"read",
+		);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
 		}
 		const userId = ctx.userId;
 
@@ -254,10 +300,19 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeVersionDocument(
+			request,
+			params.id,
+			"edit",
+		);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
 		}
 		const userId = ctx.userId;
 
@@ -316,10 +371,19 @@ export const versionRoutes = new Elysia({
 
 	// GET /api/documents/:id/versions/:vid — get specific version
 	.get("/:vid", async ({ params, set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeVersionDocument(
+			request,
+			params.id,
+			"read",
+		);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
 		}
 		const userId = ctx.userId;
 		try {
@@ -393,10 +457,19 @@ export const versionRoutes = new Elysia({
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeVersionDocument(
+			request,
+			params.id,
+			"edit",
+		);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
 		}
 		const userId = ctx.userId;
 		try {
@@ -478,7 +551,9 @@ export const versionRoutes = new Elysia({
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			enqueueEmbedding(params.id);
+			void enqueueReembed([params.id]).catch((err) =>
+				logger.warn({ err, documentId: params.id }, "Pipeline enqueue failed"),
+			);
 			return updated;
 		} catch (err) {
 			logger.error(
@@ -502,10 +577,19 @@ export const versionRoutes = new Elysia({
 	// path branch — `/:from` would collide with the `:vid` parameter on
 	// the sibling `/:vid` and `/:vid/restore` routes.
 	.get("/diff", async ({ params, query, set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeVersionDocument(
+			request,
+			params.id,
+			"read",
+		);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.row ? 403 : 404;
+			return { error: authorization.row ? "Forbidden" : "Document not found" };
 		}
 		const userId = ctx.userId;
 		const fromId = query.from;

@@ -150,6 +150,9 @@ describe("graph extract-entities module", () => {
 		expect(
 			_resolveGraphProviderKeyForTests("http://host.docker.internal:11434/v1"),
 		).toBe("");
+		expect(
+			_resolveGraphProviderKeyForTests("https://openrouter.ai.evil.example/v1"),
+		).toBe("");
 	});
 
 	test("module exports confidence on the entity/relationship interfaces", async () => {

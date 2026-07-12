@@ -9,14 +9,61 @@ import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "../../lib/audit";
+import {
+	canAccessContent,
+	effectiveDocumentCategory,
+	isAuthorizedCategory,
+	resolveContentAccess,
+	resolveFolderEffectiveCategory,
+} from "../../lib/content-access";
 import { logger } from "../../lib/logger";
 import { redis } from "../../lib/redis";
 import { withTenant } from "../../lib/with-tenant";
 import {
 	adminTenantContext,
-	buildTenantContext,
 	shareGuestTenantContext,
 } from "../middleware/tenant";
+
+async function authorizeShareLink(request: Request, shareId: string) {
+	const access = await resolveContentAccess(request);
+	if (access.ctx.role === "none" || !canAccessContent(access, "write")) {
+		return { access, link: null, authorized: false as const };
+	}
+	const link = await withTenant(access.ctx, async (tx) => {
+		const [row] = await tx
+			.select({
+				id: shareLinks.id,
+				createdBy: shareLinks.createdBy,
+				documentId: shareLinks.documentId,
+				folderId: shareLinks.folderId,
+				categoryId: documents.categoryId,
+				documentFolderCategoryId: folders.categoryId,
+			})
+			.from(shareLinks)
+			.leftJoin(documents, eq(documents.id, shareLinks.documentId))
+			.leftJoin(folders, eq(folders.id, documents.folderId))
+			.where(eq(shareLinks.id, shareId))
+			.limit(1);
+		if (!row) return null;
+		const categoryId = row.documentId
+			? effectiveDocumentCategory({
+					categoryId: row.categoryId,
+					folderCategoryId: row.documentFolderCategoryId,
+				})
+			: row.folderId
+				? await resolveFolderEffectiveCategory(tx, access.userId, row.folderId)
+				: null;
+		return { ...row, effectiveCategoryId: categoryId ?? null };
+	});
+	return {
+		access,
+		link,
+		authorized:
+			!!link &&
+			link.createdBy === access.userId &&
+			isAuthorizedCategory(access, link.effectiveCategoryId),
+	};
+}
 
 // ============================================
 // Validation schemas
@@ -119,10 +166,15 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// POST /api/share — Create share link (auth required)
 	.post("/", async ({ request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 
@@ -149,14 +201,22 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		const ownerCheck = await withTenant(ctx, async (tx) => {
 			if (documentId) {
 				const [doc] = await tx
-					.select({ id: documents.id })
+					.select({
+						id: documents.id,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(
 						and(eq(documents.id, documentId), eq(documents.ownerId, userId)),
 					)
 					.limit(1);
 				if (!doc) {
 					return { notFound: "document" as const };
+				}
+				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
+					return { forbidden: true as const };
 				}
 			}
 
@@ -169,6 +229,14 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 				if (!folder) {
 					return { notFound: "folder" as const };
 				}
+				const categoryId = await resolveFolderEffectiveCategory(
+					tx,
+					userId,
+					folderId,
+				);
+				if (!isAuthorizedCategory(access, categoryId ?? null)) {
+					return { forbidden: true as const };
+				}
 			}
 			return null;
 		});
@@ -179,6 +247,10 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		if (ownerCheck?.notFound === "folder") {
 			set.status = 404;
 			return { error: "Folder not found" };
+		}
+		if (ownerCheck && "forbidden" in ownerCheck) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 
 		const token = nanoid(21);
@@ -240,15 +312,20 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// GET /api/share — List share links for current user (auth required)
 	.get("/", async ({ request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const userId = ctx.userId;
 
 		const links = await withTenant(ctx, async (tx) => {
-			return tx
+			const rows = await tx
 				.select({
 					id: shareLinks.id,
 					token: shareLinks.token,
@@ -266,6 +343,39 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 				.leftJoin(folders, eq(shareLinks.folderId, folders.id))
 				.where(eq(shareLinks.createdBy, userId))
 				.orderBy(shareLinks.createdAt);
+			if (!access.restricted) return rows;
+			const authorized = [];
+			for (const row of rows) {
+				let categoryId: string | null | undefined = null;
+				if (row.documentId) {
+					const [document] = await tx
+						.select({
+							categoryId: documents.categoryId,
+							folderId: documents.folderId,
+						})
+						.from(documents)
+						.where(eq(documents.id, row.documentId))
+						.limit(1);
+					categoryId =
+						document?.categoryId ??
+						(document?.folderId
+							? await resolveFolderEffectiveCategory(
+									tx,
+									userId,
+									document.folderId,
+								)
+							: null);
+				} else if (row.folderId) {
+					categoryId = await resolveFolderEffectiveCategory(
+						tx,
+						userId,
+						row.folderId,
+					);
+				}
+				if (isAuthorizedCategory(access, categoryId ?? null))
+					authorized.push(row);
+			}
+			return authorized;
 		});
 
 		return {
@@ -454,10 +564,19 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// DELETE /api/share/:id — Revoke share link (auth required, owner only)
 	.delete("/:id", async ({ params, request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeShareLink(request, params.id);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.link ? 403 : 404;
+			return {
+				error: authorization.link
+					? "Forbidden: you can only revoke your own share links"
+					: "Share link not found",
+			};
 		}
 		const userId = ctx.userId;
 
@@ -509,10 +628,19 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// PATCH /api/share/:id — Update share link (role, expiresAt)
 	.patch("/:id", async ({ params, request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeShareLink(request, params.id);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.link ? 403 : 404;
+			return {
+				error: authorization.link
+					? "Forbidden: you can only update your own share links"
+					: "Share link not found",
+			};
 		}
 		const userId = ctx.userId;
 
@@ -593,10 +721,19 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// POST /api/share/:id/guests — Add guest email access (auth required)
 	.post("/:id/guests", async ({ params, request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeShareLink(request, params.id);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.link ? 403 : 404;
+			return {
+				error: authorization.link
+					? "Forbidden: you can only add guests to your own share links"
+					: "Share link not found",
+			};
 		}
 		const userId = ctx.userId;
 
@@ -671,10 +808,17 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 	// DELETE /api/share/:id/guests/:email — Remove guest access (auth required)
 	.delete("/:id/guests/:email", async ({ params, request, set }) => {
-		const ctx = await buildTenantContext(request);
+		const authorization = await authorizeShareLink(request, params.id);
+		const ctx = authorization.access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!authorization.authorized) {
+			set.status = authorization.link ? 403 : 404;
+			return {
+				error: authorization.link ? "Forbidden" : "Share link not found",
+			};
 		}
 		const userId = ctx.userId;
 

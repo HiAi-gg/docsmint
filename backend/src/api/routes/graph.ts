@@ -25,10 +25,15 @@
  */
 
 import { documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { config } from "../../lib/config";
+import {
+	type ContentAccess,
+	canAccessContent,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { getGraphDb } from "../../lib/graph/init";
 import {
 	expandResults,
@@ -37,7 +42,6 @@ import {
 import { logger } from "../../lib/logger";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
 
 const entitiesQuerySchema = z.object({
 	docId: z.string().min(1),
@@ -86,10 +90,14 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const ctx = await buildTenantContext(request);
-			if (ctx.role === "none") {
+			const access = await resolveContentAccess(request);
+			if (!access.principal) {
 				set.status = 401;
 				return { error: "Unauthorized" };
+			}
+			if (!canAccessContent(access, "read")) {
+				set.status = 403;
+				return { error: "Forbidden" };
 			}
 			const parsed = entitiesQuerySchema.safeParse(query);
 			if (!parsed.success) {
@@ -102,6 +110,10 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			}
 
 			try {
+				const allowedIds = await allowedGraphDocumentIds(access, [
+					parsed.data.docId,
+				]);
+				if (!allowedIds.has(parsed.data.docId)) return { entities: [] };
 				const entities = await fetchDocumentEntities(parsed.data.docId);
 				return { entities };
 			} catch (err) {
@@ -125,10 +137,15 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const ctx = await buildTenantContext(request);
-			if (ctx.role === "none") {
+			const access = await resolveContentAccess(request);
+			const ctx = access.ctx;
+			if (!access.principal) {
 				set.status = 401;
 				return { error: "Unauthorized" };
+			}
+			if (!canAccessContent(access, "read")) {
+				set.status = 403;
+				return { error: "Forbidden" };
 			}
 			const parsed = relatedParamsSchema.safeParse(params);
 			if (!parsed.success) {
@@ -141,7 +158,15 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			}
 
 			try {
-				const related = await fetchRelatedDocuments(ctx, parsed.data.docId);
+				const seedIds = await allowedGraphDocumentIds(access, [
+					parsed.data.docId,
+				]);
+				if (!seedIds.has(parsed.data.docId)) return { related: [] };
+				const related = await fetchRelatedDocuments(
+					ctx,
+					parsed.data.docId,
+					access,
+				);
 				return { related };
 			} catch (err) {
 				logger.warn(
@@ -164,10 +189,15 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
-			const ctx = await buildTenantContext(request);
-			if (ctx.role === "none") {
+			const access = await resolveContentAccess(request);
+			const ctx = access.ctx;
+			if (!access.principal) {
 				set.status = 401;
 				return { error: "Unauthorized" };
+			}
+			if (!canAccessContent(access, "read")) {
+				set.status = 403;
+				return { error: "Forbidden" };
 			}
 			const parsed = graphSearchBodySchema.safeParse(body);
 			if (!parsed.success) {
@@ -182,7 +212,13 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 			}
 
 			try {
-				const result = await graphRagLookup(ctx, docIds, maxResults);
+				const authorizedSeeds = await allowedGraphDocumentIds(access, docIds);
+				const result = await graphRagLookup(
+					ctx,
+					docIds.filter((id) => authorizedSeeds.has(id)),
+					maxResults,
+					access,
+				);
 				return { query, ...result };
 			} catch (err) {
 				logger.warn(
@@ -286,6 +322,7 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
 async function fetchRelatedDocuments(
 	ctx: import("../../api/middleware/tenant").TenantContext,
 	docId: string,
+	access?: ContentAccess,
 ): Promise<DocumentNeighbor[]> {
 	const expansion = await expandResults([docId], 2);
 	const all = expansion.get(docId) ?? [];
@@ -294,7 +331,9 @@ async function fetchRelatedDocuments(
 	const neighborIds = Array.from(new Set(all.map((r) => r.docId)));
 	if (neighborIds.length === 0) return [];
 
-	const allowedIds = await filterToOwnedDocuments(ctx, neighborIds);
+	const allowedIds = access
+		? await allowedGraphDocumentIds(access, neighborIds)
+		: await filterToOwnedDocuments(ctx, neighborIds);
 	return all.filter((r) => allowedIds.has(r.docId));
 }
 
@@ -308,6 +347,7 @@ async function graphRagLookup(
 	ctx: import("../../api/middleware/tenant").TenantContext,
 	docIds: string[],
 	maxResults: number | undefined,
+	access?: ContentAccess,
 ): Promise<{
 	entities: EntityRef[];
 	relatedDocs: Array<DocumentNeighbor & { title: string; snippet: string }>;
@@ -340,7 +380,9 @@ async function graphRagLookup(
 		return { entities: Array.from(entityMap.values()), relatedDocs: [] };
 	}
 
-	const allowedIds = await filterToOwnedDocuments(ctx, neighborIds);
+	const allowedIds = access
+		? await allowedGraphDocumentIds(access, neighborIds)
+		: await filterToOwnedDocuments(ctx, neighborIds);
 	const ownedNeighborIds = neighborIds.filter((id) => allowedIds.has(id));
 	if (ownedNeighborIds.length === 0) {
 		return { entities: Array.from(entityMap.values()), relatedDocs: [] };
@@ -374,6 +416,44 @@ async function graphRagLookup(
 // ---------------------------------------------------------------------
 // Postgres helpers
 // ---------------------------------------------------------------------
+
+/** Category keys are reduced to an ID allow-list before any AGE traversal. */
+async function allowedGraphDocumentIds(
+	access: ContentAccess,
+	docIds: string[],
+): Promise<Set<string>> {
+	if (docIds.length === 0) return new Set();
+	const rows = await withTenant(access.ctx, (tx) =>
+		tx
+			.select({ id: documents.id })
+			.from(documents)
+			.leftJoin(
+				folders,
+				and(
+					eq(folders.id, documents.folderId),
+					eq(folders.ownerId, access.userId),
+				),
+			)
+			.where(
+				and(
+					eq(documents.ownerId, access.userId),
+					inArray(documents.id, docIds),
+					access.restricted
+						? access.categoryId
+							? or(
+									eq(documents.categoryId, access.categoryId),
+									and(
+										isNull(documents.categoryId),
+										eq(folders.categoryId, access.categoryId),
+									),
+								)
+							: undefined
+						: undefined,
+				),
+			),
+	);
+	return new Set(rows.map((row) => row.id));
+}
 
 /**
  * Return the subset of `docIds` that are owned by the current user. Used

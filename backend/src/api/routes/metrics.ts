@@ -9,8 +9,9 @@
  *
  * Auth: API key only. The endpoint is intentionally separate from the
  * Better Auth session flow — metrics are operator infrastructure, not a
- * user-facing API surface. Requests must carry the `x-api-key` header
- * matching `config.HIAI_DOCS_API_KEY`. Missing key → 401; wrong key →
+ * user-facing API surface. Requests must carry `x-api-key` or
+ * `Authorization: Bearer <key>` matching `config.HIAI_DOCS_API_KEY`.
+ * Missing key → 401; wrong key →
  * 401 (we don't distinguish to avoid oracle leakage).
  *
  * Rate limiting: shares the `searchRateLimiter` bucket — same operational
@@ -19,8 +20,13 @@
 
 import { Elysia } from "elysia";
 import { logger } from "../../lib/logger";
-import { getMetrics } from "../../lib/metrics";
+import {
+	getEmbeddingStateInventory,
+	getMetrics,
+	getPipelineMetrics,
+} from "../../lib/metrics";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
+import { verifyAdminKey } from "./admin-auth";
 
 /**
  * Apply the same rate-limit policy used by search/graph endpoints. Returns
@@ -51,22 +57,16 @@ export const metricsRoutes = new Elysia({ prefix: "/api/admin" }).get(
 		const rl = await applyRateLimit(request, set as never);
 		if (rl) return rl;
 
-		// Import lazily so the route module loads even when config is
-		// unavailable (test environments that don't seed HIAI_DOCS_API_KEY).
-		// This also avoids a static circular import surface: the route is
-		// the only place that gates on this exact header.
-		const { config } = await import("../../lib/config");
-
-		const expected = config.HIAI_DOCS_API_KEY;
-		const provided = request.headers.get("x-api-key");
-		if (!expected || provided !== expected) {
+		if (!verifyAdminKey(request)) {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
 
 		try {
 			return {
-				metrics: getMetrics(),
+				metrics: getMetrics({ includeReserved: true }),
+				pipelineMetrics: getPipelineMetrics(),
+				embeddingStateInventory: getEmbeddingStateInventory(),
 				uptime: process.uptime(),
 			};
 		} catch (err) {
@@ -83,7 +83,7 @@ export const metricsRoutes = new Elysia({ prefix: "/api/admin" }).get(
 			tags: ["Admin"],
 			summary: "Process-local embedding metrics snapshot",
 			description:
-				"Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via the `x-api-key` header.",
+				"Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
 		},
 	},
 );

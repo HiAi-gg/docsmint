@@ -32,6 +32,14 @@ const refreshNonces = $state<Record<string, number>>({});
 const foldersRegistry = $state<Record<string, FolderRegistryEntry>>({});
 const documentsRegistry = $state<Record<string, DocumentRegistryEntry>>({});
 
+let documentPlacementNonce = $state(0);
+let latestDocumentPlacement = $state<
+	({ id: string; version: number } & DocumentRegistryEntry) | null
+>(null);
+const pendingDocumentPlacements = $state<
+	Record<string, { version: number } & DocumentRegistryEntry>
+>({});
+
 let globalFolderRefreshNonce = $state(0);
 
 export function refreshFolders(): void {
@@ -71,6 +79,51 @@ export function registerDocument(
 	categoryId: string | null,
 ): void {
 	documentsRegistry[id] = { folderId, categoryId };
+}
+
+/**
+ * Publishes an optimistic document move to every mounted navigation surface.
+ * The nonce makes repeated moves of the same document observable to Svelte.
+ */
+export function publishDocumentPlacement(
+	id: string,
+	folderId: string | null,
+	categoryId: string | null,
+): number {
+	registerDocument(id, folderId, categoryId);
+	const version = ++documentPlacementNonce;
+	latestDocumentPlacement = { id, folderId, categoryId, version };
+	pendingDocumentPlacements[id] = { folderId, categoryId, version };
+	return version;
+}
+
+export function acknowledgeDocumentPlacement(
+	id: string,
+	version: number,
+): void {
+	if (pendingDocumentPlacements[id]?.version === version) {
+		delete pendingDocumentPlacements[id];
+	}
+}
+
+export function supersedePendingDocumentPlacement(id: string): void {
+	delete pendingDocumentPlacements[id];
+}
+
+export function getPendingDocumentPlacement(
+	id: string,
+): ({ version: number } & DocumentRegistryEntry) | undefined {
+	return pendingDocumentPlacements[id];
+}
+
+export function getDocumentPlacementNonce(): number {
+	return documentPlacementNonce;
+}
+
+export function getLatestDocumentPlacement():
+	| ({ id: string; version: number } & DocumentRegistryEntry)
+	| null {
+	return latestDocumentPlacement;
 }
 
 export function getDocumentFromRegistry(

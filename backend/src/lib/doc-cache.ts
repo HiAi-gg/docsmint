@@ -11,7 +11,12 @@ export function docListKey(
 	page = 1,
 	limit = 20,
 ): string {
-	const parts = [LIST_PREFIX, userId];
+	// LIST_PREFIX already ends with `:`. Starting with it as a separate
+	// `join(":")` segment produced a double-colon key (`list::user`) while
+	// invalidation scans `list:user:*`. Those keys never matched, so placement
+	// PATCHes could succeed while the sidebar kept reading the stale list until
+	// Redis TTL expiry.
+	const parts = [`${LIST_PREFIX}${userId}`];
 	if (folderId) parts.push(`f:${folderId}`);
 	if (tag) parts.push(`t:${tag}`);
 	parts.push(`p:${page}`, `l:${limit}`);
@@ -30,6 +35,7 @@ export async function cacheGetOrSet<T>(
 	key: string,
 	ttl: number,
 	compute: () => Promise<T>,
+	options: { shouldCache?: (value: T) => boolean } = {},
 ): Promise<T> {
 	try {
 		const cached = await redis.get(key);
@@ -38,6 +44,7 @@ export async function cacheGetOrSet<T>(
 		logger.warn({ err, key }, "Redis get failed, falling through to DB");
 	}
 	const value = await compute();
+	if (options.shouldCache && !options.shouldCache(value)) return value;
 	try {
 		await redis.set(key, JSON.stringify(value), "EX", ttl);
 	} catch (err) {

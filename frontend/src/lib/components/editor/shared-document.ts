@@ -148,10 +148,13 @@ export function renderSharedDocument(doc: ProseMirrorDoc): string {
 			case "image": {
 				const src = (node.attrs?.src as string) ?? "";
 				const alt = (node.attrs?.alt as string) ?? "";
+				const width = Number(node.attrs?.width);
+				const height = Number(node.attrs?.height);
+				const dimensions = `${Number.isFinite(width) && width > 0 ? ` width="${Math.round(width)}"` : ""}${Number.isFinite(height) && height > 0 ? ` height="${Math.round(height)}"` : ""}`;
 				if (ATTACHMENT_PATH.test(src)) {
-					return `<img data-shared-attachment-src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />`;
+					return `<img data-shared-attachment-src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${dimensions} />`;
 				}
-				return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />`;
+				return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${dimensions} />`;
 			}
 			default:
 				return inner;
@@ -159,6 +162,14 @@ export function renderSharedDocument(doc: ProseMirrorDoc): string {
 	};
 
 	return (doc.content ?? []).map(renderNode).join("");
+}
+
+/** Mark Markdown task items so print/PDF CSS can suppress the regular bullet. */
+export function markMarkdownTaskItems(html: string): string {
+	return html.replace(
+		/<li>(\s*<input\b[^>]*type=["']checkbox["'][^>]*>)/gi,
+		'<li class="task-list-item">$1',
+	);
 }
 
 export function sharedAttachmentHeaders(
@@ -203,4 +214,24 @@ export async function hydrateSharedAttachmentImages(
 		}),
 	);
 	return objectUrls;
+}
+
+/** Wait until every image in a print/export subtree has finished loading. */
+export async function waitForSharedDocumentImages(
+	root: ParentNode,
+): Promise<void> {
+	const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+	await Promise.all(
+		images.map(async (image) => {
+			if (image.complete) return;
+			if (typeof image.decode === "function") {
+				await image.decode().catch(() => undefined);
+				return;
+			}
+			await new Promise<void>((resolve) => {
+				image.addEventListener("load", () => resolve(), { once: true });
+				image.addEventListener("error", () => resolve(), { once: true });
+			});
+		}),
+	);
 }

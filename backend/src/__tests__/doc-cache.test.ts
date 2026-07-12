@@ -94,6 +94,14 @@ mock.module("../lib/logger", () => ({
 
 const mod = await import("../lib/doc-cache");
 
+describe("docListKey", () => {
+	it("uses the same tenant prefix matched by list invalidation", () => {
+		const key = mod.docListKey("user-A", undefined, undefined, 1, 100);
+		expect(key).toBe("hiai-docs:cache:docs:list:user-A:p:1:l:100");
+		expect(key).not.toContain("list::");
+	});
+});
+
 describe("docSingleKey", () => {
 	it("includes userId in the key so two users get distinct entries", () => {
 		const keyA = mod.docSingleKey("doc-1", "user-A");
@@ -205,5 +213,16 @@ describe("cacheGetOrSet with user-scoped keys", () => {
 
 		expect(computedCalled).toBe(false);
 		expect(result).toEqual({ id: docId, ownerId: "user-A" });
+	});
+
+	it("can bypass Redis for oversized computed values", async () => {
+		const key = mod.docSingleKey("doc-large", "user-A");
+		const value = { id: "doc-large", content: "A".repeat(1_000_000) };
+		const result = await mod.cacheGetOrSet(key, 60, async () => value, {
+			shouldCache: (candidate) => candidate.content.length < 512 * 1024,
+		});
+
+		expect(result).toBe(value);
+		expect(fakeStore.has(key)).toBe(false);
 	});
 });

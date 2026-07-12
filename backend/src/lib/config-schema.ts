@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+const adminApiKeyPlaceholder =
+	/^(?:change[-_ ]?me|changeme|your[-_ ]?api[-_ ]?key)(?:\b|[-_ ])/i;
+
 // Single source of truth for the runtime environment schema.
 //
 // This module is intentionally free of side effects (no `process.env`
@@ -12,10 +15,106 @@ export const envSchema = z.object({
 		.string()
 		.default("postgresql://hiai_app:changeme@localhost:5437/hiai_docs"),
 	REDIS_URL: z.string().default("redis://localhost:6384"),
+	AI_PROVIDER: z.enum(["openrouter", "ollama"]).default("openrouter"),
+	OLLAMA_PORT: z.coerce.number().int().min(1).max(65535).default(11_434),
+	EMBEDDING_OLLAMA_URL: z.preprocess(
+		(value) => (value === "" ? undefined : value),
+		z.string().url().optional(),
+	),
+	QUEUE_PREPARE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_EMBED_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(3),
+	QUEUE_GRAPH_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_SUMMARY_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(1),
+	QUEUE_FINALIZE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+	QUEUE_EMBED_BATCH_SIZE: z.coerce.number().int().min(1).max(32).default(5),
+	QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(2),
+	QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(2),
+	QUEUE_MAX_ACTIVE_EMBED_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(4),
+	QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(32)
+		.default(1),
+	QUEUE_JOB_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+	QUEUE_RETRY_BASE_DELAY_MS: z.coerce
+		.number()
+		.int()
+		.min(100)
+		.max(300_000)
+		.default(1_000),
+	QUEUE_RECOVERY_STALE_AFTER_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(86_400_000)
+		.default(120_000),
+	QUEUE_COMPLETED_RETENTION_COUNT: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(1_000),
+	QUEUE_FAILED_RETENTION_COUNT: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(5_000),
+	QUEUE_SHUTDOWN_GRACE_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(300_000)
+		.default(30_000),
+	PROVIDER_LIMITER_MODE: z
+		.enum(["disabled", "local", "remote"])
+		.default("remote"),
+	PROVIDER_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+	PROVIDER_REQUESTS_PER_MINUTE: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(100_000)
+		.default(0),
+	PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).max(10).default(3),
+	PROVIDER_RETRY_BASE_DELAY_MS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(300_000)
+		.default(250),
+	PROVIDER_CIRCUIT_FAILURE_THRESHOLD: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(100)
+		.default(5),
+	PROVIDER_CIRCUIT_COOLDOWN_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(3_600_000)
+		.default(30_000),
 	STORAGE_ENDPOINT: z.string().default("localhost"),
-	STORAGE_PORT: z.coerce.number().default(9020),
+	STORAGE_PORT: z.coerce.number().default(50702),
 	STORAGE_PUBLIC_ENDPOINT: z.string().default("localhost"),
-	STORAGE_PUBLIC_PORT: z.coerce.number().default(9020),
+	STORAGE_PUBLIC_PORT: z.coerce.number().default(50702),
 	STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
 	STORAGE_SECRET_KEY: z.string().default("change-me-to-random-32-chars"),
 	STORAGE_BUCKET: z.string().default("hiai-docs"),
@@ -59,6 +158,7 @@ export const envSchema = z.object({
 		),
 	BETTER_AUTH_URL: z.string().default("http://localhost:50700"),
 	CORS_ORIGINS: z.string().optional(),
+	WEB_PORT: z.coerce.number().default(50701),
 	EMBEDDING_BASE_URL: z.string().optional(),
 	EMBEDDING_API_KEY: z.string().optional(),
 	EMBEDDING_MODEL: z.string().optional(),
@@ -73,7 +173,7 @@ export const envSchema = z.object({
 		.int()
 		.min(1_000)
 		.max(300_000)
-		.default(120_000),
+		.default(20_000),
 	EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
 	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
 	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
@@ -84,8 +184,29 @@ export const envSchema = z.object({
 	LOG_LEVEL: z
 		.enum(["trace", "debug", "info", "warn", "error", "fatal"])
 		.default("info"),
-	HIAI_DOCS_API_KEY: z.string().optional(),
-	OWNER_ID: z.string().default("api-key-user"),
+	HIAI_DOCS_API_KEY: z
+		.string()
+		.trim()
+		.optional()
+		.default("")
+		.transform((value) => value || undefined)
+		.refine(
+			(value) =>
+				process.env.NODE_ENV !== "production" ||
+				(!!value && !adminApiKeyPlaceholder.test(value)),
+			"HIAI_DOCS_API_KEY must be set to a non-placeholder value in production",
+		),
+	API_KEY_ENCRYPTION_SECRET: z
+		.string()
+		.min(32, "API_KEY_ENCRYPTION_SECRET must be at least 32 characters")
+		.default("change-me-to-random-32-chars-long")
+		.refine(
+			(value) =>
+				process.env.NODE_ENV !== "production" ||
+				value !== "change-me-to-random-32-chars-long",
+			"API_KEY_ENCRYPTION_SECRET must be set in production",
+		),
+	OWNER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
 	// Number of auto-saved (non-snapshot) versions to retain per document.
 	// Snapshots are never pruned. Default 50.
 	VERSION_RETENTION_COUNT: z.coerce.number().default(50),
@@ -140,15 +261,17 @@ export const envSchema = z.object({
 		.int()
 		.min(1_000)
 		.max(300_000)
-		.default(120_000),
+		.default(30_000),
 	// Base URL for the LLM that performs entity extraction. This endpoint
 	// MUST accept OpenAI-compatible chat completion requests
 	// (POST {url}/chat/completions). When absent, falls back to
 	// EMBEDDING_BASE_URL — which is usually WRONG (embedding endpoint !=
 	// chat endpoint). Set this explicitly for production.
 	GRAPH_EXTRACT_BASE_URL: z.string().optional(),
-	// API key for the entity extraction LLM. Optional; defaults to
-	// EMBEDDING_API_KEY when absent.
+	// API key for the entity extraction LLM. Optional for the preconfigured
+	// OpenRouter profile (which may use OPENROUTER_API_KEY); custom/local
+	// endpoints must provide this dedicated key and never inherit an embedding
+	// provider credential.
 	GRAPH_EXTRACT_API_KEY: z.string().optional(),
 	// Fallback LLM for entity extraction.
 	GRAPH_EXTRACT_FALLBACK_BASE_URL: z.string().optional(),
@@ -160,6 +283,71 @@ export const envSchema = z.object({
 	// reach AGE. Default 0.5 keeps moderate-confidence extractions while
 	// discarding speculative ones.
 	GRAPH_EXTRACT_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.5),
+	// Adaptive multilingual query expansion. The public profile uses the same
+	// OpenRouter credential as embeddings and GraphRAG; custom endpoints only
+	// receive an explicitly configured provider key.
+	SEARCH_EXPANSION_ENABLED: z
+		.string()
+		.optional()
+		.default("true")
+		.transform((v) => v === "true"),
+	SEARCH_EXPANSION_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
+	SEARCH_EXPANSION_API_KEY: z.string().optional(),
+	SEARCH_EXPANSION_MODEL: z.string().default("mistralai/ministral-14b-2512"),
+	SEARCH_EXPANSION_FALLBACK_BASE_URL: z
+		.string()
+		.default("https://openrouter.ai/api/v1"),
+	SEARCH_EXPANSION_FALLBACK_API_KEY: z.string().optional(),
+	SEARCH_EXPANSION_FALLBACK_MODEL: z.string().default("google/gemma-4-31b-it"),
+	SEARCH_EXPANSION_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.min(1_000)
+		.max(300_000)
+		.default(6_000),
+	SEARCH_VECTOR_PROVIDER_TIMEOUT_MS: z.coerce
+		.number()
+		.int()
+		.min(250)
+		.max(30_000)
+		.default(2_500),
+	SEARCH_EXPANSION_CACHE_TTL_SECONDS: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.max(2_592_000)
+		.default(86_400),
+	SEARCH_EXPANSION_MAX_VARIANTS: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(100)
+		.default(12),
+	SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS: z.coerce
+		.number()
+		.int()
+		.min(0)
+		.default(0),
+	SEARCH_RRF_K: z.coerce.number().int().min(1).default(60),
+	SEARCH_EXACT_BOOST: z.coerce.number().min(0).max(1).default(0.02),
+	SEARCH_CHANNEL_AGREEMENT_BOOST: z.coerce.number().min(0).max(1).default(0.01),
+	SEARCH_GRAPH_MAX_CONTRIBUTION: z.coerce.number().min(0).max(1).default(0.03),
+	SEARCH_VECTOR_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.35),
+	SEARCH_FUZZY_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.25),
+	SEARCH_MIN_CHANNEL_AGREEMENT: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(10)
+		.default(2),
+	SEARCH_GRAPH_SEED_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+	SEARCH_GRAPH_MAX_HOPS: z.coerce.number().int().min(1).max(3).default(2),
+	SEARCH_GRAPH_RESULT_LIMIT: z.coerce
+		.number()
+		.int()
+		.min(1)
+		.max(100)
+		.default(20),
 	// Hybrid search weights — applied to the merged text + semantic score.
 	// Both must be in [0, 1]; defaults preserve the historical 0.4 text /
 	// 0.6 semantic balance from the README contract.

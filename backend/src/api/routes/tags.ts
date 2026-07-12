@@ -1,7 +1,13 @@
-import { documents, documentTags, tags } from "@hiai-docs/db/schema";
+import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
 import { and, count, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import {
+	canAccessContent,
+	effectiveDocumentCategory,
+	isAuthorizedCategory,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { invalidateDocCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import { enqueueReembed, reembedDocsByTag } from "../../lib/reembed";
@@ -226,10 +232,15 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "edit")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 		const body = addTagToDocSchema.safeParse(await request.json());
@@ -240,13 +251,21 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 		try {
 			const ok = await withTenant(ctx, async (tx) => {
 				const [doc] = await tx
-					.select({ id: documents.id })
+					.select({
+						id: documents.id,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(
 						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
 					)
 					.limit(1);
-				if (!doc) {
+				if (
+					!doc ||
+					!isAuthorizedCategory(access, effectiveDocumentCategory(doc))
+				) {
 					return false;
 				}
 
@@ -283,22 +302,35 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "edit")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 		try {
 			const ok = await withTenant(ctx, async (tx) => {
 				const [doc] = await tx
-					.select({ id: documents.id })
+					.select({
+						id: documents.id,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(
 						and(eq(documents.id, params.id), eq(documents.ownerId, userId)),
 					)
 					.limit(1);
-				if (!doc) {
+				if (
+					!doc ||
+					!isAuthorizedCategory(access, effectiveDocumentCategory(doc))
+				) {
 					return false;
 				}
 

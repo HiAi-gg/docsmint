@@ -25,6 +25,7 @@ export interface TestState {
   documents: Map<string, any>;
   tags: Map<string, any>;
   categories: Map<string, any>;
+  pipelineRuns: Map<string, any>;
   documentTags: Array<{ documentId: string; tagId: string }>;
   shareLinks: Map<string, any>;
   guestAccess: any[];
@@ -50,6 +51,7 @@ function createState(): TestState {
     documents: new Map(),
     tags: new Map(),
     categories: new Map(),
+    pipelineRuns: new Map(),
     documentTags: [],
     shareLinks: new Map(),
     guestAccess: [],
@@ -87,6 +89,25 @@ export function resetState(): void {
   // (see the in-memory store at the bottom of this file). Without this
   // a key set in one test would leak into the next via `cacheGetOrSet`.
   resetRedisStore();
+}
+
+/** Seed the minimal document shape used by search-channel integration tests. */
+export function seedSearchDocument(input: {
+  id: string;
+  ownerId: string;
+  title: string;
+  content?: string;
+}): void {
+  state.documents.set(input.id, {
+    id: input.id,
+    ownerId: input.ownerId,
+    title: input.title,
+    content: input.content ?? "",
+    folderId: null,
+    categoryId: null,
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+  });
 }
 
 const TAG_EQ = Symbol("eq");
@@ -130,7 +151,10 @@ const markLt = (col: any, val: any) => ({ [TAG_LT]: true, col, val });
 const markGte = (col: any, val: any) => ({ [TAG_GTE]: true, col, val });
 const markLte = (col: any, val: any) => ({ [TAG_LTE]: true, col, val });
 
-const sql: any = () => ({ [TAG_SQL]: true });
+const sql: any = () => ({
+  [TAG_SQL]: true,
+  as: (name: string) => ({ name }),
+});
 sql.raw = () => "RAW";
 
 const OVERRIDES: Record<string, any> = {
@@ -195,6 +219,8 @@ function getCollection(name: string): any[] | Map<string, any> {
       return state.tags;
     case "categories":
       return state.categories;
+    case "document_pipeline_runs":
+      return state.pipelineRuns;
     case "document_tags":
       return state.documentTags;
     case "share_links":
@@ -901,6 +927,15 @@ mock.module("../../src/lib/embedding-queue.js", () => ({
     state.enqueuedEmbeddings.push(id);
   },
   startEmbeddingWorker: () => {},
+}));
+
+// Pipeline producers are mocked to preserve the harness' enqueue assertion
+// while route tests remain independent from Redis and PostgreSQL migrations.
+mock.module("../../src/queue/enqueue.js", () => ({
+  enqueueDocumentPipeline: async ({ documentId }: { documentId: string }) => {
+    state.enqueuedEmbeddings.push(documentId);
+    return { generationId: "00000000-0000-4000-8000-000000000099", deduplicated: false };
+  },
 }));
 
 // Mock only the network-calling embedding helpers. The pure utilities

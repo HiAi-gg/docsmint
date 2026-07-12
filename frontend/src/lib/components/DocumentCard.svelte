@@ -36,10 +36,12 @@ const {
 	document: doc,
 	onDelete,
 	onDuplicate,
+	duplicateBusy = false,
 }: {
 	document: Document;
 	onDelete?: (id: string) => void;
-	onDuplicate?: (id: string) => void;
+	onDuplicate?: (id: string) => void | Promise<void>;
+	duplicateBusy?: boolean;
 } = $props();
 
 function navigateToDoc() {
@@ -129,9 +131,14 @@ const preview = $derived(
             {m.action_copy_content()}
           {/if}
         </DropdownMenuItem>
-        <DropdownMenuItem onclick={(e: Event) => { e.stopPropagation(); onDuplicate?.(doc.id); }}>
-          <Files class="size-4" />
-          {m.doc_duplicate()}
+        <DropdownMenuItem disabled={duplicateBusy} onclick={(e: Event) => { e.stopPropagation(); onDuplicate?.(doc.id); }}>
+          {#if duplicateBusy}
+            <Loader2 class="size-4 animate-spin" />
+            {m.action_loading()}
+          {:else}
+            <Files class="size-4" />
+            {m.doc_duplicate()}
+          {/if}
         </DropdownMenuItem>
         <DropdownMenuItem onclick={(e: Event) => { e.stopPropagation(); showMoveDialog = true; }}>
           <FolderInput class="size-4" />

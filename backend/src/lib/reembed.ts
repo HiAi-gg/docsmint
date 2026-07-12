@@ -107,6 +107,9 @@ export async function enqueueReembed(
 	let pushed = 0;
 	for (const id of unique) {
 		if (await claimEnqueueSlot(id)) {
+			// Keep the legacy list bridge for metadata-triggered re-embeds until
+			// the reconciliation worker owns this path. The bridge accepts the
+			// document id and preserves existing dedup/retry behavior.
 			enqueueEmbedding(id);
 			pushed += 1;
 		}

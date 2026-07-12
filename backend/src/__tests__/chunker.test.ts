@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { chunkText } from "../embedding/chunker";
+import { chunkText, sanitizeEmbeddingText } from "../embedding/chunker";
 import { chunkHash } from "../lib/chunk-hash";
 
 describe("chunkText", () => {
@@ -53,6 +53,42 @@ describe("chunkText", () => {
 		const longPara = "This is a sentence. ".repeat(200); // ~4000 chars
 		const result = chunkText(longPara);
 		expect(result.length).toBeGreaterThanOrEqual(1);
+	});
+
+	it("hard-splits punctuation-free paragraphs into bounded chunks", () => {
+		const result = chunkText("A".repeat(2_000_000));
+		expect(result.length).toBeGreaterThan(100);
+		expect(
+			Math.max(...result.map((chunk) => chunk.text.length)),
+		).toBeLessThanOrEqual(2202);
+	});
+
+	it("omits large inline data payloads from semantic chunks", () => {
+		const payload = "A".repeat(2_000_000);
+		const result = chunkText(
+			`Before ![](data:image/png;base64,${payload}) after`,
+		);
+		const combined = result.map((chunk) => chunk.text).join(" ");
+		expect(combined).toContain("Before");
+		expect(combined).toContain("inline binary asset omitted");
+		expect(combined).toContain("after");
+		expect(combined).not.toContain(payload.slice(0, 1000));
+	});
+
+	it("sanitizes inline data URLs without changing ordinary data prose", () => {
+		expect(sanitizeEmbeddingText("data: quarterly report")).toBe(
+			"data: quarterly report",
+		);
+		expect(sanitizeEmbeddingText("src='data:text/plain;base64,SGVsbG8='")).toBe(
+			"src='[inline binary asset omitted]'",
+		);
+	});
+
+	it("handles many invalid data prefixes in linear time", () => {
+		const input = "data:x".repeat(300_000);
+		const startedAt = performance.now();
+		expect(sanitizeEmbeddingText(input)).toBe(input);
+		expect(performance.now() - startedAt).toBeLessThan(1_000);
 	});
 
 	it("preserves content across chunks", () => {

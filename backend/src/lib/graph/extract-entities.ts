@@ -19,8 +19,14 @@
  * raising — graph extraction is enrichment, not a hard dependency.
  */
 
+import { z } from "zod";
 import { config } from "../config";
 import { logger } from "../logger";
+import {
+	type ChatProviderConfig,
+	requestStructuredChat,
+	resolveChatProviderKey,
+} from "../openai-compatible-chat";
 import { redis } from "../redis";
 import { type GraphSqlClient, getGraphDb } from "./init";
 
@@ -62,9 +68,8 @@ export interface ExtractEntitiesOptions {
 	/** Sampling temperature. 0 keeps extractions deterministic. */
 	temperature?: number;
 	/**
-	 * Optional override for the LLM endpoint. Defaults to `EMBEDDING_BASE_URL`
-	 * with `/chat/completions` appended. Falls back to the same path on
-	 * `EMBEDDING_FALLBACK_BASE_URL` if the primary call fails.
+	 * Optional override for the LLM endpoint. Defaults to the configured
+	 * GraphRAG chat provider and falls back to its configured fallback.
 	 */
 	llmBaseUrl?: string;
 	llmApiKey?: string;
@@ -275,19 +280,6 @@ export async function extractEntities(
 // LLM call
 // ---------------------------------------------------------------------
 
-interface ChatMessage {
-	role: "system" | "user" | "assistant";
-	content: string;
-}
-
-interface ChatChoice {
-	message?: { content?: string };
-}
-
-interface ChatResponse {
-	choices?: ChatChoice[];
-}
-
 const SYSTEM_PROMPT = [
 	"You are an entity-extraction assistant for a knowledge-base system.",
 	"Extract named entities and the relationships between them from the user's text.",
@@ -318,6 +310,10 @@ const SYSTEM_PROMPT = [
 	"]}",
 ].join("\n");
 
+const extractionOutputSchema = z.object({
+	entities: z.array(z.unknown()),
+});
+
 /**
  * Call the OpenAI-compatible chat-completions endpoint to extract entities.
  * Tries the primary embedding provider first, then the fallback, then gives
@@ -328,17 +324,11 @@ async function callEntityExtractionLLM(
 	text: string,
 	options: ExtractEntitiesOptions,
 ): Promise<ExtractedEntity[]> {
-	const endpoints: Array<{ baseUrl: string; apiKey: string; model: string }> =
-		[];
-
 	const primaryBase =
 		options.llmBaseUrl ??
 		config.GRAPH_EXTRACT_BASE_URL ??
 		config.EMBEDDING_BASE_URL;
-	const primaryExplicitKey =
-		options.llmApiKey ??
-		config.GRAPH_EXTRACT_API_KEY ??
-		config.EMBEDDING_API_KEY;
+	const primaryExplicitKey = options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY;
 	const primaryModel =
 		options.llmModel ??
 		config.GRAPH_EXTRACT_MODEL ??
@@ -347,18 +337,11 @@ async function callEntityExtractionLLM(
 	const primaryKey = primaryBase
 		? resolveGraphProviderKey(primaryBase, primaryExplicitKey)
 		: "";
-	if (primaryBase)
-		endpoints.push({
-			baseUrl: primaryBase,
-			apiKey: primaryKey,
-			model: primaryModel,
-		});
 
 	const fallbackBase =
 		config.GRAPH_EXTRACT_FALLBACK_BASE_URL ??
 		config.EMBEDDING_FALLBACK_BASE_URL;
-	const fallbackExplicitKey =
-		config.GRAPH_EXTRACT_FALLBACK_API_KEY ?? config.EMBEDDING_FALLBACK_API_KEY;
+	const fallbackExplicitKey = config.GRAPH_EXTRACT_FALLBACK_API_KEY;
 	const fallbackModel =
 		config.GRAPH_EXTRACT_FALLBACK_MODEL ??
 		config.EMBEDDING_FALLBACK_MODEL ??
@@ -366,44 +349,46 @@ async function callEntityExtractionLLM(
 	const fallbackKey = fallbackBase
 		? resolveGraphProviderKey(fallbackBase, fallbackExplicitKey)
 		: "";
+	const providers: ChatProviderConfig[] = [];
+	if (primaryBase) {
+		providers.push({
+			baseUrl: primaryBase,
+			apiKey: primaryKey,
+			model: primaryModel,
+			timeoutMs: config.GRAPH_EXTRACT_TIMEOUT_MS,
+			reasoningEffort:
+				options.reasoningEffort ?? config.GRAPH_EXTRACT_REASONING_EFFORT,
+		});
+	}
 	if (
 		fallbackBase &&
-		(fallbackBase !== primaryBase || fallbackKey !== primaryKey)
+		(fallbackBase !== primaryBase ||
+			fallbackKey !== primaryKey ||
+			fallbackModel !== primaryModel)
 	) {
-		endpoints.push({
+		providers.push({
 			baseUrl: fallbackBase,
 			apiKey: fallbackKey,
 			model: fallbackModel,
+			timeoutMs: config.GRAPH_EXTRACT_TIMEOUT_MS,
+			reasoningEffort: config.GRAPH_EXTRACT_REASONING_EFFORT,
 		});
 	}
+	const [primary, fallback] = providers;
+	if (!primary) return [];
 
-	let lastErr: unknown = null;
-	for (const ep of endpoints) {
-		try {
-			const raw = await callChatCompletions({
-				baseUrl: ep.baseUrl,
-				apiKey: ep.apiKey,
-				model: ep.model,
-				messages: [
-					{ role: "system", content: SYSTEM_PROMPT },
-					{ role: "user", content: text },
-				],
-				maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
-				temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-				reasoningEffort:
-					options.reasoningEffort ?? config.GRAPH_EXTRACT_REASONING_EFFORT,
-			});
-			return parseExtractionResponse(raw);
-		} catch (err) {
-			lastErr = err;
-			logger.warn(
-				{ err, baseUrl: ep.baseUrl, model: ep.model },
-				"Entity extraction LLM endpoint failed — trying fallback",
-			);
-		}
-	}
-	if (lastErr) throw lastErr;
-	return [];
+	const result = await requestStructuredChat({
+		primary,
+		fallback,
+		messages: [
+			{ role: "system", content: SYSTEM_PROMPT },
+			{ role: "user", content: text },
+		],
+		outputSchema: extractionOutputSchema,
+		maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
+		temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+	});
+	return result ? parseExtractionResponse(JSON.stringify(result.data)) : [];
 }
 
 /**
@@ -415,72 +400,11 @@ function resolveGraphProviderKey(
 	baseUrl: string,
 	explicitKey?: string,
 ): string {
-	const providerKey = explicitKey?.trim();
-	if (providerKey) return providerKey;
-	if (!/openrouter\.ai/i.test(baseUrl)) return "";
-
-	const openRouterKey = config.OPENROUTER_API_KEY?.trim();
-	if (!openRouterKey) {
-		throw new Error(
-			"OpenRouter GraphRAG provider requires OPENROUTER_API_KEY (or a provider-specific GRAPH_EXTRACT_*_API_KEY)",
-		);
-	}
-	return openRouterKey;
-}
-
-async function callChatCompletions(params: {
-	baseUrl: string;
-	apiKey: string;
-	model: string;
-	messages: ChatMessage[];
-	maxTokens: number;
-	temperature: number;
-	reasoningEffort?: "none" | "low" | "medium" | "high" | "max";
-}): Promise<string> {
-	const url = `${params.baseUrl.replace(/\/$/, "")}/chat/completions`;
-	const controller = new AbortController();
-	const timeout = setTimeout(
-		() => controller.abort(),
-		config.GRAPH_EXTRACT_TIMEOUT_MS,
+	return resolveChatProviderKey(
+		baseUrl,
+		explicitKey,
+		config.OPENROUTER_API_KEY,
 	);
-
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-	};
-	if (params.apiKey) headers.Authorization = `Bearer ${params.apiKey}`;
-
-	try {
-		const body = {
-			model: params.model,
-			messages: params.messages,
-			max_tokens: params.maxTokens,
-			temperature: params.temperature,
-			response_format: { type: "json_object" },
-			...(params.reasoningEffort
-				? { reasoning_effort: params.reasoningEffort }
-				: {}),
-		};
-		const response = await fetch(url, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(body),
-			signal: controller.signal,
-		});
-		if (!response.ok) {
-			const body = await response.text().catch(() => "unknown");
-			throw new Error(
-				`Chat completions failed: ${response.status} ${body.slice(0, 200)}`,
-			);
-		}
-		const data = (await response.json()) as ChatResponse;
-		const content = data.choices?.[0]?.message?.content;
-		if (typeof content !== "string" || content.length === 0) {
-			throw new Error("Chat completions returned empty content");
-		}
-		return content;
-	} finally {
-		clearTimeout(timeout);
-	}
 }
 
 /**
@@ -509,7 +433,13 @@ function parseExtractionResponse(raw: string): ExtractedEntity[] {
 
 	const out: ExtractedEntity[] = [];
 	const seen = new Set<string>();
-	const minConf = config.GRAPH_EXTRACT_MIN_CONFIDENCE;
+	// Keep the parser deterministic even when a test/provider supplies a
+	// partial config object (Bun module mocks and embedded consumers may omit
+	// optional fields). The public runtime schema defaults this to 0.5.
+	const minConf =
+		typeof config.GRAPH_EXTRACT_MIN_CONFIDENCE === "number"
+			? config.GRAPH_EXTRACT_MIN_CONFIDENCE
+			: 0.5;
 	for (const entry of entities) {
 		if (!entry || typeof entry !== "object") continue;
 		const e = entry as Record<string, unknown>;

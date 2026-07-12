@@ -123,6 +123,9 @@ export const customAsyncNodes = {
 	orderedList: defaultAsyncNodes.ordered_list,
 	bulletList: defaultAsyncNodes.bullet_list,
 	listItem: defaultAsyncNodes.list_item,
+	// TipTap task lists are editor-only nodes. Keep the async serializer
+	// defensive for callers that have not normalized the JSON first.
+	taskList: defaultAsyncNodes.bullet_list,
 
 	async paragraph(state, node) {
 		await state.renderInline(node);
@@ -141,6 +144,20 @@ export const customAsyncNodes = {
 		state.addParagraphOptions({});
 		state.current.push(new TextRun({ text: checkboxChar }));
 		await state.renderContent(node);
+	},
+	/**
+	 * The stock async image serializer infers the image type from the URL.
+	 * Attachment URLs end in `/raw`, so that inference produces an invalid
+	 * `raw` type even when the fetched bytes are a perfectly valid PNG/JPEG.
+	 * The export helper supplies the response MIME-derived type while sharing
+	 * the same cached fetch used by `getImageBuffer`.
+	 */
+	async image(state, node) {
+		const src = node?.attrs?.src;
+		if (typeof src !== "string" || !src) return;
+		const imageType = await state.options.getImageType?.(src);
+		await state.image(src, undefined, undefined, undefined, imageType);
+		state.closeBlock(node);
 	},
 	async table(state, node) {
 		const actualChildren = state.children;

@@ -9,6 +9,8 @@
  * error message extracted from the response body when possible.
  */
 
+import type { ExportResponse } from "./types.js";
+
 const DEFAULT_BASE_URL = "http://localhost:50700";
 
 function readConfig() {
@@ -145,7 +147,7 @@ export const client = {
   ) {
     return request(
       "POST",
-      `/api/${joinId("documents", documentId, "snapshots")}`,
+      `/api/${joinId("documents", documentId, "versions")}`,
       { body: input },
     );
   },
@@ -158,8 +160,12 @@ export const client = {
     );
   },
 
-  exportDocument(id: string) {
-    return request("GET", `/api/${joinId("documents", id, "export")}`);
+  async exportDocument(id: string): Promise<ExportResponse> {
+    const markdown = await request<string>(
+      "GET",
+      `/api/${joinId("documents", id, "export")}`,
+    );
+    return { markdown };
   },
 };
 

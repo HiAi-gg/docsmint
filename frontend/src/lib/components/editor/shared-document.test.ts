@@ -1,9 +1,46 @@
 import { describe, expect, test } from "bun:test";
 import {
 	hydrateSharedAttachmentImages,
+	markMarkdownTaskItems,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
+	waitForSharedDocumentImages,
 } from "./shared-document";
+
+describe("PDF task-list HTML normalization", () => {
+	test("marks checkbox list items so they do not render a second bullet", () => {
+		const html = '<ul><li><input checked type="checkbox"> done</li></ul>';
+		const normalized = markMarkdownTaskItems(html);
+		expect(normalized).toContain('<li class="task-list-item"><input');
+		expect(normalized).not.toContain("<li><input");
+	});
+
+	test("renders task content beside its checkbox for print layouts", () => {
+		const html = renderSharedDocument({
+			type: "doc",
+			content: [
+				{
+					type: "taskList",
+					content: [
+						{
+							type: "taskItem",
+							attrs: { checked: true },
+							content: [
+								{
+									type: "paragraph",
+									content: [{ type: "text", text: "done" }],
+								},
+							],
+						},
+					],
+				},
+			],
+		});
+		expect(html).toContain(
+			'<li data-type="taskItem" data-checked="true"><label><input type="checkbox" disabled checked /></label><div><p>done</p></div></li>',
+		);
+	});
+});
 
 describe("shared document renderer", () => {
 	test("preserves paragraph and heading alignment", () => {
@@ -106,6 +143,19 @@ describe("shared document renderer", () => {
 		});
 	});
 
+	test("preserves resized image dimensions in shared and PDF HTML", () => {
+		const html = renderSharedDocument({
+			type: "doc",
+			content: [
+				{
+					type: "image",
+					attrs: { src: "/image.png", alt: "Diagram", width: 420, height: 236 },
+				},
+			],
+		});
+		expect(html).toContain('width="420" height="236"');
+	});
+
 	test("blocks unsafe link protocols in public HTML", () => {
 		const html = renderSharedDocument({
 			type: "doc",
@@ -171,5 +221,23 @@ describe("shared document renderer", () => {
 			globalThis.fetch = originalFetch;
 			globalThis.URL = originalUrl;
 		}
+	});
+
+	test("waits for print images before export", async () => {
+		let decoded = 0;
+		const root = {
+			querySelectorAll: () => [
+				{ complete: true },
+				{
+					complete: false,
+					async decode() {
+						decoded += 1;
+					},
+				},
+			],
+		};
+
+		await waitForSharedDocumentImages(root as unknown as ParentNode);
+		expect(decoded).toBe(1);
 	});
 });

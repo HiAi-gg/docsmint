@@ -2,10 +2,90 @@
 
 All notable changes to hiai-docs are documented in this file.
 
-<!-- Verified accurate for v0.1.1 by doc audit 2026-07-02 -->
+<!-- v0.2.8 candidate evidence verified 2026-07-12; publication remains a separate release action. -->
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.2.8] - 2026-07-12
+
+### Added
+- Global owner-wide and category-bound API keys with an explicit, non-hierarchical `read` / `edit` / `write` authorization matrix across documents, folders, search, graph, versions, attachments, tags, sharing, and visibility.
+- SDK coverage for category/folder placement, document pipeline status, publish/unpublish, attachment presign/confirm, and session-backed API-key lifecycle operations.
+- BullMQ document-processing pipeline with independent prepare, embed, graph,
+  summarize, and finalize workers. PostgreSQL is
+  the durable source of truth for nonterminal runs while Redis remains the job
+  transport.
+- One-release legacy embedding-queue bridge documentation and deterministic
+  prepare-job migration checks.
+
+### Changed
+- API-key lifecycle routes now require a real Better Auth browser session. Global raw secrets remain one-time; category secrets are encrypted at rest and recoverable only by the owning session.
+- CLI configuration enforces `0700` directory and `0600` file permissions on POSIX systems; CLI and MCP route contracts and public `bunx` invocation are aligned with the published package.
+- Admin and metrics authentication accepts both `x-api-key` and Bearer forms and fails closed when the operator key is unset.
+- Release verification now includes worker restart, Redis-loss reconciliation,
+  owner isolation, and rollback safety checks.
+- Worker scheduling now applies per-owner fairness, bounded per-document fan-out,
+  provider concurrency controls, deterministic retry-safe job identifiers, and
+  automatic reconciliation after restart.
+- The canonical local runtime uses API port `50700` and web port `50701` across
+  quickstart, release verification, and browser acceptance instructions.
+
+### Fixed
+- TipTap image insertion and resizing now trigger autosave, persist dimensions, and preserve them in shared/PDF and Markdown rendering; rich Markdown export retains images, tables, and legacy table content.
+- Editor image resizing uses responsive bounds and persisted width/height attributes, while share rendering and document export keep the selected dimensions.
+- The deprecated storage webhook is documented as an inbound signed no-op; false outbound lifecycle-webhook and storage-synchronization claims were removed.
+- SvelteKit's production request-body limit now matches the documented import
+  contour, allowing requests up to 100 MB to reach the backend while retaining
+  the backend's 10 MB per-file limit.
+- Pipeline migrations place state tables and enum types in `public`, repair
+  objects created under the AGE search path during an earlier candidate run,
+  and grant the runtime role only the required access.
+- Empty documents and optional graph/summarization failures reach deterministic
+  terminal states without blocking usable embeddings.
+
+### Migration Notes
+- Apply the complete Drizzle journal (`0000–0030`) before starting the API.
+  Migration `0030` safely repairs pipeline objects created under the AGE schema
+  by an earlier unreleased candidate.
+- The verified candidate passed fresh-database and upgraded-database migration
+  checks while preserving legacy documents and 1024-dimensional embeddings.
+- Tagging, pushing, npm/Docker publication, and the GitHub Release remain
+  explicit release actions after CI and operator browser acceptance.
+
+## [0.2.7] - 2026-07-11
+
+### Added
+- **Adaptive multilingual search**: exact/title, multilingual lexical, fuzzy,
+  vector, one-pass query expansion, and automatic GraphRAG retrieval are
+  combined with reciprocal rank fusion (RRF).
+- **Search explanations and chunks**: results expose bounded channel and graph
+  contribution metadata, with request-scoped chunk hydration for authorized
+  documents.
+- **Generation-aware embeddings**: embedding generations use explicit
+  pending/processing/ready/failed/stale states and atomic activation, while
+  enforcing finite, non-zero 1024-dimensional vectors.
+- **Relevance benchmark and observability**: the release contour includes
+  tenant-scoped benchmark credentials, latency/relevance gates, and bounded
+  search metrics without credentials in process arguments.
+
+### Fixed
+- **GraphRAG safety**: graph seeds are visibility-authorized before traversal,
+  Cypher inputs use safe dollar-quoted values, and graph failures degrade to
+  direct search results without leaking tenant data.
+- **Share and pagination scope**: public/share search preserves document
+  visibility while hydrating global authorized totals and page slices correctly.
+- **Embedding test isolation**: provider tests no longer inherit process-global
+  integration mocks, keeping the full suite deterministic.
+
+### Migration Notes
+- Apply the complete Drizzle journal (`0000–0026`) before enabling search
+  generations or reindexing embeddings. The reference PostgreSQL image includes
+  AGE and vector extensions required by the migrations.
+- This candidate has passed fresh-database, upgraded-database, and live GraphRAG
+  verification. Tagging and publication remain explicit release actions.
 
 ## [0.2.6] - 2026-07-10
 
@@ -163,8 +243,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **"For Builders: Extension Points" section** in `README.md` — documents the stable integration surfaces (REST API, MCP server, Drizzle schema import, webhooks) and a "core vs. downstream" boundary table.
 - **Extension Guide** in `CONTRIBUTING.md` — code examples for all three integration surfaces and an explicit list of what should not be added to core.
 - **`bin` entries** in `package.public.json` — CLI (`hiai-docs`) and MCP server (`hiai-docs-mcp`) are now properly exposed as runnable binaries:
-  - `bunx @hiai-gg/hiai-docs <command>` — terminal CLI (search, list, read, create, update, delete, folders, history, snapshot, restore, export, config)
-  - `bunx @hiai-gg/hiai-docs-mcp` / point your MCP client at `packages/mcp-server/src/index.ts` — stdio MCP server with 10 tools for AI agents
+  - `bunx --package @hiai-gg/hiai-docs hiai-docs <command>` — terminal CLI (search, list, read, create, update, delete, folders, history, snapshot, restore, export, config)
+  - `bunx --package @hiai-gg/hiai-docs hiai-docs-mcp` / point a source-checkout MCP client at `packages/mcp-server/src/index.ts` — stdio MCP server with 10 tools for AI agents
 
 ## [0.1.5] - 2026-07-02
 

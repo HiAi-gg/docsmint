@@ -47,7 +47,15 @@ COPY --from=build /app/frontend/build /app/frontend/build
 COPY frontend/package.json /app/frontend/
 
 ENV NODE_ENV=production
+# adapter-node reads PORT at runtime; keep the standalone image aligned with
+# the compose mapping and its healthcheck instead of falling back to 3000.
+ENV PORT=50701
 ENV WEB_PORT=50701
+# SvelteKit adapter-node defaults to a 512 KiB request-body limit. The API
+# accepts up to 10 MiB per imported file (and up to 100 MiB per request for
+# multi-file imports), so the same-origin API proxy must allow the backend's
+# global 100 MiB envelope instead of rejecting valid uploads first.
+ENV BODY_SIZE_LIMIT=104857600
 WORKDIR /app/frontend
 
 RUN addgroup -S app && adduser -S app -G app \

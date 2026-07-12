@@ -95,7 +95,7 @@ function toggleCollapse() {
       role="separator"
       tabindex="-1"
       class={cn(
-        "absolute right-0 top-0 z-50 h-full w-1 cursor-col-resize hover:bg-primary/50 transition-colors",
+		"absolute right-0 top-0 z-40 h-full w-1 cursor-col-resize hover:bg-primary/50 transition-colors",
         isResizing && "bg-primary w-1"
       )}
       onmousedown={startResize}
@@ -104,7 +104,7 @@ function toggleCollapse() {
   <!-- Toggle -->
   <button
     onclick={toggleCollapse}
-    class="absolute -right-3 top-4 z-50 flex size-6 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
+    class="absolute -right-3 top-4 z-40 flex size-6 items-center justify-center rounded-full border border-border bg-background shadow-sm hover:bg-accent"
   >
     {#if collapsed}
       <PanelLeftOpen class="size-3.5" />
@@ -192,7 +192,7 @@ function toggleCollapse() {
           <SettingsIcon class="size-4" />
         </button>
         <a
-          href="https://hiai.gg/docs"
+          href="https://github.com/HiAi-gg/hiai-docs/"
           target="_blank"
           rel="noopener noreferrer"
           class="text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -204,7 +204,7 @@ function toggleCollapse() {
     {:else}
       <div class="flex items-center justify-between">
         <a
-          href="https://hiai.gg/docs"
+          href="https://github.com/HiAi-gg/hiai-docs/"
           target="_blank"
           rel="noopener noreferrer"
           class="text-xs text-muted-foreground hover:text-foreground transition-colors"

@@ -97,14 +97,30 @@ describe("GET /api/admin/metrics", () => {
 				}),
 			);
 			expect(ok.status).toBe(200);
+
+			const bearerOk = await app.handle(
+				new Request("http://localhost/api/admin/metrics", {
+					headers: { authorization: `Bearer ${TEST_API_KEY}` },
+				}),
+			);
+			expect(bearerOk.status).toBe(200);
 			const body = (await ok.json()) as {
 				metrics: Record<string, number | number[]>;
+				embeddingStateInventory: Record<string, number>;
 				uptime: number;
 			};
 			expect(typeof body.uptime).toBe("number");
 			expect(body.uptime).toBeGreaterThanOrEqual(0);
 			expect(body.metrics[METRIC_NAMES.EMBEDDING_SUCCESS]).toBe(2);
 			expect(body.metrics[METRIC_NAMES.EMBEDDING_DOCS_TOTAL]).toBe(1);
+			expect(body.embeddingStateInventory).toEqual({
+				pending: 0,
+				processing: 0,
+				ready: 0,
+				failed: 0,
+				stale: 0,
+				invalidActive: 0,
+			});
 			const durations = body.metrics[
 				METRIC_NAMES.EMBEDDING_DURATION_MS
 			] as number[];

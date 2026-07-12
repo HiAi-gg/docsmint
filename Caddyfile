@@ -1,4 +1,6 @@
 # hiai-docs Caddyfile
+# Service targets use canonical container ports; host port overrides do not
+# apply inside the Compose network.
 
 :80 {
 	# For local development / Docker internal
@@ -49,4 +51,3 @@ docs.{$DOMAIN:localhost} {
 		Referrer-Policy "strict-origin-when-cross-origin"
 	}
 }
-

@@ -13,9 +13,9 @@ import {
 } from "bun:test";
 import {
   API_KEY,
-  OWNER_ID,
   getState,
   noAuthHeaders,
+	OWNER_ID,
   ownerHeaders,
   request,
   resetState,
@@ -166,9 +166,49 @@ describe("GET /api/folders/:id", () => {
     expect((res.body as any).id).toBe(id);
     expect((res.body as any).name).toBe("My Folder");
   });
+
+  it("returns document metadata without loading document bodies", async () => {
+    const state = getState();
+    const id = "11111111-1111-4111-8111-111111111112";
+    const documentId = "22222222-2222-4222-8222-222222222222";
+    state.folders.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "Large documents",
+      parentId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    state.documents.set(documentId, {
+      id: documentId,
+      ownerId: OWNER_ID,
+      folderId: id,
+      categoryId: null,
+      title: "Large import",
+      content: "A".repeat(2_000_000),
+      contentJson: null,
+      visibility: "private",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await authedGet(`/api/folders/${id}`);
+    expect(res.status).toBe(200);
+    const [document] = (res.body as any).documents;
+    expect(document.id).toBe(documentId);
+    expect(document.title).toBe("Large import");
+		expect(document.content).toHaveLength(200);
+    expect(document).not.toHaveProperty("contentJson");
+  });
 });
 
 describe("POST /api/folders", () => {
+	const CATEGORY_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+	const CATEGORY_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+	function addCategory(id: string, name: string) {
+		getState().categories.set(id, { id, ownerId: OWNER_ID, name });
+	}
   it("returns 403 from CSRF middleware on POST without Bearer or CSRF token", async () => {
     const res = await request(app, "/api/folders", {
       method: "POST",
@@ -228,6 +268,83 @@ describe("POST /api/folders", () => {
     expect(res.status).toBe(201);
     expect((res.body as any).parentId).toBe(parentId);
   });
+
+	it("numbers duplicate uncategorized root folders and fills suffix gaps", async () => {
+		for (const name of ["Plans", "Plans 2", "Plans 4"]) {
+			const created = await authedPost("/api/folders", { name });
+			expect(created.status).toBe(201);
+		}
+		const duplicate = await authedPost("/api/folders", { name: "Plans" });
+		expect(duplicate.status).toBe(201);
+		expect((duplicate.body as any).name).toBe("Plans 3");
+	});
+
+	it("numbers duplicates only within the same category scope", async () => {
+		addCategory(CATEGORY_A, "Category A");
+		addCategory(CATEGORY_B, "Category B");
+
+		const firstA = await authedPost("/api/folders", {
+			name: "Assets",
+			categoryId: CATEGORY_A,
+		});
+		const secondA = await authedPost("/api/folders", {
+			name: "Assets",
+			categoryId: CATEGORY_A,
+		});
+		const firstB = await authedPost("/api/folders", {
+			name: "Assets",
+			categoryId: CATEGORY_B,
+		});
+
+		expect((firstA.body as any).name).toBe("Assets");
+		expect((firstA.body as any).categoryId).toBe(CATEGORY_A);
+		expect((secondA.body as any).name).toBe("Assets 2");
+		expect((firstB.body as any).name).toBe("Assets");
+	});
+
+	it("numbers duplicates only within the same parent scope", async () => {
+		const state = getState();
+		const parentA = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+		const parentB = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+		state.folders.set(parentA, {
+			id: parentA,
+			ownerId: OWNER_ID,
+			name: "A",
+			parentId: null,
+		});
+		state.folders.set(parentB, {
+			id: parentB,
+			ownerId: OWNER_ID,
+			name: "B",
+			parentId: null,
+		});
+
+		const firstA = await authedPost("/api/folders", {
+			name: "Drafts",
+			parentId: parentA,
+		});
+		const secondA = await authedPost("/api/folders", {
+			name: "Drafts",
+			parentId: parentA,
+		});
+		const firstB = await authedPost("/api/folders", {
+			name: "Drafts",
+			parentId: parentB,
+		});
+
+		expect((firstA.body as any).name).toBe("Drafts");
+		expect((secondA.body as any).name).toBe("Drafts 2");
+		expect((firstB.body as any).name).toBe("Drafts");
+	});
+
+	it("rejects an unknown category", async () => {
+		const res = await authedPost("/api/folders", {
+			name: "Plans",
+			categoryId: CATEGORY_A,
+		});
+		expect(res.status).toBe(404);
+		expect(res.body).toEqual({ error: "Category not found" });
+	});
 });
 
 describe("PATCH /api/folders/:id", () => {
@@ -289,6 +406,56 @@ describe("PATCH /api/folders/:id", () => {
     });
     expect(res.status).toBe(400);
     expect((res.body as any).error).toMatch(/cannot be its own parent/);
+  });
+
+  it("rejects moving a folder into its descendant", async () => {
+    const state = getState();
+    const parentId = "66666666-6666-4666-8666-666666666666";
+    const childId = "77777777-7777-4777-8777-777777777777";
+    state.folders.set(parentId, {
+      id: parentId,
+      ownerId: OWNER_ID,
+      name: "Parent",
+      parentId: null,
+    });
+    state.folders.set(childId, {
+      id: childId,
+      ownerId: OWNER_ID,
+      name: "Child",
+      parentId,
+    });
+
+    const res = await authedPatch(`/api/folders/${parentId}`, {
+      parentId: childId,
+    });
+
+    expect(res.status).toBe(400);
+    expect((res.body as any).error).toMatch(/descendant/);
+    expect((state.folders.get(parentId) as any).parentId).toBeNull();
+  });
+
+  it("moves a sibling folder under another owned folder", async () => {
+    const state = getState();
+    const folderId = "88888888-8888-4888-8888-888888888888";
+    const parentId = "99999999-9999-4999-8999-999999999999";
+    state.folders.set(folderId, {
+      id: folderId,
+      ownerId: OWNER_ID,
+      name: "Movable",
+      parentId: null,
+    });
+    state.folders.set(parentId, {
+      id: parentId,
+      ownerId: OWNER_ID,
+      name: "Destination",
+      parentId: null,
+    });
+
+    const res = await authedPatch(`/api/folders/${folderId}`, { parentId });
+
+    expect(res.status).toBe(200);
+    expect((res.body as any).parentId).toBe(parentId);
+    expect((res.body as any).categoryId).toBeNull();
   });
 });
 

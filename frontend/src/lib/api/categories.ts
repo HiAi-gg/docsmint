@@ -40,7 +40,9 @@ export const updateCategoryInputSchema = z.object({
 		.string()
 		.trim()
 		.min(1, "Name is required")
-		.max(255, "Name must be 255 characters or less"),
+		.max(255, "Name must be 255 characters or less")
+		.optional(),
+	order: z.number().int().nonnegative().optional(),
 	apiMode: z.enum(["unavailable", "global", "general", "category"]).optional(),
 	apiPermissionRead: z.boolean().optional(),
 	apiPermissionEdit: z.boolean().optional(),
@@ -74,9 +76,9 @@ export function createCategory(
 /** Rename a category or update its order. */
 export function updateCategory(
 	id: string,
-	data: { name?: string; order?: number } & Partial<CreateCategoryInput>,
+	data: UpdateCategoryInput,
 ): Promise<Category> {
-	const input = updateCategoryInputSchema.partial().parse(data);
+	const input = updateCategoryInputSchema.parse(data);
 	return apiFetch<Category>(`/api/categories/${encodeURIComponent(id)}`, {
 		method: "PATCH",
 		body: JSON.stringify(input),

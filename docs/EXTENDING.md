@@ -4,6 +4,15 @@ hiai-docs exposes clean, open-source extension points for external projects that
 
 These extension points allow you to customize the core editor toolbar and add custom tabs to the main document page without altering any core files.
 
+## UI invariants
+
+Extensions must use the existing hiai-docs design tokens and component
+primitives rather than introduce a parallel theme. Keep editor controls compact,
+keyboard accessible, and usable on mobile. Preserve both the Markdown source and
+the structured TipTap representation when adding editor nodes; public sharing
+and export renderers must receive an equivalent representation. Product-specific
+features belong in extension slots or consumer code, not private core imports.
+
 ---
 
 ## 1. Extension Points Overview

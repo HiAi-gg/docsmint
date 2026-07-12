@@ -42,12 +42,24 @@ import {
 	type Tag,
 } from "$lib/api/tags";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
-import { customSerializer } from "$lib/components/editor/docx-serializer";
+import {
+	newFolderPlacement,
+	placementForFolder,
+} from "$lib/components/editor/document-placement";
+import {
+	createDocxImageFetcher,
+	normalizeDocxDocumentJson,
+} from "$lib/components/editor/docx-export";
+import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
+import { createPlacementMutationQueue } from "$lib/components/editor/placement-mutation-queue";
+import { markMarkdownTaskItems } from "$lib/components/editor/shared-document";
+import FolderDialog from "$lib/components/FolderDialog.svelte";
 import FolderTreeSelector from "$lib/components/FolderTreeSelector.svelte";
 import SaveAsDialog from "$lib/components/SaveAsDialog.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
@@ -55,6 +67,11 @@ import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
+import {
+	acknowledgeDocumentPlacement,
+	publishDocumentPlacement,
+	refreshFolders,
+} from "$lib/stores/subfolders-refresh-store.svelte.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
@@ -92,9 +109,15 @@ import type { Folder as FolderType } from "$lib/types.js";
 
 let folders = $state<FolderType[]>([]);
 let foldersLoading = $state(false);
+let placementRevision = 0;
+const enqueuePlacementMutation = createPlacementMutationQueue(
+	async (placement) => {
+		await updateDocument(data.document.id, placement);
+	},
+);
 let currentFolderId = $state<string | null>(null);
-let creatingFolder = $state(false);
-let newFolderName = $state("");
+let showCreateFolderDialog = $state(false);
+let pendingCreatedFolderId = $state<string | null>(null);
 
 // Category management
 import { type Category, listCategories } from "$lib/api/categories";
@@ -121,6 +144,10 @@ $effect(() => {
 	tags = doc.tags ?? [];
 	currentFolderId = doc.folderId ?? null;
 	currentCategoryId = doc.categoryId ?? null;
+	enqueuePlacementMutation.resetConfirmedPlacement({
+		folderId: doc.folderId ?? null,
+		categoryId: doc.categoryId ?? null,
+	});
 });
 
 function getFolderPathName(folderId: string): string {
@@ -370,7 +397,10 @@ async function handleSaveAsConfirm(
 
 function handleExport() {
 	showMenu = false;
-	const blob = new Blob([content], { type: "text/markdown" });
+	const markdown = serializeMarkdownExport(contentJson, content, {
+		baseUrl: window.location.href,
+	});
+	const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;
@@ -379,7 +409,7 @@ function handleExport() {
 	URL.revokeObjectURL(url);
 }
 
-function handleExportDocx() {
+async function handleExportDocx() {
 	showMenu = false;
 	try {
 		let json = contentJson;
@@ -387,26 +417,28 @@ function handleExportDocx() {
 			json = markdownToJson(content || "");
 		}
 		const schema = getSchema(editorExtensions);
-		const docNode = Node.fromJSON(schema, json);
-		const wordDoc = customSerializer.serialize(docNode, {
-			getImageBuffer(_src) {
-				return new Uint8Array(0);
-			},
-			sections: [{ properties: {} }],
+		const docNode = Node.fromJSON(schema, normalizeDocxDocumentJson(json));
+		const imageFetcher = createDocxImageFetcher({
+			documentId: data.document.id,
 		});
-		Packer.toBlob(wordDoc)
-			.then((blob) => {
-				const url = URL.createObjectURL(blob);
-				const a = document.createElement("a");
-				a.href = url;
-				a.download = `${title || "Untitled Document"}.docx`;
-				a.click();
-				URL.revokeObjectURL(url);
-			})
-			.catch((err) => {
-				console.error("Packer failed to generate docx blob:", err);
-				fallbackHtmlDocx();
-			});
+		const serializerOptions = {
+			getImageBuffer: imageFetcher.getImageBuffer,
+			getImageType: imageFetcher.getImageType,
+			sections: [{ properties: {} }],
+		} as Parameters<typeof customSerializerAsync.serializeAsync>[1] & {
+			getImageType: typeof imageFetcher.getImageType;
+		};
+		const wordDoc = await customSerializerAsync.serializeAsync(
+			docNode,
+			serializerOptions,
+		);
+		const blob = await Packer.toBlob(wordDoc);
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `${title || "Untitled Document"}.docx`;
+		a.click();
+		URL.revokeObjectURL(url);
 	} catch (err) {
 		console.error("Failed to export to DOCX:", err);
 		fallbackHtmlDocx();
@@ -443,7 +475,9 @@ ${htmlContent}
 
 function handleExportPdf() {
 	showMenu = false;
-	const htmlContent = marked.parse(content || "", { async: false }) as string;
+	const htmlContent = markMarkdownTaskItems(
+		marked.parse(content || "", { async: false }) as string,
+	);
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -472,9 +506,20 @@ body {
 h1 { font-size: 28px; font-weight: bold; margin-bottom: 20px; }
 h2 { font-size: 22px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
 h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-p { margin-bottom: 12px; }
+p { margin: 0 0 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
+li.task-list-item {
+	list-style: none;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin-left: -20px;
+}
+li.task-list-item > input[type="checkbox"] {
+	flex: 0 0 auto;
+	margin: 0.35em 0 0;
+}
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;
@@ -613,49 +658,92 @@ async function loadCategories() {
 	}
 }
 
-async function moveToFolder(folderId: string | null) {
-	try {
-		const targetFolder = folderId
-			? folders.find((f) => f.id === folderId)
-			: null;
-		const categoryId =
-			(targetFolder ? targetFolder.categoryId : currentCategoryId) ?? null;
+async function moveToFolder(folderId: string | null, propagateError = false) {
+	const placement = placementForFolder(folderId, folders, currentCategoryId);
 
-		await updateDocument(data.document.id, { folderId, categoryId });
-		currentFolderId = folderId;
-		currentCategoryId = categoryId;
-		saveStatus = "saved";
+	// Placement changes are document mutations in their own right. Apply them
+	// optimistically and persist immediately instead of waiting for the content
+	// autosave timer (which only runs after an editor text change).
+	currentFolderId = placement.folderId;
+	currentCategoryId = placement.categoryId;
+	const revision = ++placementRevision;
+	const placementVersion = publishDocumentPlacement(
+		data.document.id,
+		placement.folderId,
+		placement.categoryId,
+	);
+	saveStatus = "saving";
+	try {
+		await enqueuePlacementMutation(placement);
+		acknowledgeDocumentPlacement(data.document.id, placementVersion);
+		if (revision === placementRevision) saveStatus = "saved";
 		refreshDocs();
-	} catch (_e) {
-		setError(m.doc_save_content_error());
+	} catch (error) {
+		if (revision === placementRevision) {
+			const confirmedPlacement =
+				enqueuePlacementMutation.getConfirmedPlacement();
+			currentFolderId = confirmedPlacement.folderId;
+			currentCategoryId = confirmedPlacement.categoryId;
+			const rollbackVersion = publishDocumentPlacement(
+				data.document.id,
+				confirmedPlacement.folderId,
+				confirmedPlacement.categoryId,
+			);
+			acknowledgeDocumentPlacement(data.document.id, rollbackVersion);
+			saveStatus = "unsaved";
+			setError(m.doc_save_content_error());
+		}
+		if (propagateError) throw error;
 	}
 }
 
 async function moveToCategory(categoryId: string | null) {
+	currentCategoryId = categoryId;
+	currentFolderId = null;
+	const revision = ++placementRevision;
+	const placementVersion = publishDocumentPlacement(
+		data.document.id,
+		null,
+		categoryId,
+	);
+	saveStatus = "saving";
 	try {
-		await updateDocument(data.document.id, { categoryId, folderId: null });
-		currentCategoryId = categoryId;
-		currentFolderId = null;
-		saveStatus = "saved";
+		await enqueuePlacementMutation({ categoryId, folderId: null });
+		acknowledgeDocumentPlacement(data.document.id, placementVersion);
+		if (revision === placementRevision) saveStatus = "saved";
 		refreshDocs();
 	} catch (_e) {
-		setError(m.doc_save_content_error());
+		if (revision === placementRevision) {
+			const confirmedPlacement =
+				enqueuePlacementMutation.getConfirmedPlacement();
+			currentFolderId = confirmedPlacement.folderId;
+			currentCategoryId = confirmedPlacement.categoryId;
+			const rollbackVersion = publishDocumentPlacement(
+				data.document.id,
+				confirmedPlacement.folderId,
+				confirmedPlacement.categoryId,
+			);
+			acknowledgeDocumentPlacement(data.document.id, rollbackVersion);
+			saveStatus = "unsaved";
+			setError(m.doc_save_content_error());
+		}
 	}
 }
 
-async function handleCreateFolder() {
-	const name = newFolderName.trim();
-	if (!name) return;
-	try {
-		const created = await createFolder({ name });
+async function handleCreateFolder(name: string) {
+	let folderId = pendingCreatedFolderId;
+	if (!folderId) {
+		const created = await createFolder(
+			newFolderPlacement(name, currentCategoryId),
+		);
 		folders = [...folders, created];
-		await moveToFolder(created.id);
-	} catch (_e) {
-		setError(m.error_generic());
-	} finally {
-		creatingFolder = false;
-		newFolderName = "";
+		folderId = created.id;
+		pendingCreatedFolderId = created.id;
+		refreshFolders();
 	}
+
+	await moveToFolder(folderId, true);
+	pendingCreatedFolderId = null;
 }
 
 // --- Keyboard shortcuts wired by the editor ---------------------------------
@@ -711,10 +799,10 @@ $effect(() => {
       <!-- Breadcrumb -->
       <nav class="breadcrumb" aria-label={m.aria_breadcrumb()}>
         <a href="/" class="breadcrumb-link">{m.breadcrumb_home()}</a>
-        {#if data.document.folderName}
+        {#if currentFolderId}
           <ChevronRight size={14} class="breadcrumb-sep" />
-          <a href="/folders/{data.document.folderId}" class="breadcrumb-link">
-            {data.document.folderName}
+          <a href="/folders/{currentFolderId}" class="breadcrumb-link">
+            {currentFolderName}
           </a>
         {/if}
         <ChevronRight size={14} class="breadcrumb-sep" />
@@ -955,37 +1043,12 @@ $effect(() => {
               />
             {/if}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => { creatingFolder = true; }}>
+            <DropdownMenuItem onSelect={() => { showCreateFolderDialog = true; }}>
               <Plus size={14} />
               New folder
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {#if creatingFolder}
-          <span class="folder-create">
-            <input
-              type="text"
-              bind:value={newFolderName}
-              placeholder="Folder name"
-              aria-label="New folder name"
-              onkeydown={(e) => {
-                if (e.key === "Enter") handleCreateFolder();
-                if (e.key === "Escape") { creatingFolder = false; newFolderName = ""; }
-              }}
-            />
-            <button type="button" class="folder-create-btn" onclick={handleCreateFolder}>
-              {m.action_save()}
-            </button>
-            <button
-              type="button"
-              class="folder-create-btn"
-              onclick={() => { creatingFolder = false; newFolderName = ""; }}
-            >
-              {m.action_cancel()}
-            </button>
-          </span>
-        {/if}
         {#each tags as tag (tag.id)}
           <span
             class="tag-badge"
@@ -1112,6 +1175,12 @@ $effect(() => {
     </div>
 
     <ShareDialog bind:open={showShareDialog} documentId={data.document.id} documentTitle={title} />
+    <FolderDialog
+      bind:open={showCreateFolderDialog}
+      mode="create"
+      onSave={handleCreateFolder}
+      onClose={() => { pendingCreatedFolderId = null; }}
+    />
     <TagCreateDialog
       bind:open={showCreateTagDialog}
       mode="create"
@@ -1637,37 +1706,6 @@ $effect(() => {
     overflow: visible;
     min-height: 500px;
     background: var(--card);
-  }
-
-  .folder-create {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .folder-create input {
-    height: 24px;
-    padding: 0 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: var(--background);
-    color: var(--foreground);
-  }
-
-  .folder-create-btn {
-    padding: 2px 8px;
-    font-size: 12px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--muted-foreground);
-    cursor: pointer;
-  }
-
-  .folder-create-btn:hover {
-    background: var(--muted);
-    color: var(--foreground);
   }
 
   /* Mobile responsive */

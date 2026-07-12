@@ -98,22 +98,22 @@ $$;--> statement-breakpoint
 -- ---------------------------------------------------------------------------
 -- 4. Default privileges: future objects created by the migration/admin
 --    role automatically inherit the same grants so new tables stay
---    accessible to the app role. We pin the grantor to the role that
---    runs migrations (aiuser) so subsequent `db:migrate` runs apply.
+--    accessible to the app role. CURRENT_USER is the actual migration
+--    owner (for example aiuser, docsmint, or a managed-database owner).
 -- ---------------------------------------------------------------------------
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO hiai_app;--> statement-breakpoint
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
   GRANT USAGE ON SEQUENCES TO hiai_app;--> statement-breakpoint
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO hiai_app;--> statement-breakpoint
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA public
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA public
   GRANT USAGE ON TYPES TO hiai_app;--> statement-breakpoint
 
--- Apache AGE types are created by the `age` extension (owned by
--- `aiuser`); the default-privileges clause also picks up future
--- types/functions if AGE is upgraded.
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA ag_catalog
+-- Apache AGE types are created by the infrastructure/migration owner;
+-- the default-privileges clause also picks up future types/functions if
+-- AGE is upgraded by that same owner.
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA ag_catalog
   GRANT EXECUTE ON FUNCTIONS TO hiai_app;--> statement-breakpoint
-ALTER DEFAULT PRIVILEGES FOR ROLE aiuser IN SCHEMA ag_catalog
+ALTER DEFAULT PRIVILEGES FOR ROLE CURRENT_USER IN SCHEMA ag_catalog
   GRANT USAGE ON TYPES TO hiai_app;--> statement-breakpoint

@@ -30,6 +30,7 @@ describe("graph routes cypher safety (N1)", () => {
 		// mock.module specifier relative to THIS FILE, not graph.ts
 		mock.module("../lib/graph/init", () => ({
 			getGraphDb: async () => mockSql,
+			getGraphDbRequired: async () => mockSql,
 			_resetGraphForTests: () => {},
 		}));
 
@@ -71,6 +72,7 @@ describe("graph routes cypher safety (N1)", () => {
 		// Mock getGraphDb to return null (AGE not configured / unreachable)
 		mock.module("../lib/graph/init", () => ({
 			getGraphDb: async () => null,
+			getGraphDbRequired: async () => null,
 			_resetGraphForTests: () => {},
 		}));
 
@@ -89,6 +91,7 @@ describe("graph routes cypher safety (N1)", () => {
 
 		mock.module("../lib/graph/init", () => ({
 			getGraphDb: async () => mockSql,
+			getGraphDbRequired: async () => mockSql,
 			_resetGraphForTests: () => {},
 		}));
 

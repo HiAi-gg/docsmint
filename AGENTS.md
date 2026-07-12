@@ -18,17 +18,18 @@
 - **Vector index (optional):** pgvectorscale StreamingDiskANN with SbqCompression, loaded in the unified PostgreSQL image (see `postgres/Dockerfile`)
 - **Cache:** Redis 8.6+
 - **Storage:** SeaweedFS (S3-compatible)
-- **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; hybrid search `HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine`
-- **GraphRAG:** optional; LLM entity extraction + AGE graph expansion in search. Off by default.
+- **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; every provider result must be a finite, non-zero 1024-dimensional vector
+- **Search:** exact/title, multilingual lexical, fuzzy, vector, adaptive expansion, and GraphRAG channels fused with reciprocal rank fusion (RRF)
+- **GraphRAG:** automatic LLM entity extraction + AGE graph expansion in normal search; the operator flag remains a kill switch for degraded deployments
 - **Re-embed invariant:** metadata mutations (tag / folder / category rename and delete) MUST trigger re-embed via `backend/src/lib/reembed.ts`.
 - **Logging:** Pino
 - **Lint:** Biome 2.5+ (`bun run lint`)
 - **Tests:** Vitest (`bun test --path-ignore-patterns="*node_modules*"`)
 - **Structure:** `backend/src/` (`api/`, `embedding/`, `lib/`) + `frontend/` (SvelteKit) + `packages/db/` (Drizzle)
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
-- **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
+- **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `SEARCH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
 - **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
-- **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · SeaweedFS `9020/9021` · Caddy `80/443`
+- **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · SeaweedFS `50702/50703` · Caddy `80/443`
 - **No Playwright** — use `agent-browser` for E2E
 - **English only** in code, comments, docs, README, AGENTS.md (zero Cyrillic)
 
@@ -46,14 +47,15 @@
 
 ### Project-specific
 
-- [`docs/design-spec.md`](docs/design-spec.md) — design spec (UI/UX and tokens)
-- [`docs/API.md`](docs/API.md) — REST API reference
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — internal architecture (data isolation, embedding pipeline)
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment (Docker, VPS)
-- [`docs/PRODUCTION_STATUS.md`](docs/PRODUCTION_STATUS.md) — production status
-- [`docs/categories.md`](docs/categories.md), [`docs/keyboard-shortcuts.md`](docs/keyboard-shortcuts.md), [`docs/upload.md`](docs/upload.md), [`docs/openapi.json`](docs/openapi.json) — reference
-- `RELEASE_CHECKLIST.md` — release checklist
-- `init.sql` — initial schema
+- [`docs/README.md`](docs/README.md) — documentation index
+- [`docs/USAGE.md`](docs/USAGE.md) — product usage, imports, and shortcuts
+- [`docs/API.md`](docs/API.md) — REST API and authentication reference
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — services, data isolation, search, and embedding pipeline
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Docker and production operations
+- [`docs/EXTENDING.md`](docs/EXTENDING.md) — supported UI extension points
+- [`docs/RELEASING.md`](docs/RELEASING.md) — evergreen maintainer release flow
+- [`docs/openapi.json`](docs/openapi.json) — machine-readable HTTP contract
+- `init.sql` — infrastructure bootstrap
 
 ## Runtime Contract
 
@@ -70,7 +72,7 @@
 | **Auth** | Better Auth |
 | **Storage** | SeaweedFS (S3-compatible) |
 | **Embeddings** | External embedding API (configurable, optional self-hosted Ollama) |
-| **GraphRAG** | Optional; LLM entity extraction + AGE traversal in search |
+| **GraphRAG** | Automatic LLM entity extraction + AGE traversal in normal search; graceful degradation when unavailable |
 | **Logging** | Pino |
 | **Validation** | Zod |
 | **API port** | 50700 |
@@ -101,7 +103,7 @@
 curl -fsS http://localhost:50700/api/health
 psql -h localhost -p 5437 -U aiuser -d hiai_docs -c "SELECT NOW();"
 redis-cli -p 6384 ping
-curl -fsS http://localhost:9020/
+curl -fsS http://localhost:50702/
 ```
 
 ## Architecture
@@ -135,9 +137,11 @@ backend/src/
 document.save()
   -> chunk(CHUNK_TARGET_TOKENS, CHUNK_OVERLAP_TOKENS)
   -> embed(provider)
-  -> store(document_embeddings { embeddingModel: config.EMBEDDING_MODEL ?? "" })
-       v on failure
-    fallback(provider) -> dummy zero vector
+  -> stage a pending embedding generation
+       v on provider failure
+    mark the candidate failed and keep the last active generation queryable
+       v on complete valid batch
+    atomically activate the new generation, then run GraphRAG extraction
 ```
 
 The worker does **incremental** re-embed on every save: it hashes each new chunk, compares against the stored `chunkHash`, deletes + reinserts only changed slices (plus their immediate neighbors so overlap regions stay consistent). Unchanged chunks keep their original embeddings.
@@ -181,19 +185,25 @@ Set any to `0` to disable the cap (not recommended for production with large dat
 
 ### GraphRAG with Apache AGE
 
-GraphRAG layers a knowledge graph over vector search to surface related documents beyond semantic similarity. Both feature flags default to `false` — the graph code paths remain dormant until explicitly enabled.
+GraphRAG layers a knowledge graph over the retrieval channels to surface related documents beyond exact, lexical, fuzzy, and vector similarity. The reference profile enables extraction and automatic graph expansion for every non-empty search. `GRAPH_SEARCH_ENABLED=false` remains an operator kill switch for deployments without AGE or a graph provider; search degrades to available channels.
 
 #### Configuration
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GRAPH_EXTRACT_ENABLED` | `false` | Enable LLM entity extraction after embeddings |
-| `GRAPH_SEARCH_ENABLED` | `false` | Enable graph-neighbor expansion in search |
+| `GRAPH_EXTRACT_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable LLM entity extraction after ready generations |
+| `GRAPH_SEARCH_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable automatic graph-neighbor expansion in normal search; kill switch for degraded deployments |
 | `GRAPH_EXPANSION_BOOST` | `0.3` | Multiplier on graph-discovered neighbor scores (range: 0–2) |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
 | `GRAPH_EXTRACT_BASE_URL` | — | OpenAI-compatible chat-completion URL (REQUIRED for extraction) |
 | `GRAPH_EXTRACT_API_KEY` | — | API key for extraction LLM |
 | `GRAPH_EXTRACT_MODEL` | `EMBEDDING_MODEL` | Extraction model name |
+
+Graph provider credentials are URL-scoped: exact OpenRouter hostnames may use
+the shared `OPENROUTER_API_KEY` when no dedicated key is set; local no-auth
+endpoints may leave the dedicated key blank; custom providers may set their
+own dedicated key. The shared OpenRouter key is never inherited by a
+non-OpenRouter endpoint.
 
 **Important:** `GRAPH_EXTRACT_BASE_URL` must be set explicitly in production. Falling back to `EMBEDDING_BASE_URL` is incorrect because extraction uses chat-completion endpoints while embeddings use embedding endpoints.
 
@@ -203,16 +213,11 @@ When enabled, the embedding worker calls the extraction LLM after each successfu
 
 #### Graph-Enhanced Search
 
-When `GRAPH_SEARCH_ENABLED=true`, search queries with `?graph=true&graphHops=N` walk the AGE graph from seed documents (1–3 hops controlled by `graphHops`). Discovered neighbors are merged into results with multiplicative boost of `GRAPH_EXPANSION_BOOST`. Documents already in results receive the same boost if they appear as graph neighbors.
+After the fast retrieval pass and any adaptive query expansion, the search orchestrator walks the AGE graph from authorized seed documents (1–3 hops controlled by `SEARCH_GRAPH_MAX_HOPS`). It also seeds from translated terms, synonyms, concepts, and named entities when direct seeds are unavailable. Graph candidates are fused with the other channels through RRF and capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`; graph neighbors cannot overwhelm strong exact or semantic matches. Graph and provider failures are recorded and never make the entire search fail.
 
 #### Search Configuration
 
-Hybrid search combines full-text and semantic signals:
-```
-HYBRID_TEXT_WEIGHT * full_text + HYBRID_SEMANTIC_WEIGHT * semantic_cosine
-```
-
-Defaults: `HYBRID_TEXT_WEIGHT=0.4`, `HYBRID_SEMANTIC_WEIGHT=0.6`. When graph expansion is enabled via query parameters, neighbors are merged and boosted according to `GRAPH_EXPANSION_BOOST`.
+The current ranking contract is reciprocal rank fusion (RRF) across exact/title, FTS, fuzzy, vector, expanded, and graph channels. `SEARCH_RRF_K`, exact-title boost, channel-agreement boost, vector/fuzzy thresholds, graph contribution cap, and graph seed/hop limits are validated through the environment schema. `HYBRID_*` variables remain legacy compatibility inputs and do not control the current orchestrator.
 
 ### CORS
 
@@ -265,7 +270,7 @@ All configuration via `.env`. The Zod schema in `backend/src/lib/config.ts` is t
 Notable groups:
 
 - **Embedding provider:** `EMBEDDING_BASE_URL`, `EMBEDDING_API_KEY`, `EMBEDDING_MODEL`, plus optional `*_FALLBACK_*`
-- **Hybrid search weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`)
+- **Legacy hybrid weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`) remain compatibility inputs; current ranking uses `SEARCH_*` RRF controls
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
 - **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
@@ -343,7 +348,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on code style, testing, an
 |-----------|-------|------|---------|
 | postgres | hiai-postgres:18-custom | 5437:5432 | Database (pgvector + pgvectorscale + AGE) |
 | redis | redis:8-alpine | 6384:6379 | Cache/queue |
-| seaweedfs | chrislusf/seaweedfs:3.85 | 9000:8333, 9021:8888 | File storage |
+| seaweedfs | chrislusf/seaweedfs:3.85 | 50702:8333, 50703:8888 | File storage |
 | api | custom | 50700:50700 | Elysia backend |
 | web | custom | 50701:50701 | SvelteKit frontend |
 | caddy | caddy:2-alpine | 80:80, 443:443 | Reverse proxy (auto-TLS, build with xcaddy + caddy-ratelimit) |
@@ -397,16 +402,17 @@ End every response with a structured `<CLOSURE>` block:
 
 > **Note:** This file (`AGENTS.md`) and `todo.md` are added to `.gitignore` and not committed. They contain operational instructions for agents and may change without review.
 
-## Secret management (`.env` is user-managed, never automation-edited)
+## Secret management (`.env` is provider-input automation only)
 
 - `.env` is **gitignored** (see `.gitignore` line `.env` / `.env.*.local` / `!.env.example`).
-- The file at `hiai-docs/.env` is **user-managed only**. Agents and automation **must NOT create, edit, rotate, or extend** `.env` in any way — even to add new variables. This includes but is not limited to:
+- The file at `hiai-docs/.env` is **gitignored** and must never be printed, committed, or uploaded. The quickstart script and an installation agent MAY create it from `.env.example` and write only the provider input explicitly supplied by the user: `OPENROUTER_API_KEY`, or `AI_PROVIDER=ollama` and `OLLAMA_PORT`. They MUST NOT rotate or overwrite existing secrets, change unrelated variables, or copy a key into source code. `quickstart.sh` generates database, auth, storage, and admin secrets when they are placeholders.
+- Agents and automation **must NOT create, edit, rotate, or extend** any other `.env` value. This includes but is not limited to:
   - `OPENROUTER_API_KEY` / `EMBEDDING_API_KEY` (real production keys)
   - `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET` (auth signing keys)
   - `HIAI_DOCS_API_KEY` (admin API key)
   - any database or storage credential
-- **Where to add new variables**: extend `.env.example` (committed, placeholders only) and, if needed, document the variable in `docs/`. The user copies `.env.example` → `.env` and fills in real values themselves.
-- **If a task appears to require editing `.env`** (e.g. "add OPENROUTER_FALLBACK_KEY"): STOP and surface the requirement to the user instead of editing the file. Provide the exact line to add; let the user paste it.
+- **Where to add new variables**: extend `.env.example` (committed, placeholders only) and, if needed, document the variable in `docs/`. Provider input is the only quickstart exception.
+- **If a task appears to require editing a non-provider `.env` value** (e.g. `BETTER_AUTH_SECRET` or `OPENROUTER_FALLBACK_KEY`): STOP and surface the requirement to the user instead of editing it. Provide the exact line to add; let the user paste it.
 - **If `.env` already contains a real secret** (e.g. the live OpenRouter key): DO NOT include the secret in any report, checkpoint, memory file, or commit. Reference the variable name only; redact the value.
-- The `bun --env-file=.env run` flag in `package.json` scripts reads the file at process start. Changing the run command is fine; mutating the file is not.
-- This rule applies to **all** sibling env files: `.env.local`, `.env.production`, `.env.test`, `.env.development`, etc. None are automation-edited.
+- The `bun --env-file=.env run` flag in `package.json` scripts reads the file at process start. Changing the run command is fine; mutating the file is not, except for the provider-input quickstart exception above.
+- This rule applies to **all** sibling env files: `.env.local`, `.env.production`, `.env.test`, `.env.development`, etc. Only the ignored root `.env` may receive provider input during quickstart; never edit tracked or production env files automatically.

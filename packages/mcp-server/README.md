@@ -1,132 +1,56 @@
-# @hiai-docs/mcp-server
+# hiai-docs MCP server
 
-MCP (Model Context Protocol) server for [hiai-docs](https://github.com/hiai-labs/hiai-docs).
-Exposes hiai-docs operations as MCP tools over the **stdio** transport so any
-MCP-compatible client (Claude Desktop, Cursor, OpenCode, etc.) can read,
-search, and modify a hiai-docs knowledge base.
+Stdio Model Context Protocol server for a running [hiai-docs](https://github.com/HiAi-gg/hiai-docs) instance.
 
-> Bun-native, ESM-only, TypeScript strict.
-
----
-
-## Installation
-
-From the hiai-docs monorepo root:
+## Run the published server
 
 ```bash
-bun install
+bunx --package @hiai-gg/hiai-docs hiai-docs-mcp
 ```
 
-The package is registered as a workspace and resolves its dependencies
-(`@modelcontextprotocol/sdk`) automatically.
+The MCP binary is shipped by `@hiai-gg/hiai-docs`; `@hiai-gg/hiai-docs-mcp` is not the package name.
 
-## Configuration
+## Client configuration
 
-The server reads two environment variables:
+```json
+{
+  "mcpServers": {
+    "hiai-docs": {
+      "command": "bunx",
+      "args": ["--package", "@hiai-gg/hiai-docs", "hiai-docs-mcp"],
+      "env": {
+        "HIAI_DOCS_URL": "http://localhost:50700",
+        "HIAI_DOCS_API_KEY": "your-global-or-category-key"
+      }
+    }
+  }
+}
+```
 
-| Variable             | Default                       | Description                                |
-| -------------------- | ----------------------------- | ------------------------------------------ |
-| `HIAI_DOCS_URL`      | `http://localhost:50700`      | Base URL of the hiai-docs API.             |
-| `HIAI_DOCS_API_KEY`  | _(unset)_                     | Bearer token sent as `Authorization` header. |
+`HIAI_DOCS_URL` defaults to `http://localhost:50700`. The optional API key is sent as a Bearer token. Prefer a category key for a category-bound agent and a global key for trusted owner-wide automation. Category `read`, `edit`, and `write` scopes are explicit rather than hierarchical; configure the combination required by the tools you expose.
 
-If `HIAI_DOCS_API_KEY` is unset, requests are sent without an Authorization
-header (the server still works for any unauthenticated public routes).
+## Tools and REST routes
 
-## Running locally
+| MCP tool | REST route |
+|---|---|
+| `search_documents` | `GET /api/search` |
+| `get_document` | `GET /api/documents/:id` |
+| `create_document` | `POST /api/documents` |
+| `update_document` | `PATCH /api/documents/:id` |
+| `list_documents` | `GET /api/documents` |
+| `list_folders` | `GET /api/folders` |
+| `create_folder` | `POST /api/folders` |
+| `create_snapshot` | `POST /api/documents/:id/versions` |
+| `get_version_history` | `GET /api/documents/:id/versions` |
+| `export_document` | `GET /api/documents/:id/export` |
+
+The server does not manage or reveal keys; those endpoints require a Better Auth browser session. MCP errors preserve the backend HTTP status and message without exposing credentials.
+
+## Development
 
 ```bash
 cd packages/mcp-server
+bun run test
+bun run typecheck
 bun run dev
 ```
-
-The server speaks MCP over stdio, so you'll typically configure it as a child
-process inside an MCP client — see the examples below.
-
----
-
-## Usage with MCP clients
-
-### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`
-(macOS) or `%APPDATA%/Claude/claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "hiai-docs": {
-      "command": "bun",
-      "args": ["run", "/absolute/path/to/hiai-docs/packages/mcp-server/src/index.ts"],
-      "env": {
-        "HIAI_DOCS_URL": "http://localhost:50700",
-        "HIAI_DOCS_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-### Cursor
-
-Add to `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "hiai-docs": {
-      "command": "bun",
-      "args": ["run", "/absolute/path/to/hiai-docs/packages/mcp-server/src/index.ts"],
-      "env": {
-        "HIAI_DOCS_URL": "http://localhost:50700",
-        "HIAI_DOCS_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
-### OpenCode
-
-Add to `~/.config/opencode/opencode.json` (or your project-local equivalent):
-
-```json
-{
-  "mcp": {
-    "hiai-docs": {
-      "type": "stdio",
-      "command": ["bun", "run", "/absolute/path/to/hiai-docs/packages/mcp-server/src/index.ts"],
-      "env": {
-        "HIAI_DOCS_URL": "http://localhost:50700",
-        "HIAI_DOCS_API_KEY": "your-api-key"
-      }
-    }
-  }
-}
-```
-
----
-
-## Available tools
-
-| Tool                   | Description                                                       |
-| ---------------------- | ----------------------------------------------------------------- |
-| `search_documents`     | Hybrid search (full-text + semantic) with optional folder/tags filter. |
-| `get_document`         | Fetch a single document by ID, including content and tags.        |
-| `create_document`      | Create a new document with optional initial content and folder.   |
-| `update_document`      | Update an existing document's title and/or content.              |
-| `list_documents`       | List documents with pagination, filterable by folder or tag.      |
-| `list_folders`         | List folders, optionally scoped to a parent.                      |
-| `create_folder`        | Create a new folder, optionally nested under a parent.            |
-| `create_snapshot`      | Create a named snapshot (versioned checkpoint) of a document.     |
-| `get_version_history`  | List the version history of a document.                           |
-| `export_document`      | Export a document as markdown.                                    |
-
-## Typecheck
-
-```bash
-bun run typecheck
-```
-
-## License
-
-MIT

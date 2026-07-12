@@ -1,13 +1,19 @@
-import { documents, folders } from "@hiai-docs/db/schema";
+import { categories, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import {
+	canAccessContent,
+	isAuthorizedCategory,
+	resolveContentAccess,
+	resolveFolderEffectiveCategory,
+} from "../../lib/content-access";
 import { invalidateDocListCache } from "../../lib/doc-cache";
+import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
 import { reembedDocsInFolder } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
 
 const createFolderSchema = z.object({
 	name: z.string().min(1).max(255),
@@ -15,6 +21,7 @@ const createFolderSchema = z.object({
 	// `parentId: null` for root-level folders (the previous `.optional()`
 	// rejected `null` with a 400).
 	parentId: z.string().uuid().nullish(),
+	categoryId: z.string().uuid().nullish(),
 });
 
 const updateFolderSchema = z.object({
@@ -26,13 +33,27 @@ const updateFolderSchema = z.object({
 
 export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 	.get("/:id", async ({ params, set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const userId = ctx.userId;
 		try {
+			if (access.restricted) {
+				const effectiveCategory = await withTenant(ctx, (tx) =>
+					resolveFolderEffectiveCategory(tx, userId, params.id),
+				);
+				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
+					set.status = 404;
+					return { error: "Folder not found" };
+				}
+			}
 			const result = await withTenant(ctx, async (tx) => {
 				const [row] = await tx
 					.select({
@@ -110,8 +131,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						and(eq(folders.parentId, params.id), eq(folders.ownerId, userId)),
 					)
 					.orderBy(folders.order, folders.name);
-				const childDocs = await tx
-					.select()
+				const childDocRows = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
+						folderId: documents.folderId,
+						categoryId: documents.categoryId,
+						visibility: documents.visibility,
+						createdAt: documents.createdAt,
+						updatedAt: documents.updatedAt,
+					})
 					.from(documents)
 					.where(
 						and(
@@ -120,6 +150,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						),
 					)
 					.orderBy(documents.updatedAt);
+				const childDocs = childDocRows.map((document) => ({
+					...document,
+					content: document.content?.slice(0, 200) ?? "",
+				}));
 				return { ...row, children: childFolders, documents: childDocs };
 			});
 			if (!result) {
@@ -134,13 +168,27 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 	})
 	.get("/", async ({ query, set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const userId = ctx.userId;
 		try {
+			if (access.restricted && query.parentId) {
+				const parentId = query.parentId;
+				const parentCategory = await withTenant(ctx, (tx) =>
+					resolveFolderEffectiveCategory(tx, userId, parentId),
+				);
+				if (!isAuthorizedCategory(access, parentCategory ?? null)) {
+					return [];
+				}
+			}
 			const conditions = [eq(folders.ownerId, userId)];
 			if (query.all === "true") {
 				// Don't filter by parentId, get all folders flat!
@@ -186,7 +234,20 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					.where(and(...conditions))
 					.orderBy(folders.order, folders.name);
 			});
-			return rows;
+			if (!access.restricted || query.parentId) return rows;
+			const byId = new Map(rows.map((row) => [row.id, row]));
+			return rows.filter((row) => {
+				let cursor: typeof row | undefined = row;
+				const visited = new Set<string>();
+				while (cursor && !visited.has(cursor.id)) {
+					visited.add(cursor.id);
+					if (cursor.categoryId) {
+						return cursor.categoryId === access.categoryId;
+					}
+					cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+				}
+				return false;
+			});
 		} catch (err) {
 			logger.error({ err }, "Failed to list folders");
 			set.status = 500;
@@ -203,10 +264,15 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 		const parsed = createFolderSchema.safeParse(await request.json());
@@ -216,6 +282,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const created = await withTenant(ctx, async (tx) => {
+				const parentId = parsed.data.parentId ?? null;
+				const categoryId = parentId ? null : (parsed.data.categoryId ?? null);
+				const effectiveCategory = parentId
+					? await resolveFolderEffectiveCategory(tx, userId, parentId)
+					: categoryId;
+				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
+					return { forbidden: true as const };
+				}
 				if (parsed.data.parentId) {
 					const parent = await tx
 						.select({ id: folders.id })
@@ -231,12 +305,57 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						return { notFound: true as const };
 					}
 				}
+				if (categoryId) {
+					const category = await tx
+						.select({ id: categories.id })
+						.from(categories)
+						.where(
+							and(
+								eq(categories.id, categoryId),
+								eq(categories.ownerId, userId),
+							),
+						)
+						.limit(1);
+					if (category.length === 0) {
+						return { categoryNotFound: true as const };
+					}
+				}
+
+				// Serialize allocation within this exact sibling scope. A database
+				// uniqueness constraint is intentionally avoided because category deletion
+				// uses ON DELETE SET NULL and folder moves remain independently editable.
+				const scopeKey = parentId
+					? `${userId}:parent:${parentId}`
+					: `${userId}:category:${categoryId ?? "none"}`;
+				await tx.execute(
+					sql`SELECT pg_advisory_xact_lock(hashtextextended(${scopeKey}, 0))`,
+				);
+				const scopeConditions = [eq(folders.ownerId, userId)];
+				if (parentId) {
+					scopeConditions.push(eq(folders.parentId, parentId));
+				} else {
+					scopeConditions.push(isNull(folders.parentId));
+					scopeConditions.push(
+						categoryId
+							? eq(folders.categoryId, categoryId)
+							: isNull(folders.categoryId),
+					);
+				}
+				const siblings = await tx
+					.select({ name: folders.name })
+					.from(folders)
+					.where(and(...scopeConditions));
+				const allocatedName = nextAvailableFolderName(
+					parsed.data.name,
+					siblings.map((s) => s.name),
+				);
 				const [row] = await tx
 					.insert(folders)
 					.values({
 						ownerId: userId,
-						name: parsed.data.name,
-						parentId: parsed.data.parentId ?? null,
+						name: allocatedName,
+						parentId,
+						categoryId,
 					})
 					.returning();
 				return { row };
@@ -244,6 +363,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			if ("notFound" in created) {
 				set.status = 404;
 				return { error: "Parent folder not found" };
+			}
+			if ("forbidden" in created) {
+				set.status = 403;
+				return { error: "Forbidden" };
+			}
+			if ("categoryNotFound" in created) {
+				set.status = 404;
+				return { error: "Category not found" };
 			}
 			set.status = 201;
 			return created.row;
@@ -263,10 +390,15 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 		const parsed = updateFolderSchema.safeParse(await request.json());
@@ -288,6 +420,39 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const result = await withTenant(ctx, async (tx) => {
+				const [current] = await tx
+					.select({ id: folders.id })
+					.from(folders)
+					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)))
+					.limit(1);
+				if (!current) {
+					return { notFound: true as const };
+				}
+				const sourceCategory = await resolveFolderEffectiveCategory(
+					tx,
+					userId,
+					params.id,
+				);
+				if (!isAuthorizedCategory(access, sourceCategory ?? null)) {
+					return { forbidden: true as const };
+				}
+				if (
+					parsed.data.parentId !== undefined ||
+					parsed.data.categoryId !== undefined
+				) {
+					const destinationCategory = parsed.data.parentId
+						? await resolveFolderEffectiveCategory(
+								tx,
+								userId,
+								parsed.data.parentId,
+							)
+						: parsed.data.categoryId === undefined
+							? sourceCategory
+							: parsed.data.categoryId;
+					if (!isAuthorizedCategory(access, destinationCategory ?? null)) {
+						return { forbidden: true as const };
+					}
+				}
 				if (parsed.data.parentId) {
 					if (parsed.data.parentId === params.id) {
 						return { selfParent: true as const };
@@ -304,6 +469,40 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						.limit(1);
 					if (parent.length === 0) {
 						return { parentMissing: true as const };
+					}
+
+					// Walk upward from the proposed parent. If the folder being moved
+					// is encountered, the move would make it an ancestor of itself.
+					const ownedFolders = await tx
+						.select({ id: folders.id, parentId: folders.parentId })
+						.from(folders)
+						.where(eq(folders.ownerId, userId));
+					const parentById = new Map(
+						ownedFolders.map((folder) => [folder.id, folder.parentId]),
+					);
+					const visited = new Set<string>();
+					let ancestorId: string | null = parsed.data.parentId;
+					while (ancestorId && !visited.has(ancestorId)) {
+						if (ancestorId === params.id) {
+							return { cycle: true as const };
+						}
+						visited.add(ancestorId);
+						ancestorId = parentById.get(ancestorId) ?? null;
+					}
+				}
+				if (parsed.data.parentId === null && parsed.data.categoryId) {
+					const [category] = await tx
+						.select({ id: categories.id })
+						.from(categories)
+						.where(
+							and(
+								eq(categories.id, parsed.data.categoryId),
+								eq(categories.ownerId, userId),
+							),
+						)
+						.limit(1);
+					if (!category) {
+						return { categoryMissing: true as const };
 					}
 				}
 				const [updated] = await tx
@@ -334,9 +533,21 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				set.status = 400;
 				return { error: "Folder cannot be its own parent" };
 			}
+			if ("forbidden" in result) {
+				set.status = 403;
+				return { error: "Forbidden" };
+			}
 			if ("parentMissing" in result) {
 				set.status = 404;
 				return { error: "Parent folder not found" };
+			}
+			if ("cycle" in result) {
+				set.status = 400;
+				return { error: "Folder cannot be moved into its descendant" };
+			}
+			if ("categoryMissing" in result) {
+				set.status = 404;
+				return { error: "Category not found" };
 			}
 			if ("notFound" in result) {
 				set.status = 404;
@@ -375,14 +586,27 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const userId = ctx.userId;
 		try {
 			const deleted = await withTenant(ctx, async (tx) => {
+				const effectiveCategory = await resolveFolderEffectiveCategory(
+					tx,
+					userId,
+					params.id,
+				);
+				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
+					return "forbidden" as const;
+				}
 				const existing = await tx
 					.select({ id: folders.id })
 					.from(folders)
@@ -396,6 +620,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					.where(and(eq(folders.id, params.id), eq(folders.ownerId, userId)));
 				return true;
 			});
+			if (deleted === "forbidden") {
+				set.status = 403;
+				return { error: "Forbidden" };
+			}
 			if (!deleted) {
 				set.status = 404;
 				return { error: "Folder not found" };

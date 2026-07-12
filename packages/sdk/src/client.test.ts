@@ -2,14 +2,21 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
 	DocsApiError,
 	DocsClient,
-	DocsTimeoutError,
 	type DocsClientConfig,
+	DocsTimeoutError,
 } from "./index.js";
 
-const jsonResponse = (body: unknown, status = 200, headers?: HeadersInit): Response =>
+const jsonResponse = (
+	body: unknown,
+	status = 200,
+	headers?: HeadersInit,
+): Response =>
 	new Response(JSON.stringify(body), {
 		status,
-		headers: { "content-type": "application/json", ...Object.fromEntries(new Headers(headers).entries()) },
+		headers: {
+			"content-type": "application/json",
+			...Object.fromEntries(new Headers(headers).entries()),
+		},
 	});
 
 const clients: DocsClient[] = [];
@@ -18,7 +25,10 @@ afterEach(() => {
 	clients.length = 0;
 });
 
-function client(fetchImpl: NonNullable<DocsClientConfig["fetch"]>, extra: Partial<DocsClientConfig> = {}): DocsClient {
+function client(
+	fetchImpl: NonNullable<DocsClientConfig["fetch"]>,
+	extra: Partial<DocsClientConfig> = {},
+): DocsClient {
 	const instance = new DocsClient({
 		baseUrl: "https://docs.example.test/",
 		apiKey: "api-key",
@@ -93,10 +103,25 @@ describe("DocsClient public contract", () => {
 	it("supports commenter share links and graph metadata endpoints", async () => {
 		const calls: Array<{ url: string; method: string; body?: string }> = [];
 		const docs = client(async (input, init) => {
-			calls.push({ url: String(input), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : undefined });
-			if (String(input).includes("/api/graph/entities")) return jsonResponse({ entities: [{ name: "Ada", type: "Person" }] });
-			if (String(input).includes("/api/graph/related/")) return jsonResponse({ related: [{ docId: "doc-2", relationType: "MENTIONS", hopDistance: 2 }] });
-			if (String(input).includes("/api/graph/search")) return jsonResponse({ query: "road map", entities: [], relatedDocs: [] });
+			calls.push({
+				url: String(input),
+				method: init?.method ?? "GET",
+				body: typeof init?.body === "string" ? init.body : undefined,
+			});
+			if (String(input).includes("/api/graph/entities"))
+				return jsonResponse({ entities: [{ name: "Ada", type: "Person" }] });
+			if (String(input).includes("/api/graph/related/"))
+				return jsonResponse({
+					related: [
+						{ docId: "doc-2", relationType: "MENTIONS", hopDistance: 2 },
+					],
+				});
+			if (String(input).includes("/api/graph/search"))
+				return jsonResponse({
+					query: "road map",
+					entities: [],
+					relatedDocs: [],
+				});
 			return jsonResponse({
 				id: "share-1",
 				token: "token",
@@ -109,11 +134,18 @@ describe("DocsClient public contract", () => {
 			});
 		});
 
-		const share = await docs.createShare({ documentId: "doc-1", role: "commenter" });
+		const share = await docs.createShare({
+			documentId: "doc-1",
+			role: "commenter",
+		});
 		await docs.updateShare("share-1", { role: "commenter" });
 		await docs.getGraphEntities("doc-1");
 		await docs.getRelatedDocuments("doc-1");
-		await docs.graphSearch({ query: "road map", docIds: ["doc-1"], maxResults: 5 });
+		await docs.graphSearch({
+			query: "road map",
+			docIds: ["doc-1"],
+			maxResults: 5,
+		});
 
 		expect(share.role).toBe("commenter");
 		expect(calls[0]?.body).toContain('"role":"commenter"');
@@ -123,8 +155,149 @@ describe("DocsClient public contract", () => {
 		expect(calls[4]?.method).toBe("POST");
 	});
 
+	it("forwards the complete document and folder mutation contracts", async () => {
+		const calls: Array<{ url: string; body: unknown }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({
+				url: String(input),
+				body:
+					typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+			});
+			return jsonResponse({ id: "row-1" });
+		});
+
+		await docs.createDoc({
+			title: "Doc",
+			categoryId: "cat-1",
+			visibility: "shared",
+		});
+		await docs.updateDoc("doc-1", {
+			categoryId: "cat-2",
+			folderId: null,
+			contentJson: { type: "doc" },
+			metadata: { source: "docsmint" },
+			visibility: "public",
+		});
+		await docs.createFolder({
+			name: "Folder",
+			categoryId: "cat-2",
+			parentId: null,
+		});
+		await docs.updateFolder("folder-1", {
+			categoryId: "cat-3",
+			parentId: null,
+			order: 4,
+		});
+
+		expect(calls[0]?.body).toEqual({
+			title: "Doc",
+			categoryId: "cat-1",
+			visibility: "shared",
+		});
+		expect(calls[1]?.body).toEqual({
+			categoryId: "cat-2",
+			folderId: null,
+			contentJson: { type: "doc" },
+			metadata: { source: "docsmint" },
+			visibility: "public",
+		});
+		expect(calls[2]?.body).toEqual({
+			name: "Folder",
+			categoryId: "cat-2",
+			parentId: null,
+		});
+		expect(calls[3]?.body).toEqual({
+			categoryId: "cat-3",
+			parentId: null,
+			order: 4,
+		});
+	});
+
+	it("exposes browser-session API key lifecycle endpoints", async () => {
+		const calls: Array<{ url: string; method: string; body?: string }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({
+				url: String(input),
+				method: init?.method ?? "GET",
+				body: typeof init?.body === "string" ? init.body : undefined,
+			});
+			if (String(input).endsWith("/secret"))
+				return jsonResponse({ key: "raw-key" });
+			if (init?.method === "DELETE") return jsonResponse({ success: true });
+			if (init?.method === "GET") return jsonResponse({ keys: [] });
+			return jsonResponse(
+				{ id: "key-1", key: "raw-key", prefix: "raw-key" },
+				201,
+			);
+		});
+
+		await docs.createGlobalApiKey("Docsmint global");
+		await docs.createCategoryApiKey("cat/one", "Docsmint category");
+		await docs.listApiKeys();
+		await docs.revealCategoryApiKey("key/one");
+		await docs.revokeApiKey("key/one");
+
+		expect(calls.map(({ url, method }) => [url, method])).toEqual([
+			["https://docs.example.test/api/keys/global", "POST"],
+			["https://docs.example.test/api/categories/cat%2Fone/keys", "POST"],
+			["https://docs.example.test/api/keys", "GET"],
+			["https://docs.example.test/api/keys/key%2Fone/secret", "GET"],
+			["https://docs.example.test/api/keys/key%2Fone", "DELETE"],
+		]);
+	});
+
+	it("supports pipeline, visibility, and presigned attachment workflows", async () => {
+		const calls: Array<{ url: string; method: string; body?: string }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({
+				url: String(input),
+				method: init?.method ?? "GET",
+				body: typeof init?.body === "string" ? init.body : undefined,
+			});
+			return jsonResponse({});
+		});
+
+		await docs.getDocumentPipeline("doc/one");
+		await docs.publishDoc("doc/one");
+		await docs.unpublishDoc("doc/one");
+		await docs.presignAttachment("doc/one", {
+			filename: "image.png",
+			contentType: "image/png",
+			size: 42,
+		});
+		await docs.confirmAttachment("doc/one", {
+			key: "owner/doc/key",
+			filename: "image.png",
+			contentType: "image/png",
+			size: 42,
+		});
+
+		expect(calls.map(({ url, method }) => [url, method])).toEqual([
+			["https://docs.example.test/api/documents/doc%2Fone/pipeline", "GET"],
+			["https://docs.example.test/api/documents/doc%2Fone/publish", "POST"],
+			["https://docs.example.test/api/documents/doc%2Fone/unpublish", "POST"],
+			[
+				"https://docs.example.test/api/documents/doc%2Fone/attachments/presign",
+				"POST",
+			],
+			[
+				"https://docs.example.test/api/documents/doc%2Fone/attachments/confirm",
+				"POST",
+			],
+		]);
+		expect(calls[3]?.body).toBe(
+			JSON.stringify({
+				filename: "image.png",
+				contentType: "image/png",
+				size: 42,
+			}),
+		);
+	});
+
 	it("throws DocsApiError with status and parsed body", async () => {
-		const docs = client(async () => jsonResponse({ error: "Forbidden" }, 403, { "x-request-id": "req-403" }));
+		const docs = client(async () =>
+			jsonResponse({ error: "Forbidden" }, 403, { "x-request-id": "req-403" }),
+		);
 		try {
 			await docs.getDoc("doc-1");
 			throw new Error("expected getDoc to reject");

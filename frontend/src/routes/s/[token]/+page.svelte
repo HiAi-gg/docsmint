@@ -13,13 +13,21 @@ import {
 	Lock,
 } from "lucide-svelte";
 import { tick, untrack } from "svelte";
-import { customSerializer } from "$lib/components/editor/docx-serializer";
+import {
+	createDocxImageFetcher,
+	createPlainTextDocxBlob,
+	normalizeDocxDocumentJson,
+} from "$lib/components/editor/docx-export";
+import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
 import {
 	hydrateSharedAttachmentImages,
 	type ProseMirrorDoc,
 	renderSharedDocument,
+	sharedAttachmentHeaders,
+	waitForSharedDocumentImages,
 } from "$lib/components/editor/shared-document";
 import ScrollToTop from "$lib/components/ScrollToTop.svelte";
 import * as m from "$lib/paraglide/messages.js";
@@ -183,6 +191,7 @@ async function copyUrl() {
 function getCurrentDoc() {
 	if (shareData?.type === "document" && shareData.data) {
 		return {
+			id: shareData.data.id || "",
 			title: shareData.data.title || "Untitled Document",
 			content: shareData.data.content || "",
 			contentJson: shareData.data.contentJson,
@@ -190,6 +199,7 @@ function getCurrentDoc() {
 	}
 	if (currentView === "document" && viewedDoc) {
 		return {
+			id: viewedDoc.id,
 			title: viewedDoc.title || "Untitled Document",
 			content: viewedDoc.content || "",
 			contentJson: viewedDoc.contentJson,
@@ -212,7 +222,10 @@ async function copyText() {
 function handleExportMd() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const blob = new Blob([doc.content], { type: "text/markdown" });
+	const markdown = serializeMarkdownExport(doc.contentJson, doc.content, {
+		baseUrl: window.location.href,
+	});
+	const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement("a");
 	a.href = url;
@@ -221,7 +234,7 @@ function handleExportMd() {
 	URL.revokeObjectURL(url);
 }
 
-function handleExportDocx() {
+async function handleExportDocx() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
 	try {
@@ -230,51 +243,39 @@ function handleExportDocx() {
 			json = markdownToJson(doc.content || "");
 		}
 		const schema = getSchema(editorExtensions);
-		const docNode = Node.fromJSON(schema, json);
-		const wordDoc = customSerializer.serialize(docNode, {
-			getImageBuffer(_src) {
-				return new Uint8Array(0);
-			},
-			sections: [{ properties: {} }],
+		const docNode = Node.fromJSON(schema, normalizeDocxDocumentJson(json));
+		const imageFetcher = createDocxImageFetcher({
+			headers: sharedAttachmentHeaders(data.token ?? "", verifiedPassword),
+			documentId: doc.id,
 		});
-		Packer.toBlob(wordDoc)
-			.then((blob) => {
-				const url = URL.createObjectURL(blob);
-				const a = document.createElement("a");
-				a.href = url;
-				a.download = `${doc.title}.docx`;
-				a.click();
-				URL.revokeObjectURL(url);
-			})
-			.catch((err) => {
-				console.error("Packer failed to generate docx blob:", err);
-				fallbackHtmlDocx(doc);
-			});
+		const serializerOptions = {
+			getImageBuffer: imageFetcher.getImageBuffer,
+			getImageType: imageFetcher.getImageType,
+			sections: [{ properties: {} }],
+		} as Parameters<typeof customSerializerAsync.serializeAsync>[1] & {
+			getImageType: typeof imageFetcher.getImageType;
+		};
+		const wordDoc = await customSerializerAsync.serializeAsync(
+			docNode,
+			serializerOptions,
+		);
+		const blob = await Packer.toBlob(wordDoc);
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `${doc.title}.docx`;
+		a.click();
+		URL.revokeObjectURL(url);
 	} catch (err) {
 		console.error("Failed to export to DOCX:", err);
-		fallbackHtmlDocx(doc);
+		await fallbackPlainTextDocx(doc);
 	}
 
-	function fallbackHtmlDocx(docItem: { title: string; content: string }) {
-		const htmlContent = renderDocumentContent(docItem);
-		const docHtml = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head><title>${docItem.title}</title>
-<style>
-body { font-family: Arial, sans-serif; line-height: 1.6; }
-h1 { font-size: 24pt; font-weight: bold; margin-top: 12pt; margin-bottom: 6pt; }
-p { margin-bottom: 6pt; }
-</style>
-</head>
-<body>
-<h1>${docItem.title}</h1>
-${htmlContent}
-</body>
-</html>
-		`;
-		const blob = new Blob([docHtml], {
-			type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-		});
+	async function fallbackPlainTextDocx(docItem: {
+		title: string;
+		content: string;
+	}) {
+		const blob = await createPlainTextDocxBlob(docItem.title, docItem.content);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
@@ -284,10 +285,17 @@ ${htmlContent}
 	}
 }
 
-function handleExportPdf() {
+async function handleExportPdf() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const htmlContent = renderDocumentContent(doc);
+	const printRoot = document.createElement("div");
+	printRoot.innerHTML = renderDocumentContent(doc);
+	const objectUrls = await hydrateSharedAttachmentImages(
+		printRoot,
+		data.token ?? "",
+		verifiedPassword,
+	);
+	const htmlContent = printRoot.innerHTML;
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -299,7 +307,11 @@ function handleExportPdf() {
 	document.body.appendChild(iframe);
 
 	const iframeDoc = iframe.contentWindow?.document;
-	if (!iframeDoc) return;
+	if (!iframeDoc) {
+		iframe.remove();
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+		return;
+	}
 
 	iframeDoc.open();
 	iframeDoc.write(`
@@ -319,6 +331,26 @@ h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
 p { margin-bottom: 12px; }
 ul, ol { padding-left: 20px; margin-bottom: 12px; }
 li { margin-bottom: 4px; }
+ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+ul[data-type="taskList"] li {
+	list-style: none;
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+}
+ul[data-type="taskList"] li > label {
+	display: flex;
+	align-items: flex-start;
+	flex: 0 0 auto;
+	padding-top: 0.25em;
+}
+ul[data-type="taskList"] li > div {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+ul[data-type="taskList"] li > div > p {
+	margin: 0 0 12px;
+}
 blockquote {
 	border-left: 3px solid #ccc;
 	padding-left: 12px;
@@ -352,18 +384,24 @@ img { max-width: 100%; height: auto; }
 <body>
 <h1>${doc.title}</h1>
 ${htmlContent}
-\x3Cscript>
-window.onload = function() {
-	window.print();
-	setTimeout(function() {
-		window.frameElement.remove();
-	}, 100);
-};
-\x3C/script>
 </body>
 </html>
 	`);
 	iframeDoc.close();
+	await waitForSharedDocumentImages(iframeDoc);
+
+	let cleanedUp = false;
+	const cleanup = () => {
+		if (cleanedUp) return;
+		cleanedUp = true;
+		iframe.remove();
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+	};
+	iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+	iframe.contentWindow?.focus();
+	iframe.contentWindow?.print();
+	// Some browsers do not emit afterprint when the print dialog is cancelled.
+	setTimeout(cleanup, 60_000);
 }
 
 async function fetchShareSubResource(path: string) {
@@ -534,9 +572,9 @@ $effect(() => {
             <button
               onclick={handleExportMd}
               class="flex items-center gap-1 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
-              title="Export MD"
+              title="Export .md"
             >
-              <Download class="h-3 w-3" /> MD
+              <Download class="h-3 w-3" /> Export .md
             </button>
             <button
               onclick={handleExportDocx}

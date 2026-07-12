@@ -18,6 +18,16 @@ describe("incremental embedding refresh", () => {
 		).toBe(true);
 	});
 
+	test("replaces a non-finite vector even when metadata says it is valid", () => {
+		expect(
+			needsChunkRefresh(
+				{ ...valid, embedding: [0.1, Number.NaN, -0.2], isValid: true },
+				"hash-a",
+				"bge-m3",
+			),
+		).toBe(true);
+	});
+
 	test("replaces vectors from a different model", () => {
 		expect(
 			needsChunkRefresh(

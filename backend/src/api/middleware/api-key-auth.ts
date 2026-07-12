@@ -22,6 +22,8 @@ export const apiKeyAuthMiddleware = new Elysia().derive(async ({ request }) => {
 
 	return {
 		userId: result.ownerId,
+		apiKeyId: result.id,
+		apiKeyScopes: result.scopes,
 		authType: "api-key" as const,
 	};
 });

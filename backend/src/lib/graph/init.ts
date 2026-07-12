@@ -59,6 +59,18 @@ export async function getGraphDb(): Promise<GraphSqlClient | null> {
 }
 
 /**
+ * Return the AGE client or raise a typed availability error. Search-domain
+ * callers use this strict variant so the orchestrator can report a graph
+ * outage while still degrading to direct results; route/admin callers keep
+ * the tolerant `getGraphDb()` behavior where an empty graph is acceptable.
+ */
+export async function getGraphDbRequired(): Promise<GraphSqlClient> {
+	const sql = await getGraphDb();
+	if (!sql) throw new Error("AGE graph docs_graph is unavailable");
+	return sql;
+}
+
+/**
  * Reset the migration singleton so the next `getGraphDb()` call
  * re-runs the migration. Test-only — exported under the underscore
  * prefix to keep it out of the public API surface.

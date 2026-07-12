@@ -15,6 +15,9 @@ COPY package.json bun.lock* ./
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY packages/db/package.json ./packages/db/
+COPY packages/sdk/package.json ./packages/sdk/
+COPY packages/cli/package.json ./packages/cli/
+COPY packages/mcp-server/package.json ./packages/mcp-server/
 ENV BUN_INSTALL_CONCURRENCY=1
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --no-verify
 RUN --mount=type=cache,target=/root/.bun/install/cache bun install --cwd backend --no-verify

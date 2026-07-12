@@ -43,12 +43,15 @@ logs/
 # Test coverage
 coverage/
 
-# OpenCode / hiai-opencode boulder runtime
+# Agent workflow/runtime artifacts
 .opencode/
 .bob/
+/.superpowers/
+/docs/superpowers/
 
-# MinIO data (local dev)
+# Legacy MinIO data and current SeaweedFS local data (local dev)
 minio_data/
+seaweedfs_data/
 
 # Ollama models (local dev)
 ollama_data/
@@ -62,7 +65,6 @@ backup/
 
 # Internal dev artifacts (not part of the public release)
 todo.md
-AGENTS.md
 AGENTS.md.bak
 todo.md.bak
 topics.txt

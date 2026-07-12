@@ -3,10 +3,16 @@ import { getLocale } from "$lib/paraglide/runtime";
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const locale = getLocale();
-	return resolve(event, {
+	const response = await resolve(event, {
 		transformPageChunk: ({ html }) =>
 			html.replace("%lang%", locale).replace("%dir%", "ltr"),
 	});
+
+	// `frame-ancestors` is ignored in a CSP meta element by browsers. It must
+	// be delivered as a response header to protect the rendered application.
+	response.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+	response.headers.set("X-Frame-Options", "DENY");
+	return response;
 };
 
 export const handleError: HandleServerError = ({ error }) => {

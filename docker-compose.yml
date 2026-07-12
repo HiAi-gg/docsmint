@@ -54,8 +54,8 @@ services:
     image: chrislusf/seaweedfs:3.85
     restart: unless-stopped
     ports:
-      - "${STORAGE_PORT:-9000}:8333"      # S3 Gateway
-      - "9021:8888"                       # SeaweedFS Web UI (Filer)
+      - "${STORAGE_PORT:-50702}:8333"      # S3 Gateway
+      - "${STORAGE_UI_PORT:-50703}:8888"   # SeaweedFS Web UI (Filer)
     volumes:
       - seaweedfs_data:/data
     entrypoint: ["/bin/sh", "-ec"]
@@ -102,6 +102,8 @@ services:
       network: host
     restart: unless-stopped
     ports:
+      # API_PORT selects only the published host port. The container contract
+      # is always 50700 so service discovery and health checks stay stable.
       - "${API_PORT:-50700}:50700"
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -115,9 +117,7 @@ services:
       seaweedfs:
         condition: service_healthy
     healthcheck:
-      # $$ escapes compose interpolation so API_PORT is resolved at runtime
-      # inside the container (not baked in at compose-parse time).
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${API_PORT}/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:50700/api/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -132,24 +132,26 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-hiai-docs}
       STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-localhost}
-      STORAGE_PUBLIC_PORT: ${STORAGE_PORT:-9000}
+      STORAGE_PUBLIC_PORT: ${STORAGE_PORT:-50702}
       STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
       STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-true}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:50700}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:50701,http://127.0.0.1:50701}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${API_PORT:-50700}}
+      # Custom host WEB_PORT mappings require an explicit CORS_ORIGINS value.
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       # OpenRouter is the public default; override these three values for
       # Ollama or another OpenAI-compatible embedding service.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-https://openrouter.ai/api/v1}
       EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:-}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-openai/text-embedding-3-small}
-      EMBEDDING_TIMEOUT_MS: ${EMBEDDING_TIMEOUT_MS:-120000}
+      EMBEDDING_TIMEOUT_MS: ${EMBEDDING_TIMEOUT_MS:-20000}
       EMBEDDING_FALLBACK_BASE_URL: ${EMBEDDING_FALLBACK_BASE_URL:-https://openrouter.ai/api/v1}
       EMBEDDING_FALLBACK_API_KEY: ${EMBEDDING_FALLBACK_API_KEY:-}
       EMBEDDING_FALLBACK_MODEL: ${EMBEDDING_FALLBACK_MODEL:-baai/bge-m3}
-      API_PORT: ${API_PORT:-50700}
+      API_PORT: 50700
       HIAI_DOCS_API_KEY: ${HIAI_DOCS_API_KEY}
+      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?API_KEY_ENCRYPTION_SECRET must be set}
       CSRF_SECRET: ${CSRF_SECRET:?CSRF_SECRET must be set}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:?WEBHOOK_SECRET must be set}
       OWNER_ID: ${OWNER_ID}
@@ -161,12 +163,34 @@ services:
       GRAPH_EXTRACT_API_KEY: ${GRAPH_EXTRACT_API_KEY:-}
       GRAPH_EXTRACT_MODEL: ${GRAPH_EXTRACT_MODEL:-mistralai/ministral-14b-2512}
       GRAPH_EXTRACT_REASONING_EFFORT: ${GRAPH_EXTRACT_REASONING_EFFORT:-}
-      GRAPH_EXTRACT_TIMEOUT_MS: ${GRAPH_EXTRACT_TIMEOUT_MS:-120000}
+      GRAPH_EXTRACT_TIMEOUT_MS: ${GRAPH_EXTRACT_TIMEOUT_MS:-30000}
       GRAPH_EXTRACT_FALLBACK_BASE_URL: ${GRAPH_EXTRACT_FALLBACK_BASE_URL:-https://openrouter.ai/api/v1}
       GRAPH_EXTRACT_FALLBACK_API_KEY: ${GRAPH_EXTRACT_FALLBACK_API_KEY:-}
       GRAPH_EXTRACT_FALLBACK_MODEL: ${GRAPH_EXTRACT_FALLBACK_MODEL:-google/gemma-4-31b-it}
       GRAPH_EXTRACT_MIN_CONFIDENCE: ${GRAPH_EXTRACT_MIN_CONFIDENCE:-0.5}
       GRAPH_EXPANSION_BOOST: ${GRAPH_EXPANSION_BOOST:-0.3}
+      SEARCH_EXPANSION_ENABLED: ${SEARCH_EXPANSION_ENABLED:-true}
+      SEARCH_EXPANSION_BASE_URL: ${SEARCH_EXPANSION_BASE_URL:-https://openrouter.ai/api/v1}
+      SEARCH_EXPANSION_API_KEY: ${SEARCH_EXPANSION_API_KEY:-}
+      SEARCH_EXPANSION_MODEL: ${SEARCH_EXPANSION_MODEL:-mistralai/ministral-14b-2512}
+      SEARCH_EXPANSION_FALLBACK_BASE_URL: ${SEARCH_EXPANSION_FALLBACK_BASE_URL:-https://openrouter.ai/api/v1}
+      SEARCH_EXPANSION_FALLBACK_API_KEY: ${SEARCH_EXPANSION_FALLBACK_API_KEY:-}
+      SEARCH_EXPANSION_FALLBACK_MODEL: ${SEARCH_EXPANSION_FALLBACK_MODEL:-google/gemma-4-31b-it}
+      SEARCH_EXPANSION_TIMEOUT_MS: ${SEARCH_EXPANSION_TIMEOUT_MS:-6000}
+      SEARCH_VECTOR_PROVIDER_TIMEOUT_MS: ${SEARCH_VECTOR_PROVIDER_TIMEOUT_MS:-2500}
+      SEARCH_EXPANSION_CACHE_TTL_SECONDS: ${SEARCH_EXPANSION_CACHE_TTL_SECONDS:-86400}
+      SEARCH_EXPANSION_MAX_VARIANTS: ${SEARCH_EXPANSION_MAX_VARIANTS:-12}
+      SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS: ${SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS:-0}
+      SEARCH_RRF_K: ${SEARCH_RRF_K:-60}
+      SEARCH_EXACT_BOOST: ${SEARCH_EXACT_BOOST:-0.02}
+      SEARCH_CHANNEL_AGREEMENT_BOOST: ${SEARCH_CHANNEL_AGREEMENT_BOOST:-0.01}
+      SEARCH_GRAPH_MAX_CONTRIBUTION: ${SEARCH_GRAPH_MAX_CONTRIBUTION:-0.03}
+      SEARCH_VECTOR_MIN_SIMILARITY: ${SEARCH_VECTOR_MIN_SIMILARITY:-0.35}
+      SEARCH_FUZZY_MIN_SIMILARITY: ${SEARCH_FUZZY_MIN_SIMILARITY:-0.25}
+      SEARCH_MIN_CHANNEL_AGREEMENT: ${SEARCH_MIN_CHANNEL_AGREEMENT:-2}
+      SEARCH_GRAPH_SEED_LIMIT: ${SEARCH_GRAPH_SEED_LIMIT:-10}
+      SEARCH_GRAPH_MAX_HOPS: ${SEARCH_GRAPH_MAX_HOPS:-2}
+      SEARCH_GRAPH_RESULT_LIMIT: ${SEARCH_GRAPH_RESULT_LIMIT:-20}
       HYBRID_TEXT_WEIGHT: ${HYBRID_TEXT_WEIGHT:-0.4}
       HYBRID_SEMANTIC_WEIGHT: ${HYBRID_SEMANTIC_WEIGHT:-0.6}
       CHUNK_TARGET_TOKENS: ${CHUNK_TARGET_TOKENS:-500}
@@ -174,6 +198,31 @@ services:
       FOLDER_REEMBED_BATCH_SIZE: ${FOLDER_REEMBED_BATCH_SIZE:-100}
       CATEGORY_REEMBED_BATCH_SIZE: ${CATEGORY_REEMBED_BATCH_SIZE:-100}
       TAG_REEMBED_BATCH_SIZE: ${TAG_REEMBED_BATCH_SIZE:-500}
+      AI_PROVIDER: ${AI_PROVIDER:-openrouter}
+      OLLAMA_PORT: ${OLLAMA_PORT:-11434}
+      QUEUE_PREPARE_CONCURRENCY: ${QUEUE_PREPARE_CONCURRENCY:-2}
+      QUEUE_EMBED_CONCURRENCY: ${QUEUE_EMBED_CONCURRENCY:-3}
+      QUEUE_GRAPH_CONCURRENCY: ${QUEUE_GRAPH_CONCURRENCY:-2}
+      QUEUE_SUMMARY_CONCURRENCY: ${QUEUE_SUMMARY_CONCURRENCY:-1}
+      QUEUE_FINALIZE_CONCURRENCY: ${QUEUE_FINALIZE_CONCURRENCY:-2}
+      QUEUE_EMBED_BATCH_SIZE: ${QUEUE_EMBED_BATCH_SIZE:-5}
+      QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT: ${QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT:-2}
+      QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER: ${QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER:-2}
+      QUEUE_MAX_ACTIVE_EMBED_PER_OWNER: ${QUEUE_MAX_ACTIVE_EMBED_PER_OWNER:-4}
+      QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER: ${QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER:-1}
+      QUEUE_JOB_ATTEMPTS: ${QUEUE_JOB_ATTEMPTS:-5}
+      QUEUE_RETRY_BASE_DELAY_MS: ${QUEUE_RETRY_BASE_DELAY_MS:-1000}
+      QUEUE_RECOVERY_STALE_AFTER_MS: ${QUEUE_RECOVERY_STALE_AFTER_MS:-120000}
+      QUEUE_COMPLETED_RETENTION_COUNT: ${QUEUE_COMPLETED_RETENTION_COUNT:-1000}
+      QUEUE_FAILED_RETENTION_COUNT: ${QUEUE_FAILED_RETENTION_COUNT:-5000}
+      QUEUE_SHUTDOWN_GRACE_MS: ${QUEUE_SHUTDOWN_GRACE_MS:-30000}
+      PROVIDER_LIMITER_MODE: ${PROVIDER_LIMITER_MODE:-remote}
+      PROVIDER_MAX_CONCURRENCY: ${PROVIDER_MAX_CONCURRENCY:-4}
+      PROVIDER_REQUESTS_PER_MINUTE: ${PROVIDER_REQUESTS_PER_MINUTE:-0}
+      PROVIDER_MAX_RETRIES: ${PROVIDER_MAX_RETRIES:-3}
+      PROVIDER_RETRY_BASE_DELAY_MS: ${PROVIDER_RETRY_BASE_DELAY_MS:-250}
+      PROVIDER_CIRCUIT_FAILURE_THRESHOLD: ${PROVIDER_CIRCUIT_FAILURE_THRESHOLD:-5}
+      PROVIDER_CIRCUIT_COOLDOWN_MS: ${PROVIDER_CIRCUIT_COOLDOWN_MS:-30000}
       NODE_ENV: ${NODE_ENV:-production}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     networks:
@@ -190,21 +239,26 @@ services:
       network: host
     restart: unless-stopped
     ports:
+      # WEB_PORT selects only the published host port. The container contract
+      # is always 50701.
       - "${WEB_PORT:-50701}:50701"
     depends_on:
       api:
         condition: service_healthy
     healthcheck:
-      # $$ escapes compose interpolation so WEB_PORT is resolved at runtime
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:$${WEB_PORT}/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:50701/ || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 10s
     environment:
-      API_URL: http://api:${API_PORT:-50700}
-      PORT: ${WEB_PORT:-50701}
-      WEB_PORT: ${WEB_PORT:-50701}
+      API_URL: http://api:50700
+      PORT: 50701
+      WEB_PORT: 50701
+      # adapter-node defaults to 512 KiB. Keep the proxy envelope aligned
+      # with the API's 100 MiB global body cap; the API still enforces the
+      # 10 MiB per-file import limit.
+      BODY_SIZE_LIMIT: "104857600"
     networks:
       - hiai-docs-net
     deploy:

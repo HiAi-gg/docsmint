@@ -23,7 +23,7 @@ const envSchema = z.object({
 	EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
 	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
 	STORAGE_ENDPOINT: z.string().default("localhost"),
-	STORAGE_PORT: z.coerce.number().default(9020),
+	STORAGE_PORT: z.coerce.number().default(50702),
 	STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
 	STORAGE_SECRET_KEY: z.string().default("minioadmin"),
 	STORAGE_BUCKET: z.string().default("hiai-docs"),
@@ -47,7 +47,7 @@ describe("config schema", () => {
 			expect(result.data.EMBEDDING_FALLBACK_BASE_URL).toBeUndefined();
 			expect(result.data.EMBEDDING_FALLBACK_API_KEY).toBeUndefined();
 			expect(result.data.EMBEDDING_FALLBACK_MODEL).toBeUndefined();
-			expect(result.data.STORAGE_PORT).toBe(9020);
+			expect(result.data.STORAGE_PORT).toBe(50702);
 		}
 	});
 
@@ -131,6 +131,88 @@ describe("config schema", () => {
 			expect(result.data.OPENROUTER_API_KEY).toBe("test-openrouter-key");
 		}
 	});
+
+	test("rejects a non-UUID API owner before document writes reach PostgreSQL", () => {
+		expect(
+			realEnvSchema.safeParse({ OWNER_ID: "your-user-uuid-from-auth" }).success,
+		).toBe(false);
+	});
+
+	test("loads adaptive search defaults", () => {
+		const result = realEnvSchema.safeParse({});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.SEARCH_EXPANSION_ENABLED).toBe(true);
+			expect(result.data.SEARCH_EXPANSION_MODEL).toBe(
+				"mistralai/ministral-14b-2512",
+			);
+			expect(result.data.SEARCH_EXPANSION_FALLBACK_MODEL).toBe(
+				"google/gemma-4-31b-it",
+			);
+			expect(result.data.SEARCH_EXPANSION_TIMEOUT_MS).toBe(6_000);
+			expect(result.data.SEARCH_VECTOR_PROVIDER_TIMEOUT_MS).toBe(2_500);
+			expect(result.data.SEARCH_EXPANSION_MAX_VARIANTS).toBe(12);
+			expect(result.data.SEARCH_RRF_K).toBe(60);
+		}
+	});
+
+	test("loads bounded BullMQ and provider limiter defaults", () => {
+		const result = realEnvSchema.safeParse({});
+		expect(result.success).toBe(true);
+		if (!result.success) return;
+		expect(result.data.QUEUE_EMBED_CONCURRENCY).toBe(3);
+		expect(result.data.QUEUE_EMBED_BATCH_SIZE).toBe(5);
+		expect(result.data.QUEUE_JOB_ATTEMPTS).toBe(5);
+		expect(result.data.PROVIDER_LIMITER_MODE).toBe("remote");
+		expect(result.data.PROVIDER_REQUESTS_PER_MINUTE).toBe(0);
+		expect(result.data.OLLAMA_PORT).toBe(11434);
+	});
+
+	test("treats an empty optional Ollama URL from Compose as unset", () => {
+		const result = realEnvSchema.safeParse({ EMBEDDING_OLLAMA_URL: "" });
+		expect(result.success).toBe(true);
+		if (result.success)
+			expect(result.data.EMBEDDING_OLLAMA_URL).toBeUndefined();
+		expect(
+			realEnvSchema.safeParse({ EMBEDDING_OLLAMA_URL: "not-a-url" }).success,
+		).toBe(false);
+	});
+
+	test("rejects unsafe queue and provider runtime bounds", () => {
+		expect(
+			realEnvSchema.safeParse({ QUEUE_EMBED_CONCURRENCY: 0 }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ QUEUE_EMBED_BATCH_SIZE: 33 }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ PROVIDER_LIMITER_MODE: "invalid" }).success,
+		).toBe(false);
+		expect(
+			realEnvSchema.safeParse({ PROVIDER_REQUESTS_PER_MINUTE: -1 }).success,
+		).toBe(false);
+		expect(realEnvSchema.safeParse({ OLLAMA_PORT: 70000 }).success).toBe(false);
+	});
+
+	test("accepts custom search expansion provider settings", () => {
+		const result = realEnvSchema.safeParse({
+			OWNER_ID: "00000000-0000-4000-8000-000000000001",
+			SEARCH_EXPANSION_ENABLED: "false",
+			SEARCH_EXPANSION_BASE_URL: "http://ollama:11434/v1",
+			SEARCH_EXPANSION_API_KEY: "",
+			SEARCH_EXPANSION_TIMEOUT_MS: "5000",
+			SEARCH_VECTOR_MIN_SIMILARITY: "0.4",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.SEARCH_EXPANSION_ENABLED).toBe(false);
+			expect(result.data.SEARCH_EXPANSION_BASE_URL).toBe(
+				"http://ollama:11434/v1",
+			);
+			expect(result.data.SEARCH_EXPANSION_TIMEOUT_MS).toBe(5_000);
+			expect(result.data.SEARCH_VECTOR_MIN_SIMILARITY).toBe(0.4);
+		}
+	});
 });
 
 // Production secret guards — the real schema (config-schema.ts) must reject
@@ -195,12 +277,61 @@ describe("production secret guards (real schema)", () => {
 		expect(result.success).toBe(false);
 	});
 
-	test("accepts real non-empty secrets in production", () => {
+	test("rejects default category API key encryption secret in production", () => {
 		process.env.NODE_ENV = "production";
 		const result = realEnvSchema.safeParse({
+			OWNER_ID: "00000000-0000-4000-8000-000000000001",
+			BETTER_AUTH_SECRET: "real-secret-32-chars-long-aaaaaa",
+			CSRF_SECRET: "real-csrf-secret-32-chars-long-bbbb",
+			WEBHOOK_SECRET: "real-webhook-secret-32-chars-long-cccc",
+			API_KEY_ENCRYPTION_SECRET: "change-me-to-random-32-chars-long",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects a missing admin API key in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			NODE_ENV: "production",
+			OWNER_ID: "00000000-0000-4000-8000-000000000001",
+			API_KEY_ENCRYPTION_SECRET: "real-api-key-encryption-secret-32-chars",
 			BETTER_AUTH_SECRET: "real-better-auth-secret-32-chars-long",
 			CSRF_SECRET: "real-csrf-secret-32-chars-long-bbbb",
 			WEBHOOK_SECRET: "real-webhook-secret-32-chars-long-cc",
+		});
+		expect(result.success).toBe(false);
+	});
+
+	test("rejects placeholder admin API keys in production", () => {
+		process.env.NODE_ENV = "production";
+		for (const apiKey of [
+			"change-me-generate-new-key",
+			"changeme",
+			"your-api-key",
+		]) {
+			const result = realEnvSchema.safeParse({
+				NODE_ENV: "production",
+				OWNER_ID: "00000000-0000-4000-8000-000000000001",
+				API_KEY_ENCRYPTION_SECRET: "real-api-key-encryption-secret-32-chars",
+				BETTER_AUTH_SECRET: "real-better-auth-secret-32-chars-long",
+				CSRF_SECRET: "real-csrf-secret-32-chars-long-bbbb",
+				WEBHOOK_SECRET: "real-webhook-secret-32-chars-long-cc",
+				HIAI_DOCS_API_KEY: apiKey,
+			});
+			expect(result.success).toBe(false);
+		}
+	});
+
+	test("accepts real non-empty secrets in production", () => {
+		process.env.NODE_ENV = "production";
+		const result = realEnvSchema.safeParse({
+			NODE_ENV: "production",
+			OWNER_ID: "00000000-0000-4000-8000-000000000001",
+			API_KEY_ENCRYPTION_SECRET: "real-api-key-encryption-secret-32-chars",
+			BETTER_AUTH_SECRET: "real-better-auth-secret-32-chars-long",
+			CSRF_SECRET: "real-csrf-secret-32-chars-long-bbbb",
+			WEBHOOK_SECRET: "real-webhook-secret-32-chars-long-cc",
+			HIAI_DOCS_API_KEY: "real-admin-api-key-generated-for-production",
 		});
 		expect(result.success).toBe(true);
 	});

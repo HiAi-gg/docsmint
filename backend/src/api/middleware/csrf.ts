@@ -49,6 +49,21 @@ function isMultipart(request: Request): boolean {
 	);
 }
 
+export function isAllowedCsrfOrigin(
+	origin: string,
+	host: string,
+	allowedOrigins: readonly string[],
+	nodeEnv: string,
+): boolean {
+	const originUrl = new URL(origin);
+	const normalized = allowedOrigins
+		.map((value) => value.trim())
+		.filter(Boolean);
+	return nodeEnv === "production" && normalized.length === 0
+		? originUrl.host === host
+		: normalized.includes(originUrl.origin);
+}
+
 export const csrfMiddleware = new Elysia()
 	.onRequest(({ request, set }) => {
 		const url = new URL(request.url);
@@ -65,12 +80,20 @@ export const csrfMiddleware = new Elysia()
 		const host = request.headers.get("host");
 		if (origin && host) {
 			try {
-				const originUrl = new URL(origin);
-				const allowedOrigins = config.CORS_ORIGINS?.split(",") ?? [];
-				const isAllowed =
-					config.NODE_ENV === "production" && !allowedOrigins.length
-						? originUrl.host === host
-						: allowedOrigins.includes(originUrl.origin);
+				const configuredOrigins =
+					config.CORS_ORIGINS?.split(",").filter(Boolean) ?? [];
+				const allowedOrigins = configuredOrigins.length
+					? configuredOrigins
+					: [
+							`http://localhost:${config.WEB_PORT}`,
+							`http://127.0.0.1:${config.WEB_PORT}`,
+						];
+				const isAllowed = isAllowedCsrfOrigin(
+					origin,
+					host,
+					allowedOrigins,
+					config.NODE_ENV,
+				);
 				if (!isAllowed) {
 					set.status = 403;
 					return { error: "CSRF: origin mismatch" };

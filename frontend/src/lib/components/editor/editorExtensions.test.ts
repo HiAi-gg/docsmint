@@ -26,6 +26,23 @@ function makeManager(): MarkdownManager {
 	return new MarkdownManager({ extensions: editorExtensions });
 }
 
+describe("Resizable image", () => {
+	test("uses TipTap's native aspect-ratio-preserving resize node view", () => {
+		const image = editorExtensions.find(
+			(extension) => extension.name === "image",
+		);
+		expect(image).toBeDefined();
+		const options = image?.options as { resize?: unknown } | undefined;
+		expect(options?.resize).toEqual({
+			enabled: true,
+			directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
+			minWidth: 96,
+			minHeight: 54,
+			alwaysPreserveAspectRatio: true,
+		});
+	});
+});
+
 describe("TextAlignParagraph", () => {
 	test("registers under the `paragraph` node name", () => {
 		expect(TextAlignParagraph.name).toBe("paragraph");

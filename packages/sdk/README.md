@@ -46,7 +46,7 @@ const snapshot = await client.createDoc({ title: "v1.0", content: "…" });
 ```ts
 new DocsClient({
   baseUrl: string,        // required
-  apiKey: string,         // required (matches server-side HIAI_DOCS_API_KEY)
+  apiKey?: string,        // global/category Bearer key; operator key only for admin calls
   timeout?: number,       // per-request ms, default 10 000
   retries?: number,       // attempts for 502/503/504/timeouts, default 3
   retryBackoffMs?: number,// initial backoff ms, doubles each attempt, default 250
@@ -56,21 +56,23 @@ new DocsClient({
 ## API surface
 
 ### Documents
-- `createDoc({ title, content, folderId })` → `DocsDocument`
+- `createDoc({ title, content, folderId, categoryId, visibility })` → `DocsDocument`
 - `getDoc(id)` → `DocsDocument`
 - `getDocMarkdown(id)` → `string` (raw markdown)
-- `updateDoc(id, { title, content, folderId })` → `DocsDocument`
+- `updateDoc(id, { title, content, contentJson, metadata, folderId, categoryId, visibility })` → `DocsDocument`
 - `deleteDoc(id)`
 - `listDocs({ folderId, tag, page, limit })` → `DocsDocumentListResponse`
 - `duplicateDoc(id)` → `DocsDocument`
 - `exportDoc(id)` → alias of `getDocMarkdown`
 - `importDoc({ title, content, folderId })` → `DocsDocument`
+- `getDocumentPipeline(id)` → durable BullMQ stage/batch status
+- `publishDoc(id)` / `unpublishDoc(id)`
 
 ### Folders
 - `listFolders(parentId?)` → `DocsFolder[]`
 - `getFolder(id)` → `DocsFolder`
-- `createFolder({ name, parentId? })` → `DocsFolder`
-- `updateFolder(id, { name, parentId })` → `DocsFolder`
+- `createFolder({ name, parentId?, categoryId? })` → `DocsFolder`
+- `updateFolder(id, { name, parentId, categoryId, order })` → `DocsFolder`
 - `deleteFolder(id)`
 
 ### Tags
@@ -93,7 +95,9 @@ new DocsClient({
 
 ### Attachments
 - `uploadAttachment(documentId, blob, filename, mimeType)` → `DocsAttachment`
+- `presignAttachment(documentId, input)` / `confirmAttachment(documentId, input)`
 - `listAttachments(documentId)` → `DocsAttachmentListResponse`
+- `deleteAttachment(id)`
 
 ### Versions
 - `listVersions(documentId, { onlySnapshots, limit })` → `DocsVersion[]`
@@ -132,11 +136,22 @@ Transient failures are retried automatically with exponential backoff:
 
 Configure with `retries` (default 3) and `retryBackoffMs` (default 250 ms). Backoff doubles each attempt with up to 25 % jitter.
 
-## Authentication
+## Authentication and API keys
 
-The SDK always sends `Authorization: Bearer <apiKey>` when `apiKey` is set. The hiai-docs backend accepts Bearer tokens when the server is configured with `HIAI_DOCS_API_KEY=<same value>`.
+The SDK sends `Authorization: Bearer <apiKey>` when configured. Normal integrations should use a key created in the web settings:
 
-Generate a key with `openssl rand -hex 32` and put it in `.env` on both the server and the SDK consumer.
+- global scope: all content owned by that user;
+- category `read`: list/get/search/export in one effective category;
+- category `edit`: modify existing content, tags, attachments, and versions in that category;
+- category `write`: create/move/delete/share/publish in that category.
+
+Permissions are explicit and non-hierarchical. Combine category permissions as needed. The static server `HIAI_DOCS_API_KEY` is an operator credential for `/api/admin/*`, not the normal user integration key.
+
+Key lifecycle methods are available for session-backed application flows: `createGlobalApiKey`, `createCategoryApiKey`, `listApiKeys`, `revealCategoryApiKey`, and `revokeApiKey`. Supply a Better Auth cookie or authorization value through `DocsRequestContext`; API keys cannot manage other API keys. Global secrets are shown once, while category secrets are recoverable by the owning browser session.
+
+```ts
+const keys = await client.listApiKeys({ cookie: request.headers.get("cookie") ?? "" });
+```
 
 ## Type safety
 

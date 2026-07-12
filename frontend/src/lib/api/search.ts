@@ -2,6 +2,20 @@ import { apiFetch } from "$lib/api/client";
 
 // --- Types -------------------------------------------------------------------
 
+export interface SearchExplanation {
+	channel:
+		| "exact"
+		| "fts"
+		| "fuzzy"
+		| "vector"
+		| "expanded_fts"
+		| "expanded_fuzzy"
+		| "expanded_vector"
+		| "graph";
+	label: string;
+	queryVariant?: string;
+}
+
 export interface SearchResult {
 	id: string;
 	title: string;
@@ -11,7 +25,15 @@ export interface SearchResult {
 	folder_name?: string | null;
 	created_at: string;
 	updated_at: string;
+	explanations: SearchExplanation[];
 	tags?: Array<{ id: string; name: string; color: string | null }>;
+	chunks?: Array<{
+		chunkIndex: number;
+		chunkText: string;
+		charStart: number;
+		charEnd: number;
+		score: number;
+	}>;
 }
 
 export interface SearchResponse {
@@ -43,7 +65,8 @@ export type SearchSort =
 	| "name_desc";
 
 /**
- * Full hybrid search (text + semantic).
+ * Adaptive multilingual search. GraphRAG is selected automatically by the
+ * backend when it improves confidence; callers do not pass a graph toggle.
  *
  * `category` is an optional UUID that, when supplied, narrows results to
  * documents whose own `category_id` matches OR whose folder's
@@ -78,7 +101,10 @@ export async function search(
 	if (filters?.category) params.set("category", filters.category);
 	if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
 	if (filters?.dateTo) params.set("dateTo", filters.dateTo);
-	return apiFetch(`/api/search?${params}`);
+	// Adaptive search may spend a bounded vector budget followed by query
+	// expansion. Keep this above the backend's default combined budget while
+	// leaving the global API timeout unchanged for ordinary CRUD requests.
+	return apiFetch(`/api/search?${params}`, { timeout: 15_000 });
 }
 
 /**

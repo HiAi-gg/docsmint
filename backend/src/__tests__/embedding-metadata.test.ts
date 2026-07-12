@@ -19,7 +19,21 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { buildMetadataPreamble, embedDocument } from "../embedding/index";
+import { config } from "../lib/config";
+
+const originalEmbeddingConfig = {
+	baseUrl: config.EMBEDDING_BASE_URL,
+	apiKey: config.EMBEDDING_API_KEY,
+	model: config.EMBEDDING_MODEL,
+	fallbackBaseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
+	fallbackApiKey: config.EMBEDDING_FALLBACK_API_KEY,
+	fallbackModel: config.EMBEDDING_FALLBACK_MODEL,
+};
+
+const { buildMetadataPreamble, embedDocument } = await import(
+	// @ts-expect-error Bun resolves the query-suffixed module at runtime.
+	"../embedding/index?unit"
+);
 
 describe("buildMetadataPreamble", () => {
 	test("returns empty string when no metadata is supplied", () => {
@@ -78,41 +92,32 @@ describe("buildMetadataPreamble", () => {
 });
 
 describe("embedDocument metadata behaviour", () => {
-	test("without metadata: result has 1024-dim vectors (legacy shape)", async () => {
-		const result = await embedDocument("My Title", "Some content here.");
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("with folder metadata: vectors are still 1024-dim", async () => {
-		const result = await embedDocument("Title", "Content", {
-			folderName: "Engineering",
+	test("reports an explicit provider failure instead of storing a zero vector", async () => {
+		Object.assign(config, {
+			EMBEDDING_BASE_URL: undefined,
+			EMBEDDING_API_KEY: undefined,
+			EMBEDDING_MODEL: undefined,
+			EMBEDDING_FALLBACK_BASE_URL: undefined,
+			EMBEDDING_FALLBACK_API_KEY: undefined,
+			EMBEDDING_FALLBACK_MODEL: undefined,
 		});
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("with all metadata fields: vectors are still 1024-dim", async () => {
-		const result = await embedDocument("Title", "Content", {
-			folderName: "Engineering",
-			tagNames: ["alpha", "beta"],
-			categoryName: "Research",
-		});
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
-		}
-	});
-
-	test("returns at least one chunk even for empty content", async () => {
-		const result = await embedDocument("Title Only", "");
-		expect(result.length).toBeGreaterThan(0);
-		for (const v of result) {
-			expect(v.embedding.length).toBe(1024);
+		try {
+			await expect(
+				embedDocument("My Title", "Some content here."),
+			).rejects.toMatchObject({
+				name: "EmbeddingBatchError",
+				code: "not_configured",
+				chunkIndex: 0,
+			});
+		} finally {
+			Object.assign(config, {
+				EMBEDDING_BASE_URL: originalEmbeddingConfig.baseUrl,
+				EMBEDDING_API_KEY: originalEmbeddingConfig.apiKey,
+				EMBEDDING_MODEL: originalEmbeddingConfig.model,
+				EMBEDDING_FALLBACK_BASE_URL: originalEmbeddingConfig.fallbackBaseUrl,
+				EMBEDDING_FALLBACK_API_KEY: originalEmbeddingConfig.fallbackApiKey,
+				EMBEDDING_FALLBACK_MODEL: originalEmbeddingConfig.fallbackModel,
+			});
 		}
 	});
 

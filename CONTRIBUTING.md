@@ -62,7 +62,7 @@ adding a new shortcut:
   `$effect` cleanup so leaving a page releases the binding.
 - **Don't shadow browser/OS defaults**. Reserve `Cmd+1..9` for the
   browser's tab-switching; prefer `Cmd+Shift+Digit` for app-level jumps.
-- **Document every shortcut** in `docs/keyboard-shortcuts.md` and add
+- **Document every shortcut** in `docs/USAGE.md` and add
   a matching `m.shortcut_help_*` message in `frontend/messages/en.json`
   so the `?` overlay stays in sync with the source of truth.
 

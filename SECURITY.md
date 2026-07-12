@@ -4,7 +4,8 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.2.x   | :white_check_mark: |
+| 0.1.x   | :x: |
 
 ## Reporting a Vulnerability
 
@@ -49,7 +50,7 @@ In-scope vulnerabilities include:
 ## Security Architecture
 
 - **Data isolation**: All queries filter by `owner_id` — no cross-user data access
-- **Auth**: Better Auth with session cookies (7-day expiry) + optional API key (Bearer token)
+- **Auth**: Better Auth sessions, owner-wide global Bearer keys, category-bound Bearer keys, and a separate static operator credential
 - **CSRF**: HMAC-signed double-submit cookie pattern on all unsafe methods
 - **Rate limiting**: Redis-based sliding window rate limiters on all public endpoints (search, documents, sharing, health)
 - **Sharing**: Token-based links with optional password + expiration
@@ -57,4 +58,6 @@ In-scope vulnerabilities include:
 - **Secrets**: All configuration via environment variables, zero hardcoded secrets
 - **Encryption**: Passwords hashed with Bun.password (bcrypt)
 - **CSP**: Content Security Policy headers on all pages
-- **Webhook verification**: HMAC-SHA256 signature verification for storage webhooks (currently deprecated — SeaweedFS does not emit bucket notifications)
+- **API-key isolation**: category scopes are strict, explicit `read` / `edit` / `write` grants; key lifecycle operations require a browser session
+- **Admin fail-closed**: `/api/admin/*` accepts the configured operator key through `x-api-key` or Bearer auth and rejects all credentials when the key is unset
+- **Storage webhook**: the signed inbound compatibility route is deprecated and intentionally performs no synchronization; there are no outbound lifecycle webhooks

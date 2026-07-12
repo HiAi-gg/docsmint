@@ -1,9 +1,13 @@
 import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, integer, pgEnum, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // pgvector vector type — maps to PostgreSQL vector(n) column
-const vector = customType<{ data: number[] }>({
-  dataType() {
-    return "vector(1024)";
+const vector = customType<{
+  data: number[];
+  config: { dimensions: number };
+  configRequired: true;
+}>({
+  dataType(config) {
+    return `vector(${config.dimensions})`;
   },
   toDriver(value: number[]) {
     return JSON.stringify(value);
@@ -28,6 +32,30 @@ import { relations, sql } from "drizzle-orm";
 // ============================================
 export const documentVisibilityEnum = pgEnum("document_visibility", ["private", "shared", "public"]);
 export const shareRoleEnum = pgEnum("share_role", ["viewer", "commenter", "editor"]);
+export const embeddingStatusEnum = pgEnum("embedding_status", [
+  "pending",
+  "processing",
+  "ready",
+  "failed",
+  "stale",
+]);
+export const pipelineStageEnum = pgEnum("pipeline_stage", [
+  "prepare",
+  "embed",
+  "graph",
+  "summarize",
+  "finalize",
+]);
+export const pipelineStatusEnum = pgEnum("pipeline_status", [
+  "pending",
+  "processing",
+  "ready",
+  "retrying",
+  "failed",
+  "ready_with_warnings",
+  "skipped",
+  "cancelled",
+]);
 
 // ============================================
 // users — managed by Better Auth
@@ -174,8 +202,17 @@ export const documents = pgTable(
       .notNull(),
     metadataChangedAt: timestamp("metadata_changed_at"),
     searchVector: tsvector("search_vector").generatedAlwaysAs(
-      sql`to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, ''))`
+      sql`to_tsvector('english', left(COALESCE(title, '') || ' ' || regexp_replace(COALESCE(content, ''), 'data:[^[:space:])>]+', ' ', 'g'), 200000))`
     ),
+    searchVectorSimple: tsvector("search_vector_simple").generatedAlwaysAs(
+      sql`to_tsvector('simple', left(COALESCE(title, '') || ' ' || regexp_replace(COALESCE(content, ''), 'data:[^[:space:])>]+', ' ', 'g'), 200000))`
+    ),
+    embeddingStatus: embeddingStatusEnum("embedding_status").notNull().default("pending"),
+    activeEmbeddingGeneration: uuid("active_embedding_generation"),
+    pendingEmbeddingGeneration: uuid("pending_embedding_generation"),
+    embeddingProfile: text("embedding_profile"),
+    embeddingErrorCode: text("embedding_error_code"),
+    embeddingUpdatedAt: timestamp("embedding_updated_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -185,6 +222,8 @@ export const documents = pgTable(
     index("documents_category_id_idx").on(table.categoryId),
     index("documents_created_at_idx").on(table.createdAt),
     index("idx_documents_search_vector").using("gin", table.searchVector),
+    index("idx_documents_search_vector_simple").using("gin", table.searchVectorSimple),
+    index("documents_embedding_status_idx").on(table.embeddingStatus),
     index("idx_documents_title_trgm").using(
       "gin",
       sql`${table.title} gin_trgm_ops`
@@ -206,6 +245,94 @@ export const documentRelations = relations(documents, ({ one, many }) => ({
   attachments: many(attachments),
   versions: many(versions),
 }));
+
+// ============================================
+// document_pipeline_runs — durable multi-stage pipeline state
+// ============================================
+export const documentPipelineRuns = pgTable(
+  "document_pipeline_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    generationId: uuid("generation_id").notNull(),
+    revision: text("revision").notNull(),
+    source: text("source").notNull(),
+    status: pipelineStatusEnum("status").notNull().default("pending"),
+    prepareStatus: pipelineStatusEnum("prepare_status").notNull().default("pending"),
+    embedStatus: pipelineStatusEnum("embed_status").notNull().default("pending"),
+    graphStatus: pipelineStatusEnum("graph_status").notNull().default("pending"),
+    summarizeStatus: pipelineStatusEnum("summarize_status").notNull().default("pending"),
+    finalizeStatus: pipelineStatusEnum("finalize_status").notNull().default("pending"),
+    totalBatches: integer("total_batches").notNull().default(0),
+    completedBatches: integer("completed_batches").notNull().default(0),
+    failedBatches: integer("failed_batches").notNull().default(0),
+    errorCode: text("error_code"),
+    attempts: integer("attempts").notNull().default(0),
+    requestedAt: timestamp("requested_at").defaultNow().notNull(),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    availableAt: timestamp("available_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("document_pipeline_runs_document_generation_idx").on(
+      table.documentId,
+      table.generationId,
+    ),
+    index("document_pipeline_runs_owner_status_updated_idx").on(
+      table.ownerId,
+      table.status,
+      table.updatedAt,
+    ),
+  ],
+);
+
+// ============================================
+// document_pipeline_batches — idempotent embedding work units
+// ============================================
+export const documentPipelineBatches = pgTable(
+  "document_pipeline_batches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    generationId: uuid("generation_id").notNull(),
+    batchIndex: integer("batch_index").notNull(),
+    stage: pipelineStageEnum("stage").notNull().default("embed"),
+    chunkStart: integer("chunk_start").notNull(),
+    chunkEnd: integer("chunk_end").notNull(),
+    status: pipelineStatusEnum("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    embeddingProfile: text("embedding_profile"),
+    errorCode: text("error_code"),
+    availableAt: timestamp("available_at"),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    heartbeatAt: timestamp("heartbeat_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("document_pipeline_batches_generation_index_idx").on(
+      table.generationId,
+      table.batchIndex,
+    ),
+    index("document_pipeline_batches_stage_status_available_idx").on(
+      table.stage,
+      table.status,
+      table.availableAt,
+    ),
+    index("document_pipeline_batches_document_id_idx").on(table.documentId),
+  ],
+);
 
 // ============================================
 // tags — document tags
@@ -425,7 +552,7 @@ export const documentEmbeddings = pgTable(
     chunkHash: text("chunk_hash"),
     charStart: integer("char_start").notNull().default(0),
     charEnd: integer("char_end").notNull().default(0),
-    embedding: vector("embedding"),
+    embedding: vector("embedding", { dimensions: 1024 }),
     // Identifier of the embedding model that produced the vector above.
     // Empty string ("") means "unknown / legacy row" (pre-v1 rows that
     // existed before this column was introduced). The targeted reindex
@@ -433,11 +560,24 @@ export const documentEmbeddings = pgTable(
     // to refresh only docs whose stored model does not match the
     // currently-configured EMBEDDING_MODEL.
     embeddingModel: text("embedding_model").notNull().default(""),
+    generationId: uuid("generation_id").notNull(),
+    embeddingDimensions: integer("embedding_dimensions").notNull().default(1024),
+    embeddingProfile: text("embedding_profile").notNull().default("legacy"),
+    isValid: boolean("is_valid").notNull().default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("document_embeddings_doc_id_idx").on(table.documentId),
-    uniqueIndex("document_embeddings_doc_chunk_idx").on(table.documentId, table.chunkIndex),
+    uniqueIndex("document_embeddings_doc_chunk_idx").on(
+      table.documentId,
+      table.generationId,
+      table.chunkIndex,
+    ),
+    index("document_embeddings_generation_valid_idx").on(
+      table.documentId,
+      table.generationId,
+      table.isValid,
+    ),
     // Backs POST /api/admin/reindex/model which selects docs whose stored
     // embedding model differs from the currently-configured EMBEDDING_MODEL.
     index("idx_document_embeddings_embedding_model").on(table.embeddingModel),
@@ -475,6 +615,7 @@ export const apiKeys = pgTable(
     name: text("name").notNull(),
     keyHash: text("key_hash").notNull().unique(),
     prefix: text("prefix").notNull(),
+    encryptedKey: text("encrypted_key"),
     scopes: jsonb("scopes").notNull().default("[]"),
     lastUsedAt: timestamp("last_used_at"),
     expiresAt: timestamp("expires_at"),

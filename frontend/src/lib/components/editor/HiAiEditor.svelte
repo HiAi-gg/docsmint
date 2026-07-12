@@ -55,7 +55,6 @@ const {
 let editorStore: ReturnType<typeof createEditor> | null = null;
 let editor = $state<Editor | null>(null);
 let ready = $state(false);
-let suppressNextUpdate = false;
 let internalUpdate = false;
 
 /**
@@ -120,10 +119,6 @@ onMount(() => {
 			},
 		},
 		onUpdate: ({ editor: ed }) => {
-			if (suppressNextUpdate) {
-				suppressNextUpdate = false;
-				return;
-			}
 			if (!collaboration) {
 				// The Markdown extension augments the editor with a `getMarkdown()`
 				// method at onBeforeCreate time (see @tiptap/markdown Extension.ts).
@@ -211,7 +206,6 @@ $effect(() => {
 	}
 	if (nextSerialized !== prevContent) {
 		prevContent = nextSerialized;
-		suppressNextUpdate = true;
 		// Wrap `setContent` in `untrack` so any reactive reads inside
 		// TipTap (e.g. extensions touching $state during the transaction)
 		// are NOT registered as dependencies of this effect. Without
@@ -224,6 +218,11 @@ $effect(() => {
 		// inside the closure).
 		const ed = editor;
 		untrack(() => {
+			// `emitUpdate: false` already guarantees that this synchronization
+			// transaction does not reach the autosave callback. Do not arm a
+			// separate "skip next update" flag here: it stays pending and swallows
+			// the user's next real transaction, which is especially visible when
+			// the first edit is inserting or resizing an image.
 			ed.commands.setContent(nextSource, { emitUpdate: false });
 		});
 	}
@@ -548,6 +547,68 @@ function handleWrapperClick(event: MouseEvent) {
     color: var(--primary);
     text-decoration: underline;
     cursor: pointer;
+  }
+
+  /* TipTap 3's native ResizableNodeView persists width/height on the image
+     node. Keep the stored size responsive and expose branded corner handles
+     only while the image is selected. */
+  .editor-content :global(.tiptap [data-resize-container][data-node="image"]) {
+    max-width: 100%;
+    margin: 0.75rem 0;
+  }
+
+  .editor-content :global(.tiptap [data-resize-wrapper] > .doc-image) {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+  }
+
+  .editor-content :global(.tiptap [data-resize-wrapper]) {
+    max-width: 100%;
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle]) {
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--background);
+    border-radius: 9999px;
+    background: var(--primary);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--foreground) 25%, transparent);
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .editor-content :global(.tiptap .ProseMirror-selectednode [data-resize-handle]),
+  .editor-content :global(.tiptap [data-resize-state="true"] [data-resize-handle]) {
+    opacity: 1;
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle="top-left"]),
+  .editor-content :global(.tiptap [data-resize-handle="bottom-right"]) {
+    cursor: nwse-resize;
+    transform: translate(50%, 50%);
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle="top-right"]),
+  .editor-content :global(.tiptap [data-resize-handle="bottom-left"]) {
+    cursor: nesw-resize;
+    transform: translate(-50%, 50%);
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle="top-left"]),
+  .editor-content :global(.tiptap [data-resize-handle="top-right"]) {
+    transform: translate(var(--image-handle-x, 50%), -50%);
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle="top-right"]),
+  .editor-content :global(.tiptap [data-resize-handle="bottom-right"]) {
+    --image-handle-x: 50%;
+  }
+
+  .editor-content :global(.tiptap [data-resize-handle="top-left"]),
+  .editor-content :global(.tiptap [data-resize-handle="bottom-left"]) {
+    --image-handle-x: -50%;
   }
 
   .editor-content :global(.tiptap mark) {

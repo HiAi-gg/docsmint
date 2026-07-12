@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/hiai-docs",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "license": "MIT",
   "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
@@ -123,28 +123,24 @@
     "build:sdk": "cd packages/sdk && bun run build",
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "commander": "^13.1.0",
+    "zod": "^4.0.0"
+  },
   "peerDependencies": {
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
-    "commander": "^13.1.0",
-    "@modelcontextprotocol/sdk": "^1.12.1",
     "ioredis": "^5.4.0",
     "@aws-sdk/client-s3": "^3.0.0",
     "pino": "^10.0.0",
-    "svelte": "^5.56.4",
-    "zod": "^4.0.0"
+    "svelte": "^5.56.4"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {
       "optional": true
     },
     "postgres": {
-      "optional": true
-    },
-    "commander": {
-      "optional": true
-    },
-    "@modelcontextprotocol/sdk": {
       "optional": true
     },
     "ioredis": {
@@ -154,9 +150,6 @@
       "optional": true
     },
     "pino": {
-      "optional": true
-    },
-    "zod": {
       "optional": true
     }
   }

@@ -41,6 +41,7 @@ import {
   resetState,
   setupHarness,
 } from "./_harness";
+import { contentHash } from "../../src/lib/content-hash";
 
 // The harness's `sql` mock returns plain `{ [Symbol(sql)]: true }` objects
 // without an `.as()` method. The document list query does
@@ -116,6 +117,16 @@ describe("POST /api/documents/import — auth", () => {
 });
 
 describe("POST /api/documents/import — JSON single-item path", () => {
+	it("returns 400 for malformed application/json", async () => {
+		const res = await request(app, "/api/documents/import", {
+			method: "POST",
+			headers: ownerHeaders(),
+			body: '{"title":',
+		});
+		expect(res.status).toBe(400);
+		expect((res.body as { error: string }).error).toBe("Invalid JSON syntax");
+	});
+
   it("imports a single document and returns 201", async () => {
     const res = await jsonImport({
       title: "Imported Doc",
@@ -160,6 +171,17 @@ describe("POST /api/documents/import — JSON single-item path", () => {
     ).items[0]?.document?.id;
     expect(id).toBeTruthy();
     expect(getState().enqueuedEmbeddings).toContain(id);
+  });
+
+  it("persists the exact revision used by the import pipeline", async () => {
+    const title = "Revision source";
+    const content = "Pipeline content";
+    const res = await jsonImport({ title, content });
+    expect(res.status).toBe(201);
+    const stored = [...getState().documents.values()][0] as {
+      contentHash?: string;
+    };
+    expect(stored.contentHash).toBe(contentHash(title, content));
   });
 
   it("rejects an empty content body with 400", async () => {
@@ -237,6 +259,26 @@ describe("POST /api/documents/import — content-type guard", () => {
 });
 
 describe("POST /api/documents/import — multipart path", () => {
+	it("returns 400 for malformed JSON files", async () => {
+		const res = await multipartImport([
+			{ name: "broken.json", content: '{"content":' },
+		]);
+		expect(res.status).toBe(400);
+		expect((res.body as { error: string }).error).toBe(
+			"Invalid JSON syntax in uploaded file",
+		);
+	});
+
+	it("returns 422 for JSON files that do not match the import schema", async () => {
+		const res = await multipartImport([
+			{ name: "wrong-shape.json", content: '{"content":42}' },
+		]);
+		expect(res.status).toBe(422);
+		expect((res.body as { error: string }).error).toBe(
+			"Uploaded JSON does not match the document import schema",
+		);
+	});
+
   it("imports a single text file", async () => {
     const res = await multipartImport([
       { name: "notes.md", content: "# Notes\n\nHello world" },
@@ -307,6 +349,39 @@ describe("POST /api/documents/import — multipart path", () => {
     const res = await multipartImport([{ name: "binary.exe", content: "MZ" }]);
     expect(res.status).toBe(415);
     expect((res.body as any).error).toContain("Invalid file type");
+  });
+
+  it("keeps the 10 MB per-file guard after the proxy envelope is raised", async () => {
+    const res = await multipartImport([
+      {
+        name: "too-large.md",
+        content: Buffer.alloc(10 * 1024 * 1024 + 1, 0x61),
+      },
+    ]);
+    expect(res.status).toBe(413);
+    expect((res.body as any).error).toContain("Maximum size: 10MB");
+  });
+
+  it("rejects batches above the 10-file processing cap", async () => {
+    const files = Array.from({ length: 11 }, (_, index) => ({
+      name: `batch-${index}.md`,
+      content: `# Item ${index}`,
+    }));
+    const res = await multipartImport(files);
+    expect(res.status).toBe(413);
+    expect((res.body as any).error).toBe(
+      "Too many files. Maximum per import: 10",
+    );
+  });
+
+  it("accepts documents larger than PostgreSQL's raw tsvector input limit", async () => {
+    const largeMarkdown = `${"searchable paragraph\n\n".repeat(60_000)}\n`;
+    expect(Buffer.byteLength(largeMarkdown)).toBeGreaterThan(1_048_575);
+    const res = await multipartImport([
+      { name: "large-supported.md", content: largeMarkdown },
+    ]);
+    expect(res.status).toBe(201);
+    expect((res.body as any).imported).toBe(1);
   });
 
   it("accepts .txt, .md, .markdown, .json extensions", async () => {

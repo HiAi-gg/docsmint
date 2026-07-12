@@ -53,13 +53,13 @@ services:
           cpus: "0.5"
 
   # SeaweedFS — S3-compatible object storage for uploaded files (PDFs, etc.).
-  # The fixed 9020/9021 host ports avoid clashing with other services.
+  # The canonical 50702/50703 host ports keep storage in the same local range.
   seaweedfs:
     image: chrislusf/seaweedfs:3.85
     restart: unless-stopped
     ports:
-      - "9020:8333"   # S3 Gateway
-      - "9021:8888"   # SeaweedFS Web UI (Filer)
+      - "50702:8333"   # S3 Gateway
+      - "50703:8888"   # SeaweedFS Web UI (Filer)
     volumes:
       - seaweedfs_data:/data
     entrypoint: ["/bin/sh", "-ec"]
@@ -118,7 +118,7 @@ services:
       STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-hiai-docs}
       STORAGE_PUBLIC_ENDPOINT: localhost
-      STORAGE_PUBLIC_PORT: 9020
+      STORAGE_PUBLIC_PORT: 50702
       STORAGE_REGION: us-east-1
       STORAGE_FORCE_PATH_STYLE: true
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-only-secret-replace-me}
@@ -145,7 +145,8 @@ services:
       GRAPH_EXTRACT_FALLBACK_API_KEY: ${GRAPH_EXTRACT_FALLBACK_API_KEY:-}
       GRAPH_EXTRACT_FALLBACK_MODEL: ${GRAPH_EXTRACT_FALLBACK_MODEL:-google/gemma-4-31b-it}
       GRAPH_EXTRACT_MIN_CONFIDENCE: ${GRAPH_EXTRACT_MIN_CONFIDENCE:-0.5}
-      API_PORT: ${API_PORT:-50700}
+      # API_PORT controls only the published host mapping above.
+      API_PORT: 50700
       NODE_ENV: development
       BODY_SIZE_LIMIT: "10485760"
       LOG_LEVEL: ${LOG_LEVEL:-debug}
@@ -178,9 +179,12 @@ services:
       - -c
       - "cd /mnt/ai_data/projects/hiai-docs/frontend && bun run dev"
     environment:
-      API_URL: http://api:${API_PORT:-50700}
-      PORT: ${WEB_PORT:-50701}
-      WEB_PORT: ${WEB_PORT:-50701}
+      API_URL: http://api:50700
+      PORT: 50701
+      WEB_PORT: 50701
+      # SvelteKit adapter-node rejects bodies over 512 KiB by default. Match
+      # the production proxy envelope so large valid imports reach the API.
+      BODY_SIZE_LIMIT: "104857600"
       NODE_ENV: development
 
 volumes:

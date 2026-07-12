@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/cli",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "bun run src/index.ts",
+    "test": "bun test --path-ignore-patterns=\"*node_modules*\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -22,14 +22,36 @@ export interface DocsDocument {
 	id: string;
 	ownerId: string;
 	folderId: string | null;
+	categoryId: string | null;
 	title: string;
 	content: string;
 	contentJson?: unknown;
 	metadata?: unknown;
+	visibility: DocsDocumentVisibility;
 	createdAt: string;
 	updatedAt: string;
 	tags?: DocsTag[];
 	folderName?: string | null;
+}
+
+export type DocsDocumentVisibility = "private" | "shared" | "public";
+
+export interface DocsDocumentCreateInput {
+	title?: string;
+	content?: string;
+	folderId?: string;
+	categoryId?: string | null;
+	visibility?: DocsDocumentVisibility;
+}
+
+export interface DocsDocumentUpdateInput {
+	title?: string;
+	content?: string;
+	contentJson?: unknown;
+	metadata?: unknown;
+	folderId?: string | null;
+	categoryId?: string | null;
+	visibility?: DocsDocumentVisibility;
 }
 
 /**
@@ -73,11 +95,28 @@ export interface DocsFolder {
 	documents?: DocsDocumentListItem[];
 }
 
+export interface DocsFolderCreateInput {
+	name: string;
+	parentId?: string | null;
+	categoryId?: string | null;
+}
+
+export interface DocsFolderUpdateInput {
+	name?: string;
+	parentId?: string | null;
+	categoryId?: string | null;
+	order?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
 
-export type DocsCategoryApiMode = "unavailable" | "global" | "general" | "category";
+export type DocsCategoryApiMode =
+	| "unavailable"
+	| "global"
+	| "general"
+	| "category";
 
 export interface DocsCategory {
 	id: string;
@@ -311,6 +350,82 @@ export interface DocsAttachment {
 
 export interface DocsAttachmentListResponse {
 	items: DocsAttachment[];
+}
+
+export interface DocsAttachmentPresignInput {
+	filename: string;
+	contentType: string;
+	size: number;
+}
+
+export interface DocsAttachmentPresignResponse {
+	url: string;
+	key: string;
+	maxSize: number;
+	expiresIn: number;
+}
+
+export interface DocsAttachmentConfirmInput extends DocsAttachmentPresignInput {
+	key: string;
+}
+
+// ---------------------------------------------------------------------------
+// API keys
+// ---------------------------------------------------------------------------
+
+export type DocsApiKeyScope =
+	| "global"
+	| `category:${string}:${"read" | "edit" | "write"}`;
+
+export interface DocsApiKeyCreated {
+	id: string;
+	key: string;
+	prefix: string;
+}
+
+export interface DocsApiKeyListItem {
+	id: string;
+	name: string;
+	prefix: string;
+	scopes: DocsApiKeyScope[];
+	lastUsedAt: string | null;
+	expiresAt: string | null;
+	createdAt: string;
+	recoverable: boolean;
+}
+
+export interface DocsApiKeyListResponse {
+	keys: DocsApiKeyListItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Document pipeline
+// ---------------------------------------------------------------------------
+
+export type DocsPipelineStatus =
+	| "pending"
+	| "processing"
+	| "ready"
+	| "retrying"
+	| "failed"
+	| "ready_with_warnings"
+	| "skipped"
+	| "cancelled";
+
+export interface DocsDocumentPipeline {
+	documentId: string;
+	generationId: string;
+	status: DocsPipelineStatus;
+	revision: string;
+	stages: {
+		prepare: DocsPipelineStatus;
+		embed: DocsPipelineStatus;
+		graph: DocsPipelineStatus;
+		summarize: DocsPipelineStatus;
+		finalize: DocsPipelineStatus;
+	};
+	batches: { total: number; completed: number; failed: number };
+	updatedAt: string;
 }
 
 // ---------------------------------------------------------------------------

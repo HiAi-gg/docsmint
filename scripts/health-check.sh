@@ -13,7 +13,7 @@
 #   DB_HOST     default localhost
 #   REDIS_PORT  default 6384  (matches docker-compose.yml default)
 #   OLLAMA_URL  default http://localhost:11434
-#   STORAGE_PORT  default 8333
+#   STORAGE_PORT  default 50702 (host-published SeaweedFS S3 gateway)
 #
 # Example:
 #   ./scripts/health-check.sh
@@ -28,7 +28,7 @@ DB_USER="${DB_USER:-aiuser}"
 DB_NAME="${DB_NAME:-hiai_docs}"
 REDIS_PORT="${REDIS_PORT:-6384}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
-STORAGE_PORT="${STORAGE_PORT:-8333}"
+STORAGE_PORT="${STORAGE_PORT:-50702}"
 
 fail=0
 

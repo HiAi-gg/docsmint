@@ -17,7 +17,6 @@
      folder to detach them. -->
 <script lang="ts">
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog";
 import {
 	Dialog,
 	DialogDescription,
@@ -44,11 +43,11 @@ import {
 	MoreVertical,
 	Pencil,
 	Plus,
-	Share2,
 	Trash2,
 } from "lucide-svelte";
-import { onDestroy, onMount } from "svelte";
+import { onDestroy, onMount, untrack } from "svelte";
 import { flip } from "svelte/animate";
+import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import {
@@ -72,15 +71,27 @@ import {
 	listFolders,
 	updateFolder,
 } from "$lib/api/folders";
+import DeleteDialog from "$lib/components/DeleteDialog.svelte";
+import FolderDialog from "$lib/components/FolderDialog.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
 import CategoryDialog from "$lib/components/sidebar/CategoryDialog.svelte";
+import {
+	createDocumentDropCoordinator,
+	createDocumentPlacementWriter,
+	type SidebarDocumentPlacement,
+} from "$lib/components/sidebar/document-drop-coordinator";
 import FolderNode from "$lib/components/sidebar/FolderNode.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import {
+	acknowledgeDocumentPlacement,
 	bumpSubfoldersRefresh,
 	getDocumentFromRegistry,
+	getDocumentPlacementNonce,
 	getFolderFromRegistry,
 	getGlobalFolderRefreshNonce,
+	getLatestDocumentPlacement,
+	getPendingDocumentPlacement,
+	publishDocumentPlacement,
 	registerDocument,
 	registerFolder,
 } from "$lib/stores/subfolders-refresh-store.svelte.js";
@@ -129,6 +140,11 @@ type DocZone =
 	| { kind: "root" };
 
 const FLIP_MS = 200;
+// Document rows are short and frequently cross several nested drop zones.
+// A full 200 ms FLIP makes the dragged row visibly trail the pointer and can
+// make an already completed drop look as though it is still pending. Keep the
+// slower animation for folders/categories, but settle document rows quickly.
+const DOCUMENT_FLIP_MS = 80;
 const FOLDER_EXPAND_DELAY_MS = 400;
 // Tiny initial-fetch delay so the sidebar lists don't fire their
 // listDocuments calls at exactly the same instant on a cold page load
@@ -189,6 +205,7 @@ let isDraggingGlobal = $state(false);
 let isDraggingFolder = $state(false);
 let isDraggingDoc = $state(false);
 let draggedDocId = $state<string | null>(null);
+let documentDragGeneration = 0;
 // Concurrency guard for `persistFolderChanges`. `svelte-dnd-action`
 // dispatches `finalize` on BOTH source and destination zones for
 // cross-zone drops; even though `handleFolderFinalize` already skips
@@ -196,7 +213,13 @@ let draggedDocId = $state<string | null>(null);
 // future call site (or a rapid successive drop) racing a still-running
 // persist and clobbering the optimistic zone state with stale data.
 let persistingFolders = $state(false);
-let droppedOnHeader = false;
+// Category reorders are optimistic and serialized. While a drag or a PATCH
+// batch is active, server refreshes must not replace the dndzone's working
+// array with an older order.
+let categoryDragActive = $state(false);
+let categoryOrderPending = $state(false);
+let categoryOrderGeneration = 0;
+let categoryOrderQueue: Promise<void> = Promise.resolve();
 
 let rootItems = $state<DndDoc[]>([]);
 let folderDocsMap = $state<Record<string, DndDoc[]>>({});
@@ -232,9 +255,8 @@ let orderedBuckets = $state<
 >([]);
 
 let showNewFolderDialog = $state(false);
-let newFolderName = $state("");
-let newFolderError = $state<string | null>(null);
-let newFolderSubmitting = $state(false);
+let newFolderParentId = $state<string | null>(null);
+let newFolderCategoryId = $state<string | null>(null);
 
 // Rename dialog state (shared by folders and documents).
 let showRenameDialog = $state(false);
@@ -254,7 +276,6 @@ let deleteTarget = $state<{
 	id: string;
 	name: string;
 } | null>(null);
-let deleteBusy = $state(false);
 
 let showShareDialog = $state(false);
 let shareDocumentId = $state("");
@@ -453,6 +474,7 @@ $effect(() => {
 	// Touch `folders`/`categories` so the effect re-runs when they change.
 	void folders;
 	void categories;
+	if (categoryDragActive || categoryOrderPending) return;
 	orderedBuckets = buckets.map((b) => ({
 		id: b.id,
 		category: b.category,
@@ -493,7 +515,17 @@ async function loadFolders() {
 
 async function loadCategories() {
 	try {
-		categories = (await listCategories()) as CategoryWithApiAccess[];
+		const loaded = (await listCategories()) as CategoryWithApiAccess[];
+		const ids = new Set<string>();
+		for (const category of loaded) {
+			if (ids.has(category.id)) {
+				throw new Error(
+					`Categories response contains duplicate id: ${category.id}`,
+				);
+			}
+			ids.add(category.id);
+		}
+		categories = loaded;
 	} catch (e) {
 		// Don't surface category-load failures as a hard error — the
 		// folder tree must still render even if the categories endpoint
@@ -502,11 +534,23 @@ async function loadCategories() {
 	}
 }
 
+let documentsLoadGeneration = 0;
+
 async function loadDocuments() {
+	const generation = ++documentsLoadGeneration;
 	try {
 		const tag = getSelectedTag();
 		const res = await listDocuments({ limit: 100, ...(tag ? { tag } : {}) });
-		documents = res.items as DndDoc[];
+		if (generation !== documentsLoadGeneration) return;
+		documents = (res.items as DndDoc[]).map((doc) =>
+			getPendingDocumentPlacement(doc.id)
+				? {
+						...doc,
+						folderId: getPendingDocumentPlacement(doc.id)?.folderId ?? null,
+						categoryId: getPendingDocumentPlacement(doc.id)?.categoryId ?? null,
+					}
+				: doc,
+		);
 		documents.forEach((d) => {
 			debugLog(
 				"[DnD] loadDocuments registering doc:",
@@ -534,6 +578,58 @@ async function refresh() {
 	await Promise.all([loadFolders(), loadCategories(), loadDocuments()]);
 }
 
+function rollbackDocumentPlacement(
+	documentId: string,
+	placement: SidebarDocumentPlacement,
+) {
+	// Invalidate a refresh that may have captured a newer optimistic placement
+	// before this latest mutation failed. Its late response must not overwrite
+	// the rollback to the last server-confirmed placement.
+	documentsLoadGeneration++;
+	registerDocument(documentId, placement.folderId, placement.categoryId);
+	documents = documents.map((doc) =>
+		doc.id === documentId ? { ...doc, ...placement } : doc,
+	);
+	resyncZonesFromDocuments();
+}
+
+const writeDocumentPlacement = createDocumentPlacementWriter({
+	patch: (documentId, placement) => updateDocument(documentId, placement),
+	optimistic: (documentId, placement) =>
+		publishDocumentPlacement(
+			documentId,
+			placement.folderId,
+			placement.categoryId,
+		),
+	acknowledge: acknowledgeDocumentPlacement,
+	rollback: rollbackDocumentPlacement,
+	onError: (error) => {
+		console.error("FolderTree: document move failed", error);
+		setDndError(error instanceof Error ? error.message : "Move failed");
+	},
+});
+
+function persistDocumentPlacement(
+	documentId: string,
+	placement: SidebarDocumentPlacement,
+) {
+	const original = getDocumentFromRegistry(documentId);
+	if (!original) return;
+	if (
+		original.folderId === placement.folderId &&
+		original.categoryId === placement.categoryId
+	) {
+		return;
+	}
+	void writeDocumentPlacement(documentId, placement, original).catch(
+		() => undefined,
+	);
+}
+
+const documentDropCoordinator = createDocumentDropCoordinator({
+	persist: persistDocumentPlacement,
+});
+
 onMount(() => {
 	if (INITIAL_FETCH_DELAY_MS <= 0) {
 		void refresh();
@@ -546,6 +642,7 @@ onMount(() => {
 });
 
 onDestroy(() => {
+	documentDropCoordinator.cancel();
 	// Clear the pending dnd-error auto-dismiss timer so we don't write
 	// to a destroyed component's state if the user navigates away
 	// mid-delay.
@@ -568,6 +665,37 @@ $effect(() => {
 	const folderNonce = getGlobalFolderRefreshNonce();
 	if (docNonce === 0 && folderNonce === 0) return;
 	void refresh();
+});
+
+$effect(() => {
+	const placementNonce = getDocumentPlacementNonce();
+	if (placementNonce === 0) return;
+	const placement = getLatestDocumentPlacement();
+	if (!placement) return;
+
+	// Only the placement nonce and payload are dependencies of this effect.
+	// Reading `documents` while applying the optimistic update would subscribe
+	// the effect to the array it replaces below. A placement published by the
+	// editor would then make the effect retrigger itself until Svelte aborted
+	// with `effect_update_depth_exceeded`. Keep the local sidebar projection
+	// outside dependency tracking while still applying every published move.
+	untrack(() => {
+		// Invalidate an older list request before applying the optimistic move so
+		// its late response cannot put the document back in the previous bucket.
+		documentsLoadGeneration++;
+		const index = documents.findIndex((doc) => doc.id === placement.id);
+		if (index === -1) return;
+		documents = documents.map((doc, docIndex) =>
+			docIndex === index
+				? {
+						...doc,
+						folderId: placement.folderId,
+						categoryId: placement.categoryId,
+					}
+				: doc,
+		);
+		resyncZonesFromDocuments();
+	});
 });
 
 let firstTagRun = true;
@@ -635,37 +763,36 @@ function toggleUncategorized() {
 }
 
 function openNewFolderDialog() {
+	newFolderParentId = null;
+	newFolderCategoryId = null;
 	showNewFolderDialog = true;
 }
 
-function closeNewFolderDialog() {
-	showNewFolderDialog = false;
-	newFolderName = "";
-	newFolderError = null;
-	newFolderSubmitting = false;
+function openNewFolderInCategory(categoryId: string) {
+	newFolderParentId = null;
+	newFolderCategoryId = categoryId;
+	showNewFolderDialog = true;
 }
 
-async function handleCreateFolder(e: Event) {
-	e.preventDefault();
-	newFolderError = null;
+function openNewSubfolder(parentId: string) {
+	newFolderParentId = parentId;
+	newFolderCategoryId = null;
+	showNewFolderDialog = true;
+}
 
-	const trimmed = newFolderName.trim();
-	if (trimmed.length === 0) {
-		newFolderError = "Name is required";
-		return;
+async function handleCreateFolder(name: string) {
+	const parentId = newFolderParentId;
+	const createdFolder = await createFolder({
+		name,
+		parentId,
+		categoryId: newFolderCategoryId,
+	});
+	await loadFolders();
+	if (parentId) {
+		expandedFolderIds = new Set(expandedFolderIds).add(parentId);
+		bumpSubfoldersRefresh(parentId);
 	}
-
-	newFolderSubmitting = true;
-	try {
-		await createFolder({ name: trimmed, parentId: null });
-		closeNewFolderDialog();
-		await loadFolders();
-	} catch (err) {
-		console.error("FolderTree: createFolder failed", err);
-		newFolderError = err instanceof Error ? err.message : m.error_generic();
-	} finally {
-		newFolderSubmitting = false;
-	}
+	return createdFolder;
 }
 
 function setZoneItems(zone: DocZone, next: DndDoc[]) {
@@ -683,10 +810,17 @@ function setZoneItems(zone: DocZone, next: DndDoc[]) {
 function handleConsider(zone: DocZone) {
 	return (e: CustomEvent<DndEvent<DndDoc>>) => {
 		e.stopPropagation();
+		const startsNewDrag = !isDraggingDoc;
 		isDraggingGlobal = true;
 		isDraggingDoc = true;
 		if (e.detail.info?.id) {
 			draggedDocId = e.detail.info.id;
+			if (startsNewDrag) {
+				documentDropCoordinator.begin(
+					e.detail.info.id,
+					++documentDragGeneration,
+				);
+			}
 		}
 		const next = sanitizeItems(e.detail.items);
 		setZoneItems(zone, next);
@@ -708,26 +842,30 @@ function handleFinalize(zone: DocZone) {
 			e.detail.info?.trigger,
 			"isSourceZone:",
 			isSourceZone,
-			"droppedOnHeader:",
-			droppedOnHeader,
 		);
-		if (!isSourceZone) {
-			if (droppedOnHeader) {
-				debugLog(
-					"[DnD] Skipping persistZoneChanges because droppedOnHeader is true",
-				);
-				droppedOnHeader = false;
-			} else {
-				void persistZoneChanges(zone, next);
-			}
+		const finalizedDocumentId = e.detail.info?.id ?? draggedDocId;
+		if (!isSourceZone && finalizedDocumentId) {
+			documentDropCoordinator.zone(finalizedDocumentId, placementForZone(zone));
+		}
+		if (finalizedDocumentId) {
+			documentDropCoordinator.end(finalizedDocumentId, documentDragGeneration);
 		}
 		isDraggingGlobal = false;
 		isDraggingDoc = false;
-		draggedDocId = null;
+		// Native `drop` on a folder/category header can be delivered after the
+		// dndzone source `finalize`. Keep the id alive through the current event
+		// turn so the header handler cannot intermittently observe `null`.
+		if (typeof window !== "undefined") {
+			window.setTimeout(() => {
+				if (draggedDocId === finalizedDocumentId) draggedDocId = null;
+			}, 0);
+		} else {
+			draggedDocId = null;
+		}
 	};
 }
 
-async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
+function placementForZone(zone: DocZone): SidebarDocumentPlacement {
 	const targetFolderId: string | null = zone.kind === "folder" ? zone.id : null;
 	const targetCategoryId: string | null =
 		zone.kind === "category"
@@ -736,87 +874,14 @@ async function persistZoneChanges(zone: DocZone, zoneItems: DndDoc[]) {
 				? null
 				: // Resolve nested folder category ID using the registry
 					(getFolderFromRegistry(zone.id)?.categoryId ?? null);
-	debugLog(
-		"[DnD] persistZoneChanges zone:",
-		zone,
-		"targetFolderId:",
-		targetFolderId,
-		"targetCategoryId:",
-		targetCategoryId,
-	);
-	const updates: Array<{
-		id: string;
-		folderId?: string | null;
-		categoryId?: string | null;
-	}> = [];
-	for (const item of zoneItems) {
-		const original = getDocumentFromRegistry(item.id);
-		if (!original) {
-			debugLog("[DnD] Item not found in registry:", item.id);
-			continue;
-		}
-
-		const originalFolder = original.folderId;
-		const originalCategory = original.categoryId;
-		const folderChanged = originalFolder !== targetFolderId;
-		const categoryChanged = originalCategory !== targetCategoryId;
-		debugLog(
-			"[DnD] Checking item:",
-			item.id,
-			"originalFolder:",
-			originalFolder,
-			"targetFolderId:",
-			targetFolderId,
-			"originalCategory:",
-			originalCategory,
-			"targetCategoryId:",
-			targetCategoryId,
-			"folderChanged:",
-			folderChanged,
-			"categoryChanged:",
-			categoryChanged,
-		);
-		if (folderChanged || categoryChanged) {
-			updates.push({
-				id: item.id,
-				folderId: targetFolderId,
-				categoryId: targetCategoryId,
-			});
-			// Update client-side registry immediately to prevent duplicate runs
-			registerDocument(item.id, targetFolderId, targetCategoryId);
-		}
-	}
-	if (updates.length === 0) {
-		debugLog("[DnD] No updates to persist for zone:", zone);
-		return;
-	}
-	debugLog("[DnD] persistZoneChanges updates:", updates);
-	try {
-		const results = await Promise.all(
-			updates.map((u) =>
-				updateDocument(u.id, {
-					folderId: u.folderId,
-					categoryId: u.categoryId,
-				}),
-			),
-		);
-		debugLog("[DnD] updateDocument results:", results);
-		// Only re-sync from the server when the backend confirmed the move.
-		// On failure we deliberately keep the optimistic zone state so the
-		// user's drop is not silently reverted.
-		await refresh();
-	} catch (err) {
-		console.error("FolderTree: persist failed", err);
-		setDndError(
-			err instanceof Error
-				? `Move failed: ${err.message}`
-				: "Move failed: unknown error",
-		);
-	}
+	return { folderId: targetFolderId, categoryId: targetCategoryId };
 }
 
 function handleDragOver(e: DragEvent) {
-	if (draggedDocId) {
+	if (
+		draggedDocId ??
+		documentDropCoordinator.pendingId(documentDragGeneration)
+	) {
 		e.preventDefault();
 		if (e.dataTransfer) {
 			e.dataTransfer.dropEffect = "move";
@@ -824,85 +889,48 @@ function handleDragOver(e: DragEvent) {
 	}
 }
 
-async function handleDropOnCategory(e: DragEvent, categoryId: string) {
-	if (!draggedDocId) return;
-	droppedOnHeader = true;
+function handleDropOnCategory(e: DragEvent, categoryId: string) {
+	const documentId =
+		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
+	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
 
 	const targetCategoryId = categoryId === UNCATEGORIZED_KEY ? null : categoryId;
-	const original = getDocumentFromRegistry(draggedDocId);
+	const original = getDocumentFromRegistry(documentId);
 	if (!original) return;
 
 	const folderChanged = original.folderId !== null;
 	const categoryChanged = original.categoryId !== targetCategoryId;
 
 	if (folderChanged || categoryChanged) {
-		registerDocument(draggedDocId, null, targetCategoryId);
-		documents = documents.map((d) =>
-			d.id === draggedDocId
-				? { ...d, folderId: null, categoryId: targetCategoryId }
-				: d,
-		);
-		resyncZonesFromDocuments();
-
-		try {
-			debugLog(
-				"[DnD] Drop on category header:",
-				categoryId,
-				"doc:",
-				draggedDocId,
-			);
-			await updateDocument(draggedDocId, {
-				folderId: null,
-				categoryId: targetCategoryId,
-			});
-			await refresh();
-		} catch (err) {
-			console.error("Failed to move document to category header", err);
-			setDndError(err instanceof Error ? err.message : "Move failed");
-		}
+		documentDropCoordinator.header(documentId, {
+			folderId: null,
+			categoryId: targetCategoryId,
+		});
 	}
 	draggedDocId = null;
 }
 
-async function handleDropOnFolder(e: DragEvent, folderId: string) {
-	if (!draggedDocId) return;
-	droppedOnHeader = true;
+function handleDropOnFolder(e: DragEvent, folderId: string) {
+	const documentId =
+		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
+	if (!documentId) return;
 	e.preventDefault();
 	e.stopPropagation();
 
 	const targetFolder = getFolderFromRegistry(folderId);
 	const targetCategoryId = targetFolder?.categoryId ?? null;
-	const original = getDocumentFromRegistry(draggedDocId);
+	const original = getDocumentFromRegistry(documentId);
 	if (!original) return;
 
 	const folderChanged = original.folderId !== folderId;
 
 	if (folderChanged) {
-		registerDocument(draggedDocId, folderId, targetCategoryId);
-		documents = documents.map((d) =>
-			d.id === draggedDocId
-				? { ...d, folderId: folderId, categoryId: targetCategoryId }
-				: d,
-		);
-		resyncZonesFromDocuments();
-
-		try {
-			debugLog("[DnD] Drop on folder header:", folderId, "doc:", draggedDocId);
-			await updateDocument(draggedDocId, {
-				folderId: folderId,
-				categoryId: targetCategoryId,
-			});
-			await refresh();
-			bumpSubfoldersRefresh(folderId);
-			if (original.folderId) {
-				bumpSubfoldersRefresh(original.folderId);
-			}
-		} catch (err) {
-			console.error("Failed to move document to folder header", err);
-			setDndError(err instanceof Error ? err.message : "Move failed");
-		}
+		documentDropCoordinator.header(documentId, {
+			folderId,
+			categoryId: targetCategoryId,
+		});
 	}
 	draggedDocId = null;
 }
@@ -979,29 +1007,17 @@ function sanitizeFolderItems(raw: unknown): FolderItem[] {
 }
 
 // Compute the set of folder ids that would form a cycle if `targetParentId`
-// became their parent. Includes `targetParentId` itself, plus every folder
-// (transitively) whose `parentId` chain leads back to it. Used by the
+// became their parent. Includes `targetParentId` itself and every ancestor
+// reached by walking its `parentId` chain. Used by the
 // parent-zone persist path to refuse invalid drops before they round-trip
 // to the backend.
-function computeBlockedAncestors(
-	all: FolderItem[],
-	targetParentId: string | null,
-): Set<string> {
+function computeBlockedAncestors(targetParentId: string | null): Set<string> {
 	const blocked = new Set<string>();
 	if (!targetParentId) return blocked;
-	blocked.add(targetParentId);
-	// Walk the flat list until the blocked set stops growing — bounded
-	// by the number of folders the user actually owns.
-	let changed = true;
-	while (changed) {
-		changed = false;
-		for (const f of all) {
-			const pid = f.parentId ?? null;
-			if (pid && blocked.has(pid) && !blocked.has(f.id)) {
-				blocked.add(f.id);
-				changed = true;
-			}
-		}
+	let currentId: string | null = targetParentId;
+	while (currentId && !blocked.has(currentId)) {
+		blocked.add(currentId);
+		currentId = getFolderFromRegistry(currentId)?.parentId ?? null;
 	}
 	return blocked;
 }
@@ -1030,7 +1046,7 @@ async function persistFolderChanges(zoneKey: string, zoneItems: FolderItem[]) {
 	>();
 
 	const blocked: Set<string> = isParentZone
-		? computeBlockedAncestors(folders, targetParentId)
+		? computeBlockedAncestors(targetParentId)
 		: new Set();
 
 	if (isParentZone) {
@@ -1171,32 +1187,111 @@ type CategoryBucket = {
 	id: string;
 	category: CategoryWithApiAccess | null;
 	folders: FolderItem[];
+	[SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean;
 };
 
 function handleCategoryConsider(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
 	isDraggingGlobal = true;
-	orderedBuckets = sanitizeBuckets(e.detail.items);
+	categoryDragActive = true;
+	// Keep the library's shadow marker intact. Rebuilding/deduplicating these
+	// items here makes svelte-dnd-action lose its placeholder and insert a
+	// second copy of the dragged category on the next pointer event.
+	orderedBuckets = withUncategorizedBucket(
+		validCategoryDndItems(e.detail.items),
+	);
 }
 
 function handleCategoryFinalize(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
-	const next = sanitizeBuckets(e.detail.items);
+	const next = withUncategorizedBucket(
+		finalizeCategoryDndItems(e.detail.items),
+	);
 	orderedBuckets = next;
 	isDraggingGlobal = false;
-	void persistCategoryOrder(next);
+	categoryDragActive = false;
+	queueCategoryOrder(next);
 }
 
-function sanitizeBuckets(raw: unknown): CategoryBucket[] {
+function withUncategorizedBucket(items: CategoryBucket[]): CategoryBucket[] {
+	const realCategories = items.filter((item) => item.id !== UNCATEGORIZED_KEY);
+	const uncategorized =
+		orderedBuckets.find((item) => item.id === UNCATEGORIZED_KEY) ??
+		buckets.find((item) => item.id === UNCATEGORIZED_KEY);
+	return uncategorized ? [...realCategories, uncategorized] : realCategories;
+}
+
+function validCategoryDndItems(raw: unknown): CategoryBucket[] {
 	if (!Array.isArray(raw)) return [];
-	return raw
-		.filter(
-			(item): item is CategoryBucket =>
-				item !== null &&
-				typeof item === "object" &&
-				typeof (item as { id?: unknown }).id === "string",
-		)
-		.map((b) => ({ id: b.id, category: b.category, folders: b.folders }));
+	const result: CategoryBucket[] = [];
+	for (const item of raw) {
+		if (
+			item === null ||
+			typeof item !== "object" ||
+			typeof (item as { id?: unknown }).id !== "string"
+		) {
+			continue;
+		}
+		const bucket = item as CategoryBucket;
+		result.push(bucket);
+	}
+	return result;
+}
+
+function finalizeCategoryDndItems(raw: unknown): CategoryBucket[] {
+	const items = validCategoryDndItems(raw);
+	const shadowIds = new Set(
+		items
+			.filter((item) => item[SHADOW_ITEM_MARKER_PROPERTY_NAME])
+			.map((item) => item.id),
+	);
+	const seen = new Set<string>();
+	const canonical = new Map(
+		[...orderedBuckets, ...buckets].map((item) => [item.id, item] as const),
+	);
+	const result: CategoryBucket[] = [];
+	for (const item of items) {
+		// If an old browser/library event contains both the source item and its
+		// shadow with the same id, the shadow position is the requested drop.
+		if (shadowIds.has(item.id) && !item[SHADOW_ITEM_MARKER_PROPERTY_NAME])
+			continue;
+		if (seen.has(item.id)) continue;
+		seen.add(item.id);
+		const stable = canonical.get(item.id) ?? item;
+		result.push({
+			id: stable.id,
+			category: stable.category,
+			folders: stable.folders,
+		});
+	}
+	return result;
+}
+
+function queueCategoryOrder(next: CategoryBucket[]) {
+	const generation = ++categoryOrderGeneration;
+	categoryOrderPending = true;
+	const snapshot = next.map((bucket) => ({ ...bucket }));
+	categoryOrderQueue = categoryOrderQueue
+		.catch(() => undefined)
+		.then(async () => {
+			try {
+				await persistCategoryOrder(snapshot);
+			} catch (err) {
+				console.error("FolderTree: category DnD persist failed", err);
+				setDndError(
+					err instanceof Error
+						? `Reorder failed: ${err.message}`
+						: "Reorder failed: unknown error",
+				);
+			} finally {
+				// A newer drag is already queued: do not let this older request's
+				// refresh overwrite its optimistic order.
+				if (generation === categoryOrderGeneration) {
+					await refresh();
+					categoryOrderPending = false;
+				}
+			}
+		});
 }
 
 async function persistCategoryOrder(next: CategoryBucket[]) {
@@ -1207,18 +1302,8 @@ async function persistCategoryOrder(next: CategoryBucket[]) {
 		updates.push({ id: bucket.category.id, order: index });
 	});
 	if (updates.length === 0) return;
-	try {
-		await Promise.all(
-			updates.map((u) => updateCategory(u.id, { order: u.order })),
-		);
-	} catch (err) {
-		console.error("FolderTree: category DnD persist failed", err);
-	} finally {
-		await refresh();
-		// Keep the per-category folder buckets in sync with the freshly
-		// reordered category list (same reasoning as in
-		// `persistFolderChanges`).
-		resyncBucketFolders();
+	for (const update of updates) {
+		await updateCategory(update.id, { order: update.order });
 	}
 }
 
@@ -1290,30 +1375,21 @@ function openShareDialogForFolder(id: string, name: string) {
 function cancelDelete() {
 	showDeleteDialog = false;
 	deleteTarget = null;
-	deleteBusy = false;
 }
 
 async function confirmDelete() {
 	const target = deleteTarget;
-	if (!target || deleteBusy) return;
-	deleteBusy = true;
-	try {
-		if (target.kind === "folder") {
-			// Deleting a folder moves its documents back to the root: the
-			// documents.folder_id foreign key is ON DELETE SET NULL, so the
-			// documents survive and reappear at the top level.
-			await deleteFolder(target.id);
-		} else {
-			await deleteDocument(target.id);
-		}
-		cancelDelete();
-		await refresh();
-		refreshDocs();
-	} catch (err) {
-		console.error("FolderTree: delete failed", err);
-		loadError = err instanceof Error ? err.message : m.error_generic();
-		deleteBusy = false;
+	if (!target) return;
+	if (target.kind === "folder") {
+		// Deleting a folder moves its documents back to the root: the
+		// documents.folder_id foreign key is ON DELETE SET NULL, so the
+		// documents survive and reappear at the top level.
+		await deleteFolder(target.id);
+	} else {
+		await deleteDocument(target.id);
 	}
+	await refresh();
+	refreshDocs();
 }
 
 // --- Category CRUD handlers ---
@@ -1358,8 +1434,9 @@ async function handleCategorySave(payload: {
 			apiPermissionEdit: payload.apiPermissionEdit,
 			apiPermissionWrite: payload.apiPermissionWrite,
 		};
+		let savedCategory: { id: string; name: string };
 		if (categoryDialogMode === "edit" && selectedCategory) {
-			await apiFetch(
+			savedCategory = await apiFetch<{ id: string; name: string }>(
 				`/api/categories/${encodeURIComponent(selectedCategory.id)}`,
 				{
 					method: "PATCH",
@@ -1367,12 +1444,16 @@ async function handleCategorySave(payload: {
 				},
 			);
 		} else {
-			await apiFetch("/api/categories", {
-				method: "POST",
-				body,
-			});
+			savedCategory = await apiFetch<{ id: string; name: string }>(
+				"/api/categories",
+				{
+					method: "POST",
+					body,
+				},
+			);
 		}
 		await refresh();
+		return savedCategory;
 	} finally {
 		categoryBusy = false;
 	}
@@ -1406,10 +1487,8 @@ const categoryBuckets = $derived(
 	orderedBuckets.filter(
 		(
 			b,
-		): b is {
-			id: string;
+		): b is CategoryBucket & {
 			category: CategoryWithApiAccess;
-			folders: FolderItem[];
 		} => b.id !== UNCATEGORIZED_KEY && b.category !== null,
 	),
 );
@@ -1469,7 +1548,6 @@ const buckets = $derived.by(() => {
         {m.folders_rename()}
       </DropdownMenuItem>
       <DropdownMenuItem onSelect={() => openShareDialogForDocument(doc.id, doc.title)}>
-        <Share2 class="size-3.5" />
         {m.doc_share()}
       </DropdownMenuItem>
       <DropdownMenuItem
@@ -1523,6 +1601,7 @@ const buckets = $derived.by(() => {
     onToggleFolder={toggleFolder}
     onRename={(id, name) => startRename("folder", id, name)}
     onDelete={(id, name) => startDelete("folder", id, name)}
+    onCreateSubfolder={openNewSubfolder}
     onShare={openShareDialogForFolder}
     {dragDisabled}
     {isDraggingGlobal}
@@ -1537,7 +1616,8 @@ const buckets = $derived.by(() => {
     onFinalizeSubfolders={handleNestedFolderFinalize}
     onDropOnFolder={handleDropOnFolder}
     folderDocsMap={folderDocsMap}
-    flipDurationMs={FLIP_MS}
+    folderFlipDurationMs={FLIP_MS}
+    documentFlipDurationMs={DOCUMENT_FLIP_MS}
     {docRowInner}
     {copyButton}
     {docMenu}
@@ -1583,9 +1663,13 @@ const buckets = $derived.by(() => {
     onconsider={handleCategoryConsider}
     onfinalize={handleCategoryFinalize}
   >
-    {#each categoryBuckets as bucket (bucket.id)}
+    {#each categoryBuckets as bucket (`${bucket.id}:${bucket[SHADOW_ITEM_MARKER_PROPERTY_NAME] ? "shadow" : "item"}`)}
       {@const isBucketExpanded = expandedCategoryIds.has(bucket.id)}
-      <div animate:flip={{ duration: FLIP_MS }} class="group/bucket">
+      <div
+        animate:flip={{ duration: FLIP_MS }}
+        class="group/bucket"
+        data-is-dnd-shadow-item-hint={bucket[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
+      >
         <div class="flex w-full min-w-0 items-center gap-0.5">
           <button
             type="button"
@@ -1639,6 +1723,9 @@ const buckets = $derived.by(() => {
               <DropdownMenuItem onSelect={() => goto(`/docs/new?category=${bucket.category.id}`)}>
                 {m.dashboard_new_document()}
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => openNewFolderInCategory(bucket.category.id)}>
+                {m.folders_new()}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => openEditCategoryDialog(bucket.category)}>
                 {m.action_edit()}
               </DropdownMenuItem>
@@ -1686,16 +1773,18 @@ const buckets = $derived.by(() => {
               )}
               use:dndzone={{
                 items: rootDocs,
-                flipDurationMs: FLIP_MS,
+                flipDurationMs: DOCUMENT_FLIP_MS,
                 type: "doc",
                 dropTargetStyle: {},
                 dragDisabled,
+                useCursorForDetection: true,
+                centreDraggedOnCursor: true,
               }}
               onconsider={handleConsider({ kind: "category", id: bucket.id })}
               onfinalize={handleFinalize({ kind: "category", id: bucket.id })}
             >
               {#each rootDocs as doc (doc.id)}
-                <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
+                <div animate:flip={{ duration: DOCUMENT_FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
                   {@render docRowInner(doc)}
                   {@render copyButton(doc)}
                   {@render docMenu(doc)}
@@ -1777,12 +1866,20 @@ const buckets = $derived.by(() => {
               "min-h-[8px] space-y-0.5 transition-all duration-150",
               isDraggingDoc && rootItems.length === 0 && "min-h-[36px] bg-accent/20 rounded border border-dashed border-muted-foreground/20"
             )}
-            use:dndzone={{ items: rootItems, flipDurationMs: FLIP_MS, type: "doc", dropTargetStyle: {}, dragDisabled }}
+            use:dndzone={{
+              items: rootItems,
+              flipDurationMs: DOCUMENT_FLIP_MS,
+              type: "doc",
+              dropTargetStyle: {},
+              dragDisabled,
+              useCursorForDetection: true,
+              centreDraggedOnCursor: true,
+            }}
             onconsider={handleConsider({ kind: "root" })}
             onfinalize={handleFinalize({ kind: "root" })}
           >
             {#each rootItems as doc (doc.id)}
-              <div animate:flip={{ duration: FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
+              <div animate:flip={{ duration: DOCUMENT_FLIP_MS }} class="group/doc flex w-full min-w-0 items-center gap-1">
                 {@render docRowInner(doc)}
                 {@render copyButton(doc)}
                 {@render docMenu(doc)}
@@ -1804,52 +1901,12 @@ const buckets = $derived.by(() => {
   </button>
 </div>
 
-<Dialog bind:open={showNewFolderDialog} onOpenChange={(next) => { if (!next) closeNewFolderDialog(); }}>
-  <DialogHeader>
-    <DialogTitle>{m.folders_new()}</DialogTitle>
-    <DialogDescription>{m.folders_name_placeholder()}</DialogDescription>
-  </DialogHeader>
-
-  <form onsubmit={handleCreateFolder} class="space-y-4">
-    <div class="space-y-2">
-      <Label for="new-folder-name">{m.folders_name_placeholder()}</Label>
-      <Input
-        id="new-folder-name"
-        name="name"
-        type="text"
-        bind:value={newFolderName}
-        placeholder={m.folders_name_placeholder()}
-        maxlength={50}
-        required
-        disabled={newFolderSubmitting}
-        aria-invalid={newFolderError ? "true" : undefined}
-        aria-describedby={newFolderError ? "new-folder-name-error" : undefined}
-        autocomplete="off"
-      />
-      {#if newFolderError}
-        <p id="new-folder-name-error" class="text-xs text-destructive" role="alert">{newFolderError}</p>
-      {/if}
-    </div>
-  </form>
-
-  <DialogFooter>
-    <Button
-      variant="outline"
-      type="button"
-      onclick={closeNewFolderDialog}
-      disabled={newFolderSubmitting}
-    >
-      {m.action_cancel()}
-    </Button>
-    <Button
-      type="submit"
-      onclick={handleCreateFolder}
-      disabled={newFolderSubmitting || newFolderName.trim().length === 0}
-    >
-      {newFolderSubmitting ? m.action_loading() : m.action_create()}
-    </Button>
-  </DialogFooter>
-</Dialog>
+<FolderDialog
+  bind:open={showNewFolderDialog}
+  mode="create"
+  onSave={handleCreateFolder}
+  closeOnSave={false}
+/>
 
 <!-- Rename dialog (folders and documents) -->
 <Dialog bind:open={showRenameDialog} onOpenChange={(next) => { if (!next) closeRenameDialog(); }}>
@@ -1898,18 +1955,21 @@ const buckets = $derived.by(() => {
 </Dialog>
 
 <!-- Delete confirmation (folders and documents) -->
-<ConfirmDialog
-  bind:open={showDeleteDialog}
-  title={deleteTarget?.kind === "folder" ? m.folders_delete_title() : m.doc_delete()}
-  description={deleteTarget?.kind === "folder"
-    ? "Delete this folder? Its documents will be moved to the root and will not be deleted."
-    : m.doc_delete_confirm()}
-  confirmLabel={m.action_delete()}
-  cancelLabel={m.action_cancel()}
-  variant="destructive"
-  busy={deleteBusy}
-  onConfirm={confirmDelete}
-  onCancel={cancelDelete}
+<DeleteDialog
+	bind:open={showDeleteDialog}
+	targetName={deleteTarget?.name ?? ""}
+	title={deleteTarget?.kind === "folder" ? m.folders_delete_title() : m.doc_delete()}
+	description={deleteTarget?.kind === "folder"
+		? "Its documents will be moved to the root and will not be deleted."
+		: m.doc_delete_confirm()}
+	successTitle={deleteTarget?.kind === "folder" ? m.folders_delete_success() : m.doc_delete_success()}
+	successDescription={deleteTarget?.kind === "folder"
+		? m.folders_delete_success_description()
+		: m.doc_delete_success_description()}
+	confirmLabel={m.action_delete()}
+	cancelLabel={m.action_cancel()}
+	onConfirm={confirmDelete}
+	onCancel={cancelDelete}
 />
 
 <!-- Category CRUD dialog -->

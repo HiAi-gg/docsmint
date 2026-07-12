@@ -300,6 +300,13 @@ export const editorExtensions = [
 		inline: false,
 		allowBase64: false,
 		HTMLAttributes: { class: "doc-image" },
+		resize: {
+			enabled: true,
+			directions: ["top-left", "top-right", "bottom-left", "bottom-right"],
+			minWidth: 96,
+			minHeight: 54,
+			alwaysPreserveAspectRatio: true,
+		},
 	}),
 	Highlight.configure({ multicolor: true }),
 	CodeBlockLowlight.configure({ lowlight }),

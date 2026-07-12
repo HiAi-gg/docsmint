@@ -25,13 +25,63 @@ import { tagRoutes } from "./api/routes/tags";
 import { versionRoutes } from "./api/routes/versions";
 import { visibilityRoutes } from "./api/routes/visibility";
 import { webhookRoutes } from "./api/routes/webhooks";
+import { ensureApiKeyOwner } from "./lib/api-key-owner";
 import { config } from "./lib/config";
-import { startEmbeddingWorker } from "./lib/embedding-queue";
+import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { logger } from "./lib/logger";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
+import { createPipelineStageDependencies } from "./queue/adapters";
+import { configureOwnerStageLimits } from "./queue/fair-scheduler";
+import { configureDefaultJobOptions } from "./queue/names";
+import {
+	createBullMqRecoveryWriter,
+	postgresRecoveryStore,
+	recoverStalledPipeline,
+} from "./queue/recovery";
+import { startRegisteredPipelineWorkers } from "./queue/start";
 
-// Start background embedding worker
-startEmbeddingWorker();
+// The API-key principal owns records created by agentic/CLI clients. Provision
+// it before accepting writes so a clean quickstart cannot fail owner FKs.
+await ensureApiKeyOwner();
+
+configureDefaultJobOptions({
+	attempts: config.QUEUE_JOB_ATTEMPTS,
+	retryBaseDelayMs: config.QUEUE_RETRY_BASE_DELAY_MS,
+	completedRetentionCount: config.QUEUE_COMPLETED_RETENTION_COUNT,
+	failedRetentionCount: config.QUEUE_FAILED_RETENTION_COUNT,
+});
+configureOwnerStageLimits({
+	prepare: config.QUEUE_MAX_ACTIVE_PREPARE_PER_OWNER,
+	embed: config.QUEUE_MAX_ACTIVE_EMBED_PER_OWNER,
+	graph: config.QUEUE_MAX_ACTIVE_GRAPH_PER_OWNER,
+});
+
+const pipelineRuntime = await startRegisteredPipelineWorkers({
+	redisUrl: config.REDIS_URL,
+	dependencies: createPipelineStageDependencies(config.REDIS_URL),
+	settings: {
+		prepareConcurrency: config.QUEUE_PREPARE_CONCURRENCY,
+		embedConcurrency: config.QUEUE_EMBED_CONCURRENCY,
+		graphConcurrency: config.QUEUE_GRAPH_CONCURRENCY,
+		summarizeConcurrency: config.QUEUE_SUMMARY_CONCURRENCY,
+		finalizeConcurrency: config.QUEUE_FINALIZE_CONCURRENCY,
+		embedBatchSize: config.QUEUE_EMBED_BATCH_SIZE,
+		maxActiveBatchesPerDocument: config.QUEUE_MAX_ACTIVE_BATCHES_PER_DOCUMENT,
+	},
+	shutdownGraceMs: config.QUEUE_SHUTDOWN_GRACE_MS,
+	recover: async () => {
+		const legacy = await drainLegacyEmbeddingQueue();
+		const recovery = await recoverStalledPipeline(
+			postgresRecoveryStore,
+			createBullMqRecoveryWriter(config.REDIS_URL),
+			{
+				staleAfterMs: config.QUEUE_RECOVERY_STALE_AFTER_MS,
+				maxAttempts: config.QUEUE_JOB_ATTEMPTS,
+			},
+		);
+		logger.info({ legacy, recovery }, "Pipeline recovery completed");
+	},
+});
 
 ensureBucket(storage, BUCKET).catch((err) => {
 	logger.error({ err }, "Failed to ensure storage bucket");
@@ -48,8 +98,8 @@ const CSP_POLICY = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: blob: http://localhost:9020 http://localhost:9000 http://seaweedfs:8333",
-	"connect-src 'self' http://localhost:50700 ws://localhost:50700 http://localhost:9000 http://localhost:9020",
+	"img-src 'self' data: blob: http://localhost:50702 http://seaweedfs:8333",
+	"connect-src 'self' http://localhost:50700 ws://localhost:50700 http://localhost:50702",
 	"font-src 'self' data:",
 	"frame-ancestors 'none'",
 	"form-action 'self'",
@@ -84,7 +134,7 @@ const swaggerConfig = {
 	documentation: {
 		info: {
 			title: "hiai-docs API",
-			version: "0.2.7",
+			version: "0.2.8",
 			description:
 				"Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
 			contact: { name: "hiai-gg", url: "https://github.com/hiai-gg/hiai-docs" },
@@ -199,6 +249,7 @@ logger.info({ port: config.API_PORT }, "hiai-docs API started");
 // Graceful shutdown
 const shutdown = async () => {
 	logger.info("Shutting down...");
+	await pipelineRuntime.close();
 	await app.stop();
 	process.exit(0);
 };

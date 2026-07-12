@@ -1,10 +1,15 @@
-import { documents } from "@hiai-docs/db/schema";
+import { documents, folders } from "@hiai-docs/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { recordAuditEvent } from "../../lib/audit";
+import {
+	canAccessContent,
+	effectiveDocumentCategory,
+	isAuthorizedCategory,
+	resolveContentAccess,
+} from "../../lib/content-access";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
 
 export const visibilityRoutes = new Elysia({ prefix: "/api" })
 	// POST /api/documents/:id/publish — set visibility to 'public'
@@ -21,18 +26,29 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 
 		try {
 			const result = await withTenant(ctx, async (tx) => {
 				const [doc] = await tx
-					.select({ id: documents.id, ownerId: documents.ownerId })
+					.select({
+						id: documents.id,
+						ownerId: documents.ownerId,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(eq(documents.id, params.id))
 					.limit(1);
 
@@ -40,6 +56,9 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					return { notFound: true as const };
 				}
 				if (doc.ownerId !== userId) {
+					return { forbidden: true as const };
+				}
+				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
 					return { forbidden: true as const };
 				}
 
@@ -99,18 +118,29 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 		}
 		set.headers = rateLimitHeaders(rl.remaining);
 
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
 
 		try {
 			const result = await withTenant(ctx, async (tx) => {
 				const [doc] = await tx
-					.select({ id: documents.id, ownerId: documents.ownerId })
+					.select({
+						id: documents.id,
+						ownerId: documents.ownerId,
+						categoryId: documents.categoryId,
+						folderCategoryId: folders.categoryId,
+					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
 					.where(eq(documents.id, params.id))
 					.limit(1);
 
@@ -118,6 +148,9 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					return { notFound: true as const };
 				}
 				if (doc.ownerId !== userId) {
+					return { forbidden: true as const };
+				}
+				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
 					return { forbidden: true as const };
 				}
 

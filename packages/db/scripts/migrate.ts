@@ -46,8 +46,14 @@ export async function resolveMigrationOwnerUrl(
 	options: Pick<MigrationOptions, "ownerUrl" | "env"> = {},
 ): Promise<string> {
 	const env = options.env ?? process.env;
-	const fileEnv = await loadProjectEnv();
-	const url = options.ownerUrl?.trim() || env.MIGRATION_DATABASE_URL?.trim() || fileEnv.MIGRATION_DATABASE_URL?.trim();
+	// An injected environment is a complete configuration boundary. This is
+	// important for tests and embedded runners: a developer's project `.env`
+	// must never silently override the environment supplied by the caller.
+	const fileEnv = options.env === undefined ? await loadProjectEnv() : {};
+	const url =
+		options.ownerUrl?.trim() ||
+		env.MIGRATION_DATABASE_URL?.trim() ||
+		fileEnv.MIGRATION_DATABASE_URL?.trim();
 	if (!url) {
 		throw new Error(
 			"MIGRATION_DATABASE_URL is required for database migrations; DATABASE_URL is runtime-only",

@@ -2,7 +2,8 @@
  * Admin maintenance endpoints.
  *
  * All endpoints live under `/api/admin` and are gated by a static API key
- * (`config.HIAI_DOCS_API_KEY`) supplied via the `x-api-key` header. These
+ * (`config.HIAI_DOCS_API_KEY`) supplied via `x-api-key` or an
+ * `Authorization: Bearer <key>` header. These
  * routes are intentionally NOT scoped per-user — they are operator tooling
  * used by ops scripts and external services (e.g. the embedding monitor
  * from T3.2). They share `searchRateLimiter`, which already bypasses its
@@ -18,8 +19,8 @@ import {
 import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { getEmbedding } from "../../embedding";
+import { embeddingProfileId } from "../../embedding/validation";
 import { config } from "../../lib/config";
-import { enqueueEmbedding } from "../../lib/embedding-queue";
 import { getGraphDb } from "../../lib/graph/init";
 import { logger } from "../../lib/logger";
 import {
@@ -31,28 +32,7 @@ import {
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
 import { adminTenantContext } from "../middleware/tenant";
-
-/**
- * Verify the caller presented the configured admin API key. Returns
- * `true` when either (a) no key is configured (dev convenience) or
- * (b) the supplied key matches `config.HIAI_DOCS_API_KEY`.
- *
- * Intentionally permissive in development: if an operator hasn't set the
- * key, we still let requests through so local tooling can hit the
- * endpoints without ceremony. In production the key MUST be set — the
- * `config` module already enforces BETTER_AUTH_SECRET in production;
- * `HIAI_DOCS_API_KEY` is the same class of secret and the operator is
- * expected to set it.
- */
-function verifyAdminKey(request: Request): boolean {
-	const expected = config.HIAI_DOCS_API_KEY;
-	if (!expected) {
-		// No key configured — permissive mode (dev only).
-		return true;
-	}
-	const supplied = request.headers.get("x-api-key");
-	return supplied === expected;
-}
+import { verifyAdminKey } from "./admin-auth";
 
 /**
  * Extract a stable client IP for rate limiting. Mirrors the helper
@@ -118,7 +98,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 					.where(eq(documentEmbeddings.documentId, params.docId));
 			});
 
-			enqueueEmbedding(params.docId);
+			void enqueueReembed([params.docId]);
 
 			return {
 				success: true,
@@ -162,28 +142,94 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			// busy DB doesn't serialize them. Each one is a single scan
 			// over `document_embeddings` (the smallest relevant table)
 			// plus one over `documents` for the "with embeddings" count.
-			const [docsWithEmbeddingsRow, totalChunksRow, emptyChunksRow] =
-				await withTenant(adminTenantContext(), async (tx) => {
-					return Promise.all([
-						tx
-							.select({
-								value: sql<number>`COUNT(DISTINCT ${documentEmbeddings.documentId})::int`,
-							})
-							.from(documentEmbeddings),
-						tx.select({ value: count() }).from(documentEmbeddings),
-						tx
-							.select({
-								value: sql<number>`SUM(CASE WHEN ${documentEmbeddings.embedding} IS NULL THEN 1 ELSE 0 END)::int`,
-							})
-							.from(documentEmbeddings),
-					]);
-				});
+			const currentProfile = config.EMBEDDING_MODEL
+				? embeddingProfileId(config.EMBEDDING_MODEL, 1024, "v1")
+				: null;
+			const [
+				docsWithEmbeddingsRow,
+				totalChunksRow,
+				emptyChunksRow,
+				statusRows,
+				activeInvalidRows,
+				inactiveGenerationRows,
+				profileMismatchRows,
+				pendingAgeRow,
+			] = await withTenant(adminTenantContext(), async (tx) => {
+				return Promise.all([
+					tx
+						.select({
+							value: sql<number>`COUNT(DISTINCT ${documentEmbeddings.documentId})::int`,
+						})
+						.from(documentEmbeddings),
+					tx.select({ value: count() }).from(documentEmbeddings),
+					tx
+						.select({
+							value: sql<number>`SUM(CASE WHEN ${documentEmbeddings.embedding} IS NULL THEN 1 ELSE 0 END)::int`,
+						})
+						.from(documentEmbeddings),
+					tx
+						.select({
+							status: documents.embeddingStatus,
+							value: sql<number>`COUNT(*)::int`,
+						})
+						.from(documents)
+						.groupBy(documents.embeddingStatus),
+					tx
+						.select({ value: sql<number>`COUNT(*)::int` })
+						.from(documentEmbeddings)
+						.innerJoin(
+							documents,
+							eq(documents.id, documentEmbeddings.documentId),
+						)
+						.where(
+							sql`${documentEmbeddings.generationId} = ${documents.activeEmbeddingGeneration} AND ${documentEmbeddings.isValid} = false`,
+						),
+					tx
+						.select({ value: sql<number>`COUNT(*)::int` })
+						.from(documentEmbeddings)
+						.innerJoin(
+							documents,
+							eq(documents.id, documentEmbeddings.documentId),
+						)
+						.where(
+							sql`${documentEmbeddings.generationId} <> ${documents.activeEmbeddingGeneration}`,
+						),
+					tx
+						.select({ value: sql<number>`COUNT(*)::int` })
+						.from(documents)
+						.where(
+							currentProfile
+								? sql`${documents.activeEmbeddingGeneration} IS NOT NULL AND ${documents.embeddingProfile} <> ${currentProfile}`
+								: sql`false`,
+						),
+					tx
+						.select({
+							value: sql<number>`COALESCE(MIN(EXTRACT(EPOCH FROM (NOW() - COALESCE(${documents.embeddingUpdatedAt}, ${documents.updatedAt})))), 0)::int`,
+						})
+						.from(documents)
+						.where(eq(documents.embeddingStatus, "pending")),
+				]);
+			});
+			const statusCounts = Object.fromEntries(
+				statusRows.map((row) => [row.status, row.value]),
+			) as Record<string, number>;
 
 			return {
 				stats: {
 					docsWithEmbeddings: docsWithEmbeddingsRow[0]?.value ?? 0,
 					totalChunks: totalChunksRow[0]?.value ?? 0,
 					emptyChunks: emptyChunksRow[0]?.value ?? 0,
+					statusCounts: {
+						pending: statusCounts.pending ?? 0,
+						processing: statusCounts.processing ?? 0,
+						ready: statusCounts.ready ?? 0,
+						failed: statusCounts.failed ?? 0,
+						stale: statusCounts.stale ?? 0,
+					},
+					activeInvalidRows: activeInvalidRows[0]?.value ?? 0,
+					inactiveGenerations: inactiveGenerationRows[0]?.value ?? 0,
+					profileMismatches: profileMismatchRows[0]?.value ?? 0,
+					pendingAgeSeconds: pendingAgeRow[0]?.value ?? 0,
 				},
 			};
 		} catch (err) {
@@ -240,11 +286,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 
 		const startedAt = Date.now();
 		try {
-			const vector = await getEmbedding(probe);
+			const embedding = await getEmbedding(probe);
 			const latencyMs = Date.now() - startedAt;
-			const allZero = vector.every((v) => v === 0);
 
-			if (allZero) {
+			if (!embedding.ok) {
 				return {
 					status: "degraded",
 					provider: {
@@ -252,8 +297,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 						model: config.EMBEDDING_MODEL,
 					},
 					latencyMs,
-					details:
-						"Provider returned a zero vector — check API key, model name, and base URL",
+					details: `Provider embedding failed: ${embedding.code}`,
 				};
 			}
 
@@ -264,7 +308,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 					model: config.EMBEDDING_MODEL,
 				},
 				latencyMs,
-				dimensions: vector.length,
+				dimensions: embedding.dimensions,
 			};
 		} catch (err) {
 			const latencyMs = Date.now() - startedAt;

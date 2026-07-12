@@ -16,6 +16,19 @@ const {
 let textarea = $state<HTMLTextAreaElement | null>(null);
 let copied = $state(false);
 
+function resizeTextarea() {
+	if (!textarea) return;
+	textarea.style.height = "auto";
+	textarea.style.height = `${Math.max(textarea.scrollHeight, 500)}px`;
+}
+
+$effect(() => {
+	// Re-measure after the bound value and DOM have settled, including when a
+	// long document is opened directly in raw Markdown mode.
+	content;
+	if (typeof window !== "undefined") queueMicrotask(resizeTextarea);
+});
+
 // Persist + parse the new markdown into a ProseMirror doc so the
 // `contentJson` field stays in sync. Without this the wysiwyg editor
 // would show stale content the next time the user switches modes.
@@ -29,6 +42,7 @@ function emitUpdate(markdown: string) {
 
 function handleInput(e: Event) {
 	const target = e.target as HTMLTextAreaElement;
+	resizeTextarea();
 	emitUpdate(target.value);
 }
 
@@ -79,7 +93,7 @@ function copyToClipboard() {
 		display: flex;
 		flex-direction: column;
 		width: 100%;
-		height: 100%;
+		min-height: 100%;
 	}
 
 	.copy-btn {
@@ -117,12 +131,14 @@ function copyToClipboard() {
 	.markdown-textarea {
 		flex: 1;
 		width: 100%;
-		height: 100%;
+		height: auto;
 		min-height: 500px;
+		max-height: calc(100vh - 220px);
 		padding: 56px 24px 24px 24px;
 		border: none;
 		outline: none;
-		resize: none;
+		resize: vertical;
+		overflow-y: auto;
 		font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
 		font-size: 14px;
 		line-height: 1.7;
