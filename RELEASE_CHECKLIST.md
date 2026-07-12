@@ -10,7 +10,7 @@ left to the operator on the running local build.
 
 | Check | Evidence |
 |-------|----------|
-| Backend tests | **656 passed / 0 failed** (1 intentional skip; 657 tests across 75 files) |
+| Backend tests | **659 passed / 0 failed** (1 intentional skip; 660 tests across 75 files) |
 | Frontend tests | **68 passed / 0 failed** |
 | Lint, typecheck, build, SDK build | Passed |
 | Compose config | Passed with the documented quickstart profile |
@@ -51,7 +51,7 @@ GitHub Actions and the operator confirms the browser flow.
 - [ ] **Verify PostgreSQL bootstrap** — `postgres/init.sql` contains infrastructure setup only; application schema and graph/labels/indexes are created by Drizzle migrations
 - [ ] **Build SDK** — `cd packages/sdk && bun run build` (ensures `dist/` is current before publishing)
 - [ ] **Run full typecheck** — `bun run typecheck` (0 errors)
-- [ ] **Run full test suite** — `bun run test` (backend 656/0 with 1 intentional skip and frontend 68/0 in the current candidate)
+- [ ] **Run full test suite** — `bun run test` (backend 659/0 with 1 intentional skip and frontend 68/0 in the current candidate)
 - [ ] **Run lint** — `bun run lint` (0 errors)
 - [ ] **Run clean npm consumer smoke** — pack `package.public.json`, install in an empty npm project, import the SDK, run `hiai-docs --help`, and start `hiai-docs-mcp` without missing runtime dependencies
 - [ ] **Run secret scans** — no real OpenRouter token values or real `OPENROUTER_API_KEY` outside ignored local `.env`; no unfinished markers in release files
