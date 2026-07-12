@@ -1,6 +1,8 @@
 -- Rollback-only PostgreSQL smoke for migration 0033.
 -- Run after the complete migration journal against both a fresh database and
 -- an upgraded database. Any failed assertion aborts with a non-zero status.
+\set ON_ERROR_STOP on
+
 BEGIN;
 
 DO $$
@@ -69,17 +71,47 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND tablename = 'documents'
-      AND indexname = 'idx_documents_search_vector'
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class idx ON idx.oid = i.indexrelid
+    JOIN pg_class tbl ON tbl.oid = i.indrelid
+    JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+    JOIN pg_am am ON am.oid = idx.relam
+    JOIN pg_attribute attr
+      ON attr.attrelid = tbl.oid
+      AND attr.attname = 'search_vector'
+      AND attr.attnum = ANY(i.indkey)
+    WHERE ns.nspname = 'public'
+      AND tbl.relname = 'documents'
+      AND idx.relname = 'idx_documents_search_vector'
+      AND i.indisvalid
+      AND i.indisready
+      AND i.indnatts = 1
+      AND i.indexprs IS NULL
+      AND i.indpred IS NULL
+      AND am.amname = 'gin'
   ) OR NOT EXISTS (
-    SELECT 1 FROM pg_indexes
-    WHERE schemaname = 'public'
-      AND tablename = 'documents'
-      AND indexname = 'idx_documents_search_vector_simple'
+    SELECT 1
+    FROM pg_index i
+    JOIN pg_class idx ON idx.oid = i.indexrelid
+    JOIN pg_class tbl ON tbl.oid = i.indrelid
+    JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+    JOIN pg_am am ON am.oid = idx.relam
+    JOIN pg_attribute attr
+      ON attr.attrelid = tbl.oid
+      AND attr.attname = 'search_vector_simple'
+      AND attr.attnum = ANY(i.indkey)
+    WHERE ns.nspname = 'public'
+      AND tbl.relname = 'documents'
+      AND idx.relname = 'idx_documents_search_vector_simple'
+      AND i.indisvalid
+      AND i.indisready
+      AND i.indnatts = 1
+      AND i.indexprs IS NULL
+      AND i.indpred IS NULL
+      AND am.amname = 'gin'
   ) THEN
-    RAISE EXCEPTION 'generated search-vector GIN indexes are missing';
+    RAISE EXCEPTION 'generated search-vector GIN indexes are invalid, unready, or target the wrong column';
   END IF;
 END
 $$;

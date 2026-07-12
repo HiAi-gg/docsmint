@@ -156,6 +156,17 @@ The rollback-only verification in
 larger than 1 MiB, a large inline data image, multilingual insert/update
 search, both generated columns, and both GIN indexes.
 
+Run the complete fresh-install and pre-0033 upgrade contours with:
+
+```bash
+packages/db/scripts/test-large-document-migration.sh
+```
+
+The runner creates isolated temporary databases, applies the production AGE
+bootstrap prerequisite, runs the complete journal on the fresh contour, runs
+through 0032 and then 0033 on the upgrade contour, executes the rollback-only
+SQL assertions on both, and removes the temporary databases on exit.
+
 ## Errors
 
 | Status | When |
