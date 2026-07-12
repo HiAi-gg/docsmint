@@ -48,6 +48,7 @@ import {
 } from "lucide-svelte";
 import { onDestroy, onMount, untrack } from "svelte";
 import { flip } from "svelte/animate";
+import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import {
@@ -1225,18 +1226,26 @@ type CategoryBucket = {
 	id: string;
 	category: CategoryWithApiAccess | null;
 	folders: FolderItem[];
+	[SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean;
 };
 
 function handleCategoryConsider(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
 	isDraggingGlobal = true;
 	categoryDragActive = true;
-	orderedBuckets = withUncategorizedBucket(sanitizeBuckets(e.detail.items));
+	// Keep the library's shadow marker intact. Rebuilding/deduplicating these
+	// items here makes svelte-dnd-action lose its placeholder and insert a
+	// second copy of the dragged category on the next pointer event.
+	orderedBuckets = withUncategorizedBucket(
+		validCategoryDndItems(e.detail.items),
+	);
 }
 
 function handleCategoryFinalize(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
-	const next = withUncategorizedBucket(sanitizeBuckets(e.detail.items));
+	const next = withUncategorizedBucket(
+		finalizeCategoryDndItems(e.detail.items),
+	);
 	orderedBuckets = next;
 	isDraggingGlobal = false;
 	categoryDragActive = false;
@@ -1251,10 +1260,9 @@ function withUncategorizedBucket(items: CategoryBucket[]): CategoryBucket[] {
 	return uncategorized ? [...realCategories, uncategorized] : realCategories;
 }
 
-function sanitizeBuckets(raw: unknown): CategoryBucket[] {
+function validCategoryDndItems(raw: unknown): CategoryBucket[] {
 	if (!Array.isArray(raw)) return [];
 	const result: CategoryBucket[] = [];
-	const seen = new Set<string>();
 	for (const item of raw) {
 		if (
 			item === null ||
@@ -1264,23 +1272,35 @@ function sanitizeBuckets(raw: unknown): CategoryBucket[] {
 			continue;
 		}
 		const bucket = item as CategoryBucket;
-		// svelte-dnd-action can emit overlapping consider events while its
-		// shadow item is being reconciled with an external reactive update.
-		// Never hand a duplicate key to Svelte. This is deliberately limited
-		// to transient DnD input; duplicate ids from the API are rejected in
-		// loadCategories instead of being silently hidden.
-		if (seen.has(bucket.id)) {
-			console.warn(
-				"FolderTree: ignored duplicate category DnD item",
-				bucket.id,
-			);
+		result.push(bucket);
+	}
+	return result;
+}
+
+function finalizeCategoryDndItems(raw: unknown): CategoryBucket[] {
+	const items = validCategoryDndItems(raw);
+	const shadowIds = new Set(
+		items
+			.filter((item) => item[SHADOW_ITEM_MARKER_PROPERTY_NAME])
+			.map((item) => item.id),
+	);
+	const seen = new Set<string>();
+	const canonical = new Map(
+		[...orderedBuckets, ...buckets].map((item) => [item.id, item] as const),
+	);
+	const result: CategoryBucket[] = [];
+	for (const item of items) {
+		// If an old browser/library event contains both the source item and its
+		// shadow with the same id, the shadow position is the requested drop.
+		if (shadowIds.has(item.id) && !item[SHADOW_ITEM_MARKER_PROPERTY_NAME])
 			continue;
-		}
-		seen.add(bucket.id);
+		if (seen.has(item.id)) continue;
+		seen.add(item.id);
+		const stable = canonical.get(item.id) ?? item;
 		result.push({
-			id: bucket.id,
-			category: bucket.category,
-			folders: bucket.folders,
+			id: stable.id,
+			category: stable.category,
+			folders: stable.folders,
 		});
 	}
 	return result;
@@ -1321,9 +1341,9 @@ async function persistCategoryOrder(next: CategoryBucket[]) {
 		updates.push({ id: bucket.category.id, order: index });
 	});
 	if (updates.length === 0) return;
-	await Promise.all(
-		updates.map((u) => updateCategory(u.id, { order: u.order })),
-	);
+	for (const update of updates) {
+		await updateCategory(update.id, { order: update.order });
+	}
 }
 
 // --- Rename / delete (folders and documents) ---
@@ -1515,10 +1535,8 @@ const categoryBuckets = $derived(
 	orderedBuckets.filter(
 		(
 			b,
-		): b is {
-			id: string;
+		): b is CategoryBucket & {
 			category: CategoryWithApiAccess;
-			folders: FolderItem[];
 		} => b.id !== UNCATEGORIZED_KEY && b.category !== null,
 	),
 );
@@ -1692,9 +1710,13 @@ const buckets = $derived.by(() => {
     onconsider={handleCategoryConsider}
     onfinalize={handleCategoryFinalize}
   >
-    {#each categoryBuckets as bucket (bucket.id)}
+    {#each categoryBuckets as bucket (`${bucket.id}:${bucket[SHADOW_ITEM_MARKER_PROPERTY_NAME] ? "shadow" : "item"}`)}
       {@const isBucketExpanded = expandedCategoryIds.has(bucket.id)}
-      <div animate:flip={{ duration: FLIP_MS }} class="group/bucket">
+      <div
+        animate:flip={{ duration: FLIP_MS }}
+        class="group/bucket"
+        data-is-dnd-shadow-item-hint={bucket[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
+      >
         <div class="flex w-full min-w-0 items-center gap-0.5">
           <button
             type="button"

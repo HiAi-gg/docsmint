@@ -3,10 +3,24 @@ import { describe, expect, test } from "bun:test";
 const source = await Bun.file(`${import.meta.dir}/FolderTree.svelte`).text();
 
 describe("category drag-and-drop stability", () => {
-	test("deduplicates transient dnd items before keyed rendering", () => {
-		expect(source).toContain("const seen = new Set<string>()");
-		expect(source).toContain("if (seen.has(bucket.id))");
-		expect(source).toContain("seen.add(bucket.id)");
+	test("preserves the dnd shadow item throughout consider events", () => {
+		expect(source).toMatch(
+			/orderedBuckets\s*=\s*withUncategorizedBucket\(\s*validCategoryDndItems\(e\.detail\.items\)/,
+		);
+		expect(source).toContain("result.push(bucket)");
+		expect(source).toContain("data-is-dnd-shadow-item-hint");
+		expect(source).toContain(
+			'SHADOW_ITEM_MARKER_PROPERTY_NAME] ? "shadow" : "item"',
+		);
+		expect(source).not.toContain("ignored duplicate category DnD item");
+	});
+
+	test("uses the shadow position when finalizing a legacy duplicate event", () => {
+		expect(source).toContain("finalizeCategoryDndItems(e.detail.items)");
+		expect(source).toContain("const shadowIds = new Set(");
+		expect(source).toMatch(
+			/if\s*\(shadowIds\.has\(item\.id\)\s*&&\s*!item\[SHADOW_ITEM_MARKER_PROPERTY_NAME\]\)\s*continue/,
+		);
 	});
 
 	test("rejects duplicate category ids returned by the API", () => {
@@ -20,8 +34,8 @@ describe("category drag-and-drop stability", () => {
 	});
 
 	test("keeps the synthetic Uncategorized bucket pinned during events", () => {
-		expect(source).toContain(
-			"orderedBuckets = withUncategorizedBucket(sanitizeBuckets(e.detail.items))",
+		expect(source).toMatch(
+			/orderedBuckets\s*=\s*withUncategorizedBucket\(\s*validCategoryDndItems\(e\.detail\.items\)/,
 		);
 		expect(source).toContain(
 			"const realCategories = items.filter((item) => item.id !== UNCATEGORIZED_KEY)",
