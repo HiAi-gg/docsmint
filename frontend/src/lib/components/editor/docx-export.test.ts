@@ -7,7 +7,7 @@ import {
 	createPlainTextDocxBlob,
 	normalizeDocxDocumentJson,
 } from "./docx-export";
-import { customSerializerAsync } from "./docx-serializer";
+import { customAsyncNodes, customSerializerAsync } from "./docx-serializer";
 import { editorExtensions } from "./editorExtensions";
 
 const ONE_PIXEL_PNG =
@@ -105,6 +105,31 @@ describe("createDocxImageFetcher", () => {
 });
 
 describe("DOCX document compatibility", () => {
+	test("async serializer accepts an unnormalized task list node", async () => {
+		expect(customAsyncNodes.taskList).toBeTypeOf("function");
+		const schema = getSchema(editorExtensions);
+		const docNode = Node.fromJSON(schema, {
+			type: "doc",
+			content: [
+				{
+					type: "taskList",
+					content: [
+						{
+							type: "taskItem",
+							attrs: { checked: false },
+							content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }],
+						},
+					],
+				},
+			],
+		});
+		const wordDoc = await customSerializerAsync.serializeAsync(docNode, {
+			sections: [{ properties: {} }],
+		} as Parameters<typeof customSerializerAsync.serializeAsync>[1]);
+		const bytes = new Uint8Array(await (await Packer.toBlob(wordDoc)).arrayBuffer());
+		expect(String.fromCharCode(...bytes.slice(0, 2))).toBe("PK");
+	});
+
 	test("converts task lists into supported bullet lists", () => {
 		const normalized = normalizeDocxDocumentJson({
 			type: "doc",

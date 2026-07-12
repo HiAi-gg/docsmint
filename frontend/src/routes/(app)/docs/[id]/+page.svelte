@@ -42,7 +42,10 @@ import {
 	type Tag,
 } from "$lib/api/tags";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
-import { createDocxImageFetcher } from "$lib/components/editor/docx-export";
+import {
+	createDocxImageFetcher,
+	normalizeDocxDocumentJson,
+} from "$lib/components/editor/docx-export";
 import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
@@ -390,7 +393,7 @@ async function handleExportDocx() {
 			json = markdownToJson(content || "");
 		}
 		const schema = getSchema(editorExtensions);
-		const docNode = Node.fromJSON(schema, json);
+		const docNode = Node.fromJSON(schema, normalizeDocxDocumentJson(json));
 		const imageFetcher = createDocxImageFetcher();
 		const serializerOptions = {
 			getImageBuffer: imageFetcher.getImageBuffer,

@@ -123,6 +123,9 @@ export const customAsyncNodes = {
 	orderedList: defaultAsyncNodes.ordered_list,
 	bulletList: defaultAsyncNodes.bullet_list,
 	listItem: defaultAsyncNodes.list_item,
+	// TipTap task lists are editor-only nodes. Keep the async serializer
+	// defensive for callers that have not normalized the JSON first.
+	taskList: defaultAsyncNodes.bullet_list,
 
 	async paragraph(state, node) {
 		await state.renderInline(node);
