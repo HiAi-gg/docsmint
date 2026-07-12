@@ -79,8 +79,10 @@ import * as m from "$lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,
 	getDocumentFromRegistry,
+	getDocumentPlacementNonce,
 	getFolderFromRegistry,
 	getGlobalFolderRefreshNonce,
+	getLatestDocumentPlacement,
 	registerDocument,
 	registerFolder,
 } from "$lib/stores/subfolders-refresh-store.svelte.js";
@@ -499,11 +501,24 @@ async function loadCategories() {
 	}
 }
 
+let documentsLoadGeneration = 0;
+
 async function loadDocuments() {
+	const generation = ++documentsLoadGeneration;
 	try {
 		const tag = getSelectedTag();
 		const res = await listDocuments({ limit: 100, ...(tag ? { tag } : {}) });
-		documents = res.items as DndDoc[];
+		if (generation !== documentsLoadGeneration) return;
+		const latestPlacement = getLatestDocumentPlacement();
+		documents = (res.items as DndDoc[]).map((doc) =>
+			latestPlacement?.id === doc.id
+				? {
+						...doc,
+						folderId: latestPlacement.folderId,
+						categoryId: latestPlacement.categoryId,
+					}
+				: doc,
+		);
 		documents.forEach((d) => {
 			debugLog(
 				"[DnD] loadDocuments registering doc:",
@@ -565,6 +580,29 @@ $effect(() => {
 	const folderNonce = getGlobalFolderRefreshNonce();
 	if (docNonce === 0 && folderNonce === 0) return;
 	void refresh();
+});
+
+$effect(() => {
+	const placementNonce = getDocumentPlacementNonce();
+	if (placementNonce === 0) return;
+	const placement = getLatestDocumentPlacement();
+	if (!placement) return;
+
+	// Invalidate an older list request before applying the optimistic move so
+	// its late response cannot put the document back in the previous bucket.
+	documentsLoadGeneration++;
+	const index = documents.findIndex((doc) => doc.id === placement.id);
+	if (index === -1) return;
+	documents = documents.map((doc, docIndex) =>
+		docIndex === index
+			? {
+					...doc,
+					folderId: placement.folderId,
+					categoryId: placement.categoryId,
+				}
+			: doc,
+	);
+	resyncZonesFromDocuments();
 });
 
 let firstTagRun = true;

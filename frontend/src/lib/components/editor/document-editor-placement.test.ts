@@ -6,13 +6,13 @@ const editorPage = await Bun.file(
 
 describe("document editor placement workflow", () => {
 	test("persists category and folder selections independently of content autosave", () => {
+		expect(editorPage).toContain("createPlacementMutationQueue");
+		expect(editorPage).toContain("await enqueuePlacementMutation(placement)");
 		expect(editorPage).toContain(
-			"await updateDocument(data.document.id, placement)",
-		);
-		expect(editorPage).toContain(
-			"await updateDocument(data.document.id, { categoryId, folderId: null })",
+			"await enqueuePlacementMutation({ categoryId, folderId: null })",
 		);
 		expect(editorPage).toContain('saveStatus = "saving"');
+		expect(editorPage).toContain("publishDocumentPlacement");
 		expect(editorPage).toContain("refreshDocs()");
 	});
 

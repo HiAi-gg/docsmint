@@ -56,6 +56,7 @@ import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import HiAiEditor from "$lib/components/editor/HiAiEditor.svelte";
 import MarkdownToggle from "$lib/components/editor/MarkdownToggle.svelte";
 import { markdownToJson } from "$lib/components/editor/markdown";
+import { createPlacementMutationQueue } from "$lib/components/editor/placement-mutation-queue";
 import { markMarkdownTaskItems } from "$lib/components/editor/shared-document";
 import FolderDialog from "$lib/components/FolderDialog.svelte";
 import FolderTreeSelector from "$lib/components/FolderTreeSelector.svelte";
@@ -65,7 +66,10 @@ import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import VersionHistory from "$lib/components/VersionHistory.svelte";
 import * as m from "$lib/paraglide/messages.js";
 import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
-import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
+import {
+	publishDocumentPlacement,
+	refreshFolders,
+} from "$lib/stores/subfolders-refresh-store.svelte.js";
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
@@ -103,6 +107,12 @@ import type { Folder as FolderType } from "$lib/types.js";
 
 let folders = $state<FolderType[]>([]);
 let foldersLoading = $state(false);
+let placementRevision = 0;
+const enqueuePlacementMutation = createPlacementMutationQueue(
+	async (placement) => {
+		await updateDocument(data.document.id, placement);
+	},
+);
 let currentFolderId = $state<string | null>(null);
 let showCreateFolderDialog = $state(false);
 let pendingCreatedFolderId = $state<string | null>(null);
@@ -647,16 +657,29 @@ async function moveToFolder(folderId: string | null, propagateError = false) {
 	// autosave timer (which only runs after an editor text change).
 	currentFolderId = placement.folderId;
 	currentCategoryId = placement.categoryId;
+	const revision = ++placementRevision;
+	publishDocumentPlacement(
+		data.document.id,
+		placement.folderId,
+		placement.categoryId,
+	);
 	saveStatus = "saving";
 	try {
-		await updateDocument(data.document.id, placement);
-		saveStatus = "saved";
+		await enqueuePlacementMutation(placement);
+		if (revision === placementRevision) saveStatus = "saved";
 		refreshDocs();
 	} catch (error) {
-		currentFolderId = previousFolderId;
-		currentCategoryId = previousCategoryId;
-		saveStatus = "unsaved";
-		setError(m.doc_save_content_error());
+		if (revision === placementRevision) {
+			currentFolderId = previousFolderId;
+			currentCategoryId = previousCategoryId;
+			publishDocumentPlacement(
+				data.document.id,
+				previousFolderId,
+				previousCategoryId,
+			);
+			saveStatus = "unsaved";
+			setError(m.doc_save_content_error());
+		}
 		if (propagateError) throw error;
 	}
 }
@@ -667,16 +690,25 @@ async function moveToCategory(categoryId: string | null) {
 
 	currentCategoryId = categoryId;
 	currentFolderId = null;
+	const revision = ++placementRevision;
+	publishDocumentPlacement(data.document.id, null, categoryId);
 	saveStatus = "saving";
 	try {
-		await updateDocument(data.document.id, { categoryId, folderId: null });
-		saveStatus = "saved";
+		await enqueuePlacementMutation({ categoryId, folderId: null });
+		if (revision === placementRevision) saveStatus = "saved";
 		refreshDocs();
 	} catch (_e) {
-		currentFolderId = previousFolderId;
-		currentCategoryId = previousCategoryId;
-		saveStatus = "unsaved";
-		setError(m.doc_save_content_error());
+		if (revision === placementRevision) {
+			currentFolderId = previousFolderId;
+			currentCategoryId = previousCategoryId;
+			publishDocumentPlacement(
+				data.document.id,
+				previousFolderId,
+				previousCategoryId,
+			);
+			saveStatus = "unsaved";
+			setError(m.doc_save_content_error());
+		}
 	}
 }
 

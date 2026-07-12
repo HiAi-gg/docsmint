@@ -32,6 +32,11 @@ const refreshNonces = $state<Record<string, number>>({});
 const foldersRegistry = $state<Record<string, FolderRegistryEntry>>({});
 const documentsRegistry = $state<Record<string, DocumentRegistryEntry>>({});
 
+let documentPlacementNonce = $state(0);
+let latestDocumentPlacement = $state<
+	({ id: string } & DocumentRegistryEntry) | null
+>(null);
+
 let globalFolderRefreshNonce = $state(0);
 
 export function refreshFolders(): void {
@@ -71,6 +76,30 @@ export function registerDocument(
 	categoryId: string | null,
 ): void {
 	documentsRegistry[id] = { folderId, categoryId };
+}
+
+/**
+ * Publishes an optimistic document move to every mounted navigation surface.
+ * The nonce makes repeated moves of the same document observable to Svelte.
+ */
+export function publishDocumentPlacement(
+	id: string,
+	folderId: string | null,
+	categoryId: string | null,
+): void {
+	registerDocument(id, folderId, categoryId);
+	latestDocumentPlacement = { id, folderId, categoryId };
+	documentPlacementNonce++;
+}
+
+export function getDocumentPlacementNonce(): number {
+	return documentPlacementNonce;
+}
+
+export function getLatestDocumentPlacement():
+	| ({ id: string } & DocumentRegistryEntry)
+	| null {
+	return latestDocumentPlacement;
 }
 
 export function getDocumentFromRegistry(
