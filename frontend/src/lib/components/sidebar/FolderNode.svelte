@@ -63,7 +63,8 @@ let {
 	isDraggingFolder = false,
 	isDraggingDoc = false,
 	dragDisabled,
-	flipDurationMs,
+	folderFlipDurationMs,
+	documentFlipDurationMs,
 	draggedDocId = null,
 	onToggleFolder,
 	onScheduleFolderExpand,
@@ -89,7 +90,8 @@ let {
 	isDraggingFolder?: boolean;
 	isDraggingDoc?: boolean;
 	dragDisabled: boolean;
-	flipDurationMs: number;
+	folderFlipDurationMs: number;
+	documentFlipDurationMs: number;
 	draggedDocId?: string | null;
 	onToggleFolder: (id: string) => void;
 	onScheduleFolderExpand: (id: string) => void;
@@ -301,7 +303,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 				)}
 				use:dndzone={{
 					items: subfolderZone,
-					flipDurationMs,
+					flipDurationMs: folderFlipDurationMs,
 					type: "folder",
 					dropTargetStyle: {},
 					dragDisabled,
@@ -311,7 +313,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 			>
 				{#each subfolderZone as sub (sub.id)}
 					{@const SubComponent = FolderNodeSelf}
-					<div animate:flip={{ duration: flipDurationMs }}>
+					<div animate:flip={{ duration: folderFlipDurationMs }}>
 						<SubComponent
 							folder={sub}
 							depth={depth + 1}
@@ -321,7 +323,8 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 							{isDraggingFolder}
 							{isDraggingDoc}
 							{dragDisabled}
-							{flipDurationMs}
+							{folderFlipDurationMs}
+							{documentFlipDurationMs}
 							{draggedDocId}
 							{onToggleFolder}
 							{onScheduleFolderExpand}
@@ -356,7 +359,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 				)}
 				use:dndzone={{
 					items: folderDocs,
-					flipDurationMs,
+					flipDurationMs: documentFlipDurationMs,
 					type: "doc",
 					dropTargetStyle: {},
 					dragDisabled,
@@ -368,7 +371,7 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 			>
 				{#each folderDocs as doc (doc.id)}
 					<div
-						animate:flip={{ duration: flipDurationMs }}
+						animate:flip={{ duration: documentFlipDurationMs }}
 						class="group/doc flex w-full min-w-0 items-center gap-1"
 					>
 						{@render docRowInner(doc)}

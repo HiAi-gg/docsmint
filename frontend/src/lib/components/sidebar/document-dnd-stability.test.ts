@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
 const source = await Bun.file(`${import.meta.dir}/FolderTree.svelte`).text();
+const folderNodeSource = await Bun.file(
+	`${import.meta.dir}/FolderNode.svelte`,
+).text();
 
 describe("document drag-and-drop stability", () => {
 	test("persists only the document reported by the finalize event", () => {
@@ -33,6 +36,23 @@ describe("document drag-and-drop stability", () => {
 		const cursorCentering = source.match(/centreDraggedOnCursor: true/g) ?? [];
 		expect(cursorDetection).toHaveLength(documentZones.length);
 		expect(cursorCentering).toHaveLength(documentZones.length);
-		expect(source).toContain("flipDurationMs={DOCUMENT_FLIP_MS}");
+		expect(source).toContain("folderFlipDurationMs={FLIP_MS}");
+		expect(source).toContain("documentFlipDurationMs={DOCUMENT_FLIP_MS}");
+		expect(folderNodeSource).toContain(
+			"flipDurationMs: documentFlipDurationMs",
+		);
+		expect(folderNodeSource).toContain(
+			"animate:flip={{ duration: documentFlipDurationMs }}",
+		);
+		expect(folderNodeSource).toContain("useCursorForDetection: true");
+		expect(folderNodeSource).toContain("centreDraggedOnCursor: true");
+	});
+
+	test("keeps folder and category motion on the original timing", () => {
+		expect(source).toContain("folderFlipDurationMs={FLIP_MS}");
+		expect(folderNodeSource).toContain("flipDurationMs: folderFlipDurationMs");
+		expect(folderNodeSource).toContain(
+			"animate:flip={{ duration: folderFlipDurationMs }}",
+		);
 	});
 });

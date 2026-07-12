@@ -1620,7 +1620,8 @@ const buckets = $derived.by(() => {
     onFinalizeSubfolders={handleNestedFolderFinalize}
     onDropOnFolder={handleDropOnFolder}
     folderDocsMap={folderDocsMap}
-    flipDurationMs={DOCUMENT_FLIP_MS}
+    folderFlipDurationMs={FLIP_MS}
+    documentFlipDurationMs={DOCUMENT_FLIP_MS}
     {docRowInner}
     {copyButton}
     {docMenu}
