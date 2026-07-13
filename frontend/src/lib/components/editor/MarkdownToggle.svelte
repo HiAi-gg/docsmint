@@ -19,7 +19,7 @@ let copied = $state(false);
 function resizeTextarea() {
 	if (!textarea) return;
 	textarea.style.height = "auto";
-	textarea.style.height = `${Math.max(textarea.scrollHeight, 500)}px`;
+	textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 $effect(() => {
@@ -132,13 +132,12 @@ function copyToClipboard() {
 		flex: 1;
 		width: 100%;
 		height: auto;
-		min-height: 500px;
-		max-height: calc(100vh - 220px);
+		min-height: max(720px, calc(100vh - 180px));
 		padding: 56px 24px 24px 24px;
 		border: none;
 		outline: none;
-		resize: vertical;
-		overflow-y: auto;
+		resize: none;
+		overflow-y: hidden;
 		font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
 		font-size: 14px;
 		line-height: 1.7;

@@ -637,6 +637,14 @@ function handleWrapperClick(event: MouseEvent) {
     padding: 0 2px;
   }
 
+  /* TipTap persists the light palette value inline. Darken it visually rather
+     than replacing it so the document keeps the same hue across themes. */
+  :global(.dark) .editor-content :global(.tiptap mark) {
+    background-image: linear-gradient(rgb(0 0 0 / 62%), rgb(0 0 0 / 62%));
+    background-blend-mode: multiply;
+    color: #fff;
+  }
+
   /* Skeleton loading state */
   .editor-skeleton {
     display: flex;

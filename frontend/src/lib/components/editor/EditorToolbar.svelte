@@ -1543,6 +1543,16 @@ $effect(() => {
 		box-shadow: 0 0 0 2px var(--ring);
 	}
 
+	/* Keep the stored highlight color theme-neutral while presenting the same
+	   hue at a substantially darker luminance in dark mode. The overlay is a
+	   separate background layer, so the inline `background-color` still holds
+	   the portable document color used when the theme changes or it is shared. */
+	:global(.dark) .highlight-picker .highlight-swatch,
+	:global(.dark) .highlight-picker .highlight-dot {
+		background-image: linear-gradient(rgb(0 0 0 / 62%), rgb(0 0 0 / 62%));
+		background-blend-mode: multiply;
+	}
+
 	.highlight-clear {
 		display: inline-flex;
 		align-items: center;
