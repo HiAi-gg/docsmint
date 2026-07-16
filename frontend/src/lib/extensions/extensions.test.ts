@@ -16,10 +16,17 @@ describe("frontend extension manifest", () => {
 			"documentMenuActions",
 			"settingsSections",
 			"commandPaletteActions",
+			"sharedDocumentHeaderActions",
+			"sharedDocumentTabs",
+			"sharedDocumentNotesModes",
+			"sharedDocumentEditorModes",
 		]);
 		expect(first.navigation).not.toBe(second.navigation);
 		expect(first.documentTabs).not.toBe(second.documentTabs);
 		expect(first.searchWidgets).not.toBe(second.searchWidgets);
+		expect(first.sharedDocumentNotesModes).not.toBe(
+			second.sharedDocumentNotesModes,
+		);
 	});
 
 	test("preserves the existing document-tab contract", () => {

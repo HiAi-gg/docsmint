@@ -58,13 +58,22 @@ describe("external tenant context assertions", () => {
 
 	test("rejects a non-UUID actor, oversized workspace, and TTL above five minutes", async () => {
 		await expect(
-			createExternalTenantAssertion({ ...context, actorUserId: "user-1" }, "secret"),
+			createExternalTenantAssertion(
+				{ ...context, actorUserId: "user-1" },
+				"secret",
+			),
 		).rejects.toThrow("actorUserId");
 		await expect(
-			createExternalTenantAssertion({ ...context, workspaceId: "w".repeat(129) }, "secret"),
+			createExternalTenantAssertion(
+				{ ...context, workspaceId: "w".repeat(129) },
+				"secret",
+			),
 		).rejects.toThrow("workspaceId");
 		await expect(
-			createExternalTenantAssertion({ ...context, expiresAt: context.issuedAt + 301 }, "secret"),
+			createExternalTenantAssertion(
+				{ ...context, expiresAt: context.issuedAt + 301 },
+				"secret",
+			),
 		).resolves.toBeString();
 		const longAssertion = await createExternalTenantAssertion(
 			{ ...context, expiresAt: context.issuedAt + 301 },

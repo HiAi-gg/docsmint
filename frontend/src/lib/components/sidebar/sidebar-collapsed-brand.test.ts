@@ -15,7 +15,11 @@ test("collapsed sidebar uses the compact DocsMint favicon", () => {
 });
 
 test("sidebar persists collapsed state locally", () => {
-	expect(source).toContain('const SIDEBAR_COLLAPSED_KEY = "hiai_sidebar_collapsed"');
+	expect(source).toContain(
+		'const SIDEBAR_COLLAPSED_KEY = "hiai_sidebar_collapsed"',
+	);
 	expect(source).toContain("localStorage.getItem(SIDEBAR_COLLAPSED_KEY)");
-	expect(source).toContain("localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? \"1\" : \"0\")");
+	expect(source).toContain(
+		'localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0")',
+	);
 });

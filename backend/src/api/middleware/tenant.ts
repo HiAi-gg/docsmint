@@ -115,8 +115,8 @@ export async function buildTenantContext(
 		let external: ExternalTenantContext;
 		try {
 			external = await verifyExternalTenantAssertion(externalAssertion, {
-			secret: workspaceSecret,
-			issuer: workspaceIssuer,
+				secret: workspaceSecret,
+				issuer: workspaceIssuer,
 				clockSkewSeconds: config.EXTERNAL_TENANT_CLOCK_SKEW_SECONDS,
 			});
 		} catch (error) {

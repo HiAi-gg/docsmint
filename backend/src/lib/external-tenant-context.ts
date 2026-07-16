@@ -1,6 +1,5 @@
 /** Canonical, server-to-server workspace assertion header. */
-export const DOCSMINT_WORKSPACE_CONTEXT_HEADER =
-	"x-docsmint-workspace-context";
+export const DOCSMINT_WORKSPACE_CONTEXT_HEADER = "x-docsmint-workspace-context";
 /** @deprecated Compatibility alias accepted during 0.3.x. */
 export const EXTERNAL_TENANT_CONTEXT_HEADER = "x-hiai-tenant-context";
 export const WORKSPACE_CONTEXT_MAX_LENGTH = 128;
@@ -62,13 +61,17 @@ async function sign(payload: string, secret: string): Promise<string> {
 	).toString("base64url");
 }
 
-function assertContext(value: unknown): asserts value is DocsmintWorkspaceContext {
+function assertContext(
+	value: unknown,
+): asserts value is DocsmintWorkspaceContext {
 	if (!value || typeof value !== "object")
 		throw new Error("Invalid tenant context");
 	const context = value as Record<string, unknown>;
 	if (
 		typeof context.actorUserId !== "string" ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(context.actorUserId)
+		!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+			context.actorUserId,
+		)
 	) {
 		throw new Error("Invalid actorUserId");
 	}
