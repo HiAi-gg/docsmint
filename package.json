@@ -133,6 +133,9 @@
   "scripts": {
     "dev": "docker compose up -d",
     "build": "docker compose build",
+    "lint": "bun run --filter '*' lint",
+    "typecheck": "bun run --filter '*' typecheck",
+    "test": "bun run --filter '*' test",
     "start": "docker compose up -d",
     "stop": "docker compose down",
     "build:sdk": "cd packages/sdk && bun run build",
