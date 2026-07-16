@@ -19,7 +19,7 @@ let copied = $state(false);
 function resizeTextarea() {
 	if (!textarea) return;
 	textarea.style.height = "auto";
-	textarea.style.height = `${Math.max(textarea.scrollHeight, 500)}px`;
+	textarea.style.height = `${textarea.scrollHeight}px`;
 }
 
 $effect(() => {
@@ -132,15 +132,14 @@ function copyToClipboard() {
 		flex: none;
 		width: 100%;
 		height: auto;
-		min-height: 500px;
-		max-height: none;
+		min-height: max(720px, calc(100vh - 180px));
 		padding: 56px 24px 24px 24px;
 		border: none;
 		outline: none;
 		resize: none;
 		/* Grow with the document so the editor-main owns the single scroll
 		 * surface, matching the JSON/Tiptap editor view. */
-		overflow: hidden;
+		overflow-y: hidden;
 		font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
 		font-size: 14px;
 		line-height: 1.7;

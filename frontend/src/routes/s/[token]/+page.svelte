@@ -912,6 +912,11 @@ $effect(() => {
     border-radius: 2px;
     padding: 0 2px;
   }
+  :global(.dark) .shared-doc-body :global(mark) {
+    background-image: linear-gradient(rgb(0 0 0 / 62%), rgb(0 0 0 / 62%));
+    background-blend-mode: multiply;
+    color: #fff;
+  }
   .shared-doc-body :global(table) {
     border-collapse: collapse;
     width: 100%;
