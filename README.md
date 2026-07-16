@@ -1,12 +1,8 @@
-# HiAi-Docs / DocsMint
+# DocsMint
 
 **A self-hosted, AI-native knowledge workspace for people, applications, and agents.**
 
-HiAi-Docs is the open-source module and repository. **DocsMint** is the current
-product branding used by the standalone installable web application. Typed
-frontend hosts and extension contracts support self-hosted customization.
-
-HiAi-Docs stores documents in a structured JSON editor model first. Markdown is
+DocsMint stores documents in a structured JSON editor model first. Markdown is
 the convenient second format for editing, importing, and exporting content.
 Automatic chunking, 1024-dimensional embeddings, multilingual hybrid search,
 and GraphRAG make the same knowledge base useful to people, applications, and
@@ -15,6 +11,8 @@ server.
 
 [![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
+[![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?logo=npm)](https://www.npmjs.com/package/@hiai-gg/docsmint)
+[![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
 [![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/Runtime-Bun_1.3-black?logo=bun&logoColor=white)](https://bun.sh)
@@ -27,7 +25,7 @@ server.
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
-## Why HiAi-Docs?
+## Why DocsMint?
 
 - **Write naturally** in a rich visual editor or raw Markdown.
 - **Find meaning, not only keywords** with exact, lexical, fuzzy, vector,
@@ -50,8 +48,8 @@ server.
   never silently replays mutations.
 - **Explicit local drafts** with local autosave, review/apply, optimistic
   concurrency (`expectedUpdatedAt`), and actionable conflict handling.
-- **Composable host integration** with typed dashboard/search hosts and
-  extension slots. Standalone HiAi-Docs remains owner-scoped.
+- **Composable self-hosted UI** with typed dashboard/search hosts and extension
+  slots.
 - **Mobile-first editor polish** including a single responsive sidebar, safe
   PWA updates, raw Markdown auto-height, and accessible narrow-screen controls.
 
@@ -64,12 +62,12 @@ For self-hosted customization, see [PWA hosting](docs/PWA_HOSTING.md) and
 
 ## Fastest installation: give this prompt to your agent
 
-If you are installing HiAi-Docs through an AI coding agent, use this path first.
+If you are installing DocsMint through an AI coding agent, use this path first.
 It keeps the setup to Docker plus one provider choice and avoids unnecessary
 source-code changes.
 
 ```text
-Install HiAi-Docs from https://github.com/HiAi-gg/docsmint.
+Install DocsMint from https://github.com/HiAi-gg/docsmint.
 Verify Docker and Docker Compose v2, clone the repository, and run
 `bash scripts/quickstart.sh`. Do not print or commit .env. Ask me to enter only
 an OpenRouter key or select Ollama, then run quickstart again. Verify
@@ -147,10 +145,14 @@ The canonical local ports are:
 See [Deployment](docs/DEPLOYMENT.md) for domains, TLS, provider tuning,
 backups, and production operation.
 
-## Use HiAi-Docs from the terminal
+## Use DocsMint from the terminal
 
 The published package includes the CLI. It connects to an already running
-HiAi-Docs server; installing it does not deploy the server.
+DocsMint server; installing it does not deploy the server.
+
+```bash
+npm install @hiai-gg/docsmint
+```
 
 ```bash
 bunx --package @hiai-gg/docsmint docsmint init \
@@ -169,7 +171,7 @@ command and configuration precedence.
 
 ## Connect an MCP client
 
-HiAi-Docs exposes document search, reading, creation, updates, folders,
+DocsMint exposes document search, reading, creation, updates, folders,
 snapshots, history, and export as MCP tools.
 
 ```json
@@ -302,16 +304,16 @@ For pipeline internals and tuning, see [Architecture](docs/ARCHITECTURE.md) and
 
 ## Comparison
 
-HiAi-Docs overlaps with several excellent open-source knowledge tools, but its
+DocsMint overlaps with several excellent open-source knowledge tools, but its
 focus is a compact knowledge runtime shared equally by humans and agents.
 
-| Project | Primary strength | Difference from HiAi-Docs |
+| Project | Primary strength | Difference from DocsMint |
 |---|---|---|
-| [Outline](https://github.com/outline/outline) | Polished team wiki and collaboration | HiAi-Docs emphasizes built-in retrieval, GraphRAG, scoped agent access, CLI, and MCP |
-| [Docmost](https://github.com/docmost/docmost) | Collaborative wiki and real-time editing | HiAi-Docs centers automatic embeddings and agent-facing integration surfaces |
-| [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy) | Broad local-first productivity workspace | HiAi-Docs is narrower: a self-hosted document and retrieval service |
-| [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | Chat-oriented RAG over imported sources | HiAi-Docs starts with the editable knowledge base and exposes it to many clients |
-| [Danswer](https://github.com/danswer-ai/danswer) / Onyx | Enterprise search across external connectors | HiAi-Docs owns and edits its native corpus rather than primarily indexing other systems |
+| [Outline](https://github.com/outline/outline) | Polished team wiki and collaboration | DocsMint emphasizes built-in retrieval, GraphRAG, scoped agent access, CLI, and MCP |
+| [Docmost](https://github.com/docmost/docmost) | Collaborative wiki and real-time editing | DocsMint centers automatic embeddings and agent-facing integration surfaces |
+| [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy) | Broad local-first productivity workspace | DocsMint is narrower: a self-hosted document and retrieval service |
+| [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | Chat-oriented RAG over imported sources | DocsMint starts with the editable knowledge base and exposes it to many clients |
+| [Danswer](https://github.com/danswer-ai/danswer) / Onyx | Enterprise search across external connectors | DocsMint owns and edits its native corpus rather than primarily indexing other systems |
 
 This is a product-positioning summary, not a claim that every listed project
 lacks a feature. Check each project's current documentation when choosing a
@@ -343,6 +345,7 @@ report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
 
 ## License
 
-HiAi-Docs / DocsMint is released under the [Apache License 2.0](LICENSE).
+DocsMint is released under the [Apache License 2.0](LICENSE).
 
-Part of the [HiAi](https://hiai.gg) open-source ecosystem.
+Built as an independent open-source project in the
+[HiAi](https://github.com/HiAi-gg) ecosystem.

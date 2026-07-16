@@ -36,6 +36,9 @@ docker-compose.dev.yml
 .DS_Store
 Thumbs.db
 
+# The application logo lives in frontend/static; do not duplicate it at root.
+/logo.png
+
 # Logs
 *.log
 logs/
