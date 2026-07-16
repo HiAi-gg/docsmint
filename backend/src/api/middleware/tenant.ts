@@ -35,6 +35,7 @@
 import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
 import {
+	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
 	EXTERNAL_TENANT_CONTEXT_HEADER,
 	type ExternalTenantContext,
 	ExternalTenantContextError,
@@ -81,12 +82,31 @@ export {
 export async function buildTenantContext(
 	request: Request,
 ): Promise<TenantContext> {
-	const externalAssertion = request.headers.get(EXTERNAL_TENANT_CONTEXT_HEADER);
+	const canonicalAssertion = request.headers.get(
+		DOCSMINT_WORKSPACE_CONTEXT_HEADER,
+	);
+	const compatibilityAssertion = request.headers.get(
+		EXTERNAL_TENANT_CONTEXT_HEADER,
+	);
+	if (
+		canonicalAssertion &&
+		compatibilityAssertion &&
+		canonicalAssertion !== compatibilityAssertion
+	) {
+		throw new ExternalTenantContextError(
+			"Conflicting workspace context assertions",
+		);
+	}
+	const externalAssertion = canonicalAssertion ?? compatibilityAssertion;
 	if (externalAssertion) {
+		const workspaceSecret =
+			config.DOCSMINT_WORKSPACE_SECRET ?? config.EXTERNAL_TENANT_SECRET;
+		const workspaceIssuer =
+			config.DOCSMINT_WORKSPACE_ISSUER ?? config.EXTERNAL_TENANT_ISSUER;
 		if (
-			!config.EXTERNAL_TENANT_ENABLED ||
-			!config.EXTERNAL_TENANT_SECRET ||
-			!config.EXTERNAL_TENANT_ISSUER
+			(!config.DOCSMINT_WORKSPACE_ENABLED && !config.EXTERNAL_TENANT_ENABLED) ||
+			!workspaceSecret ||
+			!workspaceIssuer
 		) {
 			throw new ExternalTenantContextError(
 				"External tenant context is not enabled",
@@ -95,8 +115,8 @@ export async function buildTenantContext(
 		let external: ExternalTenantContext;
 		try {
 			external = await verifyExternalTenantAssertion(externalAssertion, {
-				secret: config.EXTERNAL_TENANT_SECRET,
-				issuer: config.EXTERNAL_TENANT_ISSUER,
+			secret: workspaceSecret,
+			issuer: workspaceIssuer,
 				clockSkewSeconds: config.EXTERNAL_TENANT_CLOCK_SKEW_SECONDS,
 			});
 		} catch (error) {

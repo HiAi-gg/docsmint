@@ -86,7 +86,7 @@ describe("DocsClient public contract", () => {
 		});
 
 		await docs.health({ externalTenantAssertion: "signed.assertion" });
-		expect(seenHeaders?.get("x-hiai-tenant-context")).toBe("signed.assertion");
+		expect(seenHeaders?.get("x-docsmint-workspace-context")).toBe("signed.assertion");
 	});
 
 	it("encodes search filters and returns the response contract", async () => {

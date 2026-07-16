@@ -16,12 +16,13 @@ run. The pages below are the maintained reference set.
 - [Architecture](ARCHITECTURE.md) — services, persistence, search, and security
 - [Releasing](RELEASING.md) — evergreen maintainer release flow
 
-## Extend hiai-docs
+## Extend Docsmint
 
 - [Extension points](EXTENDING.md) — editor toolbar and document-tab APIs
 - [PWA hosting](PWA_HOSTING.md) — installable PWA, offline read, explicit drafts,
   service-worker and host integration contract
 - [External workspace context](EXTERNAL_WORKSPACE.md) — signed generic tenancy contract for trusted hosts
+- [SaaS integration](SAAS_INTEGRATION.md) — canonical workspace assertion, SDK, roles, and shared extension handoff
 - [SDK guide](../packages/sdk/README.md)
 - [CLI guide](../packages/cli/README.md)
 - [MCP server guide](../packages/mcp-server/README.md)

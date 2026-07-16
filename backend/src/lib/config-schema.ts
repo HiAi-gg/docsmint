@@ -236,6 +236,12 @@ export const envSchema = z
 			.min(0)
 			.max(300)
 			.default(5),
+		DOCSMINT_WORKSPACE_ENABLED: z
+			.string()
+			.optional()
+			.transform((value) => value === "true"),
+		DOCSMINT_WORKSPACE_ISSUER: z.string().trim().optional(),
+		DOCSMINT_WORKSPACE_SECRET: z.string().optional(),
 		// Number of auto-saved (non-snapshot) versions to retain per document.
 		// Snapshots are never pruned. Default 50.
 		VERSION_RETENTION_COUNT: z.coerce.number().default(50),
@@ -454,8 +460,8 @@ export const envSchema = z
 			.default(1),
 	})
 	.superRefine((value, ctx) => {
-		if (value.EXTERNAL_TENANT_ENABLED) {
-			if (!value.EXTERNAL_TENANT_ISSUER) {
+		if (value.EXTERNAL_TENANT_ENABLED || value.DOCSMINT_WORKSPACE_ENABLED) {
+			if (!value.DOCSMINT_WORKSPACE_ISSUER && !value.EXTERNAL_TENANT_ISSUER) {
 				ctx.addIssue({
 					code: "custom",
 					path: ["EXTERNAL_TENANT_ISSUER"],
@@ -463,7 +469,7 @@ export const envSchema = z
 						"EXTERNAL_TENANT_ISSUER is required when external tenancy is enabled",
 				});
 			}
-			if (!value.EXTERNAL_TENANT_SECRET) {
+			if (!value.DOCSMINT_WORKSPACE_SECRET && !value.EXTERNAL_TENANT_SECRET) {
 				ctx.addIssue({
 					code: "custom",
 					path: ["EXTERNAL_TENANT_SECRET"],
