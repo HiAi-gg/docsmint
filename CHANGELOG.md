@@ -7,6 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-17
+
+### Fixed
+
+- The published frontend façade declarations now expose the complete extension
+  contract and concrete typed API DTOs, inputs, and function signatures.
+- The packed-package fixture verifies those declarations from the emitted
+  artifact, without resolving frontend source paths at runtime.
+
 ## [0.3.2] - 2026-07-16
 
 ### Changed

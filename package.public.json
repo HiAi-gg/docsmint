@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "browser": {
 	"./dist/lifecycle.js": false,
@@ -50,6 +50,11 @@
       "browser": "./dist/server-only-browser-entry.js",
       "import": "./dist/lifecycle.js",
       "types": "./dist/lifecycle.d.ts"
+    },
+    "./lifecycle/persistent": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/lifecycle-persistent.js",
+      "types": "./dist/lifecycle-persistent.d.ts"
     },
     "./workspace": {
       "browser": "./dist/server-only-browser-entry.js",
@@ -122,6 +127,7 @@
     "backend/src/lib/redis-factory.ts",
     "backend/src/lib/storage-factory.ts",
     "backend/src/lib/logger.ts",
+    "backend/src/lib/lifecycle-service.ts",
     "README.md",
     "LICENSE"
   ],
