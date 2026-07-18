@@ -34,7 +34,7 @@ bun install --frozen-lockfile
 bun run --filter '*' lint
 bun run --filter '*' typecheck
 bun run --filter '*' test
-bun run --filter '*' build
+bun run --sequential --filter '*' build
 docker compose config --quiet
 COMPOSE_BAKE=false docker compose build
 ```

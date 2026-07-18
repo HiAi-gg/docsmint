@@ -1,11 +1,11 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
     "./dist/lifecycle.js": false,
-	"./dist/lifecycle-persistent.js": false,
+    "./dist/lifecycle-persistent.js": false,
     "./dist/storage-quota.js": false,
     "./dist/workspace.js": false
   },
@@ -110,6 +110,86 @@
       "import": "./dist/frontend/api/settings.js",
       "types": "./dist/frontend/api/settings.d.ts"
     },
+    "./frontend/api/attachments": {
+      "import": "./dist/frontend/api/attachments.js",
+      "types": "./dist/frontend/api/attachments.d.ts"
+    },
+    "./frontend/collaboration": {
+      "import": "./dist/frontend/collaboration.js",
+      "types": "./dist/frontend/collaboration.d.ts"
+    },
+    "./frontend/components/create-snapshot-dialog": {
+      "import": "./dist/frontend/components/create-snapshot-dialog.js",
+      "types": "./dist/frontend/components/create-snapshot-dialog.d.ts"
+    },
+    "./frontend/components/delete-dialog": {
+      "import": "./dist/frontend/components/delete-dialog.js",
+      "types": "./dist/frontend/components/delete-dialog.d.ts"
+    },
+    "./frontend/components/category-dialog": {
+      "import": "./dist/frontend/components/category-dialog.js",
+      "types": "./dist/frontend/components/category-dialog.d.ts"
+    },
+    "./frontend/components/folder-node": {
+      "import": "./dist/frontend/components/folder-node.js",
+      "types": "./dist/frontend/components/folder-node.d.ts"
+    },
+    "./frontend/document-drop-coordinator": {
+      "import": "./dist/frontend/document-drop-coordinator.js",
+      "types": "./dist/frontend/document-drop-coordinator.d.ts"
+    },
+    "./frontend/offline/identity": {
+      "import": "./dist/frontend/offline/identity.js",
+      "types": "./dist/frontend/offline/identity.d.ts"
+    },
+    "./frontend/doc-tabs": {
+      "import": "./dist/frontend/doc-tabs.js",
+      "types": "./dist/frontend/doc-tabs.d.ts"
+    },
+    "./frontend/components/editor/document-editor": {
+      "import": "./dist/frontend/components/editor/document-editor.js",
+      "types": "./dist/frontend/components/editor/document-editor.d.ts"
+    },
+    "./frontend/components/folder-tree-selector": {
+      "import": "./dist/frontend/components/folder-tree-selector.js",
+      "types": "./dist/frontend/components/folder-tree-selector.d.ts"
+    },
+    "./frontend/components/save-as-dialog": {
+      "import": "./dist/frontend/components/save-as-dialog.js",
+      "types": "./dist/frontend/components/save-as-dialog.d.ts"
+    },
+    "./frontend/components/share-dialog": {
+      "import": "./dist/frontend/components/share-dialog.js",
+      "types": "./dist/frontend/components/share-dialog.d.ts"
+    },
+    "./frontend/components/tag-create-dialog": {
+      "import": "./dist/frontend/components/tag-create-dialog.js",
+      "types": "./dist/frontend/components/tag-create-dialog.d.ts"
+    },
+    "./frontend/components/version-history": {
+      "import": "./dist/frontend/components/version-history.js",
+      "types": "./dist/frontend/components/version-history.d.ts"
+    },
+    "./frontend/components/editor/document-title": {
+      "import": "./dist/frontend/components/editor/document-title.js",
+      "types": "./dist/frontend/components/editor/document-title.d.ts"
+    },
+    "./frontend/components/editor/markdown-toggle": {
+      "import": "./dist/frontend/components/editor/markdown-toggle.js",
+      "types": "./dist/frontend/components/editor/markdown-toggle.d.ts"
+    },
+    "./frontend/components/editor/extensions": {
+      "import": "./dist/frontend/components/editor/extensions.js",
+      "types": "./dist/frontend/components/editor/extensions.d.ts"
+    },
+    "./frontend/components/editor/markdown": {
+      "import": "./dist/frontend/components/editor/markdown.js",
+      "types": "./dist/frontend/components/editor/markdown.d.ts"
+    },
+    "./frontend/components/editor/docx-serializer": {
+      "import": "./dist/frontend/components/editor/docx-serializer.js",
+      "types": "./dist/frontend/components/editor/docx-serializer.d.ts"
+    },
     "./frontend/components/sidebar": {
       "import": "./dist/frontend/components/sidebar.js",
       "types": "./dist/frontend/components/sidebar.d.ts"
@@ -117,6 +197,34 @@
     "./frontend/components/settings": {
       "import": "./dist/frontend/components/settings.js",
       "types": "./dist/frontend/components/settings.d.ts"
+    },
+    "./frontend/types": {
+      "import": "./dist/frontend/types.js",
+      "types": "./dist/frontend/types.d.ts"
+    },
+    "./frontend/keyboard": {
+      "import": "./dist/frontend/keyboard.js",
+      "types": "./dist/frontend/keyboard.d.ts"
+    },
+    "./frontend/folder-refresh": {
+      "import": "./dist/frontend/folder-refresh.js",
+      "types": "./dist/frontend/folder-refresh.d.ts"
+    },
+    "./frontend/utils": {
+      "import": "./dist/frontend/utils.js",
+      "types": "./dist/frontend/utils.d.ts"
+    },
+    "./frontend/utils/clipboard": {
+      "import": "./dist/frontend/utils/clipboard.js",
+      "types": "./dist/frontend/utils/clipboard.d.ts"
+    },
+    "./frontend/utils/dndzone": {
+      "import": "./dist/frontend/utils/dndzone.js",
+      "types": "./dist/frontend/utils/dndzone.d.ts"
+    },
+    "./frontend/api/share": {
+      "import": "./dist/frontend/api/share.js",
+      "types": "./dist/frontend/api/share.d.ts"
     },
     "./frontend/theme": {
       "import": "./dist/frontend/theme.js",

@@ -99,6 +99,33 @@ const frontendSubpaths = [
 	"api/folders",
 	"api/tags",
 	"api/settings",
+	"api/attachments",
+	"api/share",
+	"collaboration",
+	"components/create-snapshot-dialog",
+	"components/delete-dialog",
+	"components/category-dialog",
+	"components/folder-node",
+	"document-drop-coordinator",
+	"offline/identity",
+	"doc-tabs",
+	"types",
+	"keyboard",
+	"folder-refresh",
+	"utils",
+	"utils/clipboard",
+	"utils/dndzone",
+	"components/editor/document-editor",
+	"components/folder-tree-selector",
+	"components/save-as-dialog",
+	"components/share-dialog",
+	"components/tag-create-dialog",
+	"components/version-history",
+	"components/editor/document-title",
+	"components/editor/markdown-toggle",
+	"components/editor/extensions",
+	"components/editor/markdown",
+	"components/editor/docx-serializer",
 	"components/sidebar",
 	"components/settings",
 	"theme",
@@ -207,6 +234,10 @@ for (const dependency of [
 	"@sveltejs/vite-plugin-svelte",
 	"svelte",
 	"vite",
+	"yjs",
+	"y-websocket",
+	"svelte-dnd-action",
+	"clsx",
 ]) {
 	const link = join(packageRoot, "node_modules", dependency);
 	await mkdir(dirname(link), { recursive: true });
@@ -229,12 +260,28 @@ import { listDocuments, type DocumentDto, type UpdateDocumentInput } from "${man
 import { listFolders, type FolderDto, type CreateFolderData } from "${manifest.name}/frontend/api/folders";
 import { listTags, type TagDto, type CreateTagInput } from "${manifest.name}/frontend/api/tags";
 import { getProfile, type EmbeddingConfigDto, type ProfileDto } from "${manifest.name}/frontend/api/settings";
+import { uploadAttachment, type Attachment } from "${manifest.name}/frontend/api/attachments";
+import { createShareLink, type CreateShareLinkInput, type ShareLink } from "${manifest.name}/frontend/api/share";
+import { startCollaboration, type CollaborationSession } from "${manifest.name}/frontend/collaboration";
+import { CreateSnapshotDialog } from "${manifest.name}/frontend/components/create-snapshot-dialog";
+import { DeleteDialog } from "${manifest.name}/frontend/components/delete-dialog";
+import { CategoryDialog } from "${manifest.name}/frontend/components/category-dialog";
+import { FolderNode, type FolderNodeItem } from "${manifest.name}/frontend/components/folder-node";
+import { createDocumentDropCoordinator, type SidebarDocumentPlacement } from "${manifest.name}/frontend/document-drop-coordinator";
+import { resolveOfflineIdentity, type OfflineIdentity } from "${manifest.name}/frontend/offline/identity";
+import { createDocTabRegistry, type DocTabDefinition as PublicDocTabDefinition } from "${manifest.name}/frontend/doc-tabs";
+import { type Document as FrontendDocument, type Folder as FrontendFolder, type Tag as FrontendTag } from "${manifest.name}/frontend/types";
+import { registerShortcut, type Shortcut } from "${manifest.name}/frontend/keyboard";
+import { refreshFolders } from "${manifest.name}/frontend/folder-refresh";
+import { cn, formatRelativeTime } from "${manifest.name}/frontend/utils";
+import { copyToClipboard } from "${manifest.name}/frontend/utils/clipboard";
+import { dndzone, type Item } from "${manifest.name}/frontend/utils/dndzone";
 import { Sidebar } from "${manifest.name}/frontend/components/sidebar";
 import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme, type ThemeMode } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales, type Locale } from "${manifest.name}/frontend/i18n";
-void [DocsClient, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
-type PublicTypes = PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | DocsmintWorkspaceContext | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
+void [DocsClient, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, uploadAttachment, createShareLink, startCollaboration, CreateSnapshotDialog, DeleteDialog, CategoryDialog, FolderNode, createDocumentDropCoordinator, resolveOfflineIdentity, createDocTabRegistry, registerShortcut, refreshFolders, cn, formatRelativeTime, copyToClipboard, dndzone, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
+type PublicTypes = PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | DocsmintWorkspaceContext | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 `,
@@ -280,11 +327,27 @@ import * as documents from "${manifest.name}/frontend/api/documents";
 import * as folders from "${manifest.name}/frontend/api/folders";
 import * as tags from "${manifest.name}/frontend/api/tags";
 import * as settings from "${manifest.name}/frontend/api/settings";
+import * as attachments from "${manifest.name}/frontend/api/attachments";
+import * as share from "${manifest.name}/frontend/api/share";
+import * as collaboration from "${manifest.name}/frontend/collaboration";
+import { CreateSnapshotDialog } from "${manifest.name}/frontend/components/create-snapshot-dialog";
+import { DeleteDialog } from "${manifest.name}/frontend/components/delete-dialog";
+import { CategoryDialog } from "${manifest.name}/frontend/components/category-dialog";
+import { FolderNode } from "${manifest.name}/frontend/components/folder-node";
+import * as documentDrop from "${manifest.name}/frontend/document-drop-coordinator";
+import * as offlineIdentity from "${manifest.name}/frontend/offline/identity";
+import * as docTabs from "${manifest.name}/frontend/doc-tabs";
+import * as types from "${manifest.name}/frontend/types";
+import * as keyboard from "${manifest.name}/frontend/keyboard";
+import * as folderRefresh from "${manifest.name}/frontend/folder-refresh";
+import * as utils from "${manifest.name}/frontend/utils";
+import * as clipboard from "${manifest.name}/frontend/utils/clipboard";
+import * as dnd from "${manifest.name}/frontend/utils/dndzone";
 import { Sidebar } from "${manifest.name}/frontend/components/sidebar";
 import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales } from "${manifest.name}/frontend/i18n";
-const exportsExist = Boolean(DocsmintDashboardHost && DocsmintSearchHost && DocsmintSharedDocumentHost && DocsmintExtensionProvider && Sidebar && SettingsDialog && theme && setTheme && toggleTheme && messages && getMessage && setLocale && supportedLocales && categories && documents && folders && tags && settings);
+const exportsExist = Boolean(DocsmintDashboardHost && DocsmintSearchHost && DocsmintSharedDocumentHost && DocsmintExtensionProvider && Sidebar && SettingsDialog && theme && setTheme && toggleTheme && messages && getMessage && setLocale && supportedLocales && categories && documents && folders && tags && settings && attachments && share && collaboration && CreateSnapshotDialog && DeleteDialog && CategoryDialog && FolderNode && documentDrop && offlineIdentity && docTabs && types && keyboard && folderRefresh && utils && clipboard && dnd);
 </script>
 <p data-exports={exportsExist}>packed frontend fixture</p>
 `,

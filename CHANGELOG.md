@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-07-18
+
+### Added
+
+- Packaging-only public frontend seams for host integrations: attachments, sharing, collaboration, keyboard and folder-refresh state, document tabs, offline identity, drag/drop coordination, and the explicitly named dialog/folder hosts.
+- Packed SvelteKit consumer verification for every declared frontend subpath.
+
+### Changed
+
+- Release metadata and package consistency checks now target `0.3.7`.
+
 ## [0.3.6] - 2026-07-18
 
 ### Fixed
