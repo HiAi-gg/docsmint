@@ -230,6 +230,24 @@ console.log(created.id, results.items);
 The SDK is a typed `fetch` client with retries for transient failures. See the
 [SDK reference](packages/sdk/README.md) and [REST API](docs/API.md).
 
+### Server-only host integration
+
+Hosts that run DocsMint as a packaged backend can start the bundled Bun
+runtime without importing checkout source:
+
+```ts
+import { launchDocsmintBackend } from "@hiai-gg/docsmint/backend/launcher";
+
+const backend = launchDocsmintBackend({ env: { API_PORT: "50700" } });
+await backend.ready;
+// Later: await backend.stop();
+```
+
+Storage quota persistence remains host-owned. DocsMint provides the stable,
+atomic reservation contract at `@hiai-gg/docsmint/storage-quota`; adapters
+must enforce the check and reservation in one durable operation. Both paths
+are server-only and are rejected by browser builds.
+
 ## API keys and integrations
 
 Create and revoke integration keys from **Settings → API**.

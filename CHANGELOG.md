@@ -7,6 +7,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-18
+
+### Added
+
+- `@hiai-gg/docsmint/backend/launcher`, a Bun-only server entrypoint that
+  starts the backend bundled inside the published package, exposes readiness
+  and shutdown handles, and never resolves checkout-relative source paths.
+- `@hiai-gg/docsmint/storage-quota`, an immutable, adapter-backed contract for
+  atomic quota reservation, commit, release, idempotency, and typed redacted
+  quota rejection.
+
+### Fixed
+
+- The npm tarball now contains runtime JavaScript, declarations, and the
+  bundled backend artifact required by both new server-only entrypoints.
+- Packed-package verification now imports and typechecks both entrypoints and
+  proves that neither can enter a browser bundle.
+
 ## [0.3.4] - 2026-07-18
 
 ### Added

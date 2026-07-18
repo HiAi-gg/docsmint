@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const repositoryRoot = new URL("../../../", import.meta.url);
-const releaseVersion = "0.3.4";
+const releaseVersion = "0.3.5";
 
 async function json(path: string): Promise<Record<string, unknown>> {
 	return JSON.parse(await readFile(new URL(path, repositoryRoot), "utf8"));
 }
 
-test("all published and workspace release metadata reports 0.3.4", async () => {
+test("all published and workspace release metadata reports 0.3.5", async () => {
 	for (const path of [
 		"package.public.json",
 		"backend/package.json",
@@ -24,10 +24,24 @@ test("all published and workspace release metadata reports 0.3.4", async () => {
 	const lockfile = await readFile(new URL("bun.lock", repositoryRoot), "utf8");
 	const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
 	expect(workspaceBlock).not.toContain('"version": "0.3.0"');
-	expect(workspaceBlock.match(/"version": "0\.3\.4"/g)).toHaveLength(6);
+	expect(workspaceBlock.match(/"version": "0\.3\.5"/g)).toHaveLength(6);
 
 	const publicManifest = await json("package.public.json");
 	expect(publicManifest.name).toBe("@hiai-gg/docsmint");
+	const publicExports = publicManifest.exports as Record<
+		string,
+		Record<string, string>
+	>;
+	expect(publicExports["./backend/launcher"]).toEqual({
+		browser: "./dist/server-only-browser-entry.js",
+		import: "./dist/backend-launcher.js",
+		types: "./dist/backend-launcher.d.ts",
+	});
+	expect(publicExports["./storage-quota"]).toEqual({
+		browser: "./dist/server-only-browser-entry.js",
+		import: "./dist/storage-quota.js",
+		types: "./dist/storage-quota.d.ts",
+	});
 	const openApi = await json("docs/openapi.json");
 	expect((openApi.info as { version: string }).version).toBe(releaseVersion);
 

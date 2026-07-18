@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const read = (path: string) =>
 	readFileSync(new URL(path, import.meta.url), "utf8");
 
-describe("0.3.4 visual regression contracts", () => {
+describe("0.3.5 visual regression contracts", () => {
 	test("keeps the title favicon synchronized with the resolved app theme", () => {
 		const appHtml = read("../../app.html");
 		const themeStore = read("../stores/theme.svelte.ts");

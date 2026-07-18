@@ -103,6 +103,11 @@ const requiredTarEntries = [
 	"package/dist/lifecycle.d.ts",
 	"package/dist/workspace.js",
 	"package/dist/workspace.d.ts",
+	"package/dist/backend-launcher.js",
+	"package/dist/backend-launcher.d.ts",
+	"package/dist/backend/index.js",
+	"package/dist/storage-quota.js",
+	"package/dist/storage-quota.d.ts",
 	...frontendSubpaths.flatMap((path) => [
 		`package/dist/frontend/${path}.js`,
 		`package/dist/frontend/${path}.d.ts`,
@@ -151,7 +156,9 @@ await writeFile(
 	`import { DocsClient } from "${manifest.name}";
 import { encodeUserDataExportNdjson } from "${manifest.name}/lifecycle";
 import { verifyDocsmintWorkspaceAssertion } from "${manifest.name}/workspace";
-if (!DocsClient || !encodeUserDataExportNdjson || !verifyDocsmintWorkspaceAssertion) throw new Error("missing server export");
+import { launchDocsmintBackend, resolveDocsmintBackendEntrypoint } from "${manifest.name}/backend/launcher";
+import { createStorageQuotaService, StorageQuotaExceededError } from "${manifest.name}/storage-quota";
+if (!DocsClient || !encodeUserDataExportNdjson || !verifyDocsmintWorkspaceAssertion || !launchDocsmintBackend || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError) throw new Error("missing server export");
 console.log("server imports: pass");
 `,
 );
@@ -180,6 +187,8 @@ await writeFile(
 	`import { DocsClient } from "${manifest.name}";
 import type { PurgeUserDataContext, UserDataExportRecord } from "${manifest.name}/lifecycle";
 import type { DocsmintWorkspaceContext } from "${manifest.name}/workspace";
+import { launchDocsmintBackend, type DocsmintBackendHandle } from "${manifest.name}/backend/launcher";
+import { createStorageQuotaService, StorageQuotaExceededError, type StorageQuotaAdapter, type StorageQuotaReservation } from "${manifest.name}/storage-quota";
 import { DocsmintDashboardHost } from "${manifest.name}/frontend/dashboard";
 import { DocsmintSearchHost } from "${manifest.name}/frontend/search";
 import { DocsmintSharedDocumentHost } from "${manifest.name}/frontend/shared-document";
@@ -193,8 +202,8 @@ import { Sidebar } from "${manifest.name}/frontend/components/sidebar";
 import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme, type ThemeMode } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales, type Locale } from "${manifest.name}/frontend/i18n";
-void [DocsClient, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
-type PublicTypes = PurgeUserDataContext | UserDataExportRecord | DocsmintWorkspaceContext | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
+void [DocsClient, launchDocsmintBackend, createStorageQuotaService, StorageQuotaExceededError, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
+type PublicTypes = PurgeUserDataContext | UserDataExportRecord | DocsmintWorkspaceContext | DocsmintBackendHandle | StorageQuotaAdapter | StorageQuotaReservation | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 `,
@@ -256,32 +265,55 @@ const browserConsumer = join(runRoot, "browser-consumer");
 const packageLink = join(browserConsumer, "node_modules", "@hiai-gg", "docsmint");
 await mkdir(dirname(packageLink), { recursive: true });
 await symlink(packageRoot, packageLink, "dir");
-await writeFile(
-	join(browserConsumer, "workspace-browser-entry.ts"),
-	`import { verifyDocsmintWorkspaceAssertion } from "${manifest.name}/workspace";
-console.log(verifyDocsmintWorkspaceAssertion);
+const serverOnlyBrowserChecks = [
+	{
+		id: "workspace",
+		subpath: "workspace",
+		symbol: "verifyDocsmintWorkspaceAssertion",
+	},
+	{
+		id: "backend-launcher",
+		subpath: "backend/launcher",
+		symbol: "launchDocsmintBackend",
+	},
+	{
+		id: "storage-quota",
+		subpath: "storage-quota",
+		symbol: "createStorageQuotaService",
+	},
+] as const;
+for (const check of serverOnlyBrowserChecks) {
+	const entry = `${check.id}-browser-entry.ts`;
+	const config = `${check.id}-browser.vite.config.ts`;
+	await writeFile(
+		join(browserConsumer, entry),
+		`import { ${check.symbol} } from "${manifest.name}/${check.subpath}";
+console.log(${check.symbol});
 `,
-);
-await writeFile(
-	join(browserConsumer, "workspace-browser.vite.config.ts"),
-	`export default { resolve: { conditions: ["browser"] }, build: { lib: { entry: "workspace-browser-entry.ts", formats: ["es"] } } };
+	);
+	await writeFile(
+		join(browserConsumer, config),
+		`export default { resolve: { conditions: ["browser"] }, build: { lib: { entry: "${entry}", formats: ["es"] } } };
 `,
-);
-const negative = await run(
-	[
-		"bun",
-		viteBinary,
-		"build",
-		"--config",
-		"workspace-browser.vite.config.ts",
-		"--configLoader",
-		"runner",
-	],
-	browserConsumer,
-	false,
-);
-if (negative.exitCode === 0) {
-	throw new Error("Server-only workspace export unexpectedly entered a browser bundle");
+	);
+	const negative = await run(
+		[
+			"bun",
+			viteBinary,
+			"build",
+			"--config",
+			config,
+			"--configLoader",
+			"runner",
+		],
+		browserConsumer,
+		false,
+	);
+	if (negative.exitCode === 0) {
+		throw new Error(
+			`Server-only ${check.subpath} export unexpectedly entered a browser bundle`,
+		);
+	}
 }
 
 const sha256 = new Bun.CryptoHasher("sha256")

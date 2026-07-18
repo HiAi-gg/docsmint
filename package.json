@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "browser": {
+	"./packages/sdk/dist/backend-launcher.js": false,
 	"./packages/sdk/dist/lifecycle.js": false,
+	"./packages/sdk/dist/storage-quota.js": false,
 	"./packages/sdk/dist/workspace.js": false
   },
   "workspaces": [
@@ -59,6 +61,16 @@
       "browser": "./packages/sdk/dist/server-only-browser-entry.js",
       "import": "./packages/sdk/dist/workspace.js",
       "types": "./packages/sdk/dist/workspace.d.ts"
+    },
+    "./backend/launcher": {
+      "browser": "./packages/sdk/dist/server-only-browser-entry.js",
+      "import": "./packages/sdk/dist/backend-launcher.js",
+      "types": "./packages/sdk/dist/backend-launcher.d.ts"
+    },
+    "./storage-quota": {
+      "browser": "./packages/sdk/dist/server-only-browser-entry.js",
+      "import": "./packages/sdk/dist/storage-quota.js",
+      "types": "./packages/sdk/dist/storage-quota.d.ts"
     },
     "./frontend/dashboard": { "import": "./packages/sdk/dist/frontend/dashboard.js", "types": "./packages/sdk/dist/frontend/dashboard.d.ts" },
     "./frontend/search": { "import": "./packages/sdk/dist/frontend/search.js", "types": "./packages/sdk/dist/frontend/search.d.ts" },

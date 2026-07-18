@@ -32,9 +32,9 @@ Import from the stable public package path:
 ```svelte
 <script lang="ts">
   import {
-    DocsmintDashboardHost,
     DocsmintExtensionProvider,
-  } from "@hiai-gg/docsmint/frontend/hosts";
+  } from "@hiai-gg/docsmint/frontend/extension";
+  import { DocsmintDashboardHost } from "@hiai-gg/docsmint/frontend/dashboard";
   import UsageWidget from "./UsageWidget.svelte";
 
   const extensions = {
@@ -94,7 +94,7 @@ consumers.
 
 ```svelte
 <script lang="ts">
-  import { DocsmintExtensionProvider } from "@hiai-gg/docsmint/frontend/hosts";
+  import { DocsmintExtensionProvider } from "@hiai-gg/docsmint/frontend/extension";
   import HtmlPreviewPanel from "./HtmlPreviewPanel.svelte";
   import CodeIcon from "lucide-svelte/icons/code";
 
@@ -134,5 +134,51 @@ interface DocTabPanelProps {
 3. Use existing DocsMint design tokens and compact accessible controls.
 4. Keep Markdown and the structured TipTap JSON equivalent when adding editor
    nodes so sharing and export continue to work.
-5. Treat `@hiai-gg/docsmint/frontend/hosts` and
-   `@hiai-gg/docsmint/frontend/extensions` as semver-versioned public APIs.
+5. Treat every documented `@hiai-gg/docsmint/frontend/*` subpath as a
+   semver-versioned public API; there is intentionally no catch-all barrel.
+
+## Server-only host integration
+
+The packaged backend launcher is available only to Bun server processes:
+
+```ts
+import {
+  launchDocsmintBackend,
+  type DocsmintBackendHandle,
+} from "@hiai-gg/docsmint/backend/launcher";
+
+const backend: DocsmintBackendHandle = launchDocsmintBackend({
+  env: { API_PORT: "50700" },
+});
+await backend.ready;
+```
+
+The launcher resolves `dist/backend/index.js` inside the installed package,
+defensively snapshots the child environment, polls `/api/health`, and sends
+`SIGTERM` when startup fails or the host calls `stop()`.
+
+Hosts own storage accounting persistence. Register an adapter whose `reserve`
+method atomically checks the current usage and creates an idempotent durable
+reservation:
+
+```ts
+import {
+  createStorageQuotaService,
+  type StorageQuotaAdapter,
+} from "@hiai-gg/docsmint/storage-quota";
+
+declare const adapter: StorageQuotaAdapter;
+const quota = createStorageQuotaService(adapter);
+const reservation = await quota.reserve({
+  actorUserId,
+  requestId,
+  idempotencyKey,
+  bytes,
+});
+```
+
+Complete uploads with `quota.commit(...)`; failed or cancelled uploads use
+`quota.release(...)`. Adapter operations must be retry-safe. Quota rejection
+throws `StorageQuotaExceededError` with the stable code
+`STORAGE_QUOTA_EXCEEDED` and non-sensitive byte counts only. Neither server
+entrypoint may be imported by browser or frontend bundles.
