@@ -1,13 +1,13 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "browser": {
-	"./dist/lifecycle.js": false,
-	"./dist/workspace.js": false
+    "./dist/lifecycle.js": false,
+    "./dist/workspace.js": false
   },
   "license": "Apache-2.0",
-  "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
+  "description": "The lightweight, AI-native self-hosted knowledge base — built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"
@@ -61,19 +61,58 @@
       "import": "./dist/workspace.js",
       "types": "./dist/workspace.d.ts"
     },
-    "./frontend/dashboard": { "import": "./dist/frontend/dashboard.js", "types": "./dist/frontend/dashboard.d.ts" },
-    "./frontend/search": { "import": "./dist/frontend/search.js", "types": "./dist/frontend/search.d.ts" },
-    "./frontend/shared-document": { "import": "./dist/frontend/shared-document.js", "types": "./dist/frontend/shared-document.d.ts" },
-    "./frontend/extension": { "import": "./dist/frontend/extension.js", "types": "./dist/frontend/extension.d.ts" },
-    "./frontend/api/categories": { "import": "./dist/frontend/api/categories.js", "types": "./dist/frontend/api/categories.d.ts" },
-    "./frontend/api/documents": { "import": "./dist/frontend/api/documents.js", "types": "./dist/frontend/api/documents.d.ts" },
-    "./frontend/api/folders": { "import": "./dist/frontend/api/folders.js", "types": "./dist/frontend/api/folders.d.ts" },
-    "./frontend/api/tags": { "import": "./dist/frontend/api/tags.js", "types": "./dist/frontend/api/tags.d.ts" },
-    "./frontend/api/settings": { "import": "./dist/frontend/api/settings.js", "types": "./dist/frontend/api/settings.d.ts" },
-    "./frontend/components/sidebar": { "import": "./dist/frontend/components/sidebar.js", "types": "./dist/frontend/components/sidebar.d.ts" },
-    "./frontend/components/settings": { "import": "./dist/frontend/components/settings.js", "types": "./dist/frontend/components/settings.d.ts" },
-    "./frontend/theme": { "import": "./dist/frontend/theme.js", "types": "./dist/frontend/theme.d.ts" },
-    "./frontend/i18n": { "import": "./dist/frontend/i18n.js", "types": "./dist/frontend/i18n.d.ts" },
+    "./frontend/dashboard": {
+      "import": "./dist/frontend/dashboard.js",
+      "types": "./dist/frontend/dashboard.d.ts"
+    },
+    "./frontend/search": {
+      "import": "./dist/frontend/search.js",
+      "types": "./dist/frontend/search.d.ts"
+    },
+    "./frontend/shared-document": {
+      "import": "./dist/frontend/shared-document.js",
+      "types": "./dist/frontend/shared-document.d.ts"
+    },
+    "./frontend/extension": {
+      "import": "./dist/frontend/extension.js",
+      "types": "./dist/frontend/extension.d.ts"
+    },
+    "./frontend/api/categories": {
+      "import": "./dist/frontend/api/categories.js",
+      "types": "./dist/frontend/api/categories.d.ts"
+    },
+    "./frontend/api/documents": {
+      "import": "./dist/frontend/api/documents.js",
+      "types": "./dist/frontend/api/documents.d.ts"
+    },
+    "./frontend/api/folders": {
+      "import": "./dist/frontend/api/folders.js",
+      "types": "./dist/frontend/api/folders.d.ts"
+    },
+    "./frontend/api/tags": {
+      "import": "./dist/frontend/api/tags.js",
+      "types": "./dist/frontend/api/tags.d.ts"
+    },
+    "./frontend/api/settings": {
+      "import": "./dist/frontend/api/settings.js",
+      "types": "./dist/frontend/api/settings.d.ts"
+    },
+    "./frontend/components/sidebar": {
+      "import": "./dist/frontend/components/sidebar.js",
+      "types": "./dist/frontend/components/sidebar.d.ts"
+    },
+    "./frontend/components/settings": {
+      "import": "./dist/frontend/components/settings.js",
+      "types": "./dist/frontend/components/settings.d.ts"
+    },
+    "./frontend/theme": {
+      "import": "./dist/frontend/theme.js",
+      "types": "./dist/frontend/theme.d.ts"
+    },
+    "./frontend/i18n": {
+      "import": "./dist/frontend/i18n.js",
+      "types": "./dist/frontend/i18n.d.ts"
+    },
     "./schema": {
       "import": "./packages/db/src/schema.ts",
       "types": "./packages/db/src/schema.ts"

@@ -16,6 +16,7 @@ import { resolveExtensions } from "$lib/extensions/resolve";
 import { cleanupOfflineData } from "$lib/offline/cleanup";
 import * as m from "$lib/paraglide/messages.js";
 import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
+import { searchPreferences } from "$lib/stores/search-preferences.svelte";
 import { type Theme, themeStore } from "$lib/stores/theme.svelte";
 
 let {
@@ -49,6 +50,7 @@ let passwordError = $state("");
 
 onMount(async () => {
 	editorPreferences.init();
+	searchPreferences.init();
 	try {
 		const profile = await getProfile();
 		if (profile.name) name = profile.name;
@@ -224,6 +226,21 @@ function close() {
 			{#if pendingEmail}
 				<p class="text-xs text-muted-foreground">Verification is required before the new address becomes active.</p>
 			{/if}
+				</div>
+				<div class="flex items-center justify-between gap-4 rounded-md border p-3">
+					<span>
+						<span class="block text-sm font-medium">GraphRAG search</span>
+						<span class="block text-xs text-muted-foreground">Use graph expansion for related documents. Disable it for faster standard RAG search.</span>
+					</span>
+					<button
+						type="button"
+						role="switch"
+						class="preference-switch"
+						class:enabled={searchPreferences.graphSearchEnabled}
+						aria-checked={searchPreferences.graphSearchEnabled}
+						aria-label="Use GraphRAG search"
+						onclick={() => searchPreferences.update({ graphSearchEnabled: !searchPreferences.graphSearchEnabled })}
+					><span></span></button>
 				</div>
 				{#if profileError}
 					<p class="text-sm text-destructive">{profileError}</p>

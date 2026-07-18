@@ -1417,7 +1417,7 @@ $effect(() => {
 		flex-wrap: wrap;
 		position: sticky;
 		top: 0;
-		z-index: 40;
+		z-index: var(--layer-chrome);
 	}
 
 	.toolbar-divider {
@@ -1480,7 +1480,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 50;
+		z-index: var(--layer-popover);
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
@@ -1555,7 +1555,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 50;
+		z-index: var(--layer-popover);
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
@@ -1695,7 +1695,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 70;
+		z-index: var(--layer-popover);
 		padding: 8px;
 		background: var(--popover);
 		color: var(--popover-foreground);
@@ -1749,7 +1749,7 @@ $effect(() => {
 		position: absolute;
 		top: calc(100% + 6px);
 		left: 0;
-		z-index: 70;
+		z-index: var(--layer-popover);
 		padding: 8px;
 		background: var(--popover);
 		color: var(--popover-foreground);
@@ -1811,7 +1811,7 @@ $effect(() => {
 		bottom: 24px;
 		left: 50%;
 		transform: translateX(-50%);
-		z-index: 50;
+		z-index: var(--layer-popover);
 		background: color-mix(in srgb, var(--background) 95%, transparent);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);

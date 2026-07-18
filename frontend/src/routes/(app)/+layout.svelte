@@ -9,10 +9,12 @@ import {
 	closeMobileSidebar,
 	mobileSidebar,
 } from "$lib/stores/mobile-sidebar.svelte";
+import { searchPreferences } from "$lib/stores/search-preferences.svelte";
 
 const { children } = $props();
 
 editorPreferences.init();
+searchPreferences.init();
 
 let mainElement = $state<HTMLElement | null>(null);
 let sidebarElement = $state<HTMLElement | null>(null);

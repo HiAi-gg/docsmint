@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/sdk",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -14,7 +14,7 @@
   },
   "scripts": {
     "build": "tsc && cd ../../frontend && bunx paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && bunx svelte-kit sync && bunx vite build --config vite.package.config.ts && cd ../packages/sdk && bun run scripts/write-frontend-declarations.ts",
-	"test": "bun test src/*.test.ts",
+    "test": "bun test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

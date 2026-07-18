@@ -277,17 +277,18 @@ export const envSchema = z
 		// presence of the `age` extension in the shared database is
 		// detected at runtime by `lib/graph/init.ts` and graph features
 		// degrade gracefully if the extension is missing.
-		// GraphRAG feature flags. Both default to `false` so graph code paths
-		// stay dormant until the operator explicitly enables them.
+		// GraphRAG is part of the normal retrieval path. Missing AGE or provider
+		// configuration still degrades safely at runtime, while these defaults
+		// ensure a configured graph is never silently bypassed.
 		GRAPH_EXTRACT_ENABLED: z
 			.string()
 			.optional()
-			.default("false")
+			.default("true")
 			.transform((v) => v === "true"),
 		GRAPH_SEARCH_ENABLED: z
 			.string()
 			.optional()
-			.default("false")
+			.default("true")
 			.transform((v) => v === "true"),
 		// LLM used by entity extraction. Defaults to `EMBEDDING_MODEL` so the
 		// GraphRAG extractor reuses the configured embedding provider's model
@@ -297,9 +298,10 @@ export const envSchema = z
 		// `none` here so the response token budget is spent on the JSON payload
 		// instead of a reasoning trace. Omitted by default for providers/models
 		// that do not support the field.
-		GRAPH_EXTRACT_REASONING_EFFORT: z
-			.enum(["none", "low", "medium", "high", "max"])
-			.optional(),
+		GRAPH_EXTRACT_REASONING_EFFORT: z.preprocess(
+			(value) => (value === "" ? undefined : value),
+			z.enum(["none", "low", "medium", "high", "max"]).optional(),
+		),
 		GRAPH_EXTRACT_TIMEOUT_MS: z.coerce
 			.number()
 			.int()

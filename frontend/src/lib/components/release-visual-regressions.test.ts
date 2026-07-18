@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 const read = (path: string) =>
 	readFileSync(new URL(path, import.meta.url), "utf8");
 
-describe("0.3.3 visual regression contracts", () => {
+describe("0.3.4 visual regression contracts", () => {
 	test("keeps the title favicon synchronized with the resolved app theme", () => {
 		const appHtml = read("../../app.html");
 		const themeStore = read("../stores/theme.svelte.ts");
@@ -34,11 +34,10 @@ describe("0.3.3 visual regression contracts", () => {
 		expect(saveBlock).toContain("refreshDocs();");
 	});
 
-	test("keeps Markdown sizing, disables Raw JSON, and gives modals a top layer", () => {
+	test("keeps Markdown sizing and disables Raw JSON", () => {
 		const markdown = read("./editor/MarkdownToggle.svelte");
 		const editorPage = read("../../routes/(app)/docs/[id]/+page.svelte");
 		const settings = read("./SettingsDialog.svelte");
-		const appCss = read("../../app.css");
 		expect(markdown).toContain("height: 100%");
 		expect(markdown).toContain("min-height: 0");
 		expect(markdown).toContain("textarea.scrollHeight");
@@ -48,7 +47,27 @@ describe("0.3.3 visual regression contracts", () => {
 		expect(editorPage).not.toContain('mode === "json"');
 		expect(settings).not.toContain("showJsonMode");
 		expect(settings).not.toContain("Raw JSON");
+	});
+
+	test("keeps every popup above persistent chrome and every modal above popovers", () => {
+		const appCss = read("../../app.css");
+		const editorPage = read("../../routes/(app)/docs/[id]/+page.svelte");
+		const toolbar = read("./editor/EditorToolbar.svelte");
+		const datePicker = read("./DatePicker.svelte");
+		const shareDialog = read("./ShareDialog.svelte");
+
+		expect(appCss).toContain("--layer-chrome: 30");
+		expect(appCss).toContain("--layer-popover: 200");
 		expect(appCss).toContain("--layer-modal: 1000");
 		expect(appCss).toContain(':has(> [role="dialog"])');
+		expect(appCss).toContain(".fixed.inset-0.z-50");
+		expect(editorPage).toContain("z-index: var(--layer-chrome)");
+		expect(editorPage).toContain("z-index: var(--layer-popover)");
+		expect(toolbar).toContain("z-index: var(--layer-chrome)");
+		expect(toolbar).toContain("z-index: var(--layer-popover)");
+		expect(datePicker).toContain("z-index: var(--layer-popover)");
+		expect(shareDialog).toContain("fixed inset-0 layer-modal");
+		expect(shareDialog).toContain('role="dialog"');
+		expect(shareDialog).toContain('aria-modal="true"');
 	});
 });

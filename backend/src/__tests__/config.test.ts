@@ -139,6 +139,16 @@ describe("config schema", () => {
 		).toBe(false);
 	});
 
+	test("treats an empty optional GraphRAG reasoning effort from Compose as unset", () => {
+		const result = realEnvSchema.safeParse({
+			GRAPH_EXTRACT_REASONING_EFFORT: "",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.GRAPH_EXTRACT_REASONING_EFFORT).toBeUndefined();
+		}
+	});
+
 	test("accepts shared OpenRouter key for public embedding profile", () => {
 		const result = realEnvSchema.safeParse({
 			OPENROUTER_API_KEY: "test-openrouter-key",
@@ -159,6 +169,8 @@ describe("config schema", () => {
 		const result = realEnvSchema.safeParse({});
 		expect(result.success).toBe(true);
 		if (result.success) {
+			expect(result.data.GRAPH_EXTRACT_ENABLED).toBe(true);
+			expect(result.data.GRAPH_SEARCH_ENABLED).toBe(true);
 			expect(result.data.SEARCH_EXPANSION_ENABLED).toBe(true);
 			expect(result.data.SEARCH_EXPANSION_MODEL).toBe(
 				"mistralai/ministral-14b-2512",

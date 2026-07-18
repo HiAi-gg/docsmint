@@ -4,11 +4,10 @@
  * latency of graph expansion against a fixed inline corpus.
  *
  * Usage:
- *   GRAPH_SEARCH_ENABLED=true bun run src/scripts/benchmark-graph.ts
  *   bun run benchmark:graph
  *
- * The script seeds synthetic documents into the backend via the admin API,
- * then runs a series of queries with and without graph expansion to measure:
+ * The script runs authenticated queries with the default GraphRAG profile and
+ * with an admin-only RAG-only benchmark profile to measure:
  *   - recall@k improvement (graph vs no-graph)
  *   - p50/p95 latency of graph expansion
  *   - sensitivity to GRAPH_EXPANSION_BOOST (optional)
@@ -173,10 +172,18 @@ interface CliArgs {
 	help: boolean;
 }
 
+export function resolveGraphBenchmarkApiKey(
+	env: Record<string, string | undefined> = process.env,
+): string | null {
+	const value = env.HIAI_DOCS_API_KEY ?? env.BENCHMARK_API_KEY;
+	const normalized = value?.trim();
+	return normalized ? normalized : null;
+}
+
 function parseArgs(): CliArgs {
 	const args: CliArgs = {
 		baseUrl: "http://localhost:50700",
-		apiKey: "test-key",
+		apiKey: resolveGraphBenchmarkApiKey() ?? "",
 		runs: 3,
 		k: 10,
 		boostRange: null,
@@ -266,6 +273,44 @@ interface SearchResult {
 	latencyMs: number;
 }
 
+export type GraphBenchmarkProfile = "rag-only" | "graphrag";
+
+/** The RAG-only comparison path is deliberately unavailable to normal users. */
+export function graphBenchmarkHeaders(
+	apiKey: string,
+	profile: GraphBenchmarkProfile,
+): HeadersInit {
+	return {
+		Authorization: `Bearer ${apiKey}`,
+		Accept: "application/json",
+		...(profile === "rag-only"
+			? { "X-Docsmint-Search-Profile": "rag-only" }
+			: {}),
+	};
+}
+
+export function retryAfterDelayMs(value: string | null): number {
+	const seconds = Number(value);
+	return Number.isFinite(seconds) && seconds > 0
+		? Math.ceil(seconds * 1_000)
+		: 1_000;
+}
+
+async function fetchSearchWithRateLimitRetry(
+	url: string,
+	headers: HeadersInit,
+): Promise<{ response: Response; latencyMs: number }> {
+	for (let attempt = 0; attempt < 3; attempt++) {
+		const started = performance.now();
+		const response = await fetch(url, { headers });
+		const latencyMs = performance.now() - started;
+		if (response.status !== 429) return { response, latencyMs };
+		if (attempt === 2) return { response, latencyMs };
+		await Bun.sleep(retryAfterDelayMs(response.headers.get("retry-after")));
+	}
+	throw new Error("Unreachable search retry state");
+}
+
 async function runSearch(
 	baseUrl: string,
 	apiKey: string,
@@ -276,17 +321,13 @@ async function runSearch(
 	const params = new URLSearchParams({
 		q: query,
 		limit: String(k),
-		graph: String(graphEnabled),
 	});
 	const url = `${baseUrl}/api/search?${params}`;
-	const start = performance.now();
-	const resp = await fetch(url, {
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			Accept: "application/json",
-		},
-	});
-	const elapsed = performance.now() - start;
+	const { response: resp, latencyMs: elapsed } =
+		await fetchSearchWithRateLimitRetry(
+			url,
+			graphBenchmarkHeaders(apiKey, graphEnabled ? "graphrag" : "rag-only"),
+		);
 
 	if (!resp.ok) {
 		const text = await resp.text().catch(() => "");
@@ -367,7 +408,6 @@ async function runBenchmark(
 	queries: QuerySpec[],
 	k: number,
 	runs: number,
-	graphEnabled: boolean,
 	boost: number | null,
 ): Promise<BenchmarkRunResult> {
 	const queryResults: QueryResult[] = [];
@@ -397,7 +437,7 @@ async function runBenchmark(
 				baseUrl,
 				apiKey,
 				spec.text,
-				graphEnabled,
+				true,
 				effectiveK,
 			);
 			graphLatencies.push(result.latencyMs);
@@ -432,9 +472,7 @@ async function runBenchmark(
 	const aggLatenciesGraphP95 = queryResults.map((q) => q.p95LatencyGraph);
 
 	return {
-		label: graphEnabled
-			? `graph${boost !== null ? ` (boost=${boost})` : ""}`
-			: "no-graph",
+		label: `graph${boost !== null ? ` (boost=${boost})` : ""}`,
 		boost,
 		queries: queryResults,
 		aggregate: {
@@ -528,6 +566,12 @@ async function main(): Promise<void> {
 		printUsage();
 		process.exit(0);
 	}
+	if (!args.apiKey) {
+		console.error(
+			"HIAI_DOCS_API_KEY or BENCHMARK_API_KEY is required for the benchmark.",
+		);
+		process.exit(1);
+	}
 
 	// Warn about prerequisites
 	console.log(
@@ -601,30 +645,13 @@ async function main(): Promise<void> {
 		console.log();
 	}
 
-	// ── Baseline: no graph ──────────────────────────────────────────
-	console.log(`${ANSI.bold}Running baseline (no graph)...${ANSI.reset}`);
-	const baseline = await runBenchmark(
-		args.baseUrl,
-		args.apiKey,
-		QUERIES,
-		args.k,
-		args.runs,
-		false,
-		null,
-	);
-	printTable(baseline.queries);
-	printAggregate(baseline.aggregate, "Baseline (no graph)");
-	console.log();
-
-	// ── With graph ──────────────────────────────────────────────────
-	console.log(`${ANSI.bold}Running with graph expansion...${ANSI.reset}`);
+	console.log(`${ANSI.bold}Running RAG vs GraphRAG comparison...${ANSI.reset}`);
 	const graphResult = await runBenchmark(
 		args.baseUrl,
 		args.apiKey,
 		QUERIES,
 		args.k,
 		args.runs,
-		true,
 		null,
 	);
 	printTable(graphResult.queries);
@@ -684,10 +711,7 @@ async function main(): Promise<void> {
 					const url = `${args.baseUrl}/api/search?${params}`;
 					const start = performance.now();
 					const resp = await fetch(url, {
-						headers: {
-							Authorization: `Bearer ${args.apiKey}`,
-							Accept: "application/json",
-						},
+						headers: graphBenchmarkHeaders(args.apiKey, "graphrag"),
 					});
 					const elapsed = performance.now() - start;
 					const data = resp.ok
@@ -743,7 +767,7 @@ async function main(): Promise<void> {
 		);
 		console.log("-".repeat(70));
 		for (const sr of sensitivityResults) {
-			const baselineRecall = baseline.aggregate.avgRecallNoGraph;
+			const baselineRecall = graphResult.aggregate.avgRecallNoGraph;
 			const deltaVsBaseline = sr.avgRecallWithGraph - baselineRecall;
 			console.log(
 				`${String(sr.boost).padEnd(10)} | ${sr.avgRecallWithGraph.toFixed(4).padEnd(18)} | ${colorDelta(deltaVsBaseline).padStart(12)} | ${sr.p50LatencyGraph.toFixed(1).padEnd(10)} | ${sr.p95LatencyGraph.toFixed(1).padEnd(10)}`,
@@ -774,7 +798,7 @@ async function main(): Promise<void> {
 		`  ${ANSI.dim}Corpus: ${SYNTHETIC_DOCS.length} docs, ${QUERIES.length} queries`,
 	);
 	console.log(
-		`  ${ANSI.dim}Avg recall@k (no graph):  ${baseline.aggregate.avgRecallNoGraph.toFixed(4)}`,
+		`  ${ANSI.dim}Avg recall@k (no graph):  ${graphResult.aggregate.avgRecallNoGraph.toFixed(4)}`,
 	);
 	console.log(
 		`  ${ANSI.dim}Avg recall@k (with graph): ${graphResult.aggregate.avgRecallWithGraph.toFixed(4)}`,
@@ -790,6 +814,4 @@ async function main(): Promise<void> {
 	);
 }
 
-await main();
-
-export {};
+if (import.meta.main) await main();

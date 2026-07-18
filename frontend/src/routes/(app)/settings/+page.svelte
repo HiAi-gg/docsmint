@@ -12,6 +12,7 @@ import { signOut } from "$lib/auth-client";
 import ApiAccessSettings from "$lib/components/settings/ApiAccessSettings.svelte";
 import { cleanupOfflineData } from "$lib/offline/cleanup";
 import * as m from "$lib/paraglide/messages.js";
+import { searchPreferences } from "$lib/stores/search-preferences.svelte";
 import { themeStore } from "$lib/stores/theme.svelte";
 
 let loggingOut = $state(false);
@@ -134,6 +135,20 @@ async function handleDeleteAccount() {
       <div class="space-y-2">
         <label for="email" class="text-sm font-medium">{m.settings_email()}</label>
         <input id="email" type="email" bind:value={email} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" disabled />
+      </div>
+      <div class="flex items-center justify-between gap-4 rounded-md border border-border px-3 py-3">
+        <div class="space-y-1">
+          <label for="graph-search-enabled" class="text-sm font-medium">GraphRAG search</label>
+          <p class="text-xs text-muted-foreground">Use graph expansion to find related documents. Disable it for faster standard RAG search.</p>
+        </div>
+        <input
+          id="graph-search-enabled"
+          type="checkbox"
+          role="switch"
+          class="size-4 shrink-0 accent-primary"
+          checked={searchPreferences.graphSearchEnabled}
+          onchange={(event) => searchPreferences.update({ graphSearchEnabled: event.currentTarget.checked })}
+        />
       </div>
       <div class="flex items-center gap-3">
         <button onclick={saveProfile} disabled={saveStatus === "saving"} class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">

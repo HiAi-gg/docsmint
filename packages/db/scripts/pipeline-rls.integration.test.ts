@@ -51,8 +51,10 @@ describe("pipeline tenant RLS integration", () => {
 						]);
 
 						await tx`SELECT set_config('app.current_user_role', 'admin', true)`;
-						const adminRuns =
-							await tx`SELECT owner_id FROM public.document_pipeline_runs ORDER BY owner_id`;
+						const adminRuns = await tx`SELECT owner_id
+							FROM public.document_pipeline_runs
+							WHERE owner_id IN (${ownerA}::uuid, ${ownerB}::uuid)
+							ORDER BY owner_id`;
 						expect(adminRuns).toHaveLength(2);
 
 						await tx.unsafe("RESET ROLE");

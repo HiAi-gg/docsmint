@@ -11,19 +11,44 @@
 @import "@hiai-gg/hiai-ui/styles/tokens.css";
 
 :root {
+	/* Keep transient UI in one ordered stack: menus clear persistent chrome,
+	 * while modal dialogs always cover every menu or popover. */
+	--layer-chrome: 30;
+	--layer-panel: 100;
+	--layer-popover: 200;
 	--layer-modal: 1000;
-	--layer-popover: 1100;
 }
 
-/* Persistent editor chrome must never cover a modal. The shared dialog
- * primitive does not expose an overlay class, so target its direct dialog
- * child and keep portalled Bits UI menus above the modal surface. */
+/* Persistent editor chrome must never cover a modal. Some shared dialogs
+ * place the semantic dialog inside a full-screen z-50 wrapper, while others
+ * only expose that wrapper. Cover both shapes instead of relying on :has()
+ * support in the browser. Bits UI menus stay above chrome, but below modal. */
+.fixed.inset-0.z-50,
 .fixed.inset-0:has(> [role="dialog"]) {
+	z-index: var(--layer-modal) !important;
+}
+
+.layer-modal {
 	z-index: var(--layer-modal) !important;
 }
 
 [data-bits-floating-content-wrapper] {
 	z-index: var(--layer-popover) !important;
+}
+
+/* Fixed mobile navigation is persistent chrome. Keep it beneath every modal
+ * regardless of component mount order or local stacking contexts. */
+.mobile-sidebar-toggle {
+	z-index: var(--layer-chrome) !important;
+}
+
+/* Tailwind's translate utility makes the mobile sidebar a containing block
+ * for fixed descendants. Remove only that no-op open-state transform while a
+ * nested modal is active so dialog overlays cover and center in the viewport. */
+@media (max-width: 767px) {
+	html.nested-sidebar-modal-open aside[role="dialog"][aria-modal="true"] {
+		translate: none !important;
+	}
 }
 
 /* Tailwind v4 preflight resets `list-style: none` on `ol, ul, menu`, which

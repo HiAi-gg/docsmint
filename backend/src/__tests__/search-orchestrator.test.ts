@@ -239,6 +239,26 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(response.diagnostics.graphAttempted).toBe(true);
 	});
 
+	test("allows the privileged benchmark profile to measure RAG without graph traversal", async () => {
+		const graph = mock(async () => [candidate("graph-doc", "graph")]);
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "topic",
+				graphEnabled: false,
+			},
+			{
+				retrieveFast: async () =>
+					channels({ fts: [candidate("direct", "fts")] }),
+				expand: async () => null,
+				retrieveGraph: graph,
+			},
+		);
+		expect(graph).not.toHaveBeenCalled();
+		expect(response.diagnostics.graphAttempted).toBe(false);
+		expect(response.items.map((item) => item.documentId)).toEqual(["direct"]);
+	});
+
 	test("counts graph contribution only when a graph candidate reaches final items", async () => {
 		resetMetrics();
 		await searchDocuments(

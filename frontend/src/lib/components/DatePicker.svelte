@@ -228,7 +228,7 @@ $effect(() => {
 	}
 	.dp-popover {
 		position: absolute;
-		z-index: 60;
+		z-index: var(--layer-popover);
 		top: calc(100% + 4px);
 		left: 0;
 		width: 16rem;

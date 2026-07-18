@@ -71,8 +71,10 @@ describe("responsive editor and settings UI", () => {
 			resolve(import.meta.dir, "../ScrollToTop.svelte"),
 			"utf8",
 		);
-		expect(source).toContain("avoid-editor-toolbar");
-		expect(source).toContain("min(42vh, 260px)");
+		expect(source).toContain('".toolbar.floating-bar"');
+		expect(source).toContain('".floating-fab"');
+		expect(source).toContain("getBoundingClientRect()");
+		expect(source).toContain("style:bottom={editorDockBottom}");
 	});
 
 	test("document overflow menu starts with new document in every editor mode", () => {

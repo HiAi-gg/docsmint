@@ -1,4 +1,5 @@
 import { apiFetch } from "$lib/api/client";
+import { readSearchPreferences } from "$lib/stores/search-preferences";
 
 // --- Types -------------------------------------------------------------------
 
@@ -65,8 +66,8 @@ export type SearchSort =
 	| "name_desc";
 
 /**
- * Adaptive multilingual search. GraphRAG is selected automatically by the
- * backend when it improves confidence; callers do not pass a graph toggle.
+ * Adaptive multilingual search. GraphRAG is selected automatically unless
+ * the signed-in user disabled graph expansion in Profile settings.
  *
  * `category` is an optional UUID that, when supplied, narrows results to
  * documents whose own `category_id` matches OR whose folder's
@@ -104,7 +105,12 @@ export async function search(
 	// Adaptive search may spend a bounded vector budget followed by query
 	// expansion. Keep this above the backend's default combined budget while
 	// leaving the global API timeout unchanged for ordinary CRUD requests.
-	return apiFetch(`/api/search?${params}`, { timeout: 15_000 });
+	return apiFetch(`/api/search?${params}`, {
+		timeout: 15_000,
+		headers: readSearchPreferences().graphSearchEnabled
+			? undefined
+			: { "X-Docsmint-Graph-Search": "disabled" },
+	});
 }
 
 /**

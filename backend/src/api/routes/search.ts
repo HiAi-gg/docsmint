@@ -22,6 +22,30 @@ import {
 	adminTenantContext,
 	shareGuestTenantContext,
 } from "../middleware/tenant";
+import { verifyAdminKey } from "./admin-auth";
+
+const BENCHMARK_SEARCH_PROFILE_HEADER = "x-docsmint-search-profile";
+const USER_GRAPH_SEARCH_HEADER = "x-docsmint-graph-search";
+
+function shouldBenchmarkRagOnly(request: Request): boolean {
+	return (
+		request.headers.get(BENCHMARK_SEARCH_PROFILE_HEADER) === "rag-only" &&
+		verifyAdminKey(request)
+	);
+}
+
+/**
+ * GraphRAG stays on for every request unless the caller explicitly opts out.
+ * The opt-out only removes graph traversal; all authorization predicates and
+ * standard lexical/vector RAG channels remain unchanged. The benchmark header
+ * is still admin-only so public clients cannot activate private benchmark mode.
+ */
+export function resolveGraphSearchEnabled(request: Request): boolean {
+	return (
+		!shouldBenchmarkRagOnly(request) &&
+		request.headers.get(USER_GRAPH_SEARCH_HEADER)?.toLowerCase() !== "disabled"
+	);
+}
 
 const searchQuerySchema = z.object({
 	q: z.string().optional(),
@@ -123,6 +147,7 @@ export function createSearchRoutes(
 			set.headers = rateLimitHeaders(rl.remaining);
 
 			const access = await resolveAccess(request);
+			const graphEnabled = resolveGraphSearchEnabled(request);
 			const ctx = access.ctx;
 			let searchCtx = ctx;
 			let shareDocumentIds: string[] | undefined;
@@ -210,6 +235,7 @@ export function createSearchRoutes(
 					query: q,
 					page,
 					limit,
+					graphEnabled,
 					filters: {
 						folderId: folder,
 						tagNames: tags

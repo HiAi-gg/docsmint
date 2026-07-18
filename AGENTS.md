@@ -191,8 +191,8 @@ GraphRAG layers a knowledge graph over the retrieval channels to surface related
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GRAPH_EXTRACT_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable LLM entity extraction after ready generations |
-| `GRAPH_SEARCH_ENABLED` | `false` schema fallback; `true` in `.env.example` | Enable automatic graph-neighbor expansion in normal search; kill switch for degraded deployments |
+| `GRAPH_EXTRACT_ENABLED` | `true` | Enable LLM entity extraction after ready generations; set `false` as an operator kill switch |
+| `GRAPH_SEARCH_ENABLED` | `true` | Enable automatic graph-neighbor expansion in normal search; set `false` as an operator kill switch |
 | `GRAPH_EXPANSION_BOOST` | `0.3` | Multiplier on graph-discovered neighbor scores (range: 0–2) |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
 | `GRAPH_EXTRACT_BASE_URL` | — | OpenAI-compatible chat-completion URL (REQUIRED for extraction) |

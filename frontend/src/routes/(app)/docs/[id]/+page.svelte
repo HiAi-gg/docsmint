@@ -896,7 +896,7 @@ $effect(() => {
 {:else}
   <div class="editor-page">
     <!-- Header -->
-    <header class="editor-header">
+    <header class:menu-open={showMenu} class="editor-header">
       <!-- Breadcrumb -->
       <nav class="breadcrumb" aria-label={m.aria_breadcrumb()}>
         <a href="/" class="breadcrumb-link">{m.breadcrumb_home()}</a>
@@ -1470,7 +1470,14 @@ $effect(() => {
     flex-wrap: wrap;
     position: sticky;
     top: 0;
-    z-index: 30;
+    z-index: var(--layer-chrome);
+  }
+
+  /* The document menu belongs above the editor surface, but the whole header
+     must still remain below modal dialogs. Raising only `.dropdown` cannot
+     escape this sticky header's stacking context. */
+  .editor-header.menu-open {
+    z-index: var(--layer-popover);
   }
 
   .breadcrumb {
@@ -1614,7 +1621,7 @@ $effect(() => {
     background: var(--card);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     padding: 4px;
-    z-index: 200;
+    z-index: var(--layer-popover);
   }
 
   .folder-option-name {
@@ -1981,7 +1988,7 @@ $effect(() => {
       top: 0;
       bottom: 0;
       width: 280px;
-      z-index: 100;
+      z-index: var(--layer-panel);
       box-shadow: -4px 0 16px rgba(0, 0, 0, 0.12);
     }
   }

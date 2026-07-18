@@ -113,9 +113,13 @@ function close() {
 </script>
 
 {#if open}
-  <div class="fixed inset-0 z-50 flex items-center justify-center">
+  <div class="fixed inset-0 layer-modal flex items-center justify-center">
     <button onclick={close} class="absolute inset-0 bg-black/50" aria-label={m.action_close()}></button>
-    <div class="relative z-10 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg">
+    <div
+      class="relative z-10 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg"
+      role="dialog"
+      aria-modal="true"
+    >
       <div class="mb-4 flex items-center justify-between">
         <h2 class="text-lg font-semibold">{m.share_create_title()} "{categoryName || folderName || documentTitle}"</h2>
         <button onclick={close} class="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label={m.action_close()}>&#10005;</button>

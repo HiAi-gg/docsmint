@@ -36,6 +36,11 @@ export interface SearchRequest {
 	page?: number;
 	limit?: number;
 	maxGraphHops?: number;
+	/**
+	 * Internal, admin-gated benchmark override. Omit in every product request:
+	 * GraphRAG remains enabled by default.
+	 */
+	graphEnabled?: boolean;
 	filters?: SearchFilters;
 	/** Restricts every lexical/vector channel to an authorized document set. */
 	documentIds?: string[];
@@ -255,24 +260,27 @@ export async function searchDocuments(
 		.map((result) => result.documentId);
 	let graph: SearchCandidate[] = [];
 	let graphFailed = false;
-	const graphStarted = performance.now();
-	try {
-		graph = await retrieveGraph(ctx, {
-			documentSeeds: graphSeeds,
-			queryPlan: graphPlan,
-			limit: Math.min(limit * 2, config.SEARCH_GRAPH_RESULT_LIMIT),
-			maxHops: request.maxGraphHops ?? config.SEARCH_GRAPH_MAX_HOPS,
-			visibilityScope: request.visibilityScope,
+	const graphAttempted = request.graphEnabled !== false;
+	if (graphAttempted) {
+		const graphStarted = performance.now();
+		try {
+			graph = await retrieveGraph(ctx, {
+				documentSeeds: graphSeeds,
+				queryPlan: graphPlan,
+				limit: Math.min(limit * 2, config.SEARCH_GRAPH_RESULT_LIMIT),
+				maxHops: request.maxGraphHops ?? config.SEARCH_GRAPH_MAX_HOPS,
+				visibilityScope: request.visibilityScope,
+			});
+		} catch {
+			graphFailed = true;
+		}
+		recordSearchChannelMetrics({
+			channel: "graph",
+			durationMs: performance.now() - graphStarted,
+			candidateCount: graph.length,
+			errorCode: graphFailed ? "query_failed" : undefined,
 		});
-	} catch {
-		graphFailed = true;
 	}
-	recordSearchChannelMetrics({
-		channel: "graph",
-		durationMs: performance.now() - graphStarted,
-		candidateCount: graph.length,
-		errorCode: graphFailed ? "query_failed" : undefined,
-	});
 
 	const ranked = fuseCandidates(
 		[
@@ -330,7 +338,7 @@ export async function searchDocuments(
 		expansionUsed,
 		crossLanguageSuccess,
 		...(expansionModel ? { expansionModel } : {}),
-		graphAttempted: true,
+		graphAttempted,
 		graphFailed,
 		confidenceReasons: confidence.reasons,
 	};

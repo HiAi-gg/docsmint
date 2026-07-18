@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-18
+
+### Added
+
+- GraphRAG is enabled by default for configured installations, with a
+  user-controlled Profile switch that can select the faster standard RAG path.
+- The authenticated GraphRAG benchmark now compares RAG-only and GraphRAG
+  latency and recall without exposing a public query override.
+
+### Fixed
+
+- Mobile dialogs consistently cover persistent navigation and editor chrome,
+  while editor menus and the scroll-to-top control use the correct stacking
+  and docking order.
+- Search preferences can be read by the typed API client without importing a
+  Svelte rune module into server-side or package test runtimes.
+- Date picker, sharing, editor toolbar, and mobile overlay regressions found
+  during release candidate verification.
+
 ## [0.3.3] - 2026-07-17
 
 ### Fixed
