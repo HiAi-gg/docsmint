@@ -1,5 +1,5 @@
 import { documentTags, tags as tagsTable } from "@hiai-docs/db/schema";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getEmbedding } from "../../embedding";
@@ -400,6 +400,7 @@ async function loadCategoryDocumentIds(
 						documents.workspaceId,
 						access.ctx,
 					),
+					isNull(documents.deletedAt),
 					or(
 						eq(documents.categoryId, categoryId),
 						and(
@@ -458,6 +459,7 @@ async function hydrateResults(
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						eq(documents.visibility, "public"),
 					),
+					isNull(documents.deletedAt),
 					inArray(documents.id, visibleIds),
 					allowedDocumentIds
 						? inArray(documents.id, allowedDocumentIds)

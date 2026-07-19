@@ -28,7 +28,7 @@
     },
     "backend": {
       "name": "@hiai-docs/backend",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.750.0",
         "@aws-sdk/s3-request-presigner": "^3.750.0",
@@ -63,7 +63,7 @@
     },
     "frontend": {
       "name": "@hiai-docs/frontend",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "dependencies": {
         "@hiai-gg/hiai-ui": "^0.0.8",
         "@inlang/paraglide-js": "^2.20.2",
@@ -133,7 +133,7 @@
     },
     "packages/cli": {
       "name": "@hiai-docs/cli",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "bin": {
         "hiai-docs": "./src/index.ts",
       },
@@ -147,7 +147,7 @@
     },
     "packages/db": {
       "name": "@hiai-docs/db",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "dependencies": {
         "drizzle-orm": "^0.45.2",
         "postgres": "^3.4.9",
@@ -161,7 +161,7 @@
     },
     "packages/mcp-server": {
       "name": "@hiai-docs/mcp-server",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "bin": {
         "hiai-docs-mcp": "./src/index.ts",
       },
@@ -176,7 +176,7 @@
     },
     "packages/sdk": {
       "name": "@hiai-docs/sdk",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "devDependencies": {
         "@types/bun": "^1.3.14",
         "typescript": "^5.4.0",
@@ -184,7 +184,7 @@
     },
   },
   "packages": {
-    "@apideck/better-ajv-errors": ["@apideck/better-ajv-errors@0.3.7", "", { "dependencies": { "jsonpointer": "^5.0.1", "leven": "^3.1.0" }, "peerDependencies": { "ajv": ">=8" } }, "sha512-TajUJwGWbDwkCx/CZi7tRE8PVB7simCvKJfHUsSdvps+aTM/PDPP4gkLmKnc+x3CE//y9i/nj74GqdL/hwk7Iw=="],
+    "@apideck/better-ajv-errors": ["@apideck/better-ajv-errors@0.3.8", "", { "dependencies": { "jsonpointer": "^5.0.1", "leven": "^3.1.0" }, "peerDependencies": { "ajv": ">=8" } }, "sha512-TajUJwGWbDwkCx/CZi7tRE8PVB7simCvKJfHUsSdvps+aTM/PDPP4gkLmKnc+x3CE//y9i/nj74GqdL/hwk7Iw=="],
 
     "@aws-sdk/checksums": ["@aws-sdk/checksums@3.1000.13", "", { "dependencies": { "@aws-sdk/core": "^3.974.28", "@aws-sdk/types": "^3.973.15", "@smithy/core": "^3.29.0", "@smithy/types": "^4.15.1", "tslib": "^2.6.2" } }, "sha512-USI1N1d+NbCcfjeiYLKIl94PSYykl5IIjj4X3WqdL33Ln5qktA6sjXYct0o/gG2Cte7cuzbXKkDBkzUA4VPHrg=="],
 

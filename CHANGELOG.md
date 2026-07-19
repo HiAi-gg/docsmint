@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-07-19
+
+### Added
+
+- Tenant-scoped Trash lifecycle with soft delete, restore, permanent purge, and migration `0039_document_trash`.
+- Deleted-document filtering across documents, search, GraphRAG, attachments, versions, folders, tags, visibility, shares, and pipeline paths.
+- Configurable `DOCUMENT_TRASH_RETENTION_DAYS` with a safe 30-day OSS default.
+
+### Fixed
+
+- Frontend façade builds now externalize the complete Svelte and SvelteKit consumer-runtime import families, preventing a second bundled Svelte runtime from crossing package host boundaries.
+- Packed-package verification rejects bundled Svelte runtime chunks and builds a clean SvelteKit consumer through the public extension-provider, dashboard-host, and component seams.
+
 ## [0.3.7] - 2026-07-18
 
 ### Added

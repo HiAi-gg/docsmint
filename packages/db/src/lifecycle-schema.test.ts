@@ -23,13 +23,13 @@ test("lifecycle migration defines durable operation constraints and tenant RLS",
 	expect(migration).not.toContain("raw_error");
 });
 
-test("lifecycle retention is the latest journaled operation", async () => {
+test("document trash is the latest journaled operation", async () => {
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;
 	};
 	expect(journal.entries.at(-1)).toMatchObject({
-		idx: 38,
-		tag: "0038_lifecycle_account_deletion_retention",
+		idx: 39,
+		tag: "0039_document_trash",
 	});
 });
 

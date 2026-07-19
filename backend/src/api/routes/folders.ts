@@ -161,6 +161,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.orderBy(documents.updatedAt);

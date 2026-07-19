@@ -447,6 +447,7 @@ async function allowedGraphDocumentIds(
 						access.ctx,
 					),
 					inArray(documents.id, docIds),
+					isNull(documents.deletedAt),
 					access.restricted
 						? access.categoryId
 							? or(
@@ -483,6 +484,7 @@ async function filterToOwnedDocuments(
 				and(
 					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 					inArray(documents.id, docIds),
+					isNull(documents.deletedAt),
 				),
 			);
 	});
@@ -513,7 +515,13 @@ async function loadDocumentSummaries(
 			})
 			.from(documents)
 			.leftJoin(folders, eq(folders.id, documents.folderId))
-			.where(inArray(documents.id, docIds));
+			.where(
+				and(
+					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+					inArray(documents.id, docIds),
+					isNull(documents.deletedAt),
+				),
+			);
 	});
 }
 

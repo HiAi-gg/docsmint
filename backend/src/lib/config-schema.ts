@@ -249,6 +249,14 @@ export const envSchema = z
 		// Number of auto-saved (non-snapshot) versions to retain per document.
 		// Snapshots are never pruned. Default 50.
 		VERSION_RETENTION_COUNT: z.coerce.number().default(50),
+		// Number of days a soft-deleted document remains restorable. OSS keeps
+		// the policy configurable; 30 days is only the safe default.
+		DOCUMENT_TRASH_RETENTION_DAYS: z.coerce
+			.number()
+			.int()
+			.min(0)
+			.max(3650)
+			.default(30),
 		// Maximum attachment (image) size in MB enforced by the presigned-upload
 		// endpoints. Default 25 MB — well above the legacy 10 MB ceiling but
 		// still small enough to bound SeaweedFS storage exposure from a single

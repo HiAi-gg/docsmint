@@ -3,6 +3,23 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+
+/**
+ * A packaged Svelte component must execute against the consuming app's Svelte
+ * runtime. Keeping only `svelte` external is insufficient: compiler output
+ * imports subpaths such as `svelte/internal/client`, which Rollup would
+ * otherwise bundle into a second package-local runtime.
+ */
+function isConsumerRuntimeImport(id: string): boolean {
+	return (
+		id === "svelte" ||
+		id.startsWith("svelte/") ||
+		id === "@sveltejs/kit" ||
+		id.startsWith("@sveltejs/kit/") ||
+		id.startsWith("$app/")
+	);
+}
+
 const entries = {
 	dashboard: "../packages/sdk/frontend-entries/dashboard.ts",
 	search: "../packages/sdk/frontend-entries/search.ts",
@@ -63,7 +80,10 @@ const entries = {
 };
 
 /** Packaging-only build: it never changes the standalone SvelteKit app. */
-export default defineConfig({
+export default defineConfig(() => {
+	const isSsrBuild = process.env.DOCSMINT_FRONTEND_SSR === "1";
+
+	return {
 	plugins: [svelte()],
 	resolve: {
 		alias: {
@@ -71,17 +91,19 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: "../packages/sdk/dist/frontend",
-		emptyOutDir: true,
-		lib: { entry: entries, formats: ["es"] },
+		// The browser and SSR component compilers emit different runtime calls.
+		// Publish both forms so a consumer never attempts to execute a DOM facade
+		// during SSR (which otherwise fails before a provider can set context).
+		outDir: isSsrBuild
+			? "../packages/sdk/dist/frontend-ssr"
+			: "../packages/sdk/dist/frontend",
+		emptyOutDir: !isSsrBuild,
+		ssr: isSsrBuild,
+		lib: isSsrBuild ? undefined : { entry: entries, formats: ["es"] },
 		rollupOptions: {
-			external: [
-				"svelte",
-				"svelte/internal",
-				"$app/navigation",
-				"$app/state",
-				"$app/environment",
-			],
+			input: isSsrBuild ? entries : undefined,
+			external: isConsumerRuntimeImport,
 		},
 	},
+	};
 });

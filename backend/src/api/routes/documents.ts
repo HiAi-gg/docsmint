@@ -9,10 +9,22 @@ import {
 	tags,
 	versions,
 } from "@hiai-docs/db/schema";
-import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import {
+	and,
+	count,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	or,
+	sql,
+} from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { recordAuditEvent } from "../../lib/audit";
+import { config } from "../../lib/config";
 import {
 	canAccessContent,
 	isAuthorizedCategory,
@@ -365,6 +377,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return await cacheGetOrSet(cacheKey, 30, async () => {
 				const conditions = [
 					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+					isNull(documents.deletedAt),
 				];
 				if (access.restricted && access.categoryId) {
 					conditions.push(eq(documents.categoryId, access.categoryId));
@@ -494,6 +507,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const conditions = [
 			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+			isNull(documents.deletedAt),
 			...(effectiveCategoryId
 				? [eq(documents.categoryId, effectiveCategoryId)]
 				: []),
@@ -779,6 +793,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						and(
 							eq(documentPipelineRuns.documentId, params.id),
 							eq(documentPipelineRuns.ownerId, ctx.userId),
+							isNull(documents.deletedAt),
 							...(access.restricted && access.categoryId
 								? [eq(documents.categoryId, access.categoryId)]
 								: []),
@@ -874,6 +889,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 										documents.workspaceId,
 										ctx,
 									),
+									isNull(documents.deletedAt),
 									...(access.restricted && access.categoryId
 										? [eq(documents.categoryId, access.categoryId)]
 										: []),
@@ -998,6 +1014,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.for("update")
@@ -1116,6 +1133,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.returning();
@@ -1254,6 +1272,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 							...(access.restricted && access.categoryId
 								? [eq(documents.categoryId, access.categoryId)]
 								: []),
@@ -1370,7 +1389,124 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 	})
 
-	// DELETE /api/documents/:id — Delete document (cascade via FK)
+	// GET /api/trash — list soft-deleted documents for the verified tenant.
+	.get("/trash", async ({ request, set }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const rows = await withTenant(ctx, (tx) =>
+			tx
+				.select({
+					id: documents.id,
+					title: documents.title,
+					deletedAt: documents.deletedAt,
+				})
+				.from(documents)
+				.where(
+					and(
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNotNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.orderBy(desc(documents.deletedAt)),
+		);
+		return {
+			documents: rows.map((row) => ({
+				...row,
+				purgeAfter: row.deletedAt
+					? new Date(
+							row.deletedAt.getTime() +
+								config.DOCUMENT_TRASH_RETENTION_DAYS * 86_400_000,
+						)
+					: null,
+			})),
+			folders: [],
+		};
+	})
+	.post("/trash/documents/:id/restore", async ({ params, request, set }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const restored = await withTenant(ctx, async (tx) => {
+			const result = await tx
+				.update(documents)
+				.set({ deletedAt: null, updatedAt: new Date() })
+				.where(
+					and(
+						eq(documents.id, params.id),
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNotNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.returning({ id: documents.id });
+			return result[0] ?? null;
+		});
+		if (!restored) {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+		invalidateDocCache(params.id);
+		invalidateDocListCache(ctx.userId);
+		return { success: true };
+	})
+	.delete("/trash/documents/:id", async ({ params, request, set }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const purged = await withTenant(ctx, async (tx) => {
+			const result = await tx
+				.delete(documents)
+				.where(
+					and(
+						eq(documents.id, params.id),
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNotNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.returning({ id: documents.id });
+			return result[0] ?? null;
+		});
+		if (!purged) {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+		invalidateDocCache(params.id);
+		invalidateDocListCache(ctx.userId);
+		return { success: true };
+	})
+
+	// DELETE /api/documents/:id — move document to trash. Use the explicit
+	// trash purge endpoint for irreversible deletion.
 	.delete("/documents/:id", async ({ params, set, request }) => {
 		const ip =
 			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -1408,6 +1544,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 							...(access.restricted && access.categoryId
 								? [eq(documents.categoryId, access.categoryId)]
 								: []),
@@ -1418,7 +1555,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					return false;
 				}
 				await tx
-					.delete(documents)
+					.update(documents)
+					.set({ deletedAt: new Date(), updatedAt: new Date() })
 					.where(
 						and(
 							eq(documents.id, params.id),
@@ -1427,6 +1565,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					);
 				return true;

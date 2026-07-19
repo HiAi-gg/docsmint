@@ -1,5 +1,5 @@
 import { documents, folders, versions } from "@hiai-docs/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -40,6 +40,7 @@ async function authorizeVersionDocument(
 						documents.workspaceId,
 						access.ctx,
 					),
+					isNull(documents.deletedAt),
 				),
 			)
 			.limit(1);

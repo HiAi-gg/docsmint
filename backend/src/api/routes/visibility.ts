@@ -1,5 +1,5 @@
 import { documents, folders } from "@hiai-docs/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { recordAuditEvent } from "../../lib/audit";
 import {
@@ -50,7 +50,7 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(documents)
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(eq(documents.id, params.id))
+					.where(and(eq(documents.id, params.id), isNull(documents.deletedAt)))
 					.limit(1);
 
 				if (!doc) {
@@ -74,6 +74,7 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.returning();
@@ -149,7 +150,7 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(documents)
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(eq(documents.id, params.id))
+					.where(and(eq(documents.id, params.id), isNull(documents.deletedAt)))
 					.limit(1);
 
 				if (!doc) {
@@ -173,6 +174,7 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.returning();

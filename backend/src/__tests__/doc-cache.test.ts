@@ -70,6 +70,22 @@ mock.module("../lib/redis", () => ({
 }));
 
 mock.module("../lib/logger", () => ({
+	createDocsMintLoggerOptions: (
+		environment: { LOG_LEVEL?: string; NODE_ENV?: string } = {},
+		resolveModule: (specifier: string) => string = () => "",
+	) => {
+		const level = environment.LOG_LEVEL ?? "info";
+		if (environment.NODE_ENV !== "development") return { level };
+		try {
+			resolveModule("pino-pretty");
+			return {
+				level,
+				transport: { target: "pino-pretty", options: { colorize: true } },
+			};
+		} catch {
+			return { level, transport: undefined };
+		}
+	},
 	logger: {
 		info: () => {},
 		warn: () => {},

@@ -274,6 +274,13 @@
 			"when": 1785000000024,
 			"tag": "0038_lifecycle_account_deletion_retention",
 			"breakpoints": true
+		},
+		{
+			"idx": 39,
+			"version": "7",
+			"when": 1785000000025,
+			"tag": "0039_document_trash",
+			"breakpoints": true
 		}
   ]
 }

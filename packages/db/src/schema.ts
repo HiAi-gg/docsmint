@@ -226,6 +226,8 @@ export const documents = pgTable(
     embeddingProfile: text("embedding_profile"),
     embeddingErrorCode: text("embedding_error_code"),
     embeddingUpdatedAt: timestamp("embedding_updated_at"),
+    /** Soft-delete marker. Trashed documents remain tenant-scoped until purge. */
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -237,6 +239,7 @@ export const documents = pgTable(
     index("idx_documents_search_vector").using("gin", table.searchVector),
     index("idx_documents_search_vector_simple").using("gin", table.searchVectorSimple),
     index("documents_embedding_status_idx").on(table.embeddingStatus),
+    index("documents_workspace_deleted_at_idx").on(table.workspaceId, table.deletedAt),
     index("idx_documents_title_trgm").using(
       "gin",
       sql`${table.title} gin_trgm_ops`

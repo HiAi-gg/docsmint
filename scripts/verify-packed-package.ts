@@ -132,6 +132,34 @@ const frontendSubpaths = [
 	"i18n",
 ] as const;
 
+// Component facades are compiled twice. The node condition must select the
+// SSR compiler output; using the browser artifact during SvelteKit SSR causes
+// `document is not defined` before the extension provider can establish
+// request-scoped context.
+const ssrComponentSubpaths = [
+	"dashboard",
+	"search",
+	"shared-document",
+	"extension",
+	"components/create-snapshot-dialog",
+	"components/delete-dialog",
+	"components/category-dialog",
+	"components/folder-node",
+	"components/editor/document-editor",
+	"components/folder-tree-selector",
+	"components/save-as-dialog",
+	"components/share-dialog",
+	"components/tag-create-dialog",
+	"components/version-history",
+	"components/editor/document-title",
+	"components/editor/markdown-toggle",
+	"components/editor/extensions",
+	"components/editor/markdown",
+	"components/editor/docx-serializer",
+	"components/sidebar",
+	"components/settings",
+] as const;
+
 const requiredTarEntries = [
 	"package/dist/index.js",
 	"package/dist/index.d.ts",
@@ -151,6 +179,9 @@ const requiredTarEntries = [
 		`package/dist/frontend/${path}.js`,
 		`package/dist/frontend/${path}.d.ts`,
 	]),
+	...ssrComponentSubpaths.map(
+		(path) => `package/dist/frontend-ssr/${path}.js`,
+	),
 ];
 for (const entry of requiredTarEntries) {
 	if (!listing.includes(entry))
@@ -163,6 +194,20 @@ for (const [subpath, conditionMap] of Object.entries(manifest.exports)) {
 		if (!listing.includes(`package/${target.slice(2)}`)) {
 			throw new Error(`Export target is missing for ${subpath}: ${target}`);
 		}
+	}
+}
+for (const subpath of ssrComponentSubpaths) {
+	const exportPath = `./frontend/${subpath}`;
+	const conditions = manifest.exports[exportPath] as
+		| Record<string, unknown>
+		| undefined;
+	if (
+		conditions?.node !== `./dist/frontend-ssr/${subpath}.js` ||
+		conditions.import !== `./dist/frontend/${subpath}.js`
+	) {
+		throw new Error(
+			`Component facade ${exportPath} must publish matching node and browser artifacts`,
+		);
 	}
 }
 if (
@@ -186,9 +231,11 @@ async function walk(directory: string): Promise<string[]> {
 	return output;
 }
 
+const packedRuntimeSources: Array<{ file: string; source: string }> = [];
 for (const file of await walk(join(packageRoot, "dist"))) {
 	if (!file.endsWith(".js")) continue;
 	const source = await readFile(file, "utf8");
+	packedRuntimeSources.push({ file, source });
 	const importSpecifiers = [
 		...source.matchAll(/(?:from\s*|import\s*\()(["'])(.*?)\1/g),
 	].map((match) => match[2] ?? "");
@@ -205,6 +252,32 @@ for (const file of await walk(join(packageRoot, "dist"))) {
 			);
 		}
 	}
+}
+
+const packagedFrontendFiles = packedRuntimeSources.filter(({ file }) =>
+	file.startsWith(join(packageRoot, "dist", "frontend")),
+);
+const packageLocalSvelteRuntimeChunks = packagedFrontendFiles
+	.filter(
+		({ file, source }) =>
+			/\/client-[^/]+\.js$/.test(file) && source.includes("svelte/internal/"),
+	)
+	.map(({ file }) => file);
+if (
+	packageLocalSvelteRuntimeChunks.length > 0
+) {
+	throw new Error(
+		"Packed frontend facade bundles a package-local client runtime chunk",
+	);
+}
+if (
+	!packagedFrontendFiles.some(({ source }) =>
+		source.includes('from "svelte/internal/client"'),
+	)
+) {
+	throw new Error(
+		"Packed frontend facades do not retain the consumer Svelte runtime import",
+	);
 }
 
 await writeFile(
@@ -238,10 +311,58 @@ for (const dependency of [
 	"y-websocket",
 	"svelte-dnd-action",
 	"clsx",
+	"tailwind-merge",
+	"tailwind-variants",
+	"lucide-svelte",
+	"bits-ui",
+	"zod",
+	"nanostores",
+	"dexie",
+	"@hiai-gg/hiai-ui",
+	"@better-auth/core",
+	"@tiptap/core",
+	"@tiptap/extension-code-block",
+	"@tiptap/extension-code-block-lowlight",
+	"@tiptap/extension-collaboration",
+	"@tiptap/extension-collaboration-cursor",
+	"@tiptap/extension-highlight",
+	"@tiptap/extension-image",
+	"@tiptap/extension-link",
+	"@tiptap/extension-list",
+	"@tiptap/extension-table",
+	"@tiptap/extension-text-align",
+	"@tiptap/extension-underline",
+	"@tiptap/markdown",
+	"@tiptap/html",
+	"@tiptap/pm",
+	"@tiptap/starter-kit",
+	"highlight.js",
+	"lowlight",
+	"svelte-tiptap",
+	"y-prosemirror",
 ]) {
 	const link = join(packageRoot, "node_modules", dependency);
 	await mkdir(dirname(link), { recursive: true });
 	await symlink(join(root, "frontend/node_modules", dependency), link, "dir");
+}
+// Keep the fixture aligned with the complete frontend dependency surface. A
+// facade can legally retain a peer import that is not exercised by the small
+// smoke page above; the consumer must still be able to resolve it from its
+// own installed framework graph.
+const frontendPackage = JSON.parse(
+	await readFile(join(root, "frontend/package.json"), "utf8"),
+) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+for (const dependency of new Set([
+	...Object.keys(frontendPackage.dependencies ?? {}),
+	...Object.keys(frontendPackage.devDependencies ?? {}),
+])) {
+	const link = join(packageRoot, "node_modules", dependency);
+	try {
+		await mkdir(dirname(link), { recursive: true });
+		await symlink(join(root, "frontend/node_modules", dependency), link, "dir");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
 }
 await writeFile(
 	join(packageRoot, "declaration-smoke.ts"),
@@ -311,9 +432,14 @@ export default defineConfig({ plugins: [sveltekit()] });
 `,
 );
 await mkdir(join(packageRoot, "src/routes"), { recursive: true });
+await mkdir(join(packageRoot, "src/lib"), { recursive: true });
 await writeFile(
 	join(packageRoot, "src/app.html"),
 	`<!doctype html><html lang="en"><head><meta charset="utf-8" />%sveltekit.head%</head><body><div style="display: contents">%sveltekit.body%</div></body></html>`,
+);
+await writeFile(
+	join(packageRoot, "src/lib/FixtureWidget.svelte"),
+	`<script lang="ts">let { userId }: { userId?: string } = $props();</script><p data-fixture-widget>{userId ?? "anonymous"}</p>`,
 );
 await writeFile(
 	join(packageRoot, "src/routes/+page.svelte"),
@@ -334,6 +460,7 @@ import { CreateSnapshotDialog } from "${manifest.name}/frontend/components/creat
 import { DeleteDialog } from "${manifest.name}/frontend/components/delete-dialog";
 import { CategoryDialog } from "${manifest.name}/frontend/components/category-dialog";
 import { FolderNode } from "${manifest.name}/frontend/components/folder-node";
+import { DocsmintDocumentEditorHost } from "${manifest.name}/frontend/components/editor/document-editor";
 import * as documentDrop from "${manifest.name}/frontend/document-drop-coordinator";
 import * as offlineIdentity from "${manifest.name}/frontend/offline/identity";
 import * as docTabs from "${manifest.name}/frontend/doc-tabs";
@@ -347,9 +474,35 @@ import { Sidebar } from "${manifest.name}/frontend/components/sidebar";
 import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales } from "${manifest.name}/frontend/i18n";
+import FixtureWidget from "$lib/FixtureWidget.svelte";
 const exportsExist = Boolean(DocsmintDashboardHost && DocsmintSearchHost && DocsmintSharedDocumentHost && DocsmintExtensionProvider && Sidebar && SettingsDialog && theme && setTheme && toggleTheme && messages && getMessage && setLocale && supportedLocales && categories && documents && folders && tags && settings && attachments && share && collaboration && CreateSnapshotDialog && DeleteDialog && CategoryDialog && FolderNode && documentDrop && offlineIdentity && docTabs && types && keyboard && folderRefresh && utils && clipboard && dnd);
+const extensions = { dashboardWidgets: [{ id: "fixture-widget", component: FixtureWidget }] };
+const dashboardData = { categories: [], tags: [], activeFolder: null, breadcrumb: [], rootFolders: [], recentDocs: [] };
 </script>
 <p data-exports={exportsExist}>packed frontend fixture</p>
+<DocsmintExtensionProvider {extensions}>
+  <DocsmintDashboardHost data={dashboardData} extensionContext={{ pathname: "/fixture" }} />
+  <Sidebar />
+  <SettingsDialog open={false} />
+  <CreateSnapshotDialog open={false} documentId="fixture-document" />
+  <DeleteDialog open={false} targetName="fixture" title="Delete" description="fixture" successTitle="Deleted" successDescription="fixture" />
+  <DocsmintDocumentEditorHost content="" documentId="fixture-document" />
+</DocsmintExtensionProvider>
+`,
+);
+// Building a SvelteKit route proves that the consumer can compile the facade
+// through its SSR pipeline. The fixture deliberately remains request-bound:
+// several editor components read the current URL and therefore cannot be
+// prerendered without inventing a product route context.
+await writeFile(
+	join(packageRoot, "src/routes/+page.ts"),
+	"export const prerender = false;\n",
+);
+await writeFile(
+	join(packageRoot, "src/hooks.server.ts"),
+	`export function handleError({ error }: { error: unknown }) {
+  console.error("packed-frontend-ssr-error", error instanceof Error ? error.stack ?? error.message : String(error));
+}
 `,
 );
 const viteBinary = join(root, "frontend/node_modules/vite/bin/vite.js");
@@ -438,6 +591,7 @@ await writeFile(
 				serverImports: "passed",
 				declarations: "passed",
 				frontendSsrAndBrowserBuild: "passed",
+				frontendProviderConsumerBuild: "passed",
 				serverOnlyBrowserRejection: "passed",
 				privateRuntimeImports: "passed",
 			},

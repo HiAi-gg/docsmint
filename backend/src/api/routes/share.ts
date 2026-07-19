@@ -179,7 +179,7 @@ async function isDocumentInSharedCategory(
 				folderId: documents.folderId,
 			})
 			.from(documents)
-			.where(eq(documents.id, documentId))
+			.where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
 			.limit(1);
 		if (!document) return false;
 		const effectiveCategoryId =
@@ -254,6 +254,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.limit(1);
@@ -429,7 +430,12 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 							folderId: documents.folderId,
 						})
 						.from(documents)
-						.where(eq(documents.id, row.documentId))
+						.where(
+							and(
+								eq(documents.id, row.documentId),
+								isNull(documents.deletedAt),
+							),
+						)
 						.limit(1);
 					categoryId =
 						document?.categoryId ??
@@ -549,7 +555,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 						updatedAt: documents.updatedAt,
 					})
 					.from(documents)
-					.where(eq(documents.id, documentId))
+					.where(and(eq(documents.id, documentId), isNull(documents.deletedAt)))
 					.limit(1);
 				return row ?? null;
 			});
@@ -617,7 +623,9 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 						updatedAt: documents.updatedAt,
 					})
 					.from(documents)
-					.where(eq(documents.folderId, folderId))
+					.where(
+						and(eq(documents.folderId, folderId), isNull(documents.deletedAt)),
+					)
 					.orderBy(documents.title);
 			});
 
@@ -1138,7 +1146,9 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 					updatedAt: documents.updatedAt,
 				})
 				.from(documents)
-				.where(eq(documents.folderId, folderId))
+				.where(
+					and(eq(documents.folderId, folderId), isNull(documents.deletedAt)),
+				)
 				.orderBy(documents.title);
 		});
 
@@ -1233,7 +1243,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 					updatedAt: documents.updatedAt,
 				})
 				.from(documents)
-				.where(eq(documents.id, docId))
+				.where(and(eq(documents.id, docId), isNull(documents.deletedAt)))
 				.limit(1);
 			return row ?? null;
 		});
@@ -1291,7 +1301,7 @@ async function isDocumentDescendant(
 		const [row] = await tx
 			.select({ folderId: documents.folderId })
 			.from(documents)
-			.where(eq(documents.id, docId))
+			.where(and(eq(documents.id, docId), isNull(documents.deletedAt)))
 			.limit(1);
 		return row ?? null;
 	});

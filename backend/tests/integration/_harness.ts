@@ -478,6 +478,23 @@ interface UpdateCtx {
 }
 
 function buildUpdateProxy(ctx: UpdateCtx): any {
+  const applyUpdate = () => {
+    state.calls.push({ kind: "update", table: getTableName(ctx.table) });
+    const tableName = getTableName(ctx.table);
+    const collection = getCollection(tableName);
+    const returned: any[] = [];
+    const rows =
+      collection instanceof Map
+        ? Array.from(collection.values())
+        : (collection as any[]);
+    for (const row of rows) {
+      if (!evaluateCondition(row, ctx.where)) continue;
+      Object.assign(row, ctx.set);
+      row.updatedAt = new Date();
+      returned.push({ ...row });
+    }
+    return returned;
+  };
   const handler: ProxyHandler<any> = {
     get(_target, prop) {
       if (prop === "set")
@@ -491,22 +508,14 @@ function buildUpdateProxy(ctx: UpdateCtx): any {
           return buildUpdateProxy(ctx);
         };
       if (prop === "returning")
-        return () => {
-          state.calls.push({ kind: "update", table: getTableName(ctx.table) });
-          const tableName = getTableName(ctx.table);
-          const collection = getCollection(tableName);
-          const returned: any[] = [];
-          const rows =
-            collection instanceof Map
-              ? Array.from(collection.values())
-              : (collection as any[]);
-          for (const row of rows) {
-            if (!evaluateCondition(row, ctx.where)) continue;
-            Object.assign(row, ctx.set);
-            row.updatedAt = new Date();
-            returned.push({ ...row });
+        return () => Promise.resolve(applyUpdate());
+      if (prop === "then")
+        return (resolve: any, reject: any) => {
+          try {
+            return Promise.resolve(applyUpdate()).then(resolve, reject);
+          } catch (err) {
+            return Promise.reject(err).then(reject, reject);
           }
-          return Promise.resolve(returned);
         };
       return undefined;
     },
@@ -793,6 +802,19 @@ mock.module("../../src/lib/redis.js", () => ({
 }));
 
 mock.module("../../src/lib/logger.js", () => ({
+  createDocsMintLoggerOptions: (
+    environment: { LOG_LEVEL?: string; NODE_ENV?: string } = {},
+    resolveModule: (specifier: string) => string = () => "",
+  ) => {
+    const level = environment.LOG_LEVEL ?? "info";
+    if (environment.NODE_ENV !== "development") return { level, transport: undefined };
+    try {
+      resolveModule("pino-pretty");
+      return { level, transport: { target: "pino-pretty", options: { colorize: true } } };
+    } catch {
+      return { level, transport: undefined };
+    }
+  },
   logger: {
     info: () => {},
     warn: () => {},

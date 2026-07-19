@@ -1,5 +1,5 @@
 import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -283,6 +283,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.limit(1);
@@ -355,6 +356,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 						),
 					)
 					.limit(1);

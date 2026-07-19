@@ -606,7 +606,7 @@ describe("DELETE /api/documents/:id", () => {
     const res = await authedDelete(`/api/documents/${doc.id}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
-    expect(getState().documents.has(doc.id)).toBe(false);
+		expect(getState().documents.get(doc.id)?.deletedAt).toBeInstanceOf(Date);
   });
 
   it("does not delete a document owned by another user", async () => {

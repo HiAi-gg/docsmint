@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { attachments, documents, folders } from "@hiai-docs/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { config } from "../../lib/config";
@@ -61,6 +61,7 @@ async function authorizeDocument(
 						documents.workspaceId,
 						access.ctx,
 					),
+					isNull(documents.deletedAt),
 				),
 			)
 			.limit(1);
