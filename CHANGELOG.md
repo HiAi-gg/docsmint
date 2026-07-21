@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- Ship the concrete server-only durable PostgreSQL lifecycle saga as `@hiai-gg/docsmint/lifecycle/runtime`.
+- Require explicit real adapters for object storage, queues, Redis, collaboration, graph state, and the final-owner fence.
+- Verify the runtime and browser server-only guard from a packed consumer.
+
 ## 0.4.2
 
 - Publish the server-only persistent lifecycle facade and packed lifecycle contract.

@@ -9,5 +9,5 @@
     "rootDir": "./src",
     "skipLibCheck": true
   },
-	"include": ["src/index.ts", "src/client.ts", "src/types.ts", "src/lifecycle.ts", "src/lifecycle-persistent.ts", "src/workspace.ts", "src/backend-launcher.ts", "src/storage-quota.ts", "src/server-only-browser-entry.ts"]
+	"include": ["src/index.ts", "src/client.ts", "src/types.ts", "src/lifecycle.ts", "src/lifecycle-persistent.ts", "src/lifecycle-runtime.ts", "src/workspace.ts", "src/backend-launcher.ts", "src/storage-quota.ts", "src/server-only-browser-entry.ts"]
 }

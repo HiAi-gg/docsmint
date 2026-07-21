@@ -1,11 +1,12 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
     "./dist/lifecycle.js": false,
     "./dist/lifecycle-persistent.js": false,
+    "./dist/lifecycle-runtime.js": false,
     "./dist/storage-quota.js": false,
     "./dist/workspace.js": false
   },
@@ -58,6 +59,11 @@
       "browser": "./dist/server-only-browser-entry.js",
       "import": "./dist/lifecycle-persistent.js",
       "types": "./dist/lifecycle-persistent.d.ts"
+    },
+    "./lifecycle/runtime": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/lifecycle-runtime.js",
+      "types": "./dist/lifecycle-runtime.d.ts"
     },
     "./workspace": {
       "browser": "./dist/server-only-browser-entry.js",

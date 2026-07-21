@@ -6,6 +6,7 @@
 	"./packages/sdk/dist/backend-launcher.js": false,
 	"./packages/sdk/dist/lifecycle.js": false,
 	"./packages/sdk/dist/lifecycle-persistent.js": false,
+	"./packages/sdk/dist/lifecycle-runtime.js": false,
 	"./packages/sdk/dist/storage-quota.js": false,
 	"./packages/sdk/dist/workspace.js": false
   },
@@ -62,6 +63,11 @@
 		"browser": "./packages/sdk/dist/server-only-browser-entry.js",
 		"import": "./packages/sdk/dist/lifecycle-persistent.js",
 		"types": "./packages/sdk/dist/lifecycle-persistent.d.ts"
+	},
+	"./lifecycle/runtime": {
+		"browser": "./packages/sdk/dist/server-only-browser-entry.js",
+		"import": "./packages/sdk/dist/lifecycle-runtime.js",
+		"types": "./packages/sdk/dist/lifecycle-runtime.d.ts"
 	},
     "./workspace": {
       "browser": "./packages/sdk/dist/server-only-browser-entry.js",

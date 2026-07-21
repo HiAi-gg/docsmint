@@ -297,10 +297,11 @@ await writeFile(
 	`import { DocsClient } from "${manifest.name}";
 import { encodeUserDataExportNdjson } from "${manifest.name}/lifecycle";
 import { createPersistentLifecycleRuntime } from "${manifest.name}/lifecycle/persistent";
+import { createPersistentLifecycleRuntime as createDurableLifecycleRuntime } from "${manifest.name}/lifecycle/runtime";
 import { verifyDocsmintWorkspaceAssertion } from "${manifest.name}/workspace";
 import { launchDocsmintBackend, launchDocsMintApi, resolveDocsmintBackendEntrypoint } from "${manifest.name}/backend/launcher";
 import { createStorageQuotaService, StorageQuotaExceededError, requireAttachmentStorageQuotaAdmission } from "${manifest.name}/storage-quota";
-if (!DocsClient || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !verifyDocsmintWorkspaceAssertion || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission) throw new Error("missing server export");
+if (!DocsClient || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !createDurableLifecycleRuntime || !verifyDocsmintWorkspaceAssertion || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission) throw new Error("missing server export");
 console.log("server imports: pass");
 `,
 );
@@ -381,6 +382,7 @@ await writeFile(
 	`import { DocsClient } from "${manifest.name}";
 import type { PurgeUserDataContext, UserDataExportRecord } from "${manifest.name}/lifecycle";
 import type { LifecycleRuntimeAdapters } from "${manifest.name}/lifecycle/persistent";
+import type { LifecycleRuntimeAdapters as DurableLifecycleRuntimeAdapters, LifecycleScopedDatabaseExecutor as DurableLifecycleDatabaseExecutor } from "${manifest.name}/lifecycle/runtime";
 import type { DocsmintWorkspaceContext } from "${manifest.name}/workspace";
 import { launchDocsmintBackend, launchDocsMintApi, type DocsmintBackendHandle, type DocsMintRuntimeOptions } from "${manifest.name}/backend/launcher";
 import { createStorageQuotaService, StorageQuotaExceededError, type AttachmentStorageQuotaAdmission, type AttachmentStorageQuotaContext, type AttachmentStorageQuotaFinalization, type StorageQuotaAdapter, type StorageQuotaReservation } from "${manifest.name}/storage-quota";
@@ -541,6 +543,11 @@ const serverOnlyBrowserChecks = [
 	{
 		id: "lifecycle-persistent",
 		subpath: "lifecycle/persistent",
+		symbol: "createPersistentLifecycleRuntime",
+	},
+	{
+		id: "lifecycle-runtime",
+		subpath: "lifecycle/runtime",
 		symbol: "createPersistentLifecycleRuntime",
 	},
 	{
