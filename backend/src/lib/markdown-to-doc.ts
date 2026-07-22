@@ -9,7 +9,7 @@ import { logger } from "./logger";
 /**
  * TipTap extension set used by the editor on the frontend
  * (see frontend/src/lib/components/editor/HiAiEditor.svelte).
- * Mirrored here so imported `.md`/`.txt`/`.markdown` files produce
+ * Mirrored here so imported `.md`/`.txt` files produce
  * ProseMirror JSON the editor renders with full formatting.
  *
  * Excludes extensions that have no markdown equivalent or that need

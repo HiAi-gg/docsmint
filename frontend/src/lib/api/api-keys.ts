@@ -17,31 +17,57 @@ export interface IssuedApiKey {
 	key: string;
 }
 
-export function listApiKeys(): Promise<{ keys: ApiKeySummary[] }> {
-	return apiFetch("/api/keys");
+export function listApiKeys(
+	fetcher?: typeof fetch,
+): Promise<{ keys: ApiKeySummary[] }> {
+	return apiFetch("/api/keys", {}, fetcher);
 }
 
-export function createGlobalApiKey(name?: string): Promise<IssuedApiKey> {
-	return apiFetch("/api/keys/global", { method: "POST", body: { name } });
+export function createGlobalApiKey(
+	name?: string,
+	fetcher?: typeof fetch,
+): Promise<IssuedApiKey> {
+	return apiFetch(
+		"/api/keys/global",
+		{ method: "POST", body: { name } },
+		fetcher,
+	);
 }
 
 export function createCategoryApiKey(
 	categoryId: string,
 	name?: string,
+	fetcher?: typeof fetch,
 ): Promise<IssuedApiKey> {
-	return apiFetch(`/api/categories/${encodeURIComponent(categoryId)}/keys`, {
-		method: "POST",
-		body: { name },
-	});
+	return apiFetch(
+		`/api/categories/${encodeURIComponent(categoryId)}/keys`,
+		{
+			method: "POST",
+			body: { name },
+		},
+		fetcher,
+	);
 }
 
-export function revokeApiKey(id: string): Promise<{ success: true }> {
-	return apiFetch(`/api/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+export function revokeApiKey(
+	id: string,
+	fetcher?: typeof fetch,
+): Promise<{ success: true }> {
+	return apiFetch(
+		`/api/keys/${encodeURIComponent(id)}`,
+		{ method: "DELETE" },
+		fetcher,
+	);
 }
 
-export async function revealCategoryApiKey(id: string): Promise<string> {
+export async function revealCategoryApiKey(
+	id: string,
+	fetcher?: typeof fetch,
+): Promise<string> {
 	const result = await apiFetch<{ key: string }>(
 		`/api/keys/${encodeURIComponent(id)}/secret`,
+		{},
+		fetcher,
 	);
 	return result.key;
 }

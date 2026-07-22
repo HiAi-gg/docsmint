@@ -4,6 +4,7 @@ import {
 	categoryIdFromScopes,
 	createCategoryApiKey,
 	createGlobalApiKey,
+	listApiKeys,
 	revealCategoryApiKey,
 	revokeApiKey,
 } from "./api-keys";
@@ -69,5 +70,41 @@ describe("API key client", () => {
 			"category-secret",
 		);
 		expect(requests).toEqual(["/api/keys/key%2Fid/secret"]);
+	});
+
+	test("uses an injected host fetcher for every key lifecycle operation", async () => {
+		const requests: string[] = [];
+		const hostFetch = mock(async (input: RequestInfo | URL) => {
+			requests.push(String(input));
+			return new Response(
+				JSON.stringify({
+					keys: [],
+					id: "id",
+					prefix: "prefix",
+					key: "raw",
+					success: true,
+				}),
+				{
+					status: 200,
+					headers: { "content-type": "application/json" },
+				},
+			);
+		}) as unknown as typeof fetch;
+		await listApiKeys(hostFetch);
+		await createGlobalApiKey("key", hostFetch);
+		await createCategoryApiKey(
+			"11111111-1111-4111-8111-111111111111",
+			"key",
+			hostFetch,
+		);
+		await revealCategoryApiKey("id", hostFetch);
+		await revokeApiKey("id", hostFetch);
+		expect(requests).toEqual([
+			"/api/keys",
+			"/api/keys/global",
+			"/api/categories/11111111-1111-4111-8111-111111111111/keys",
+			"/api/keys/id/secret",
+			"/api/keys/id",
+		]);
 	});
 });

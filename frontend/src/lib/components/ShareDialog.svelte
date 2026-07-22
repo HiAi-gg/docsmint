@@ -1,5 +1,6 @@
 <script lang="ts">
 import { createShareLink } from "$lib/api/share";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	registerShortcut,
@@ -34,6 +35,7 @@ let shareUrl = $state("");
 let copied = $state(false);
 let creating = $state(false);
 let error = $state("");
+const request = getDocsmintRequestAdapter();
 
 // Register an Escape shortcut scoped to "dialog" so the share dialog
 // closes when the user hits Escape. The shortcut only matters while
@@ -74,14 +76,17 @@ async function createLink() {
 	creating = true;
 	error = "";
 	try {
-		const result = await createShareLink({
-			documentId: documentId || undefined,
-			folderId: folderId || undefined,
-			categoryId: categoryId || undefined,
-			password: usePassword ? password : undefined,
-			expiresIn,
-			guestEmails: guestEmails.length > 0 ? guestEmails : undefined,
-		});
+		const result = await createShareLink(
+			{
+				documentId: documentId || undefined,
+				folderId: folderId || undefined,
+				categoryId: categoryId || undefined,
+				password: usePassword ? password : undefined,
+				expiresIn,
+				guestEmails: guestEmails.length > 0 ? guestEmails : undefined,
+			},
+			request.fetch,
+		);
 		shareUrl = `${window.location.origin}/s/${result.token}`;
 	} catch (e) {
 		error = e instanceof Error ? e.message : m.error_generic();

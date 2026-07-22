@@ -24,6 +24,8 @@ export {
 	default as HiaiDocsSearchHost,
 	default as DocsmintSearchHost,
 } from "./HiaiDocsSearchHost.svelte";
+/** Request adapter accessor for additive host extensions. */
+export { getDocsmintRequestAdapter } from "./request-context";
 export type {
 	DocsmintNavigationOptions,
 	DocsmintRequestAdapter,

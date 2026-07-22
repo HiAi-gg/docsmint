@@ -1,13 +1,13 @@
 import { getContext, setContext } from "svelte";
 import { goto } from "$app/navigation";
-import type {
-	DocsmintNavigationOptions,
-	DocsmintRequestAdapter,
-	DocsmintRouteAdapter,
-} from "./types";
+import type { DocsmintNavigationOptions, DocsmintRouteAdapter } from "./types";
+
+export {
+	getDocsmintRequestAdapter,
+	provideDocsmintRequestAdapter,
+} from "./request-context";
 
 const ROUTE_ADAPTER = Symbol("docsmint-route-adapter");
-const REQUEST_ADAPTER = Symbol("docsmint-request-adapter");
 
 const standaloneRoute: DocsmintRouteAdapter = {
 	pathname: "/",
@@ -22,22 +22,12 @@ export function provideDocsmintRouteAdapter(
 	setContext(ROUTE_ADAPTER, adapter);
 }
 
-export function provideDocsmintRequestAdapter(
-	adapter: DocsmintRequestAdapter,
-): void {
-	setContext(REQUEST_ADAPTER, adapter);
-}
-
 /**
  * Reads the embedding route adapter, preserving the standalone SvelteKit
  * behaviour when a public host is rendered without DocsmintAppShellHost.
  */
 export function getDocsmintRouteAdapter(): DocsmintRouteAdapter {
 	return getContext<DocsmintRouteAdapter>(ROUTE_ADAPTER) ?? standaloneRoute;
-}
-
-export function getDocsmintRequestAdapter(): DocsmintRequestAdapter {
-	return getContext<DocsmintRequestAdapter>(REQUEST_ADAPTER) ?? { fetch };
 }
 
 export function resolveDocsmintRoute(

@@ -12,6 +12,7 @@ import {
 	revokeApiKey,
 } from "$lib/api/api-keys";
 import { type Category, listCategories } from "$lib/api/categories";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 
 let keys = $state<ApiKeySummary[]>([]);
 let categories = $state<Category[]>([]);
@@ -24,6 +25,7 @@ let error = $state<string | null>(null);
 const latestIssuedKey = $derived(
 	latestIssuedId ? issuedKeys[latestIssuedId] : undefined,
 );
+const request = getDocsmintRequestAdapter();
 
 const globalKeys = $derived(
 	keys.filter((key) => key.scopes.includes("global")),
@@ -44,8 +46,8 @@ async function refresh() {
 	error = null;
 	try {
 		const [keyResult, categoryResult] = await Promise.all([
-			listApiKeys(),
-			listCategories(),
+			listApiKeys(request.fetch),
+			listCategories(request.fetch),
 		]);
 		keys = keyResult.keys;
 		categories = categoryResult;
@@ -62,7 +64,10 @@ async function issueGlobalKey() {
 	busy = true;
 	error = null;
 	try {
-		const issued = await createGlobalApiKey(keyName.trim() || undefined);
+		const issued = await createGlobalApiKey(
+			keyName.trim() || undefined,
+			request.fetch,
+		);
 		issuedKeys = { ...issuedKeys, [issued.id]: issued.key };
 		latestIssuedId = issued.id;
 		await refresh();
@@ -76,7 +81,7 @@ async function issueGlobalKey() {
 async function revoke(id: string) {
 	busy = true;
 	try {
-		await revokeApiKey(id);
+		await revokeApiKey(id, request.fetch);
 		const { [id]: _revoked, ...remainingIssuedKeys } = issuedKeys;
 		issuedKeys = remainingIssuedKeys;
 		if (latestIssuedId === id) latestIssuedId = null;
@@ -87,7 +92,8 @@ async function revoke(id: string) {
 }
 
 async function copyKey(key: ApiKeySummary) {
-	const rawKey = issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id));
+	const rawKey =
+		issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id, request.fetch));
 	await navigator.clipboard.writeText(apiKeyClipboardValue(key, rawKey));
 }
 </script>

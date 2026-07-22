@@ -39,6 +39,7 @@ import {
 	revealCategoryApiKey,
 	revokeApiKey,
 } from "$lib/api/api-keys";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 
@@ -67,6 +68,7 @@ const Select = {
 	Trigger: SelectTrigger,
 	Value: SelectValue,
 };
+const request = getDocsmintRequestAdapter();
 
 let {
 	open = $bindable(false),
@@ -111,7 +113,7 @@ const latestIssuedKey = $derived(
 );
 
 async function refreshCategoryKeys(categoryId: string) {
-	const result = await listApiKeys();
+	const result = await listApiKeys(request.fetch);
 	categoryKeys = result.keys.filter(
 		(key) => categoryIdFromScopes(key.scopes) === categoryId,
 	);
@@ -121,7 +123,11 @@ async function issueCategoryKey() {
 	if (!category?.id) return;
 	keyBusy = true;
 	try {
-		const issued = await createCategoryApiKey(category.id);
+		const issued = await createCategoryApiKey(
+			category.id,
+			undefined,
+			request.fetch,
+		);
 		issuedKeys = { ...issuedKeys, [issued.id]: issued.key };
 		latestIssuedId = issued.id;
 		await refreshCategoryKeys(category.id);
@@ -137,7 +143,7 @@ async function revokeCategoryKey(id: string) {
 	if (!category?.id) return;
 	keyBusy = true;
 	try {
-		await revokeApiKey(id);
+		await revokeApiKey(id, request.fetch);
 		const { [id]: _revoked, ...remainingIssuedKeys } = issuedKeys;
 		issuedKeys = remainingIssuedKeys;
 		if (latestIssuedId === id) latestIssuedId = null;
@@ -148,7 +154,8 @@ async function revokeCategoryKey(id: string) {
 }
 
 async function copyCategoryKey(key: ApiKeySummary) {
-	const rawKey = issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id));
+	const rawKey =
+		issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id, request.fetch));
 	await navigator.clipboard.writeText(apiKeyClipboardValue(key, rawKey));
 }
 
@@ -290,7 +297,11 @@ async function handleSubmit(e?: Event) {
 			createdCategoryName = savedCategory.name;
 			if (apiMode === "category") {
 				try {
-					const issued = await createCategoryApiKey(savedCategory.id);
+					const issued = await createCategoryApiKey(
+						savedCategory.id,
+						undefined,
+						request.fetch,
+					);
 					createdCategoryKey = issued.key;
 				} catch (keyError) {
 					error = `Category created, but its API key could not be created: ${categoryDialogErrorMessage(keyError, "Unknown error")}`;

@@ -32,6 +32,7 @@ export interface CreateShareLinkInput {
 
 export function createShareLink(
 	data: CreateShareLinkInput,
+	fetcher?: typeof fetch,
 ): Promise<ShareLink> {
 	if (!data.documentId && !data.folderId && !data.categoryId) {
 		return Promise.reject(
@@ -40,7 +41,11 @@ export function createShareLink(
 			),
 		);
 	}
-	return apiFetch("/api/share", { method: "POST", body: JSON.stringify(data) });
+	return apiFetch(
+		"/api/share",
+		{ method: "POST", body: JSON.stringify(data) },
+		fetcher,
+	);
 }
 
 export function listShareLinks(params?: { documentId?: string }): Promise<{

@@ -9,6 +9,7 @@ export {
 	buildCategoryApiKeyScopes,
 	createApiKey as issueApiKey,
 	GLOBAL_API_SCOPE,
+	listApiKeys,
 	revealCategoryApiKey,
 	revokeApiKey,
 	validateApiKey as verifyApiKey,

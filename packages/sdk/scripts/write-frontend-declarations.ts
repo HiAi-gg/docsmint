@@ -15,6 +15,7 @@ export interface DocsmintRouteAdapter {
 export interface DocsmintRequestAdapter { fetch: typeof fetch; }
 export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; request?: DocsmintRequestAdapter; extensions?: Record<string, unknown>; children: Snippet; }
 export declare const DocsmintAppShellHost: Component<DocsmintAppShellHostProps>;
+export declare function getDocsmintRequestAdapter(): DocsmintRequestAdapter;
 `,
 	"dashboard.d.ts": 'import type { Component } from "svelte";\nexport declare const DocsmintDashboardHost: Component;\n',
 	"search.d.ts": 'import type { Component } from "svelte";\nexport declare const DocsmintSearchHost: Component;\n',

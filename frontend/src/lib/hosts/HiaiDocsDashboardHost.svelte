@@ -601,7 +601,7 @@ const isFolderEmpty = $derived(
     <div class="dashboard-header-actions ml-auto flex items-center justify-end gap-2">
       <input
         type="file"
-        accept=".md,.txt,.json,.markdown,.docx"
+        accept=".md,.txt,.json,.docx"
         multiple
         class="hidden"
         bind:this={importInput}

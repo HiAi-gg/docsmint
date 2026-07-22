@@ -1,5 +1,5 @@
 ## 0.4.8
-## 0.4.9
+## 0.5.0
 
 - Publish the server-only API-key facade as a self-contained runtime bundle.
 

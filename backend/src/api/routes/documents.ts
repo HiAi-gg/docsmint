@@ -143,13 +143,7 @@ function encodeDocumentCursor(cursor: DocumentCursorV1): string {
 	return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
-const ALLOWED_IMPORT_EXTENSIONS = [
-	".md",
-	".txt",
-	".markdown",
-	".json",
-	".docx",
-];
+const ALLOWED_IMPORT_EXTENSIONS = [".md", ".txt", ".json", ".docx"];
 const MAX_IMPORT_SIZE = 10 * 1024 * 1024;
 const MAX_IMPORT_FILES = 10;
 const MAX_IMPORT_REQUEST_SIZE = 50 * 1024 * 1024;
@@ -226,7 +220,7 @@ const importJsonSchema = z.object({
  *     filename minus `.docx` becomes the title. mammoth's plain-text output
  *     is sufficient for chunking/embedding and avoids extra dependency on
  *     the `mammoth/mammoth.markdown` subpath.
- *   - .md / .markdown / .txt: read as text, derive title from filename.
+ *   - .md / .txt: read as text, derive title from filename.
  *
  * Errors thrown here bubble up to the `/import` handler which decides the
  * appropriate HTTP status (422 for DOCX parse failures, 400 for JSON shape
@@ -271,7 +265,7 @@ async function importFileToItem(file: File): Promise<{
 	const text = await file.text();
 	assertImportContentSize(text, name);
 	return {
-		title: name.replace(/\.(md|txt|markdown)$/i, ""),
+		title: name.replace(/\.(md|txt)$/i, ""),
 		content: text,
 	};
 }

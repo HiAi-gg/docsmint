@@ -384,11 +384,11 @@ describe("POST /api/documents/import — multipart path", () => {
     expect((res.body as any).imported).toBe(1);
   });
 
-  it("accepts .txt, .md, .markdown, .json extensions", async () => {
-    const res = await multipartImport([
-      { name: "readme.txt", content: "plain text" },
-      { name: "guide.md", content: "# Guide" },
-      { name: "spec.markdown", content: "# Spec" },
+	it("accepts .txt, .md, and .json extensions", async () => {
+		const res = await multipartImport([
+			{ name: "readme.txt", content: "plain text" },
+			{ name: "guide.md", content: "# Guide" },
+			{ name: "spec.json", content: JSON.stringify({ title: "Spec", content: "# Spec" }) },
     ]);
     expect(res.status).toBe(201);
     const body = res.body as { imported: number };
