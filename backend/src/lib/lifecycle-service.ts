@@ -1,10 +1,16 @@
 import {
+	accounts,
 	attachments,
 	auditLog,
+	categories,
 	documentEmbeddings,
 	documents,
+	folders,
 	lifecycleOperations,
+	sessions,
 	shareLinks,
+	tags,
+	users,
 	versions,
 } from "@hiai-docs/db/schema";
 import type { TenantTransaction } from "@hiai-docs/db/with-tenant";
@@ -119,6 +125,14 @@ function tokenHash(token: string): string {
 
 function subjectHash(actorUserId: string): string {
 	return new Bun.CryptoHasher("sha256").update(actorUserId).digest("hex");
+}
+
+export function lifecycleTombstoneEmail(actorUserId: string): string {
+	const hash = new Bun.CryptoHasher("sha256")
+		.update("docsmint:privacy-tombstone:v1\0")
+		.update(actorUserId)
+		.digest("hex");
+	return `deleted-${hash}@invalid.local`;
 }
 
 function checksumLine(
@@ -317,6 +331,92 @@ export function createPersistentLifecycleService(
 			checksumLine(hash, manifest);
 			recordCount += 1;
 			yield manifest;
+			const actor = await withActor(ctx.actorUserId, (tx) =>
+				tx
+					.select({
+						id: users.id,
+						email: users.email,
+						name: users.name,
+						emailVerified: users.emailVerified,
+						image: users.image,
+						createdAt: users.createdAt,
+						updatedAt: users.updatedAt,
+					})
+					.from(users)
+					.where(eq(users.id, ctx.actorUserId))
+					.limit(1),
+			);
+			for (const profile of actor) {
+				const record: UserDataExportRecord = {
+					type: "data",
+					domain: "account",
+					resourceType: "user",
+					resourceId: profile.id,
+					workspaceId: null,
+					payload: {
+						email: profile.email,
+						name: profile.name,
+						emailVerified: profile.emailVerified,
+						image: profile.image,
+						createdAt: profile.createdAt,
+						updatedAt: profile.updatedAt,
+					},
+				};
+				checksumLine(hash, record);
+				recordCount += 1;
+				yield record;
+			}
+			const actorFolders = await withActor(ctx.actorUserId, (tx) =>
+				tx.select().from(folders).where(eq(folders.ownerId, ctx.actorUserId)),
+			);
+			for (const folder of actorFolders) {
+				const record: UserDataExportRecord = {
+					type: "data",
+					domain: "folders",
+					resourceType: "folder",
+					resourceId: folder.id,
+					workspaceId: folder.workspaceId,
+					payload: folder,
+				};
+				checksumLine(hash, record);
+				recordCount += 1;
+				yield record;
+			}
+			const actorTags = await withActor(ctx.actorUserId, (tx) =>
+				tx.select().from(tags).where(eq(tags.ownerId, ctx.actorUserId)),
+			);
+			for (const tag of actorTags) {
+				const record: UserDataExportRecord = {
+					type: "data",
+					domain: "tags",
+					resourceType: "tag",
+					resourceId: tag.id,
+					workspaceId: tag.workspaceId,
+					payload: tag,
+				};
+				checksumLine(hash, record);
+				recordCount += 1;
+				yield record;
+			}
+			const actorCategories = await withActor(ctx.actorUserId, (tx) =>
+				tx
+					.select()
+					.from(categories)
+					.where(eq(categories.ownerId, ctx.actorUserId)),
+			);
+			for (const category of actorCategories) {
+				const record: UserDataExportRecord = {
+					type: "data",
+					domain: "categories",
+					resourceType: "category",
+					resourceId: category.id,
+					workspaceId: category.workspaceId,
+					payload: category,
+				};
+				checksumLine(hash, record);
+				recordCount += 1;
+				yield record;
+			}
 			const ownedDocuments = await withActor(ctx.actorUserId, (tx) =>
 				tx
 					.select()
@@ -533,6 +633,48 @@ export function createPersistentLifecycleService(
 					operation,
 					ctx.actorUserId,
 					leaseOwner,
+					"remove_subject_folders",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(folders)
+								.where(eq(folders.ownerId, ctx.actorUserId))
+								.returning({ id: folders.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"remove_subject_tags",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(tags)
+								.where(eq(tags.ownerId, ctx.actorUserId))
+								.returning({ id: tags.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"remove_subject_categories",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(categories)
+								.where(eq(categories.ownerId, ctx.actorUserId))
+								.returning({ id: categories.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
 					"remove_attachment_rows",
 					deletedByDomain,
 					() =>
@@ -582,6 +724,55 @@ export function createPersistentLifecycleService(
 							deletedByDomain,
 							async () => (await step.purge?.(ctx))?.deletedCount ?? 0,
 						);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"remove_auth_sessions",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(sessions)
+								.where(eq(sessions.userId, ctx.actorUserId))
+								.returning({ id: sessions.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"remove_auth_accounts",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(accounts)
+								.where(eq(accounts.userId, ctx.actorUserId))
+								.returning({ id: accounts.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"tombstone_subject_user",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.update(users)
+								.set({
+									email: lifecycleTombstoneEmail(ctx.actorUserId),
+									name: null,
+									image: null,
+									emailVerified: false,
+									updatedAt: new Date(),
+								})
+								.where(eq(users.id, ctx.actorUserId))
+								.returning({ id: users.id }),
+						),
+				);
 				await runStep(
 					operation,
 					ctx.actorUserId,

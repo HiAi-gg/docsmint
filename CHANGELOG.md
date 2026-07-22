@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.6
+
+- Complete the canonical OSS account lifecycle by exporting actor-owned profile, folder, tag, and category data.
+- Purge OSS-owned folders, tags, categories, sessions, and authentication accounts before applying a deterministic non-identifying user tombstone.
+- Preserve durable step ordering and idempotent retry while keeping provider credentials out of account exports.
+
 ## 0.4.5
 
 - Add the server-only `@hiai-gg/docsmint/backend/account-runtime-cleanup` adapter so lifecycle hosts can clear OSS collaboration, cache, and dedup state without duplicating Redis namespaces or querying OSS tables.

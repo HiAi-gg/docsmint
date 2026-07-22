@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge base API. Supports browser sessions, global and category-scoped bearer keys, CLI/MCP clients, document pipelines, sharing, and storage workflows.",
-    "version": "0.4.5",
+    "version": "0.4.6",
     "contact": {
       "name": "hiai-gg",
       "url": "https://github.com/hiai-gg/docsmint"

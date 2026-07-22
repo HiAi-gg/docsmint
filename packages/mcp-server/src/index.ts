@@ -35,7 +35,7 @@ interface McpToolResult {
 
 const server = new McpServer({
 	name: "hiai-docs",
-	version: "0.4.5",
+	version: "0.4.6",
 });
 
 /**

@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 import {
 	createPersistentLifecycleRuntime,
 	LifecycleLeaseLostError,
+	lifecycleTombstoneEmail,
 	requireLeaseWrite,
 } from "./lifecycle-service";
 
@@ -60,4 +62,44 @@ test("lease-fenced writes fail closed when a concurrent worker wins", () => {
 		requireLeaseWrite([{ id: "operation-1" }, { id: "operation-2" }]),
 	).toThrow(LifecycleLeaseLostError);
 	expect(() => requireLeaseWrite([{ id: "operation-1" }])).not.toThrow();
+});
+
+test("canonical OSS account lifecycle owns profile resources, auth cleanup, and tombstone ordering", async () => {
+	const source = await readFile(
+		new URL("./lifecycle-service.ts", import.meta.url),
+		"utf8",
+	);
+	for (const exportDomain of [
+		'domain: "account"',
+		'domain: "folders"',
+		'domain: "tags"',
+		'domain: "categories"',
+	]) {
+		expect(source).toContain(exportDomain);
+	}
+	const orderedSteps = [
+		'"delete_attachment_objects"',
+		'"remove_attachment_rows"',
+		'"remove_subject_documents"',
+		'"remove_auth_sessions"',
+		'"remove_auth_accounts"',
+		'"tombstone_subject_user"',
+		'"write_deletion_audit"',
+	];
+	for (const [index, step] of orderedSteps.entries()) {
+		if (index === 0) continue;
+		const previous = orderedSteps[index - 1];
+		if (!previous) throw new Error("Missing previous lifecycle step");
+		expect(source.indexOf(step)).toBeGreaterThan(source.indexOf(previous));
+	}
+	expect(source).not.toContain("accessToken: account.accessToken");
+	expect(source).not.toContain("refreshToken: account.refreshToken");
+	expect(source).not.toContain("password: account.password");
+});
+
+test("OSS tombstone matches the cross-runtime durable admission marker", () => {
+	const tombstone = lifecycleTombstoneEmail(context.actorUserId);
+	expect(tombstone).toMatch(/^deleted-[a-f0-9]{64}@invalid\.local$/);
+	expect(tombstone).toBe(lifecycleTombstoneEmail(context.actorUserId));
+	expect(tombstone).not.toContain(context.actorUserId);
 });
