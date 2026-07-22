@@ -1,4 +1,8 @@
-## 0.4.7
+## 0.4.8
+## 0.4.8
+
+- Fix the published API-key facade package contents.
+
 
 - Add the generic `sidebarTop` frontend extension zone for host-provided branding and workspace controls.
 - Add a server-only OSS API-key issuance and verification facade for product hosts.

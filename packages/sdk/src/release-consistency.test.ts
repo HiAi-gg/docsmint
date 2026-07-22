@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const repositoryRoot = new URL("../../../", import.meta.url);
-const releaseVersion = "0.4.7";
+const releaseVersion = "0.4.8";
 
 async function json(path: string): Promise<Record<string, unknown>> {
 	return JSON.parse(await readFile(new URL(path, repositoryRoot), "utf8"));
 }
 
-test("all published and workspace release metadata reports 0.4.7", async () => {
+test("all published and workspace release metadata reports 0.4.8", async () => {
 	for (const path of [
 		"package.public.json",
 		"backend/package.json",
