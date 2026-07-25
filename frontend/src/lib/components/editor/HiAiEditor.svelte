@@ -82,6 +82,63 @@ let editor = $state<Editor | null>(null);
 let ready = $state(false);
 let internalUpdate = false;
 let deferredContentLoading = $state(false);
+let deferredParseKey = "";
+let deferredParseGeneration = 0;
+
+function scheduleDeferredMarkdownParse(ed: Editor): void {
+	if (
+		collaboration?.doc ||
+		contentJson ||
+		!shouldDeferMarkdownParsing(content)
+	) {
+		return;
+	}
+
+	const source = content;
+	const cacheDocumentId = documentId;
+	const cacheUpdatedAt = documentUpdatedAt;
+	const parseKey = `${cacheDocumentId}:${cacheUpdatedAt}:${source.length}:${source.slice(0, 64)}`;
+	if (deferredParseKey === parseKey) return;
+
+	deferredParseKey = parseKey;
+	const generation = ++deferredParseGeneration;
+	deferredContentLoading = true;
+
+	const parse = async () => {
+		try {
+			const cached =
+				cacheDocumentId && cacheUpdatedAt
+					? await getCachedParsedContent(cacheDocumentId, cacheUpdatedAt)
+					: null;
+			if (generation !== deferredParseGeneration || editor !== ed) return;
+			const parsed =
+				cached ??
+				(sanitizeEditorContent(markdownToJson(source)) as JSONContent);
+			ed.commands.setContent(parsed, { emitUpdate: false });
+			// Persist the structured form through the normal route callback so
+			// subsequent opens do not need another expensive Markdown parse.
+			onUpdate({ markdown: source, json: parsed });
+			if (!cached && cacheDocumentId && cacheUpdatedAt) {
+				void cacheParsedContent(cacheDocumentId, cacheUpdatedAt, parsed);
+			}
+		} catch (err) {
+			if (generation === deferredParseGeneration) {
+				console.warn("HiAiEditor: deferred markdown parsing failed", err);
+			}
+		} finally {
+			if (generation === deferredParseGeneration) {
+				deferredContentLoading = false;
+			}
+		}
+	};
+
+	// Let the loading shell paint once, then start deterministically. An idle
+	// callback can be starved indefinitely by ProseMirror/browser work on very
+	// large documents, which left the visual editor permanently empty.
+	requestAnimationFrame(() => {
+		setTimeout(() => void parse(), 0);
+	});
+}
 
 /**
  * Resolve the initial editor content. Prefer the persisted ProseMirror JSON
@@ -180,6 +237,9 @@ onMount(() => {
 		if (ed && !ready) {
 			ready = true;
 		}
+		if (ed) {
+			scheduleDeferredMarkdownParse(ed);
+		}
 	});
 
 	// Imported documents may reference attachments that were not copied with
@@ -198,42 +258,6 @@ onMount(() => {
 				}
 			},
 		);
-	}
-
-	if (
-		!collaboration?.doc &&
-		!contentJson &&
-		shouldDeferMarkdownParsing(content)
-	) {
-		const parse = async () => {
-			if (!editor) {
-				deferredContentLoading = false;
-				return;
-			}
-			try {
-				const cached =
-					documentId && documentUpdatedAt
-						? await getCachedParsedContent(documentId, documentUpdatedAt)
-						: null;
-				if (!editor) return;
-				const parsed =
-					cached ??
-					(sanitizeEditorContent(markdownToJson(content)) as JSONContent);
-				editor.commands.setContent(parsed, { emitUpdate: false });
-				if (!cached && documentId && documentUpdatedAt) {
-					void cacheParsedContent(documentId, documentUpdatedAt, parsed);
-				}
-			} catch (err) {
-				console.warn("HiAiEditor: deferred markdown parsing failed", err);
-			} finally {
-				deferredContentLoading = false;
-			}
-		};
-		if ("requestIdleCallback" in window) {
-			window.requestIdleCallback(() => void parse(), { timeout: 250 });
-		} else {
-			setTimeout(() => void parse(), 0);
-		}
 	}
 
 	// Editor-scoped shortcuts. `mod+shift+7` toggles the wysiwyg ↔
@@ -279,6 +303,11 @@ $effect(() => {
 	// client-side so the wysiwyg view still shows formatted content for
 	// documents that were saved via the regular (non-TipTap) save path.
 	const hasDocJson = contentJson != null;
+	if (!hasDocJson && shouldDeferMarkdownParsing(content)) {
+		deferredContentLoading = true;
+		scheduleDeferredMarkdownParse(editor);
+		return;
+	}
 	const nextSource: string | JSONContent = hasDocJson
 		? (sanitizeEditorContent(contentJson as object) as JSONContent)
 		: shouldDeferMarkdownParsing(content)
@@ -317,6 +346,7 @@ $effect(() => {
 });
 
 onDestroy(() => {
+	deferredParseGeneration += 1;
 	editor?.destroy?.();
 });
 
