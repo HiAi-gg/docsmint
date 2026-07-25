@@ -755,9 +755,9 @@ const isFolderEmpty = $derived(
           <ChevronDown class="size-4 opacity-50" />
         </Select.Trigger>
         <Select.Content class="w-[var(--bits-select-trigger-width)]">
-          <Select.Item value="all">All Tags</Select.Item>
-          {#each data.tags as tag (tag.id)}
-            <Select.Item value={tag.id}>{tag.name}</Select.Item>
+            <Select.Item value="all"><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full bg-muted-foreground"></span>All Tags</span></Select.Item>
+            {#each data.tags as tag (tag.id)}
+            <Select.Item value={tag.id}><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full" style="background-color: {tag.color || '#cccccc'}"></span>{tag.name}</span></Select.Item>
           {/each}
         </Select.Content>
       </Select.Root>

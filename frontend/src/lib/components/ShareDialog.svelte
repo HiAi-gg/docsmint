@@ -118,10 +118,10 @@ function close() {
 </script>
 
 {#if open}
-  <div class="fixed inset-0 layer-modal flex items-center justify-center">
-    <button onclick={close} class="absolute inset-0 bg-black/50" aria-label={m.action_close()}></button>
+  <div class="fixed inset-0 z-[100] layer-modal flex items-center justify-center">
+    <button onclick={close} class="absolute inset-0 z-[100] bg-black/50" aria-label={m.action_close()}></button>
     <div
-      class="relative z-10 w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg"
+      class="relative z-[101] w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-lg"
       role="dialog"
       aria-modal="true"
     >
