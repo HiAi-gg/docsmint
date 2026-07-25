@@ -94,6 +94,16 @@ const request = getDocsmintRequestAdapter();
 const dashboardWidgets = $derived.by(() =>
 	resolveExtensions(frontendExtensions.dashboardWidgets, extensionContext),
 );
+const importAccept = $derived.by(() => {
+	const formats = [".md", ".txt", ".json", ".docx"];
+	if (extensionContext.capabilities?.["docsmint.import.tier2"]) {
+		formats.push(".pdf", "image/*", "audio/*");
+	}
+	if (extensionContext.capabilities?.["docsmint.import.tier3"]) {
+		formats.push("video/*", ".m4v", ".mkv", ".webm");
+	}
+	return formats.join(",");
+});
 
 // --- Query parameters via SvelteKit page state ---
 const activeFolderId = $derived(page.url.searchParams.get("folder") || null);
@@ -609,7 +619,7 @@ const isFolderEmpty = $derived(
     <div class="dashboard-header-actions ml-auto flex items-center justify-end gap-2">
       <input
         type="file"
-        accept=".md,.txt,.json,.docx"
+        accept={importAccept}
         multiple
         class="hidden"
         bind:this={importInput}
