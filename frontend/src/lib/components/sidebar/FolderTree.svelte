@@ -84,6 +84,7 @@ import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
+	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
@@ -1661,7 +1662,7 @@ const buckets = $derived.by(() => {
 <div class="space-y-1">
   <div class="mb-2 flex items-center justify-between gap-1">
     <a
-      href="/"
+      href={resolveDocsmintRoute(route, "/")}
       class="block flex-1 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
       title={m.dashboard_title()}
     >{m.sidebar_folders()}</a>

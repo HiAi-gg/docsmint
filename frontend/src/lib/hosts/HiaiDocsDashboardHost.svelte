@@ -67,6 +67,7 @@ import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
+	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
@@ -663,13 +664,13 @@ const isFolderEmpty = $derived(
   <!-- Breadcrumbs (for folder detail view) -->
   {#if activeFolderId && data.breadcrumb?.length > 0}
     <nav class="mb-6 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground" aria-label="Breadcrumbs">
-      <a href="/" class="hover:text-foreground transition-colors">Home</a>
+      <a href={resolveDocsmintRoute(route, "/")} class="hover:text-foreground transition-colors">Home</a>
       {#each data.breadcrumb as path, idx (path.id)}
         <ChevronRight class="size-3.5" />
         {#if idx === data.breadcrumb.length - 1}
           <span class="font-medium text-foreground truncate max-w-[150px]">{path.name}</span>
         {:else}
-          <a href="/?folder={path.id}" class="hover:text-foreground transition-colors truncate max-w-[150px]">
+          <a href={resolveDocsmintRoute(route, `/?folder=${encodeURIComponent(path.id)}`)} class="hover:text-foreground transition-colors truncate max-w-[150px]">
             {path.name}
           </a>
         {/if}
