@@ -6,7 +6,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun --define process.env.NODE_ENV='\"production\"' --external drizzle-orm --external drizzle-orm/* --external postgres",
+    "build": "bun build src/index.ts --outdir dist --target bun --define process.env.NODE_ENV='\"production\"' --external drizzle-orm --external drizzle-orm/* --external postgres --external pino --external pino/*",
     "start": "bun run dist/index.js",
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
