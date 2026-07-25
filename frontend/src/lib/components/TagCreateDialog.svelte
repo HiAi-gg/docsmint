@@ -18,9 +18,11 @@ import {
 	updateTag,
 	updateTagInputSchema,
 } from "$lib/api/tags";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import { cn } from "$lib/utils";
 
+const request = getDocsmintRequestAdapter();
 // Curated palette — common tag colors that read well on light & dark surfaces.
 const PRESET_COLORS = [
 	"#ef4444", // red
@@ -146,7 +148,7 @@ function handleSubmit(e: Event) {
 async function doCreate(trimmed: string, pickedColor: string) {
 	submitting = true;
 	try {
-		const created = await createTag(trimmed, pickedColor);
+		const created = await createTag(trimmed, pickedColor, request.fetch);
 		onCreated?.(created);
 		close();
 	} catch (e) {
@@ -160,7 +162,7 @@ async function doCreate(trimmed: string, pickedColor: string) {
 async function doUpdate(id: string, data: { name?: string; color?: string }) {
 	submitting = true;
 	try {
-		const updated = await updateTag(id, data);
+		const updated = await updateTag(id, data, request.fetch);
 		onUpdated?.(updated);
 		close();
 	} catch (e) {

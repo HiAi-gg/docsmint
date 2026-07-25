@@ -66,10 +66,10 @@ services:
     command:
       - |
         printf '%s' "$$SEAWEEDFS_S3_CONFIG" > /data/s3.json
-        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=seaweedfs
+        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=127.0.0.1 -ip.bind=0.0.0.0
     environment:
       SEAWEEDFS_S3_CONFIG: >-
-        {"identities":[{"name":"hiai-docs","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-minioadmin}","secretKey":"${STORAGE_SECRET_KEY:-minioadmin}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
+        {"identities":[{"name":"hiai-docs","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-hiai-docs}","secretKey":"${STORAGE_SECRET_KEY:-hiai-docs}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
       SEAWEEDFS_S3_CORS_ALLOW_ORIGIN: ${STORAGE_CORS_ALLOW_ORIGIN:-http://localhost:50701,http://127.0.0.1:50701}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8888/"]
@@ -114,8 +114,8 @@ services:
       REDIS_URL: redis://redis:6379
       STORAGE_ENDPOINT: seaweedfs
       STORAGE_PORT: 8333
-      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-minioadmin}
-      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-minioadmin}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-hiai-docs}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-hiai-docs}
       STORAGE_BUCKET: ${STORAGE_BUCKET:-hiai-docs}
       STORAGE_PUBLIC_ENDPOINT: localhost
       STORAGE_PUBLIC_PORT: 50702
@@ -153,9 +153,13 @@ services:
       # Loaded from .env; explicit here for Docker (Bun's auto-load only
       # checks the cwd, which after `cd /app/backend` is backend/).
       HIAI_DOCS_API_KEY: ${HIAI_DOCS_API_KEY:-}
-      OWNER_ID: ${OWNER_ID:-api-key-user}
+      OWNER_ID: ${OWNER_ID:-00000000-0000-4000-8000-000000000001}
       CSRF_SECRET: ${CSRF_SECRET:-dev-csrf-change-in-production}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:-dev-webhook-change-in-production}
+      DOCSMINT_WORKSPACE_ENABLED: ${DOCSMINT_WORKSPACE_ENABLED:-false}
+      DOCSMINT_WORKSPACE_ISSUER: ${DOCSMINT_WORKSPACE_ISSUER:-}
+      DOCSMINT_WORKSPACE_SECRET: ${DOCSMINT_WORKSPACE_SECRET:-}
+      DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS: ${DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS:-5}
     deploy:
       resources:
         limits:

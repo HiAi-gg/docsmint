@@ -11,6 +11,7 @@ import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
 import { Loader2 } from "lucide-svelte";
 import { type Category, listCategories } from "$lib/api/categories";
 import { listFolders } from "$lib/api/folders";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,
@@ -19,6 +20,7 @@ import {
 import type { Folder } from "$lib/types.js";
 import FolderTreeSelector from "./FolderTreeSelector.svelte";
 
+const request = getDocsmintRequestAdapter();
 let {
 	open = $bindable(false),
 	itemId,
@@ -61,8 +63,8 @@ async function loadOptions() {
 	loading = true;
 	try {
 		const [cats, folderResult] = await Promise.all([
-			listCategories(),
-			listFolders(null, true),
+			listCategories(request.fetch),
+			listFolders(null, true, request.fetch),
 		]);
 		categories = cats;
 		folders = folderResult;

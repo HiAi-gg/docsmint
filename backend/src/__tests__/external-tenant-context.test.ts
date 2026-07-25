@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-	createExternalTenantAssertion,
-	verifyExternalTenantAssertion,
+	createDocsmintWorkspaceAssertion,
+	verifyDocsmintWorkspaceAssertion,
 } from "../lib/external-tenant-context";
 
 const context = {
@@ -13,11 +13,11 @@ const context = {
 	issuer: "docs-mint",
 };
 
-describe("external tenant context assertions", () => {
+describe("workspace context assertions", () => {
 	test("verifies a signed assertion and preserves its typed context", async () => {
-		const assertion = await createExternalTenantAssertion(context, "secret");
+		const assertion = await createDocsmintWorkspaceAssertion(context, "secret");
 		expect(
-			await verifyExternalTenantAssertion(assertion, {
+			await verifyDocsmintWorkspaceAssertion(assertion, {
 				secret: "secret",
 				issuer: "docs-mint",
 				nowSeconds: context.issuedAt + 10,
@@ -26,23 +26,23 @@ describe("external tenant context assertions", () => {
 	});
 
 	test("rejects tampering, expiry, and an unexpected issuer", async () => {
-		const assertion = await createExternalTenantAssertion(context, "secret");
+		const assertion = await createDocsmintWorkspaceAssertion(context, "secret");
 		await expect(
-			verifyExternalTenantAssertion(assertion, {
+			verifyDocsmintWorkspaceAssertion(assertion, {
 				secret: "wrong",
 				issuer: "docs-mint",
 				nowSeconds: context.issuedAt + 10,
 			}),
 		).rejects.toThrow("signature");
 		await expect(
-			verifyExternalTenantAssertion(assertion, {
+			verifyDocsmintWorkspaceAssertion(assertion, {
 				secret: "secret",
 				issuer: "docs-mint",
 				nowSeconds: context.expiresAt + 6,
 			}),
 		).rejects.toThrow("expired");
 		await expect(
-			verifyExternalTenantAssertion(assertion, {
+			verifyDocsmintWorkspaceAssertion(assertion, {
 				secret: "secret",
 				issuer: "other-host",
 				nowSeconds: context.issuedAt + 10,
@@ -52,35 +52,38 @@ describe("external tenant context assertions", () => {
 
 	test("rejects an assertion without a workspace id", async () => {
 		await expect(
-			createExternalTenantAssertion({ ...context, workspaceId: "" }, "secret"),
+			createDocsmintWorkspaceAssertion(
+				{ ...context, workspaceId: "" },
+				"secret",
+			),
 		).rejects.toThrow("workspaceId");
 	});
 
 	test("rejects a non-UUID actor, oversized workspace, and TTL above sixty seconds", async () => {
 		await expect(
-			createExternalTenantAssertion(
+			createDocsmintWorkspaceAssertion(
 				{ ...context, actorUserId: "user-1" },
 				"secret",
 			),
 		).rejects.toThrow("actorUserId");
 		await expect(
-			createExternalTenantAssertion(
+			createDocsmintWorkspaceAssertion(
 				{ ...context, workspaceId: "w".repeat(129) },
 				"secret",
 			),
 		).rejects.toThrow("workspaceId");
 		await expect(
-			createExternalTenantAssertion(
+			createDocsmintWorkspaceAssertion(
 				{ ...context, expiresAt: context.issuedAt + 61 },
 				"secret",
 			),
 		).resolves.toBeString();
-		const longAssertion = await createExternalTenantAssertion(
+		const longAssertion = await createDocsmintWorkspaceAssertion(
 			{ ...context, expiresAt: context.issuedAt + 61 },
 			"secret",
 		);
 		await expect(
-			verifyExternalTenantAssertion(longAssertion, {
+			verifyDocsmintWorkspaceAssertion(longAssertion, {
 				secret: "secret",
 				issuer: context.issuer,
 				nowSeconds: context.issuedAt + 1,

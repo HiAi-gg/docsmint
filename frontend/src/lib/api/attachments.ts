@@ -37,6 +37,7 @@ interface PresignResponse {
 export function presignAttachment(
 	documentId: string,
 	file: File,
+	fetcher?: typeof fetch,
 ): Promise<PresignResponse> {
 	return apiFetch<PresignResponse>(
 		`/api/documents/${documentId}/attachments/presign`,
@@ -48,6 +49,7 @@ export function presignAttachment(
 				size: file.size,
 			},
 		},
+		fetcher,
 	);
 }
 
@@ -60,6 +62,7 @@ export function confirmAttachment(
 	documentId: string,
 	key: string,
 	file: File,
+	fetcher?: typeof fetch,
 ): Promise<Attachment> {
 	return apiFetch<Attachment>(
 		`/api/documents/${documentId}/attachments/confirm`,
@@ -72,6 +75,7 @@ export function confirmAttachment(
 				size: file.size,
 			},
 		},
+		fetcher,
 	);
 }
 
@@ -92,8 +96,9 @@ export function confirmAttachment(
 export async function uploadAttachment(
 	documentId: string,
 	file: File,
+	fetcher?: typeof fetch,
 ): Promise<Attachment> {
-	const presign = await presignAttachment(documentId, file);
+	const presign = await presignAttachment(documentId, file, fetcher);
 
 	// Stream the file to storage. We do NOT pass cookies or auth headers —
 	// the presigned URL is the only credential storage accepts, and we
@@ -130,14 +135,17 @@ export async function uploadAttachment(
 		);
 	}
 
-	return confirmAttachment(documentId, presign.key, file);
+	return confirmAttachment(documentId, presign.key, file, fetcher);
 }
 
 export function listAttachments(
 	documentId: string,
+	fetcher?: typeof fetch,
 ): Promise<AttachmentListResponse> {
 	return apiFetch<AttachmentListResponse>(
 		`/api/documents/${documentId}/attachments`,
+		{},
+		fetcher,
 	);
 }
 

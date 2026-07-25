@@ -36,10 +36,9 @@ import { getSessionUserId } from "../../lib/auth-helpers";
 import { config } from "../../lib/config";
 import {
 	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
-	EXTERNAL_TENANT_CONTEXT_HEADER,
-	type ExternalTenantContext,
-	ExternalTenantContextError,
-	verifyExternalTenantAssertion,
+	type DocsmintWorkspaceContext,
+	DocsmintWorkspaceContextError,
+	verifyDocsmintWorkspaceAssertion,
 } from "../../lib/external-tenant-context";
 import type { TenantContext } from "../../lib/with-tenant";
 import {
@@ -50,15 +49,8 @@ import {
 
 export type { TenantContext };
 
-// Re-export from the canonical source in @hiai-docs/db/with-tenant. The admin
-// role bypasses tenant RLS, but PostgreSQL still casts current_user_id to UUID
-// in policy expressions. A fresh install intentionally ships with a textual
-// OWNER_ID placeholder until the first account is registered, so internal
-// admin reads (notably public share-token lookup) need a valid neutral UUID in
-// that state rather than failing every query with an invalid UUID cast.
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export const adminTenantContextBound = () =>
 	adminTenantContext(
 		UUID_PATTERN.test(config.OWNER_ID) ? config.OWNER_ID : ZERO_UUID,
@@ -68,68 +60,40 @@ export {
 	shareGuestTenantContext,
 };
 
-/**
- * Resolve the caller's `TenantContext` from the request headers.
- *
- * Resolution order:
- *   1. API key (`Authorization: Bearer <HIAI_DOCS_API_KEY>`) →
- *      `userId = OWNER_ID`, role `admin` when
- *      `ADMIN_CROSS_TENANT=true`, else `user`.
- *   2. Better Auth session cookie → role `user`.
- *   3. No credential → `{ userId: ZERO_UUID, role: 'none' }` so RLS
- *      fails closed on tenant-scoped tables.
- */
 export async function buildTenantContext(
 	request: Request,
 ): Promise<TenantContext> {
-	const canonicalAssertion = request.headers.get(
+	const workspaceAssertion = request.headers.get(
 		DOCSMINT_WORKSPACE_CONTEXT_HEADER,
 	);
-	const compatibilityAssertion = request.headers.get(
-		EXTERNAL_TENANT_CONTEXT_HEADER,
-	);
-	if (
-		canonicalAssertion &&
-		compatibilityAssertion &&
-		canonicalAssertion !== compatibilityAssertion
-	) {
-		throw new ExternalTenantContextError(
-			"Conflicting workspace context assertions",
-		);
-	}
-	const externalAssertion = canonicalAssertion ?? compatibilityAssertion;
-	if (externalAssertion) {
-		const workspaceSecret =
-			config.DOCSMINT_WORKSPACE_SECRET ?? config.EXTERNAL_TENANT_SECRET;
-		const workspaceIssuer =
-			config.DOCSMINT_WORKSPACE_ISSUER ?? config.EXTERNAL_TENANT_ISSUER;
+	if (workspaceAssertion) {
 		if (
-			(!config.DOCSMINT_WORKSPACE_ENABLED && !config.EXTERNAL_TENANT_ENABLED) ||
-			!workspaceSecret ||
-			!workspaceIssuer
-		) {
-			throw new ExternalTenantContextError(
-				"External tenant context is not enabled",
+			!config.DOCSMINT_WORKSPACE_ENABLED ||
+			!config.DOCSMINT_WORKSPACE_SECRET ||
+			!config.DOCSMINT_WORKSPACE_ISSUER
+		)
+			throw new DocsmintWorkspaceContextError(
+				"Workspace context is not enabled",
 			);
-		}
-		let external: ExternalTenantContext;
+		let workspace: DocsmintWorkspaceContext;
 		try {
-			external = await verifyExternalTenantAssertion(externalAssertion, {
-				secret: workspaceSecret,
-				issuer: workspaceIssuer,
-				clockSkewSeconds: config.EXTERNAL_TENANT_CLOCK_SKEW_SECONDS,
+			workspace = await verifyDocsmintWorkspaceAssertion(workspaceAssertion, {
+				secret: config.DOCSMINT_WORKSPACE_SECRET,
+				issuer: config.DOCSMINT_WORKSPACE_ISSUER,
+				clockSkewSeconds: config.DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS,
 			});
 		} catch (error) {
-			throw new ExternalTenantContextError("Invalid external tenant context", {
+			throw new DocsmintWorkspaceContextError("Invalid workspace context", {
 				cause: error,
 			});
 		}
 		return {
-			userId: external.actorUserId,
-			role: external.actorRole === "viewer" ? "user" : "user",
-			workspaceId: external.workspaceId,
+			userId: workspace.actorUserId,
+			role: "user",
+			workspaceId: workspace.workspaceId,
 			source: "external",
-			actorRole: external.actorRole,
+			actorRole: workspace.actorRole,
+			assertionExpiresAt: workspace.expiresAt,
 		};
 	}
 	const userId = await getSessionUserId(request.headers);

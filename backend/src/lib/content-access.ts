@@ -5,8 +5,7 @@ import type { ApiKeyScope, CategoryApiPermission } from "./api-keys";
 import { type AuthPrincipal, resolveAuthPrincipal } from "./auth-principal";
 import {
 	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
-	EXTERNAL_TENANT_CONTEXT_HEADER,
-	ExternalTenantContextError,
+	DocsmintWorkspaceContextError,
 } from "./external-tenant-context";
 import type { TenantContext } from "./with-tenant";
 import { ZERO_UUID } from "./with-tenant";
@@ -72,13 +71,10 @@ function categoryGrant(scopes: readonly ApiKeyScope[]): {
 export async function resolveContentAccess(
 	request: Request,
 ): Promise<ContentAccess> {
-	if (
-		request.headers.has(DOCSMINT_WORKSPACE_CONTEXT_HEADER) ||
-		request.headers.has(EXTERNAL_TENANT_CONTEXT_HEADER)
-	) {
+	if (request.headers.has(DOCSMINT_WORKSPACE_CONTEXT_HEADER)) {
 		const ctx = await buildTenantContext(request);
 		if (ctx.source !== "external" || !ctx.workspaceId) {
-			throw new ExternalTenantContextError("Invalid external tenant context");
+			throw new DocsmintWorkspaceContextError("Invalid workspace context");
 		}
 		return contentAccessForExternalContext({
 			...ctx,

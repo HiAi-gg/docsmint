@@ -245,8 +245,9 @@ client-specific flags and tool schemas:
 - DocsMint does not emit outbound attachment or document lifecycle webhooks.
   The deprecated `POST /api/webhooks/storage` route is a signed compatibility
   no-op; use REST, SDK, or MCP for integrations.
-- The collaboration WebSocket is `WS /ws/collab/:documentId`; it accepts a
-  session token or API key through the `token` query parameter.
+- The collaboration WebSocket is `WS /api/ws/collab/:documentId`; it is not
+  represented in HTTP OpenAPI. The current runtime accepts a session token or
+  API key through the `token` query parameter.
 ## Complete contract
 [`docs/openapi.json`](openapi.json) is the authoritative endpoint catalogue for
 request bodies, query parameters, response schemas, validation limits, and

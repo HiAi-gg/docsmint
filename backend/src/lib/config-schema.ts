@@ -131,7 +131,7 @@ export const envSchema = z
 		STORAGE_PORT: z.coerce.number().default(50702),
 		STORAGE_PUBLIC_ENDPOINT: z.string().default("localhost"),
 		STORAGE_PUBLIC_PORT: z.coerce.number().default(50702),
-		STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
+		STORAGE_ACCESS_KEY: z.string().default("hiai-docs"),
 		STORAGE_SECRET_KEY: z.string().default("change-me-to-random-32-chars"),
 		STORAGE_BUCKET: z.string().default("hiai-docs"),
 		STORAGE_REGION: z.string().default("us-east-1"),
@@ -227,25 +227,20 @@ export const envSchema = z
 				"API_KEY_ENCRYPTION_SECRET must be set in production",
 			),
 		OWNER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
-		EXTERNAL_TENANT_ENABLED: z
+		DOCSMINT_WORKSPACE_ENABLED: z
 			.string()
 			.optional()
 			.default("false")
 			.transform((value) => value === "true"),
-		EXTERNAL_TENANT_ISSUER: z.string().trim().optional(),
-		EXTERNAL_TENANT_SECRET: z.string().optional(),
-		EXTERNAL_TENANT_CLOCK_SKEW_SECONDS: z.coerce
+		DOCSMINT_WORKSPACE_ISSUER: z.string().trim().optional(),
+		DOCSMINT_WORKSPACE_SECRET: z.string().optional(),
+		DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS: z.coerce
 			.number()
 			.int()
 			.min(0)
-			.max(300)
+			// Must match the verifier's frozen maximum.
+			.max(5)
 			.default(5),
-		DOCSMINT_WORKSPACE_ENABLED: z
-			.string()
-			.optional()
-			.transform((value) => value === "true"),
-		DOCSMINT_WORKSPACE_ISSUER: z.string().trim().optional(),
-		DOCSMINT_WORKSPACE_SECRET: z.string().optional(),
 		// Number of auto-saved (non-snapshot) versions to retain per document.
 		// Snapshots are never pruned. Default 50.
 		VERSION_RETENTION_COUNT: z.coerce.number().default(50),
@@ -489,21 +484,21 @@ export const envSchema = z
 				});
 			}
 		}
-		if (value.EXTERNAL_TENANT_ENABLED || value.DOCSMINT_WORKSPACE_ENABLED) {
-			if (!value.DOCSMINT_WORKSPACE_ISSUER && !value.EXTERNAL_TENANT_ISSUER) {
+		if (value.DOCSMINT_WORKSPACE_ENABLED) {
+			if (!value.DOCSMINT_WORKSPACE_ISSUER) {
 				ctx.addIssue({
 					code: "custom",
-					path: ["EXTERNAL_TENANT_ISSUER"],
+					path: ["DOCSMINT_WORKSPACE_ISSUER"],
 					message:
-						"EXTERNAL_TENANT_ISSUER is required when external tenancy is enabled",
+						"DOCSMINT_WORKSPACE_ISSUER is required when workspace context is enabled",
 				});
 			}
-			if (!value.DOCSMINT_WORKSPACE_SECRET && !value.EXTERNAL_TENANT_SECRET) {
+			if (!value.DOCSMINT_WORKSPACE_SECRET) {
 				ctx.addIssue({
 					code: "custom",
-					path: ["EXTERNAL_TENANT_SECRET"],
+					path: ["DOCSMINT_WORKSPACE_SECRET"],
 					message:
-						"EXTERNAL_TENANT_SECRET is required when external tenancy is enabled",
+						"DOCSMINT_WORKSPACE_SECRET is required when workspace context is enabled",
 				});
 			}
 		}

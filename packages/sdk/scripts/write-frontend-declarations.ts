@@ -13,7 +13,10 @@ export interface DocsmintRouteAdapter {
   navigate?(path: string, options?: DocsmintNavigationOptions): void | Promise<void>;
 }
 export interface DocsmintRequestAdapter { fetch: typeof fetch; }
-export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; request?: DocsmintRequestAdapter; extensions?: Record<string, unknown>; children: Snippet; }
+export interface DocsmintRealtimeConnection { serverUrl: string; roomName: string; params?: Record<string, string>; }
+export interface DocsmintRealtimeAdapter { resolveRealtimeConnection(input: { documentId: string; accessToken?: string }): DocsmintRealtimeConnection; }
+export declare function getDocsmintRealtimeAdapter(): DocsmintRealtimeAdapter | undefined;
+export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; request?: DocsmintRequestAdapter; realtime?: DocsmintRealtimeAdapter; extensions?: Record<string, unknown>; children: Snippet; }
 export declare const DocsmintAppShellHost: Component<DocsmintAppShellHostProps>;
 export declare function getDocsmintRequestAdapter(): DocsmintRequestAdapter;
 `,
@@ -82,10 +85,10 @@ export declare const DocsmintExtensionProvider: Component<DocsmintExtensionProvi
 
 declarations["api/categories.d.ts"] = `
 import type { z } from "zod";
-export interface CategoryDto { id: string; name: string; order: number; apiMode?: "unavailable" | "global" | "general" | "category" | null; apiPermissionRead?: boolean | null; apiPermissionEdit?: boolean | null; apiPermissionWrite?: boolean | null; createdAt: string; updatedAt: string; documentCount?: number; folderCount?: number; }
+export interface CategoryDto { id: string; name: string; order: number; apiMode?: "unavailable" | "global" | "category" | null; apiPermissionRead?: boolean | null; apiPermissionEdit?: boolean | null; apiPermissionWrite?: boolean | null; createdAt: string; updatedAt: string; documentCount?: number; folderCount?: number; }
 export type Category = CategoryDto;
-export interface CreateCategoryInput { name: string; apiMode?: "unavailable" | "global" | "general" | "category"; apiPermissionRead?: boolean; apiPermissionEdit?: boolean; apiPermissionWrite?: boolean; }
-export interface UpdateCategoryInput { name?: string; order?: number; apiMode?: "unavailable" | "global" | "general" | "category"; apiPermissionRead?: boolean; apiPermissionEdit?: boolean; apiPermissionWrite?: boolean; }
+export interface CreateCategoryInput { name: string; apiMode?: "unavailable" | "global" | "category"; apiPermissionRead?: boolean; apiPermissionEdit?: boolean; apiPermissionWrite?: boolean; }
+export interface UpdateCategoryInput { name?: string; order?: number; apiMode?: "unavailable" | "global" | "category"; apiPermissionRead?: boolean; apiPermissionEdit?: boolean; apiPermissionWrite?: boolean; }
 export declare const createCategoryInputSchema: z.ZodType<CreateCategoryInput>;
 export declare const updateCategoryInputSchema: z.ZodType<UpdateCategoryInput>;
 export declare function listCategories(fetcher?: typeof fetch): Promise<CategoryDto[]>;
@@ -214,8 +217,10 @@ export declare function isFileSizeAllowed(file: File): boolean;
 declarations["collaboration.d.ts"] = `import type { WebsocketProvider } from "y-websocket";
 import type * as Y from "yjs";
 export interface CollaborationSession { provider: WebsocketProvider; doc: Y.Doc; destroy(): void; }
-export declare function startCollaboration(documentId: string, accessToken: string, onUpdate?: (update: Uint8Array) => void): CollaborationSession;
-export declare function stopCollaboration(): void;
+export interface DocsmintRealtimeConnection { serverUrl: string; roomName: string; params?: Record<string, string>; }
+export interface DocsmintRealtimeAdapter { resolveRealtimeConnection(input: { documentId: string; accessToken?: string }): DocsmintRealtimeConnection; }
+export declare function startCollaboration(documentId: string, accessToken?: string, onUpdate?: (update: Uint8Array) => void, realtime?: DocsmintRealtimeAdapter): CollaborationSession;
+export declare function stopCollaboration(session?: CollaborationSession): void;
 export declare function getActiveSession(): CollaborationSession | null;
 `;
 declarations["components/create-snapshot-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const CreateSnapshotDialog: Component;\n';

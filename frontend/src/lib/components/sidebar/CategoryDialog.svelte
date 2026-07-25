@@ -167,7 +167,7 @@ $effect(() => {
 	const initialApiMode: ApiMode =
 		category?.apiMode === "category"
 			? "category"
-			: category?.apiMode === "global" || category?.apiMode === "general"
+			: category?.apiMode === "global"
 				? "global"
 				: "unavailable";
 	apiMode = initialApiMode;

@@ -861,20 +861,9 @@ export class DocsClient {
 		if (requestContext?.cookie) headers.set("Cookie", requestContext.cookie);
 		if (requestContext?.requestId)
 			headers.set("X-Request-Id", requestContext.requestId);
-		if (
-			requestContext?.workspaceAssertion &&
-			requestContext?.externalTenantAssertion &&
-			requestContext.workspaceAssertion !== requestContext.externalTenantAssertion
-		) {
-			throw new Error("Conflicting workspace assertions in request context");
+		if (requestContext?.workspaceAssertion) {
+			headers.set("X-Docsmint-Workspace-Context", requestContext.workspaceAssertion);
 		}
-		const workspaceAssertion =
-			requestContext?.workspaceAssertion ?? requestContext?.externalTenantAssertion;
-		if (workspaceAssertion)
-			headers.set(
-				"X-Docsmint-Workspace-Context",
-				workspaceAssertion,
-			);
 
 		let body: BodyInit | undefined;
 		if (options?.body !== undefined) {

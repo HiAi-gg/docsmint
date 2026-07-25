@@ -62,7 +62,7 @@ services:
     command:
       - |
         printf '%s' "$$SEAWEEDFS_S3_CONFIG" > /data/s3.json
-        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=seaweedfs
+        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=127.0.0.1 -ip.bind=0.0.0.0
     environment:
       SEAWEEDFS_S3_CONFIG: >-
         {"identities":[{"name":"hiai-docs","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-hiai-docs}","secretKey":"${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
@@ -158,6 +158,10 @@ services:
       CSRF_SECRET: ${CSRF_SECRET:?CSRF_SECRET must be set}
       WEBHOOK_SECRET: ${WEBHOOK_SECRET:?WEBHOOK_SECRET must be set}
       OWNER_ID: ${OWNER_ID}
+      DOCSMINT_WORKSPACE_ENABLED: ${DOCSMINT_WORKSPACE_ENABLED:-false}
+      DOCSMINT_WORKSPACE_ISSUER: ${DOCSMINT_WORKSPACE_ISSUER:-}
+      DOCSMINT_WORKSPACE_SECRET: ${DOCSMINT_WORKSPACE_SECRET:-}
+      DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS: ${DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS:-5}
       EMBEDDING_OLLAMA_URL: ${EMBEDDING_OLLAMA_URL:-}
       EMBEDDING_FALLBACK_PROVIDER: ${EMBEDDING_FALLBACK_PROVIDER:-}
       GRAPH_EXTRACT_ENABLED: ${GRAPH_EXTRACT_ENABLED:-true}

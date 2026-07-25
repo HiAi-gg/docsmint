@@ -24,10 +24,12 @@ export {
 	default as HiaiDocsSearchHost,
 	default as DocsmintSearchHost,
 } from "./HiaiDocsSearchHost.svelte";
+export { getDocsmintRealtimeAdapter } from "./realtime-context";
 /** Request adapter accessor for additive host extensions. */
 export { getDocsmintRequestAdapter } from "./request-context";
 export type {
 	DocsmintNavigationOptions,
+	DocsmintRealtimeAdapter,
 	DocsmintRequestAdapter,
 	DocsmintRouteAdapter,
 } from "./types";

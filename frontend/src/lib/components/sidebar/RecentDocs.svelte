@@ -25,6 +25,7 @@ import {
 	listDocuments,
 	updateDocument,
 } from "$lib/api/documents";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	getDocRefreshNonce,
@@ -34,6 +35,7 @@ import {
 import { copyToClipboard } from "$lib/utils/clipboard.js";
 import { cn } from "$lib/utils.js";
 
+const request = getDocsmintRequestAdapter();
 let recentDocs = $state<Document[]>([]);
 let activeId = $state<string | null>(null);
 let loadError = $state<string | null>(null);
@@ -61,7 +63,10 @@ let deleteBusy = $state(false);
 async function fetchRecentDocs() {
 	try {
 		const tag = getSelectedTag();
-		const res = await listDocuments({ limit: 6, ...(tag ? { tag } : {}) });
+		const res = await listDocuments(
+			{ limit: 6, ...(tag ? { tag } : {}) },
+			request.fetch,
+		);
 		recentDocs = res.items;
 		loadError = null;
 	} catch (e) {
@@ -144,7 +149,7 @@ async function handleCopyContent(e: MouseEvent, docId: string) {
 	let text = "";
 	copyLoadingDocId = docId;
 	try {
-		const full = await getDocument(docId);
+		const full = await getDocument(docId, request.fetch);
 		text = full.content ?? "";
 	} catch (err) {
 		console.error("RecentDocs: failed to fetch full document for copy", err);
@@ -190,7 +195,7 @@ async function submitRename(e?: Event) {
 	}
 	renameSubmitting = true;
 	try {
-		await updateDocument(target.id, { title: trimmed });
+		await updateDocument(target.id, { title: trimmed }, request.fetch);
 		closeRenameDialog();
 		await fetchRecentDocs();
 		// Notify the other sidebar lists (FolderTree) to refetch.
@@ -219,7 +224,7 @@ async function confirmDelete() {
 	if (!target || deleteBusy) return;
 	deleteBusy = true;
 	try {
-		await deleteDocument(target.id);
+		await deleteDocument(target.id, request.fetch);
 		cancelDelete();
 		await fetchRecentDocs();
 		refreshDocs();

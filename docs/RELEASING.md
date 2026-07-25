@@ -1,5 +1,23 @@
 # Releasing DocsMint
 
+## OSS maintenance policy after 0.5.0
+
+DocsMint OSS 0.5.0 is the final functional OSS release. Its public package
+exports, HTTP and WebSocket routes, workspace assertion shape, and frontend
+extension manifest are frozen in `docs/frozen-contract-0.5.0.json`.
+
+After 0.5.0:
+
+- new product functionality is developed in the SaaS host through the public
+  adapters, extensions, and gateway;
+- OSS changes are limited to critical security and build fixes that preserve
+  the frozen contract;
+- changing an export, route, assertion field, role, extension slot, or
+  canonical header requires a new compatibility decision and must not be
+  merged while the 0.5.0 snapshot gate is active;
+- billing, chat, HTML rendition, usage, Stripe, OAuth, and the workspace
+  overlay remain SaaS-only.
+
 This is the evergreen maintainer flow for the DocsMint public repository.
 Release-specific evidence belongs in CI
 and the GitHub Release, not in this file.

@@ -2,11 +2,11 @@
   "openapi": "3.0.3",
   "info": {
     "title": "DocsMint API",
-    "description": "Self-hosted AI-native knowledge base API. Supports browser sessions, global and category-scoped bearer keys, CLI/MCP clients, document pipelines, sharing, and storage workflows.",
+    "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
     "version": "0.5.0",
     "contact": {
-      "name": "hiai-gg",
-      "url": "https://github.com/hiai-gg/docsmint"
+      "name": "HiAi-gg",
+      "url": "https://github.com/HiAi-gg/docsmint"
     },
     "license": {
       "name": "Apache-2.0",
@@ -31,6 +31,10 @@
       "description": "Tag management"
     },
     {
+      "name": "Categories",
+      "description": "Category management for folders and documents"
+    },
+    {
       "name": "Versions",
       "description": "Document version history"
     },
@@ -43,24 +47,12 @@
       "description": "Hybrid full-text + semantic search"
     },
     {
+      "name": "Graph",
+      "description": "GraphRAG entity and relationship queries (AGE)"
+    },
+    {
       "name": "Admin",
-      "description": "Admin maintenance endpoints (require x-api-key)"
-    },
-    {
-      "name": "Categories",
-      "description": "Category CRUD and category API-access policy"
-    },
-    {
-      "name": "API Keys",
-      "description": "Browser-session-only key issuance, listing, reveal, and revocation"
-    },
-    {
-      "name": "Attachments",
-      "description": "Presigned and compatibility attachment workflows"
-    },
-    {
-      "name": "Pipeline",
-      "description": "Document embedding and GraphRAG pipeline status"
+      "description": "Operator maintenance endpoints (reindex, embedding stats, provider health) \u2014 API key protected"
     }
   ],
   "paths": {
@@ -172,6 +164,138 @@
         }
       }
     },
+    "/api/categories": {
+      "get": {
+        "operationId": "getApiCategories",
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "post": {
+        "operationId": "postApiCategories",
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/categories/{id}": {
+      "patch": {
+        "operationId": "patchApiCategoriesById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "deleteApiCategoriesById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/documents/{id}/attachments/presign": {
+      "post": {
+        "operationId": "postApiDocumentsByIdAttachmentsPresign",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/documents/{id}/attachments/confirm": {
+      "post": {
+        "operationId": "postApiDocumentsByIdAttachmentsConfirm",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/documents/{id}/attachments": {
       "post": {
         "operationId": "postApiDocumentsByIdAttachments",
@@ -188,9 +312,6 @@
         "responses": {
           "200": {}
         },
-        "tags": [
-          "Attachments"
-        ],
         "security": [
           {
             "SessionAuth": []
@@ -215,9 +336,32 @@
         "responses": {
           "200": {}
         },
-        "tags": [
-          "Attachments"
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/attachments/{id}": {
+      "delete": {
+        "operationId": "deleteApiAttachmentsById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
         ],
+        "responses": {
+          "200": {}
+        },
         "security": [
           {
             "SessionAuth": []
@@ -244,6 +388,22 @@
         "responses": {
           "200": {}
         }
+      }
+    },
+    "/api/attachments/remote-image": {
+      "get": {
+        "operationId": "getApiAttachmentsRemote-image",
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/share/": {
@@ -281,6 +441,22 @@
     "/api/share/{id}": {
       "delete": {
         "operationId": "deleteApiShareById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      },
+      "patch": {
+        "operationId": "patchApiShareById",
         "parameters": [
           {
             "schema": {
@@ -340,39 +516,61 @@
         }
       }
     },
-    "/api/search/": {
+    "/api/share/{token}/folders/{folderId}": {
       "get": {
-        "operationId": "getApiSearch",
+        "operationId": "getApiShareByTokenFoldersByFolderId",
         "parameters": [
           {
             "schema": {
-              "type": "boolean"
+              "type": "string"
             },
-            "in": "query",
-            "name": "graph",
-            "required": false
+            "in": "path",
+            "name": "token",
+            "required": true
           },
           {
             "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 3
+              "type": "string"
             },
-            "in": "query",
-            "name": "graphHops",
-            "required": false
-          },
-          {
-            "schema": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 2
-            },
-            "in": "query",
-            "name": "graphBoost",
-            "required": false
+            "in": "path",
+            "name": "folderId",
+            "required": true
           }
         ],
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/share/{token}/documents/{docId}": {
+      "get": {
+        "operationId": "getApiShareByTokenDocumentsByDocId",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "token",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "docId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/search/": {
+      "get": {
+        "operationId": "getApiSearch",
         "responses": {
           "200": {}
         }
@@ -398,6 +596,40 @@
         "responses": {
           "200": {}
         }
+      }
+    },
+    "/api/documents/cursor": {
+      "get": {
+        "operationId": "getApiDocumentsCursor",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/documents/{id}/pipeline": {
+      "get": {
+        "operationId": "getApiDocumentsByIdPipeline",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/documents/{id}": {
@@ -468,6 +700,50 @@
         }
       }
     },
+    "/api/trash": {
+      "get": {
+        "operationId": "getApiTrash",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/trash/documents/{id}/restore": {
+      "post": {
+        "operationId": "postApiTrashDocumentsByIdRestore",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/trash/documents/{id}": {
+      "delete": {
+        "operationId": "deleteApiTrashDocumentsById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      }
+    },
     "/api/documents/{id}/export": {
       "get": {
         "operationId": "getApiDocumentsByIdExport",
@@ -489,97 +765,8 @@
     "/api/documents/import": {
       "post": {
         "operationId": "postApiDocumentsImport",
-        "summary": "Import one or more documents",
-        "description": "Multipart files are processed independently with bounded concurrency. Results remain in request order, and a failure for one file does not roll back successful files.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "file"
-                ],
-                "properties": {
-                  "file": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 10,
-                    "items": {
-                      "type": "string",
-                      "format": "binary",
-                      "description": "A .md, .txt, .json, or .docx file, up to 10 MB."
-                    }
-                  },
-                  "folderId": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                }
-              }
-            },
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "content"
-                ],
-                "properties": {
-                  "title": {
-                    "type": "string",
-                    "maxLength": 500
-                  },
-                  "content": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 5000000
-                  },
-                  "folderId": {
-                    "type": "string",
-                    "format": "uuid"
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
-            "description": "At least one document imported. Multi-file responses include both successful and failed items in request order.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ImportResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed request or invalid JSON import."
-          },
-          "413": {
-            "description": "File, batch, or extracted content exceeds an import limit."
-          },
-          "415": {
-            "description": "Unsupported content type or file extension."
-          },
-          "422": {
-            "description": "A document could not be parsed, or every item in a mixed-failure batch failed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/ImportResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/Error"
-                    }
-                  ]
-                }
-              }
-            }
-          }
+          "200": {}
         }
       }
     },
@@ -642,6 +829,40 @@
       },
       "post": {
         "operationId": "postApiFolders",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/documents/{id}/versions/": {
+      "get": {
+        "operationId": "getApiDocumentsByIdVersions",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      },
+      "post": {
+        "operationId": "postApiDocumentsByIdVersions",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
         "responses": {
           "200": {}
         }
@@ -725,20 +946,25 @@
         }
       }
     },
-    "/api/admin/reindex/{docId}": {
-      "post": {
-        "operationId": "postApiAdminReindexByDocId",
+    "/api/graph/entities": {
+      "get": {
+        "operationId": "getApiGraphEntities",
         "tags": [
-          "Admin"
+          "Graph"
         ],
-        "security": [
-          {
-            "OperatorApiKey": []
-          },
-          {
-            "BearerAuth": []
-          }
+        "summary": "List entities linked to a document",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/graph/related/{docId}": {
+      "get": {
+        "operationId": "getApiGraphRelatedByDocId",
+        "tags": [
+          "Graph"
         ],
+        "summary": "List related documents via graph traversal",
         "parameters": [
           {
             "schema": {
@@ -750,19 +976,227 @@
           }
         ],
         "responses": {
-          "200": {},
-          "401": {},
-          "404": {},
-          "429": {}
+          "200": {}
         }
+      }
+    },
+    "/api/graph/search": {
+      "post": {
+        "operationId": "postApiGraphSearch",
+        "tags": [
+          "Graph"
+        ],
+        "summary": "Graph-aware RAG retrieval for agents",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/keys/global": {
+      "post": {
+        "operationId": "postApiKeysGlobal",
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/categories/{id}/keys": {
+      "post": {
+        "operationId": "postApiCategoriesByIdKeys",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/keys/{id}/secret": {
+      "get": {
+        "operationId": "getApiKeysByIdSecret",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/keys": {
+      "get": {
+        "operationId": "getApiKeys",
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/keys/{id}": {
+      "delete": {
+        "operationId": "deleteApiKeysById",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
+      }
+    },
+    "/api/plugins/": {
+      "get": {
+        "operationId": "getApiPlugins",
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/plugins/{name}": {
+      "get": {
+        "operationId": "getApiPluginsByName",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "name",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        }
+      }
+    },
+    "/api/documents/{id}/publish": {
+      "post": {
+        "operationId": "postApiDocumentsByIdPublish",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/documents/{id}/unpublish": {
+      "post": {
+        "operationId": "postApiDocumentsByIdUnpublish",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/admin/reindex/{docId}": {
+      "post": {
+        "operationId": "postApiAdminReindexByDocId",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "docId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {}
+        },
+        "security": [
+          {
+            "OperatorApiKey": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/admin/embedding-stats": {
       "get": {
         "operationId": "getApiAdminEmbedding-stats",
-        "tags": [
-          "Admin"
-        ],
+        "responses": {
+          "200": {}
+        },
         "security": [
           {
             "OperatorApiKey": []
@@ -770,20 +1204,15 @@
           {
             "BearerAuth": []
           }
-        ],
-        "responses": {
-          "200": {},
-          "401": {},
-          "429": {}
-        }
+        ]
       }
     },
     "/api/admin/health/embeddings": {
       "get": {
         "operationId": "getApiAdminHealthEmbeddings",
-        "tags": [
-          "Admin"
-        ],
+        "responses": {
+          "200": {}
+        },
         "security": [
           {
             "OperatorApiKey": []
@@ -791,20 +1220,15 @@
           {
             "BearerAuth": []
           }
-        ],
-        "responses": {
-          "200": {},
-          "401": {},
-          "429": {}
-        }
+        ]
       }
     },
     "/api/admin/reindex/model": {
       "post": {
         "operationId": "postApiAdminReindexModel",
-        "tags": [
-          "Admin"
-        ],
+        "responses": {
+          "200": {}
+        },
         "security": [
           {
             "OperatorApiKey": []
@@ -812,39 +1236,28 @@
           {
             "BearerAuth": []
           }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "boolean"
-            },
-            "in": "query",
-            "name": "dryRun",
-            "required": false
-          }
-        ],
+        ]
+      }
+    },
+    "/api/admin/graph/stats": {
+      "get": {
+        "operationId": "getApiAdminGraphStats",
         "responses": {
-          "200": {},
-          "401": {},
-          "429": {},
-          "500": {}
-        }
+          "200": {}
+        },
+        "security": [
+          {
+            "OperatorApiKey": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/admin/reindex/folder/{folderId}": {
       "post": {
         "operationId": "postApiAdminReindexFolderByFolderId",
-        "tags": [
-          "Admin"
-        ],
-        "security": [
-          {
-            "OperatorApiKey": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
         "parameters": [
           {
             "schema": {
@@ -853,39 +1266,11 @@
             "in": "path",
             "name": "folderId",
             "required": true
-          },
-          {
-            "schema": {
-              "type": "boolean"
-            },
-            "in": "query",
-            "name": "dryRun",
-            "required": false
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "query",
-            "name": "ownerId",
-            "required": false
           }
         ],
         "responses": {
-          "200": {},
-          "400": {},
-          "401": {},
-          "429": {},
-          "500": {}
-        }
-      }
-    },
-    "/api/admin/reindex/tag/{tagId}": {
-      "post": {
-        "operationId": "postApiAdminReindexTagByTagId",
-        "tags": [
-          "Admin"
-        ],
+          "200": {}
+        },
         "security": [
           {
             "OperatorApiKey": []
@@ -893,7 +1278,12 @@
           {
             "BearerAuth": []
           }
-        ],
+        ]
+      }
+    },
+    "/api/admin/reindex/tag/{tagId}": {
+      "post": {
+        "operationId": "postApiAdminReindexTagByTagId",
         "parameters": [
           {
             "schema": {
@@ -902,39 +1292,11 @@
             "in": "path",
             "name": "tagId",
             "required": true
-          },
-          {
-            "schema": {
-              "type": "boolean"
-            },
-            "in": "query",
-            "name": "dryRun",
-            "required": false
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "query",
-            "name": "ownerId",
-            "required": false
           }
         ],
         "responses": {
-          "200": {},
-          "400": {},
-          "401": {},
-          "429": {},
-          "500": {}
-        }
-      }
-    },
-    "/api/admin/graph/stats": {
-      "get": {
-        "operationId": "getApiAdminGraphStats",
-        "tags": [
-          "Admin"
-        ],
+          "200": {}
+        },
         "security": [
           {
             "OperatorApiKey": []
@@ -942,1818 +1304,59 @@
           {
             "BearerAuth": []
           }
-        ],
-        "responses": {
-          "200": {},
-          "401": {},
-          "429": {}
-        }
+        ]
       }
     },
-    "/api/keys/global": {
-      "post": {
-        "operationId": "createGlobalApiKey",
-        "summary": "Create a global API key",
-        "description": "Returns the raw global key once. Requires a real browser session.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NamedKeyRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/categories/{id}/keys": {
-      "post": {
-        "operationId": "createCategoryApiKey",
-        "summary": "Create a key scoped to one category",
-        "description": "The category must first be saved with apiMode=category and at least one permission. The recoverable category secret is encrypted at rest.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/NamedKeyRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/keys": {
+    "/api/admin/audit": {
       "get": {
-        "operationId": "listApiKeys",
-        "summary": "List the current user API keys",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          }
-        ],
+        "operationId": "getApiAdminAudit",
         "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "200": {}
         }
       }
     },
-    "/api/keys/{id}/secret": {
+    "/api/admin/audit/{resourceType}/{resourceId}": {
       "get": {
-        "operationId": "revealCategoryApiKey",
-        "summary": "Reveal a recoverable category key",
-        "description": "Global keys are not recoverable. Response is no-store.",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          }
-        ],
+        "operationId": "getApiAdminAuditByResourceTypeByResourceId",
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
-            "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "in": "path",
+            "name": "resourceType",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "resourceId",
+            "required": true
           }
         ],
         "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "200": {}
         }
       }
     },
-    "/api/keys/{id}": {
-      "delete": {
-        "operationId": "revokeApiKey",
-        "summary": "Revoke an API key",
-        "tags": [
-          "API Keys"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/categories": {
+    "/api/admin/metrics": {
       "get": {
-        "operationId": "listCategories",
+        "operationId": "getApiAdminMetrics",
         "tags": [
-          "Categories"
+          "Admin"
         ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
+        "summary": "Process-local embedding metrics snapshot",
+        "description": "Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
         "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "createCategory",
-        "tags": [
-          "Categories"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CategoryInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/categories/{id}": {
-      "patch": {
-        "operationId": "updateCategory",
-        "tags": [
-          "Categories"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CategoryPatch"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "operationId": "deleteCategory",
-        "tags": [
-          "Categories"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/pipeline": {
-      "get": {
-        "operationId": "getDocumentPipeline",
-        "summary": "Get embedding and GraphRAG pipeline progress",
-        "tags": [
-          "Pipeline"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/publish": {
-      "post": {
-        "operationId": "publishDocument",
-        "tags": [
-          "Documents"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/unpublish": {
-      "post": {
-        "operationId": "unpublishDocument",
-        "tags": [
-          "Documents"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/attachments/presign": {
-      "post": {
-        "operationId": "presignAttachmentUpload",
-        "summary": "Create a direct storage PUT URL",
-        "tags": [
-          "Attachments"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AttachmentPresignRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Payload too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported media type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/attachments/confirm": {
-      "post": {
-        "operationId": "confirmAttachmentUpload",
-        "summary": "Confirm a completed direct upload",
-        "description": "Call after PUT succeeds. Verifies object existence and records the attachment.",
-        "tags": [
-          "Attachments"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AttachmentConfirmRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Payload too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported media type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/attachments/{id}": {
-      "delete": {
-        "operationId": "deleteAttachment",
-        "tags": [
-          "Attachments"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/attachments/remote-image": {
-      "get": {
-        "operationId": "proxyRemoteDocumentImage",
-        "summary": "Proxy an external image referenced by an authorized document",
-        "tags": [
-          "Attachments"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "documentId",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "url",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uri"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported media type",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/documents/{id}/versions": {
-      "post": {
-        "operationId": "createDocumentSnapshot",
-        "summary": "Create a named snapshot",
-        "tags": [
-          "Versions"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SnapshotRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Created"
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Rate limited",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      },
-      "get": {
-        "operationId": "listDocumentVersions",
-        "tags": [
-          "Versions"
-        ],
-        "security": [
-          {
-            "SessionAuth": []
-          },
-          {
-            "BearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "onlySnapshots",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500,
-              "default": 100
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success"
-          },
-          "401": {
-            "description": "Authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Insufficient scope",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
+          "200": {}
         }
       }
     }
   },
   "components": {
-    "schemas": {
-      "Error": {
-        "type": "object",
-        "required": [
-          "error"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "details": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        }
-      },
-      "ImportResponse": {
-        "type": "object",
-        "required": [
-          "items",
-          "imported",
-          "failed"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "description": "One result per input file, in the original request order.",
-            "items": {
-              "type": "object",
-              "required": [
-                "filename",
-                "status"
-              ],
-              "properties": {
-                "filename": {
-                  "type": "string"
-                },
-                "status": {
-                  "type": "string",
-                  "enum": [
-                    "ok",
-                    "error"
-                  ]
-                },
-                "document": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "error": {
-                  "type": "string"
-                }
-              }
-            }
-          },
-          "imported": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "failed": {
-            "type": "integer",
-            "minimum": 0
-          }
-        }
-      },
-      "NamedKeyRequest": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          }
-        }
-      },
-      "ApiKeyCreated": {
-        "type": "object",
-        "required": [
-          "id",
-          "key"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "key": {
-            "type": "string",
-            "description": "Raw key returned at creation time."
-          },
-          "name": {
-            "type": "string"
-          },
-          "prefix": {
-            "type": "string"
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "CategoryInput": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "apiMode": {
-            "type": "string",
-            "enum": [
-              "unavailable",
-              "global",
-              "general",
-              "category"
-            ]
-          },
-          "apiPermissionRead": {
-            "type": "boolean"
-          },
-          "apiPermissionEdit": {
-            "type": "boolean"
-          },
-          "apiPermissionWrite": {
-            "type": "boolean"
-          }
-        }
-      },
-      "CategoryPatch": {
-        "type": "object",
-        "minProperties": 1,
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "order": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "apiMode": {
-            "type": "string",
-            "enum": [
-              "unavailable",
-              "global",
-              "general",
-              "category"
-            ]
-          },
-          "apiPermissionRead": {
-            "type": "boolean"
-          },
-          "apiPermissionEdit": {
-            "type": "boolean"
-          },
-          "apiPermissionWrite": {
-            "type": "boolean"
-          }
-        }
-      },
-      "AttachmentPresignRequest": {
-        "type": "object",
-        "required": [
-          "filename",
-          "contentType",
-          "size"
-        ],
-        "properties": {
-          "filename": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "contentType": {
-            "type": "string",
-            "pattern": "^image/"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "AttachmentConfirmRequest": {
-        "type": "object",
-        "required": [
-          "key",
-          "filename",
-          "contentType",
-          "size"
-        ],
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "contentType": {
-            "type": "string",
-            "pattern": "^image/"
-          },
-          "size": {
-            "type": "integer",
-            "minimum": 1
-          }
-        }
-      },
-      "SnapshotRequest": {
-        "type": "object",
-        "required": [
-          "label"
-        ],
-        "properties": {
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 1000
-          }
-        }
-      }
-    },
+    "schemas": {},
     "securitySchemes": {
       "BearerAuth": {
         "type": "http",

@@ -1,7 +1,5 @@
 /** Public, server-only workspace assertion contract. */
 export const DOCSMINT_WORKSPACE_CONTEXT_HEADER = "x-docsmint-workspace-context";
-/** @deprecated Compatibility header accepted only during 0.3.x. */
-export const EXTERNAL_TENANT_CONTEXT_HEADER = "x-hiai-tenant-context";
 
 export type DocsmintWorkspaceContext = Readonly<{
 	actorUserId: string;

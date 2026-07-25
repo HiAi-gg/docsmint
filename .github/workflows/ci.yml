@@ -353,6 +353,8 @@ jobs:
           cd packages/sdk && bun run build && bun run typecheck
           cd ../cli && bun run typecheck
           cd ../mcp-server && bun run typecheck
+      - name: Verify complete packed consumer contract
+        run: bun run scripts/verify-packed-package.ts
       - name: Pack public package
         run: |
           set -euo pipefail

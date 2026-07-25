@@ -122,22 +122,6 @@ describe("DocsClient public contract", () => {
 		expect(seen[1]?.get("x-request-id")).toBe("child-request");
 	});
 
-	it("rejects conflicting workspace assertions before network I/O", async () => {
-		let networkCalls = 0;
-		const docs = client(async () => {
-			networkCalls += 1;
-			return jsonResponse({});
-		});
-
-		await expect(
-			docs.health({
-				workspaceAssertion: "canonical",
-				externalTenantAssertion: "legacy",
-			}),
-		).rejects.toThrow("Conflicting workspace assertions");
-		expect(networkCalls).toBe(0);
-	});
-
 	it("does not include cookies or authorization secrets in transport errors", async () => {
 		const docs = client(
 			async () => {
@@ -158,14 +142,14 @@ describe("DocsClient public contract", () => {
 		expect(String(error)).toContain("connection reset");
 	});
 
-	it("forwards a trusted external workspace assertion in the dedicated header", async () => {
+	it("forwards a trusted workspace assertion in the dedicated header", async () => {
 		let seenHeaders: Headers | undefined;
 		const docs = client(async (_input, init) => {
 			seenHeaders = new Headers(init?.headers);
 			return jsonResponse({ status: "ok", service: "hiai-docs", timestamp: "now" });
 		});
 
-		await docs.health({ externalTenantAssertion: "signed.assertion" });
+		await docs.health({ workspaceAssertion: "signed.assertion" });
 		expect(seenHeaders?.get("x-docsmint-workspace-context")).toBe("signed.assertion");
 	});
 

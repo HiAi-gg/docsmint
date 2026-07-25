@@ -44,6 +44,8 @@ export interface TenantContext {
 	workspaceId?: string;
 	source?: "personal" | "external";
 	actorRole?: "owner" | "admin" | "editor" | "viewer";
+	/** Unix timestamp from a verified external workspace assertion. */
+	assertionExpiresAt?: number;
 }
 
 export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";

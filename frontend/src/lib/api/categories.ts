@@ -11,7 +11,7 @@ export interface Category {
 	id: string;
 	name: string;
 	order: number;
-	apiMode?: "unavailable" | "global" | "general" | "category" | null;
+	apiMode?: "unavailable" | "global" | "category" | null;
 	apiPermissionRead?: boolean | null;
 	apiPermissionEdit?: boolean | null;
 	apiPermissionWrite?: boolean | null;
@@ -29,7 +29,7 @@ export const createCategoryInputSchema = z.object({
 		.trim()
 		.min(1, "Name is required")
 		.max(255, "Name must be 255 characters or less"),
-	apiMode: z.enum(["unavailable", "global", "general", "category"]).optional(),
+	apiMode: z.enum(["unavailable", "global", "category"]).optional(),
 	apiPermissionRead: z.boolean().optional(),
 	apiPermissionEdit: z.boolean().optional(),
 	apiPermissionWrite: z.boolean().optional(),
@@ -43,7 +43,7 @@ export const updateCategoryInputSchema = z.object({
 		.max(255, "Name must be 255 characters or less")
 		.optional(),
 	order: z.number().int().nonnegative().optional(),
-	apiMode: z.enum(["unavailable", "global", "general", "category"]).optional(),
+	apiMode: z.enum(["unavailable", "global", "category"]).optional(),
 	apiPermissionRead: z.boolean().optional(),
 	apiPermissionEdit: z.boolean().optional(),
 	apiPermissionWrite: z.boolean().optional(),

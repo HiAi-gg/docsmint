@@ -1,0 +1,391 @@
+{
+  "version": "0.5.0",
+  "packageExports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./sdk": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./lifecycle": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/lifecycle.js",
+      "types": "./dist/lifecycle.d.ts"
+    },
+    "./lifecycle/persistent": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/lifecycle-persistent.js",
+      "types": "./dist/lifecycle-persistent.d.ts"
+    },
+    "./lifecycle/runtime": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/lifecycle-runtime.js",
+      "types": "./dist/lifecycle-runtime.d.ts"
+    },
+    "./pipeline/cancellation": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/pipeline-cancellation.js",
+      "types": "./dist/pipeline-cancellation.d.ts"
+    },
+    "./workspace": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/workspace.js",
+      "types": "./dist/workspace.d.ts"
+    },
+    "./backend/launcher": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/backend-launcher.js",
+      "types": "./dist/backend-launcher.d.ts"
+    },
+    "./storage-quota": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/storage-quota.js",
+      "types": "./dist/storage-quota.d.ts"
+    },
+    "./backend/lib/api-key-facade": {
+      "import": "./dist/backend-api-key-facade.js",
+      "types": "./backend/src/lib/api-key-facade.ts"
+    },
+    "./frontend/app-shell": {
+      "node": "./dist/frontend-ssr/app-shell.js",
+      "import": "./dist/frontend/app-shell.js",
+      "types": "./dist/frontend/app-shell.d.ts"
+    },
+    "./frontend/dashboard": {
+      "node": "./dist/frontend-ssr/dashboard.js",
+      "import": "./dist/frontend/dashboard.js",
+      "types": "./dist/frontend/dashboard.d.ts"
+    },
+    "./frontend/search": {
+      "node": "./dist/frontend-ssr/search.js",
+      "import": "./dist/frontend/search.js",
+      "types": "./dist/frontend/search.d.ts"
+    },
+    "./frontend/shared-document": {
+      "node": "./dist/frontend-ssr/shared-document.js",
+      "import": "./dist/frontend/shared-document.js",
+      "types": "./dist/frontend/shared-document.d.ts"
+    },
+    "./frontend/extension": {
+      "node": "./dist/frontend-ssr/extension.js",
+      "import": "./dist/frontend/extension.js",
+      "types": "./dist/frontend/extension.d.ts"
+    },
+    "./frontend/styles.css": "./dist/frontend/frontend.css",
+    "./frontend/api/categories": {
+      "import": "./dist/frontend/api/categories.js",
+      "types": "./dist/frontend/api/categories.d.ts"
+    },
+    "./frontend/api/documents": {
+      "import": "./dist/frontend/api/documents.js",
+      "types": "./dist/frontend/api/documents.d.ts"
+    },
+    "./frontend/api/folders": {
+      "import": "./dist/frontend/api/folders.js",
+      "types": "./dist/frontend/api/folders.d.ts"
+    },
+    "./frontend/api/tags": {
+      "import": "./dist/frontend/api/tags.js",
+      "types": "./dist/frontend/api/tags.d.ts"
+    },
+    "./frontend/api/settings": {
+      "import": "./dist/frontend/api/settings.js",
+      "types": "./dist/frontend/api/settings.d.ts"
+    },
+    "./frontend/api/attachments": {
+      "import": "./dist/frontend/api/attachments.js",
+      "types": "./dist/frontend/api/attachments.d.ts"
+    },
+    "./frontend/collaboration": {
+      "import": "./dist/frontend/collaboration.js",
+      "types": "./dist/frontend/collaboration.d.ts"
+    },
+    "./frontend/components/create-snapshot-dialog": {
+      "node": "./dist/frontend-ssr/components/create-snapshot-dialog.js",
+      "import": "./dist/frontend/components/create-snapshot-dialog.js",
+      "types": "./dist/frontend/components/create-snapshot-dialog.d.ts"
+    },
+    "./frontend/components/delete-dialog": {
+      "node": "./dist/frontend-ssr/components/delete-dialog.js",
+      "import": "./dist/frontend/components/delete-dialog.js",
+      "types": "./dist/frontend/components/delete-dialog.d.ts"
+    },
+    "./frontend/components/category-dialog": {
+      "node": "./dist/frontend-ssr/components/category-dialog.js",
+      "import": "./dist/frontend/components/category-dialog.js",
+      "types": "./dist/frontend/components/category-dialog.d.ts"
+    },
+    "./frontend/components/folder-node": {
+      "node": "./dist/frontend-ssr/components/folder-node.js",
+      "import": "./dist/frontend/components/folder-node.js",
+      "types": "./dist/frontend/components/folder-node.d.ts"
+    },
+    "./frontend/document-drop-coordinator": {
+      "import": "./dist/frontend/document-drop-coordinator.js",
+      "types": "./dist/frontend/document-drop-coordinator.d.ts"
+    },
+    "./frontend/offline/identity": {
+      "import": "./dist/frontend/offline/identity.js",
+      "types": "./dist/frontend/offline/identity.d.ts"
+    },
+    "./frontend/doc-tabs": {
+      "import": "./dist/frontend/doc-tabs.js",
+      "types": "./dist/frontend/doc-tabs.d.ts"
+    },
+    "./frontend/components/editor/document-editor": {
+      "node": "./dist/frontend-ssr/components/editor/document-editor.js",
+      "import": "./dist/frontend/components/editor/document-editor.js",
+      "types": "./dist/frontend/components/editor/document-editor.d.ts"
+    },
+    "./frontend/components/folder-tree-selector": {
+      "node": "./dist/frontend-ssr/components/folder-tree-selector.js",
+      "import": "./dist/frontend/components/folder-tree-selector.js",
+      "types": "./dist/frontend/components/folder-tree-selector.d.ts"
+    },
+    "./frontend/components/save-as-dialog": {
+      "node": "./dist/frontend-ssr/components/save-as-dialog.js",
+      "import": "./dist/frontend/components/save-as-dialog.js",
+      "types": "./dist/frontend/components/save-as-dialog.d.ts"
+    },
+    "./frontend/components/share-dialog": {
+      "node": "./dist/frontend-ssr/components/share-dialog.js",
+      "import": "./dist/frontend/components/share-dialog.js",
+      "types": "./dist/frontend/components/share-dialog.d.ts"
+    },
+    "./frontend/components/tag-create-dialog": {
+      "node": "./dist/frontend-ssr/components/tag-create-dialog.js",
+      "import": "./dist/frontend/components/tag-create-dialog.js",
+      "types": "./dist/frontend/components/tag-create-dialog.d.ts"
+    },
+    "./frontend/components/version-history": {
+      "node": "./dist/frontend-ssr/components/version-history.js",
+      "import": "./dist/frontend/components/version-history.js",
+      "types": "./dist/frontend/components/version-history.d.ts"
+    },
+    "./frontend/components/editor/document-title": {
+      "node": "./dist/frontend-ssr/components/editor/document-title.js",
+      "import": "./dist/frontend/components/editor/document-title.js",
+      "types": "./dist/frontend/components/editor/document-title.d.ts"
+    },
+    "./frontend/components/editor/markdown-toggle": {
+      "node": "./dist/frontend-ssr/components/editor/markdown-toggle.js",
+      "import": "./dist/frontend/components/editor/markdown-toggle.js",
+      "types": "./dist/frontend/components/editor/markdown-toggle.d.ts"
+    },
+    "./frontend/components/editor/extensions": {
+      "node": "./dist/frontend-ssr/components/editor/extensions.js",
+      "import": "./dist/frontend/components/editor/extensions.js",
+      "types": "./dist/frontend/components/editor/extensions.d.ts"
+    },
+    "./frontend/components/editor/markdown": {
+      "node": "./dist/frontend-ssr/components/editor/markdown.js",
+      "import": "./dist/frontend/components/editor/markdown.js",
+      "types": "./dist/frontend/components/editor/markdown.d.ts"
+    },
+    "./frontend/components/editor/docx-serializer": {
+      "node": "./dist/frontend-ssr/components/editor/docx-serializer.js",
+      "import": "./dist/frontend/components/editor/docx-serializer.js",
+      "types": "./dist/frontend/components/editor/docx-serializer.d.ts"
+    },
+    "./frontend/components/sidebar": {
+      "node": "./dist/frontend-ssr/components/sidebar.js",
+      "import": "./dist/frontend/components/sidebar.js",
+      "types": "./dist/frontend/components/sidebar.d.ts"
+    },
+    "./frontend/components/settings": {
+      "node": "./dist/frontend-ssr/components/settings.js",
+      "import": "./dist/frontend/components/settings.js",
+      "types": "./dist/frontend/components/settings.d.ts"
+    },
+    "./frontend/types": {
+      "import": "./dist/frontend/types.js",
+      "types": "./dist/frontend/types.d.ts"
+    },
+    "./frontend/keyboard": {
+      "import": "./dist/frontend/keyboard.js",
+      "types": "./dist/frontend/keyboard.d.ts"
+    },
+    "./frontend/folder-refresh": {
+      "import": "./dist/frontend/folder-refresh.js",
+      "types": "./dist/frontend/folder-refresh.d.ts"
+    },
+    "./frontend/utils": {
+      "import": "./dist/frontend/utils.js",
+      "types": "./dist/frontend/utils.d.ts"
+    },
+    "./frontend/utils/clipboard": {
+      "import": "./dist/frontend/utils/clipboard.js",
+      "types": "./dist/frontend/utils/clipboard.d.ts"
+    },
+    "./frontend/utils/dndzone": {
+      "import": "./dist/frontend/utils/dndzone.js",
+      "types": "./dist/frontend/utils/dndzone.d.ts"
+    },
+    "./frontend/api/share": {
+      "import": "./dist/frontend/api/share.js",
+      "types": "./dist/frontend/api/share.d.ts"
+    },
+    "./frontend/theme": {
+      "import": "./dist/frontend/theme.js",
+      "types": "./dist/frontend/theme.d.ts"
+    },
+    "./frontend/i18n": {
+      "import": "./dist/frontend/i18n.js",
+      "types": "./dist/frontend/i18n.d.ts"
+    },
+    "./schema": {
+      "import": "./packages/db/src/schema.ts",
+      "types": "./packages/db/src/schema.ts"
+    },
+    "./db": {
+      "import": "./packages/db/src/index.ts",
+      "types": "./packages/db/src/index.ts"
+    },
+    "./db/client": {
+      "import": "./packages/db/src/client.ts",
+      "types": "./packages/db/src/client.ts"
+    },
+    "./db/with-tenant": {
+      "import": "./packages/db/src/with-tenant.ts",
+      "types": "./packages/db/src/with-tenant.ts"
+    },
+    "./backend/lib/redis": {
+      "import": "./backend/src/lib/redis-factory.ts",
+      "types": "./backend/src/lib/redis-factory.ts"
+    },
+    "./backend/lib/storage": {
+      "import": "./backend/src/lib/storage-factory.ts",
+      "types": "./backend/src/lib/storage-factory.ts"
+    },
+    "./backend/lib/logger": {
+      "import": "./backend/src/lib/logger.ts",
+      "types": "./backend/src/lib/logger.ts"
+    },
+    "./backend/pipeline-cancellation": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/backend-pipeline-cancellation.js",
+      "types": "./dist/backend-pipeline-cancellation.d.ts"
+    },
+    "./backend/account-runtime-cleanup": {
+      "browser": "./dist/server-only-browser-entry.js",
+      "import": "./dist/backend-account-runtime-cleanup.js",
+      "types": "./dist/backend-account-runtime-cleanup.d.ts"
+    }
+  },
+  "extensionManifestKeys": [
+    "sidebarTop",
+    "navigation",
+    "dashboardWidgets",
+    "searchWidgets",
+    "documentTabs",
+    "editorActions",
+    "documentMenuActions",
+    "settingsSections",
+    "commandPaletteActions",
+    "sharedDocumentHeaderActions",
+    "sharedDocumentTabs",
+    "sharedDocumentNotesModes",
+    "sharedDocumentEditorModes"
+  ],
+  "workspace": {
+    "header": "x-docsmint-workspace-context",
+    "assertionFields": [
+      "actorUserId",
+      "workspaceId",
+      "actorRole",
+      "issuedAt",
+      "expiresAt",
+      "issuer"
+    ],
+    "actorRoles": [
+      "owner",
+      "admin",
+      "editor",
+      "viewer"
+    ],
+    "ttlSeconds": 60
+  },
+  "httpRoutes": [
+    "DELETE /api/attachments/{id}",
+    "DELETE /api/categories/{id}",
+    "DELETE /api/documents/{id}",
+    "DELETE /api/documents/{id}/tags/{tagId}",
+    "DELETE /api/folders/{id}",
+    "DELETE /api/keys/{id}",
+    "DELETE /api/share/{id}",
+    "DELETE /api/share/{id}/guests/{email}",
+    "DELETE /api/tags/{id}",
+    "DELETE /api/trash/documents/{id}",
+    "GET /api/admin/audit",
+    "GET /api/admin/audit/{resourceType}/{resourceId}",
+    "GET /api/admin/embedding-stats",
+    "GET /api/admin/graph/stats",
+    "GET /api/admin/health/embeddings",
+    "GET /api/admin/metrics",
+    "GET /api/attachments/remote-image",
+    "GET /api/attachments/{id}/raw",
+    "GET /api/categories",
+    "GET /api/csrf-token",
+    "GET /api/documents",
+    "GET /api/documents/cursor",
+    "GET /api/documents/{id}",
+    "GET /api/documents/{id}/attachments",
+    "GET /api/documents/{id}/export",
+    "GET /api/documents/{id}/pipeline",
+    "GET /api/documents/{id}/versions/",
+    "GET /api/documents/{id}/versions/diff",
+    "GET /api/documents/{id}/versions/{vid}",
+    "GET /api/folders/",
+    "GET /api/folders/{id}",
+    "GET /api/graph/entities",
+    "GET /api/graph/related/{docId}",
+    "GET /api/health",
+    "GET /api/keys",
+    "GET /api/keys/{id}/secret",
+    "GET /api/plugins/",
+    "GET /api/plugins/{name}",
+    "GET /api/search/",
+    "GET /api/search/suggest",
+    "GET /api/share/",
+    "GET /api/share/{token}",
+    "GET /api/share/{token}/documents/{docId}",
+    "GET /api/share/{token}/folders/{folderId}",
+    "GET /api/tags",
+    "GET /api/trash",
+    "PATCH /api/categories/{id}",
+    "PATCH /api/documents/{id}",
+    "PATCH /api/folders/{id}",
+    "PATCH /api/share/{id}",
+    "PATCH /api/tags/{id}",
+    "POST /api/admin/reindex/folder/{folderId}",
+    "POST /api/admin/reindex/model",
+    "POST /api/admin/reindex/tag/{tagId}",
+    "POST /api/admin/reindex/{docId}",
+    "POST /api/categories",
+    "POST /api/categories/{id}/keys",
+    "POST /api/documents",
+    "POST /api/documents/import",
+    "POST /api/documents/{id}/attachments",
+    "POST /api/documents/{id}/attachments/confirm",
+    "POST /api/documents/{id}/attachments/presign",
+    "POST /api/documents/{id}/duplicate",
+    "POST /api/documents/{id}/publish",
+    "POST /api/documents/{id}/tags",
+    "POST /api/documents/{id}/unpublish",
+    "POST /api/documents/{id}/versions/",
+    "POST /api/documents/{id}/versions/{vid}/restore",
+    "POST /api/folders/",
+    "POST /api/graph/search",
+    "POST /api/keys/global",
+    "POST /api/share/",
+    "POST /api/share/{id}/guests",
+    "POST /api/tags",
+    "POST /api/trash/documents/{id}/restore",
+    "POST /api/webhooks/storage"
+  ],
+  "webSocketRoutes": [
+    "WS /api/ws/collab/:documentId"
+  ]
+}

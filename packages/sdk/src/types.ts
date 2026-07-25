@@ -121,7 +121,6 @@ export interface DocsFolderUpdateInput {
 export type DocsCategoryApiMode =
 	| "unavailable"
 	| "global"
-	| "general"
 	| "category";
 
 export interface DocsCategory {
@@ -491,8 +490,6 @@ export interface DocsRequestContext {
 	requestId?: string;
 	/** Short-lived signed assertion from a trusted Docsmint workspace gateway. */
 	workspaceAssertion?: string;
-	/** @deprecated Use workspaceAssertion. */
-	externalTenantAssertion?: string;
 	headers?: HeadersInit;
 	signal?: AbortSignal;
 }

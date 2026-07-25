@@ -25,11 +25,13 @@ const Select = {
 import { ChevronDown, Loader2 } from "lucide-svelte";
 import { type Category, listCategories } from "$lib/api/categories";
 import { listFolders } from "$lib/api/folders";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
 import type { Folder } from "$lib/types.js";
 import FolderTreeSelector from "./FolderTreeSelector.svelte";
 
+const request = getDocsmintRequestAdapter();
 let {
 	open = $bindable(false),
 	documentId,
@@ -75,8 +77,8 @@ async function loadOptions() {
 	loading = true;
 	try {
 		const [cats, folderResult] = await Promise.all([
-			listCategories(),
-			listFolders(null, true),
+			listCategories(request.fetch),
+			listFolders(null, true, request.fetch),
 		]);
 		categories = cats;
 		folders = folderResult;

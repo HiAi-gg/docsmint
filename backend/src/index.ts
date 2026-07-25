@@ -28,7 +28,7 @@ import { webhookRoutes } from "./api/routes/webhooks";
 import { ensureApiKeyOwner } from "./lib/api-key-owner";
 import { config } from "./lib/config";
 import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
-import { ExternalTenantContextError } from "./lib/external-tenant-context";
+import { DocsmintWorkspaceContextError } from "./lib/external-tenant-context";
 import { logger } from "./lib/logger";
 import { configureDocsMintRuntime } from "./lib/runtime-options";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
@@ -138,6 +138,31 @@ const bodySizeLimit = new Elysia().onBeforeHandle(({ request, set }) => {
 const swaggerConfig = {
 	path: "/api/docs",
 	documentation: {
+		components: {
+			securitySchemes: {
+				BearerAuth: {
+					type: "http" as const,
+					scheme: "bearer",
+					bearerFormat: "hiai_docs_*",
+					description:
+						"Global or category-scoped DocsMint API key. The operator key is also accepted as a bearer token on operator-capable routes.",
+				},
+				SessionAuth: {
+					type: "apiKey" as const,
+					in: "cookie" as const,
+					name: "better-auth.session_token",
+					description:
+						"Better Auth browser session. Secure deployments may use the __Secure- prefixed cookie name.",
+				},
+				OperatorApiKey: {
+					type: "apiKey" as const,
+					in: "header" as const,
+					name: "x-api-key",
+					description:
+						"Static HIAI_DOCS_API_KEY for /api/admin operator endpoints.",
+				},
+			},
+		},
 		info: {
 			title: "DocsMint API",
 			version: "0.5.0",
@@ -177,7 +202,7 @@ const swaggerConfig = {
 const app = new Elysia()
 	.use(bodySizeLimit)
 	.onError(({ error, set }) => {
-		if (error instanceof ExternalTenantContextError) {
+		if (error instanceof DocsmintWorkspaceContextError) {
 			set.status = error.status;
 			return { error: error.message };
 		}

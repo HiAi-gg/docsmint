@@ -24,8 +24,8 @@ const envSchema = z.object({
 	EMBEDDING_FALLBACK_MODEL: z.string().optional(),
 	STORAGE_ENDPOINT: z.string().default("localhost"),
 	STORAGE_PORT: z.coerce.number().default(50702),
-	STORAGE_ACCESS_KEY: z.string().default("minioadmin"),
-	STORAGE_SECRET_KEY: z.string().default("minioadmin"),
+	STORAGE_ACCESS_KEY: z.string().default("hiai-docs"),
+	STORAGE_SECRET_KEY: z.string().default("hiai-docs"),
 	STORAGE_BUCKET: z.string().default("hiai-docs"),
 	STORAGE_REGION: z.string().default("us-east-1"),
 	STORAGE_FORCE_PATH_STYLE: z.boolean().default(true),
@@ -51,21 +51,34 @@ describe("config schema", () => {
 		}
 	});
 
-	test("requires issuer and secret when external tenancy is enabled", () => {
+	test("requires issuer and secret when workspace context is enabled", () => {
 		const disabled = realEnvSchema.safeParse({
-			EXTERNAL_TENANT_ENABLED: "false",
+			DOCSMINT_WORKSPACE_ENABLED: "false",
 		});
 		expect(disabled.success).toBe(true);
 		const enabledWithoutCredentials = realEnvSchema.safeParse({
-			EXTERNAL_TENANT_ENABLED: "true",
+			DOCSMINT_WORKSPACE_ENABLED: "true",
 		});
 		expect(enabledWithoutCredentials.success).toBe(false);
 		const enabled = realEnvSchema.safeParse({
-			EXTERNAL_TENANT_ENABLED: "true",
-			EXTERNAL_TENANT_ISSUER: "trusted-gateway",
-			EXTERNAL_TENANT_SECRET: "a-secret",
+			DOCSMINT_WORKSPACE_ENABLED: "true",
+			DOCSMINT_WORKSPACE_ISSUER: "trusted-gateway",
+			DOCSMINT_WORKSPACE_SECRET: "a-secret",
 		});
 		expect(enabled.success).toBe(true);
+	});
+
+	test("rejects workspace assertion clock skew above the verifier maximum", () => {
+		expect(
+			realEnvSchema.safeParse({
+				DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS: "5",
+			}).success,
+		).toBe(true);
+		expect(
+			realEnvSchema.safeParse({
+				DOCSMINT_WORKSPACE_CLOCK_SKEW_SECONDS: "6",
+			}).success,
+		).toBe(false);
 	});
 
 	test("rejects invalid NODE_ENV", () => {

@@ -26,6 +26,9 @@ test("all published and workspace release metadata reports 0.5.0", async () => {
 	expect(workspaceBlock).not.toContain('"version": "0.3.0"');
 	expect(workspaceBlock.match(/"version": "0\.5\.0"/g)).toHaveLength(6);
 
+	const frontendManifest = await json("frontend/package.json");
+	expect((frontendManifest.dependencies as Record<string, string>)["lucide-svelte"]).toBe("^0.577.0");
+
 	const publicManifest = await json("package.public.json");
 	expect(publicManifest.name).toBe("@hiai-gg/docsmint");
 	const publicExports = publicManifest.exports as Record<
@@ -75,6 +78,8 @@ test("all published and workspace release metadata reports 0.5.0", async () => {
 		"utf8",
 	);
 	expect(appShellDeclarationWriter).toContain("DocsmintRequestAdapter");
+	expect(appShellDeclarationWriter).toContain("DocsmintRealtimeAdapter");
+	expect(appShellDeclarationWriter).toContain("getDocsmintRealtimeAdapter");
 	expect(appShellDeclarationWriter).toContain("getDocsmintRequestAdapter");
 	expect(appShellDeclarationWriter).toContain(
 		"options?: DocsmintNavigationOptions",

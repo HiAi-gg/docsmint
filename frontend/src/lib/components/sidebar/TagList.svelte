@@ -11,6 +11,7 @@ import { Loader2, MoreVertical, Plus } from "lucide-svelte";
 import { onMount } from "svelte";
 import { deleteTag, listTags, type Tag } from "$lib/api/tags";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	getSelectedTag,
@@ -20,6 +21,7 @@ import {
 } from "$lib/stores/tag-store.svelte";
 import { cn } from "$lib/utils";
 
+const request = getDocsmintRequestAdapter();
 let tags = $state<Tag[]>([]);
 let loadError = $state<string | null>(null);
 let showCreateDialog = $state(false);
@@ -30,7 +32,7 @@ let busy = $state(false);
 
 async function refresh() {
 	try {
-		tags = await listTags();
+		tags = await listTags(request.fetch);
 	} catch (e) {
 		console.error("TagList: failed to load tags", e);
 		loadError = m.tags_load_error();
@@ -87,7 +89,7 @@ async function confirmDelete() {
 	if (!t || busy) return;
 	busy = true;
 	try {
-		await deleteTag(t.id);
+		await deleteTag(t.id, request.fetch);
 		tags = tags.filter((tag) => tag.id !== t.id);
 		if (getSelectedTag() === t.id) setSelectedTag(null);
 		showDeleteDialog = false;

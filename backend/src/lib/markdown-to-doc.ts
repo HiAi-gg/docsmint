@@ -1,9 +1,6 @@
-import Highlight from "@tiptap/extension-highlight";
-import Image from "@tiptap/extension-image";
-import Link from "@tiptap/extension-link";
 import { generateJSON } from "@tiptap/html/server";
-import StarterKit from "@tiptap/starter-kit";
 import { marked } from "marked";
+import { editorExtensions } from "./editor-schema";
 import { logger } from "./logger";
 
 /**
@@ -15,16 +12,6 @@ import { logger } from "./logger";
  * Excludes extensions that have no markdown equivalent or that need
  * runtime resources the backend does not load (Collaboration, CodeBlockLowlight).
  */
-const editorExtensions = [
-	StarterKit.configure({
-		heading: { levels: [1, 2, 3] },
-		codeBlock: false,
-		link: false,
-	}),
-	Link.configure({ openOnClick: false }),
-	Image.configure({ inline: false, allowBase64: false }),
-	Highlight.configure({ multicolor: true }),
-];
 
 /**
  * Convert raw markdown text to TipTap/ProseMirror JSON that the editor

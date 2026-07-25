@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { Snippet } from "svelte";
+import { type Snippet, untrack } from "svelte";
 import MobileSidebarToggle from "$lib/components/MobileSidebarToggle.svelte";
 import ScrollToTop from "$lib/components/ScrollToTop.svelte";
 import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
@@ -11,20 +11,27 @@ import {
 import { searchPreferences } from "$lib/stores/search-preferences.svelte";
 import type { DocsmintFrontendExtensions } from "../extensions/types";
 import HiaiDocsExtensionProvider from "./HiaiDocsExtensionProvider.svelte";
+import { provideDocsmintRealtimeAdapter } from "./realtime-context";
 import {
 	provideDocsmintRequestAdapter,
 	provideDocsmintRouteAdapter,
 } from "./route-context";
-import type { DocsmintRequestAdapter, DocsmintRouteAdapter } from "./types";
+import type {
+	DocsmintRealtimeAdapter,
+	DocsmintRequestAdapter,
+	DocsmintRouteAdapter,
+} from "./types";
 
 const {
 	route,
 	request = { fetch },
+	realtime,
 	extensions = {},
 	children,
 }: {
 	route: DocsmintRouteAdapter;
 	request?: DocsmintRequestAdapter;
+	realtime?: DocsmintRealtimeAdapter;
 	extensions?: Partial<DocsmintFrontendExtensions>;
 	children: Snippet;
 } = $props();
@@ -40,6 +47,8 @@ provideDocsmintRequestAdapter({
 	fetch: ((...args: Parameters<typeof fetch>) =>
 		request.fetch(...args)) as typeof fetch,
 });
+const realtimeAdapter = untrack(() => realtime);
+if (realtimeAdapter) provideDocsmintRealtimeAdapter(realtimeAdapter);
 
 editorPreferences.init();
 searchPreferences.init();

@@ -45,11 +45,13 @@ import type {
 	EditorActionContext,
 	EditorActionExtension,
 } from "$lib/extensions/types";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import { copyToClipboard } from "$lib/utils/clipboard";
 import CreateSnapshotDialog from "../CreateSnapshotDialog.svelte";
 import LinkDialog from "./LinkDialog.svelte";
 
+const request = getDocsmintRequestAdapter();
 const {
 	editor = null,
 	documentId = "",
@@ -619,7 +621,7 @@ async function handleImageSelected(event: Event) {
 	imageUploading = true;
 	imageError = null;
 	try {
-		const attachment = await uploadAttachment(documentId, file);
+		const attachment = await uploadAttachment(documentId, file, request.fetch);
 		editor
 			.chain()
 			.focus()

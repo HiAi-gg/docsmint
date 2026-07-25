@@ -1,5 +1,9 @@
 import { WebsocketProvider } from "y-websocket";
 import * as Y from "yjs";
+import {
+	type DocsmintRealtimeAdapter,
+	resolveCollaborationConnection,
+} from "./realtime";
 
 export interface CollaborationSession {
 	provider: WebsocketProvider;
@@ -7,25 +11,31 @@ export interface CollaborationSession {
 	destroy: () => void;
 }
 
-let activeSession: CollaborationSession | null = null;
+const activeSessions = new Set<CollaborationSession>();
 
 export function startCollaboration(
 	documentId: string,
-	accessToken: string,
+	accessToken?: string,
 	onUpdate?: (update: Uint8Array) => void,
+	realtime?: DocsmintRealtimeAdapter,
 ): CollaborationSession {
-	stopCollaboration();
-
 	const doc = new Y.Doc();
-	// Derive the WebSocket protocol from the page protocol so collaboration
-	// works behind HTTPS (wss:) as well as plain HTTP (ws:).
-	const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-	const wsUrl = `${wsProtocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ""}/api/ws/collab/${documentId}?token=${encodeURIComponent(accessToken)}`;
-
-	const provider = new WebsocketProvider(wsUrl, documentId, doc, {
-		connect: true,
-		params: { token: accessToken },
-	});
+	const connection = resolveCollaborationConnection(
+		documentId,
+		accessToken,
+		window.location.protocol,
+		window.location.host,
+		realtime,
+	);
+	const provider = new WebsocketProvider(
+		connection.serverUrl,
+		connection.roomName,
+		doc,
+		{
+			connect: true,
+			params: connection.params,
+		},
+	);
 
 	provider.on("sync", (_synced: boolean) => {});
 
@@ -38,7 +48,7 @@ export function startCollaboration(
 		doc.on("update", updateHandler);
 	}
 
-	activeSession = {
+	const session: CollaborationSession = {
 		provider,
 		doc,
 		destroy: () => {
@@ -50,17 +60,24 @@ export function startCollaboration(
 			doc.destroy();
 		},
 	};
-
-	return activeSession;
+	const destroy = session.destroy;
+	session.destroy = () => {
+		if (!activeSessions.delete(session)) return;
+		destroy();
+	};
+	activeSessions.add(session);
+	return session;
 }
 
-export function stopCollaboration() {
-	if (activeSession) {
-		activeSession.destroy();
-		activeSession = null;
+export function stopCollaboration(session?: CollaborationSession): void {
+	if (session) {
+		session.destroy();
+		return;
 	}
+	for (const active of [...activeSessions]) active.destroy();
 }
 
+/** @deprecated Track the session returned by startCollaboration instead. */
 export function getActiveSession(): CollaborationSession | null {
-	return activeSession;
+	return [...activeSessions].at(-1) ?? null;
 }

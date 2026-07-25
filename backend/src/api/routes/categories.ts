@@ -29,7 +29,7 @@ function isCategoryManager(
  */
 export const createCategorySchema = z.object({
 	name: z.string().trim().min(1).max(255),
-	apiMode: z.enum(["unavailable", "global", "general", "category"]).optional(),
+	apiMode: z.enum(["unavailable", "global", "category"]).optional(),
 	apiPermissionRead: z.boolean().optional(),
 	apiPermissionEdit: z.boolean().optional(),
 	apiPermissionWrite: z.boolean().optional(),
@@ -38,7 +38,7 @@ export const createCategorySchema = z.object({
 export const updateCategorySchema = z.object({
 	name: z.string().trim().min(1).max(255).optional(),
 	order: z.number().int().nonnegative().optional(),
-	apiMode: z.enum(["unavailable", "global", "general", "category"]).optional(),
+	apiMode: z.enum(["unavailable", "global", "category"]).optional(),
 	apiPermissionRead: z.boolean().optional(),
 	apiPermissionEdit: z.boolean().optional(),
 	apiPermissionWrite: z.boolean().optional(),
@@ -63,7 +63,7 @@ function normalizeApiMode(
 	apiMode?: string | null,
 ): "unavailable" | "global" | "category" {
 	if (apiMode === "category") return "category";
-	if (apiMode === "global" || apiMode === "general") return "global";
+	if (apiMode === "global") return "global";
 	return "unavailable";
 }
 

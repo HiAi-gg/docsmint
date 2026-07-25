@@ -17,6 +17,19 @@ interface OpenApiDocument {
 
 const openApiUrl = new URL("../../../docs/openapi.json", import.meta.url);
 const spec = (await Bun.file(openApiUrl).json()) as OpenApiDocument;
+const committedInventory = (await Bun.file(
+	new URL("../../../docs/http-route-inventory.json", import.meta.url),
+).json()) as string[];
+const HTTP_METHODS = new Set([
+	"get",
+	"post",
+	"put",
+	"patch",
+	"delete",
+	"head",
+	"options",
+	"trace",
+]);
 
 const requiredOperations = [
 	["post", "/api/keys/global"],
@@ -35,8 +48,8 @@ const requiredOperations = [
 	["get", "/api/attachments/remote-image"],
 	["post", "/api/documents/{id}/publish"],
 	["post", "/api/documents/{id}/unpublish"],
-	["get", "/api/documents/{id}/versions"],
-	["post", "/api/documents/{id}/versions"],
+	["get", "/api/documents/{id}/versions/"],
+	["post", "/api/documents/{id}/versions/"],
 ] as const;
 
 const backendRouteEvidence = [
@@ -60,6 +73,17 @@ const backendRouteEvidence = [
 ] as const;
 
 describe("OpenAPI external integration contract", () => {
+	test("matches the exact frozen runtime HTTP route and method inventory", () => {
+		const openApiInventory = Object.entries(spec.paths)
+			.flatMap(([path, operations]) =>
+				Object.keys(operations)
+					.filter((method) => HTTP_METHODS.has(method.toLowerCase()))
+					.map((method) => `${method.toUpperCase()} ${path}`),
+			)
+			.sort();
+		expect(openApiInventory).toEqual(committedInventory);
+		expect(new Set(committedInventory).size).toBe(committedInventory.length);
+	});
 	test("tracks the release version and critical SDK, CLI, and MCP routes", () => {
 		expect(spec.info.version).toBe("0.5.0");
 		for (const [method, path] of requiredOperations) {

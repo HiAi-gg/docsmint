@@ -29,3 +29,5 @@ export interface DocsmintRouteAdapter {
 export interface DocsmintRequestAdapter {
 	fetch: typeof fetch;
 }
+
+export type { DocsmintRealtimeAdapter } from "../realtime";

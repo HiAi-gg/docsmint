@@ -12,6 +12,22 @@ import { join } from "path";
 
 const API_URL = process.env.API_URL ?? "http://localhost:50700";
 const OUTPUT_PATH = join(import.meta.dir, "..", "docs", "openapi.json");
+const INVENTORY_PATH = join(
+  import.meta.dir,
+  "..",
+  "docs",
+  "http-route-inventory.json",
+);
+const HTTP_METHODS = new Set([
+  "get",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "head",
+  "options",
+  "trace",
+]);
 
 async function exportSpec() {
   console.log(`Fetching OpenAPI spec from ${API_URL}/api/docs/json ...`);
@@ -26,9 +42,20 @@ async function exportSpec() {
 
   mkdirSync(join(import.meta.dir, "..", "docs"), { recursive: true });
   writeFileSync(OUTPUT_PATH, JSON.stringify(spec, null, 2) + "\n");
+  const routes = Object.entries(
+    (spec as { paths?: Record<string, Record<string, unknown>> }).paths ?? {},
+  )
+    .flatMap(([path, operations]) =>
+      Object.keys(operations)
+        .filter((method) => HTTP_METHODS.has(method.toLowerCase()))
+        .map((method) => `${method.toUpperCase()} ${path}`),
+    )
+    .sort();
+  writeFileSync(INVENTORY_PATH, JSON.stringify(routes, null, 2) + "\n");
 
   console.log(`OpenAPI spec exported to ${OUTPUT_PATH}`);
-  console.log(`Endpoints: ${Object.keys((spec as Record<string, unknown>).paths ?? {}).length}`);
+  console.log(`Route inventory exported to ${INVENTORY_PATH}`);
+  console.log(`Endpoints: ${routes.length} operations`);
 }
 
 exportSpec().catch((err) => {
