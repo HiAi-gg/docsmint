@@ -197,6 +197,18 @@ const packagedFrontendStyles = await readFile(
 	join(packageRoot, "dist", "frontend", "frontend.css"),
 	"utf8",
 );
+const packagedBackend = await readFile(
+	join(packageRoot, "dist", "backend", "index.js"),
+	"utf8",
+);
+if (
+	!packagedBackend.includes('import pino from "pino";') ||
+	packagedBackend.includes("thread-stream@")
+) {
+	throw new Error(
+		"Packed backend must keep Pino external and must not embed thread-stream build paths",
+	);
+}
 if (!packagedFrontendStyles.includes("--layer-chrome")) {
 	throw new Error(
 		"Packed frontend stylesheet is missing DocsMint application layout utilities",
