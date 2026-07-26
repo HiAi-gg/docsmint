@@ -8,6 +8,7 @@ import {
 	Settings as SettingsIcon,
 	Tag,
 } from "lucide-svelte";
+import { onMount } from "svelte";
 import { page } from "$app/state";
 import SearchBar from "$lib/components/SearchBar.svelte";
 import SettingsDialog from "$lib/components/SettingsDialog.svelte";
@@ -22,6 +23,8 @@ import {
 	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
+import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
 import { cn } from "$lib/utils";
 
 let {
@@ -56,6 +59,19 @@ const navigationExtensions = $derived(
 		pathname: page.url.pathname,
 	}),
 );
+
+onMount(() => {
+	const refreshWorkspaceViews = () => {
+		refreshFolders();
+		refreshDocs();
+	};
+	window.addEventListener("hiai-docs:documents-updated", refreshWorkspaceViews);
+	return () =>
+		window.removeEventListener(
+			"hiai-docs:documents-updated",
+			refreshWorkspaceViews,
+		);
+});
 
 $effect(() => {
 	if (typeof window !== "undefined") {

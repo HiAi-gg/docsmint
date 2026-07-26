@@ -4,6 +4,7 @@ import {
 	LARGE_MARKDOWN_THRESHOLD,
 	shouldDeferMarkdownParsing,
 } from "./large-markdown";
+
 const editorSource = readFileSync(
 	new URL("./HiAiEditor.svelte", import.meta.url),
 	"utf8",

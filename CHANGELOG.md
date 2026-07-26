@@ -1,16 +1,3 @@
-## 0.4.8
-## 0.5.0
-
-- Publish the server-only API-key facade as a self-contained runtime bundle.
-
-## 0.4.8
-
-- Fix the published API-key facade package contents.
-
-
-- Add the generic `sidebarTop` frontend extension zone for host-provided branding and workspace controls.
-- Add a server-only OSS API-key issuance and verification facade for product hosts.
-
 # Changelog
 
 ## 0.4.6
@@ -48,6 +35,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.5.1] - 2026-07-26
+
+- Prevent embedded dashboard and search dropdowns from stretching their host rows by rendering menu content in portals.
+- Preserve colored tag indicators in dashboard filters.
+- Refresh OSS sidebar categories, folders, and recent documents immediately after host document mutations.
+- Keep large Markdown editor hydration regression coverage aligned with the packaged frontend.
 
 ## [0.4.1] - 2026-07-21
 

@@ -6,6 +6,14 @@ const read = (relative: string) =>
 	readFileSync(resolve(import.meta.dir, relative), "utf8");
 
 describe("search responsive containment", () => {
+	test("embedded host menus use portals and cannot stretch their filter rows", () => {
+		const dashboard = read("../hosts/HiaiDocsDashboardHost.svelte");
+		const search = read("../hosts/HiaiDocsSearchHost.svelte");
+		expect(dashboard).toContain("<SelectPrimitive.Portal>");
+		expect(dashboard).toContain("<DropdownMenuPrimitive.Portal>");
+		expect(search).toContain("<SelectPrimitive.Portal>");
+	});
+
 	test("search results wrap unbroken content inside the result card", () => {
 		const source = read("SearchResult.svelte");
 		expect(source).toContain("[overflow-wrap:anywhere]");
@@ -52,5 +60,14 @@ describe("dashboard sharing entry points", () => {
 		expect(source).toContain(
 			'categoryId={shareTarget.kind === "category" ? shareTarget.categoryId : ""}',
 		);
+	});
+});
+
+describe("embedded taxonomy refresh bridge", () => {
+	test("refreshes OSS-owned sidebar stores after SaaS document mutations", () => {
+		const source = read("sidebar/Sidebar.svelte");
+		expect(source).toContain("hiai-docs:documents-updated");
+		expect(source).toContain("refreshFolders()");
+		expect(source).toContain("refreshDocs()");
 	});
 });

@@ -14,6 +14,10 @@ import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import {
+	DropdownMenu as DropdownMenuPrimitive,
+	Select as SelectPrimitive,
+} from "bits-ui";
+import {
 	ArrowLeft,
 	Calendar,
 	Check,
@@ -727,12 +731,14 @@ const isFolderEmpty = $derived(
             </Select.Value>
             <ChevronDown class="size-4 opacity-50" />
           </Select.Trigger>
-          <Select.Content class="w-[var(--bits-select-trigger-width)]">
-            <Select.Item value="all">All Categories</Select.Item>
-            {#each data.categories as cat (cat.id)}
-              <Select.Item value={cat.id}>{cat.name}</Select.Item>
-            {/each}
-          </Select.Content>
+          <SelectPrimitive.Portal>
+            <Select.Content class="w-[var(--bits-select-trigger-width)]">
+              <Select.Item value="all">All Categories</Select.Item>
+              {#each data.categories as cat (cat.id)}
+                <Select.Item value={cat.id}>{cat.name}</Select.Item>
+              {/each}
+            </Select.Content>
+          </SelectPrimitive.Portal>
         </Select.Root>
       {/if}
     </div>
@@ -754,12 +760,14 @@ const isFolderEmpty = $derived(
           </Select.Value>
           <ChevronDown class="size-4 opacity-50" />
         </Select.Trigger>
-        <Select.Content class="w-[var(--bits-select-trigger-width)]">
+        <SelectPrimitive.Portal>
+          <Select.Content class="w-[var(--bits-select-trigger-width)]">
             <Select.Item value="all"><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full bg-muted-foreground"></span>All Tags</span></Select.Item>
             {#each data.tags as tag (tag.id)}
-            <Select.Item value={tag.id}><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full" style="background-color: {tag.color || '#cccccc'}"></span>{tag.name}</span></Select.Item>
-          {/each}
-        </Select.Content>
+              <Select.Item value={tag.id}><span class="inline-flex items-center gap-2"><span class="size-2 rounded-full" style="background-color: {tag.color || '#cccccc'}"></span>{tag.name}</span></Select.Item>
+            {/each}
+          </Select.Content>
+        </SelectPrimitive.Portal>
       </Select.Root>
     </div>
 
@@ -911,12 +919,14 @@ const isFolderEmpty = $derived(
                 <DropdownMenuTrigger class="ml-auto inline-flex size-8 items-center justify-center rounded-md hover:bg-accent" aria-label={m.editor_more_options()}>
                   <MoreVertical class="size-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => openShareDialogForCategory(section.category!.id, section.category!.name)}>
-                    <Share2 class="size-4" />
-                    {m.doc_share()}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
+                <DropdownMenuPrimitive.Portal>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => openShareDialogForCategory(section.category!.id, section.category!.name)}>
+                      <Share2 class="size-4" />
+                      {m.doc_share()}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenuPrimitive.Portal>
               </DropdownMenu>
             {/if}
           </div>

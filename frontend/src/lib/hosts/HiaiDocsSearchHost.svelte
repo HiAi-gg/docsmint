@@ -5,6 +5,7 @@ import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
+import { Select as SelectPrimitive } from "bits-ui";
 import {
 	Calendar,
 	ChevronDown,
@@ -832,12 +833,14 @@ function goToPage(page: number) {
                 {pageSize}
               </Select.Value>
             </Select.Trigger>
-            <Select.Content class="w-[70px]">
-              <Select.Item value="5">5</Select.Item>
-              <Select.Item value="10">10</Select.Item>
-              <Select.Item value="20">20</Select.Item>
-              <Select.Item value="50">50</Select.Item>
-            </Select.Content>
+            <SelectPrimitive.Portal>
+              <Select.Content class="w-[70px]">
+                <Select.Item value="5">5</Select.Item>
+                <Select.Item value="10">10</Select.Item>
+                <Select.Item value="20">20</Select.Item>
+                <Select.Item value="50">50</Select.Item>
+              </Select.Content>
+            </SelectPrimitive.Portal>
           </Select.Root>
         </div>
 
@@ -870,13 +873,15 @@ function goToPage(page: number) {
               {/if}
             </Select.Value>
           </Select.Trigger>
-          <Select.Content class="w-[180px]">
-            <Select.Item value="relevance">{m.sort_relevance()}</Select.Item>
-            <Select.Item value="date_desc">{m.sort_date_newest()}</Select.Item>
-            <Select.Item value="date_asc">{m.sort_date_oldest()}</Select.Item>
-            <Select.Item value="name_asc">{m.sort_name_asc()}</Select.Item>
-            <Select.Item value="name_desc">{m.sort_name_desc()}</Select.Item>
-          </Select.Content>
+          <SelectPrimitive.Portal>
+            <Select.Content class="w-[180px]">
+              <Select.Item value="relevance">{m.sort_relevance()}</Select.Item>
+              <Select.Item value="date_desc">{m.sort_date_newest()}</Select.Item>
+              <Select.Item value="date_asc">{m.sort_date_oldest()}</Select.Item>
+              <Select.Item value="name_asc">{m.sort_name_asc()}</Select.Item>
+              <Select.Item value="name_desc">{m.sort_name_desc()}</Select.Item>
+            </Select.Content>
+          </SelectPrimitive.Portal>
         </Select.Root>
       </div>
     </div>

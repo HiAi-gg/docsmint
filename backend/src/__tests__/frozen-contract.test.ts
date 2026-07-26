@@ -76,7 +76,8 @@ test("the complete 0.5.0 exports, extensions, workspace assertion, and routes ma
 		new URL("packages/sdk/src/workspace.ts", root),
 	).text();
 
-	expect(snapshot.version).toBe(manifest.version);
+	expect(snapshot.version).toBe("0.5.0");
+	expect(manifest.version).toMatch(/^0\.5\.\d+$/);
 	expect(snapshot.packageExports).toEqual(manifest.exports);
 	expect(snapshot.httpRoutes).toEqual(routeInventory);
 	for (const key of snapshot.extensionManifestKeys) {
