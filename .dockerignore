@@ -35,9 +35,10 @@ frontend/src/lib/paraglide
 # --- Secrets and local env (NEVER ship into image) ---
 .env
 .env.local
-.env.*.local
+.env.*
 **/.env
 **/.env.local
+**/.env.*
 !**/.env.example
 
 # --- Docker dev override (not needed in image) ---

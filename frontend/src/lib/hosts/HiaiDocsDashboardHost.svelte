@@ -274,6 +274,10 @@ async function handleDuplicateDocument(id: string) {
 
 // --- Import functions ---
 function triggerImport() {
+	if (extensionContext.capabilities?.["docsmint.import.manager"]) {
+		navigateDocsmintRoute(route, "/organize");
+		return;
+	}
 	importInput?.click();
 }
 
@@ -663,7 +667,12 @@ const isFolderEmpty = $derived(
       {#each dashboardWidgets as widget (widget.id)}
         {@const Widget = widget.component}
         <div
-          class="rounded-xl border border-border bg-card p-4"
+          class={[
+            widget.chrome === false
+              ? "contents"
+              : "rounded-xl border border-border bg-card p-4",
+            widget.colSpan === 12 && "md:col-span-2",
+          ]}
           data-hiai-docs-extension-id={widget.id}
         >
           {#if widget.title}

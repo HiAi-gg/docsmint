@@ -9,6 +9,7 @@ describe("frontend extension manifest", () => {
 
 		expect(Object.keys(first)).toEqual([
 			"sidebarTop",
+			"sidebarFooterActions",
 			"navigation",
 			"dashboardWidgets",
 			"searchWidgets",
@@ -16,6 +17,7 @@ describe("frontend extension manifest", () => {
 			"editorActions",
 			"documentMenuActions",
 			"settingsSections",
+			"profileActions",
 			"commandPaletteActions",
 			"sharedDocumentHeaderActions",
 			"sharedDocumentTabs",

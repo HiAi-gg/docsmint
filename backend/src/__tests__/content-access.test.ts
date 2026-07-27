@@ -81,6 +81,8 @@ describe("content API authorization matrix", () => {
 		expect(canAccessContent(viewer, "read")).toBe(true);
 		expect(canAccessContent(viewer, "edit")).toBe(false);
 		expect(canAccessContent(viewer, "write")).toBe(false);
+		expect(viewer.restricted).toBe(false);
+		expect(viewer.categoryId).toBeNull();
 		expect(isAuthorizedCategory(viewer, otherCategoryId)).toBe(true);
 	});
 

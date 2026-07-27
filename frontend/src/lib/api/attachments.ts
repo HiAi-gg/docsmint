@@ -22,11 +22,13 @@ export interface AttachmentListResponse {
  */
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 
-interface PresignResponse {
+export interface PresignResponse {
 	url: string;
 	key: string;
 	maxSize: number;
 	expiresIn: number;
+	/** Opaque quota reservation created by a host storage admission. */
+	quotaReservationId?: string;
 }
 
 /**
@@ -62,6 +64,7 @@ export function confirmAttachment(
 	documentId: string,
 	key: string,
 	file: File,
+	quotaReservationId?: string,
 	fetcher?: typeof fetch,
 ): Promise<Attachment> {
 	return apiFetch<Attachment>(
@@ -73,6 +76,7 @@ export function confirmAttachment(
 				filename: file.name,
 				contentType: file.type,
 				size: file.size,
+				...(quotaReservationId ? { quotaReservationId } : {}),
 			},
 		},
 		fetcher,
@@ -121,11 +125,30 @@ export async function uploadAttachment(
 			},
 			signal: putController.signal,
 		});
+	} catch (error) {
+		// Confirming a missing object is the server-owned cancellation seam:
+		// HEAD fails and the exact opaque quota reservation is released. Never
+		// leave failed browser PUTs reserved until an out-of-band sweeper runs.
+		await confirmAttachment(
+			documentId,
+			presign.key,
+			file,
+			presign.quotaReservationId,
+			fetcher,
+		).catch(() => undefined);
+		throw error;
 	} finally {
 		clearTimeout(putTimeout);
 	}
 
 	if (!putResponse.ok) {
+		await confirmAttachment(
+			documentId,
+			presign.key,
+			file,
+			presign.quotaReservationId,
+			fetcher,
+		).catch(() => undefined);
 		// Mirror the ApiError shape so callers can `catch (e) { e.status }`
 		// uniformly. The original presign is now burnt — the URL will
 		// expire — but no storage object was created, so the user can just
@@ -135,7 +158,13 @@ export async function uploadAttachment(
 		);
 	}
 
-	return confirmAttachment(documentId, presign.key, file, fetcher);
+	return confirmAttachment(
+		documentId,
+		presign.key,
+		file,
+		presign.quotaReservationId,
+		fetcher,
+	);
 }
 
 export function listAttachments(

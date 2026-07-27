@@ -14,7 +14,7 @@ frontend/src/lib/paraglide/
 # Environment
 .env
 .env.local
-.env.*.local
+.env.*
 !.env.example
 
 # Docker dev overrides

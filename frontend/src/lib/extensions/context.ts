@@ -12,6 +12,7 @@ export function createFrontendExtensions(
 ): HiaiDocsFrontendExtensions {
 	return {
 		sidebarTop: [...(initial.sidebarTop ?? [])],
+		sidebarFooterActions: [...(initial.sidebarFooterActions ?? [])],
 		navigation: [...(initial.navigation ?? [])],
 		dashboardWidgets: [...(initial.dashboardWidgets ?? [])],
 		searchWidgets: [...(initial.searchWidgets ?? [])],
@@ -19,6 +20,7 @@ export function createFrontendExtensions(
 		editorActions: [...(initial.editorActions ?? [])],
 		documentMenuActions: [...(initial.documentMenuActions ?? [])],
 		settingsSections: [...(initial.settingsSections ?? [])],
+		profileActions: [...(initial.profileActions ?? [])],
 		commandPaletteActions: [...(initial.commandPaletteActions ?? [])],
 		sharedDocumentHeaderActions: [
 			...(initial.sharedDocumentHeaderActions ?? []),

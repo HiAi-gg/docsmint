@@ -281,6 +281,20 @@
 			"when": 1785000000025,
 			"tag": "0039_document_trash",
 			"breakpoints": true
+		},
+		{
+			"idx": 40,
+			"version": "7",
+			"when": 1785000000026,
+			"tag": "0040_attachment_confirm_idempotency",
+			"breakpoints": true
+		},
+		{
+			"idx": 41,
+			"version": "7",
+			"when": 1785102000000,
+			"tag": "0041_restricted_sharing",
+			"breakpoints": true
 		}
   ]
 }

@@ -51,14 +51,15 @@ describe("0.3.5 visual regression contracts", () => {
 
 	test("keeps every popup above persistent chrome and every modal above popovers", () => {
 		const appCss = read("../../app.css");
+		const layerContract = read("../styles/layer-contract.css");
 		const editorPage = read("../../routes/(app)/docs/[id]/+page.svelte");
 		const toolbar = read("./editor/EditorToolbar.svelte");
 		const datePicker = read("./DatePicker.svelte");
 		const shareDialog = read("./ShareDialog.svelte");
 
-		expect(appCss).toContain("--layer-chrome: 30");
-		expect(appCss).toContain("--layer-popover: 200");
-		expect(appCss).toContain("--layer-modal: 1000");
+		expect(layerContract).toContain("--layer-chrome: 30");
+		expect(layerContract).toContain("--layer-popover: 200");
+		expect(layerContract).toContain("--layer-modal: 1000");
 		expect(appCss).toContain(':has(> [role="dialog"])');
 		expect(appCss).toContain(".fixed.inset-0.z-50");
 		expect(editorPage).toContain("z-index: var(--layer-chrome)");
@@ -69,5 +70,16 @@ describe("0.3.5 visual regression contracts", () => {
 		expect(shareDialog).toContain("fixed inset-0 layer-modal");
 		expect(shareDialog).toContain('role="dialog"');
 		expect(shareDialog).toContain('aria-modal="true"');
+		expect(shareDialog).toContain("<SelectTrigger");
+		expect(shareDialog).toContain("<SelectContent>");
+		expect(shareDialog).not.toContain("<select bind:value={guestRole}");
+	});
+
+	test("packs whichever dashboard hint cards are visible into the same two-column row", () => {
+		const dashboardHost = read("../hosts/HiaiDocsDashboardHost.svelte");
+
+		expect(dashboardHost).toContain("grid grid-cols-1 gap-4 md:grid-cols-2");
+		expect(dashboardHost).toContain("widget.chrome === false");
+		expect(dashboardHost).toContain('? "contents"');
 	});
 });

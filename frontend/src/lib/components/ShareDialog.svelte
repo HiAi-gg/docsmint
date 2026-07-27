@@ -1,4 +1,9 @@
 <script lang="ts">
+import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
+import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
+import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
+import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
+import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import { createShareLink } from "$lib/api/share";
 import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
@@ -27,10 +32,14 @@ let {
 } = $props();
 
 let usePassword = $state(false);
+let accessMode = $state<"public" | "restricted">("public");
+let allowPasswordFallback = $state(false);
 let password = $state("");
 let expiresIn = $state<"1h" | "1d" | "7d" | "30d" | "never">("7d");
 let guestEmail = $state("");
-let guestEmails = $state<string[]>([]);
+type GuestRole = "viewer" | "commenter" | "editor";
+let guestRole = $state<GuestRole>("viewer");
+let guests = $state<Array<{ email: string; role: GuestRole }>>([]);
 let shareUrl = $state("");
 let copied = $state(false);
 let creating = $state(false);
@@ -62,14 +71,17 @@ $effect(() => {
 
 function addGuest() {
 	const email = guestEmail.trim();
-	if (email?.includes("@") && !guestEmails.includes(email)) {
-		guestEmails = [...guestEmails, email];
+	if (
+		email?.includes("@") &&
+		!guests.some((guest) => guest.email === email.toLowerCase())
+	) {
+		guests = [...guests, { email: email.toLowerCase(), role: guestRole }];
 		guestEmail = "";
 	}
 }
 
 function removeGuest(email: string) {
-	guestEmails = guestEmails.filter((e) => e !== email);
+	guests = guests.filter((guest) => guest.email !== email);
 }
 
 async function createLink() {
@@ -83,7 +95,12 @@ async function createLink() {
 				categoryId: categoryId || undefined,
 				password: usePassword ? password : undefined,
 				expiresIn,
-				guestEmails: guestEmails.length > 0 ? guestEmails : undefined,
+				accessMode,
+				allowPasswordFallback:
+					accessMode === "restricted" && usePassword
+						? allowPasswordFallback
+						: undefined,
+				guests: accessMode === "restricted" ? guests : undefined,
 			},
 			request.fetch,
 		);
@@ -110,9 +127,11 @@ function close() {
 	open = false;
 	shareUrl = "";
 	usePassword = false;
+	accessMode = "public";
+	allowPasswordFallback = false;
 	password = "";
 	expiresIn = "7d";
-	guestEmails = [];
+	guests = [];
 	error = "";
 }
 </script>
@@ -131,8 +150,17 @@ function close() {
       </div>
 
       {#if !shareUrl}
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
+	        <div class="space-y-4">
+	          <div class="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1" aria-label="Share access mode">
+	            <button type="button" onclick={() => { accessMode = "public"; guests = []; allowPasswordFallback = false; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'public' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Public link</button>
+	            <button type="button" onclick={() => { accessMode = "restricted"; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'restricted' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Specific people</button>
+	          </div>
+	          <p class="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+	            {accessMode === "public"
+	              ? "Anyone with this link can view the document. The link may be forwarded."
+	              : "Only invited email addresses can comment or edit. A password fallback, when enabled, grants view-only access."}
+	          </p>
+	          <div class="flex items-center justify-between">
             <span class="text-sm font-medium">{m.share_password_protection()}</span>
             <button
               onclick={() => { usePassword = !usePassword; }}
@@ -144,9 +172,15 @@ function close() {
               <span class="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform {usePassword ? 'translate-x-4' : 'translate-x-0.5'}"></span>
             </button>
           </div>
-          {#if usePassword}
-            <input type="password" bind:value={password} placeholder={m.share_enter_password()} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-          {/if}
+	          {#if usePassword}
+	            <input type="password" bind:value={password} placeholder={m.share_enter_password()} class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+	            {#if accessMode === "restricted"}
+	              <label class="flex items-start gap-2 text-xs text-muted-foreground">
+	                <input type="checkbox" bind:checked={allowPasswordFallback} class="mt-0.5" />
+	                Allow anyone with the password to view. Commenting and editing still require an invited account.
+	              </label>
+	            {/if}
+	          {/if}
 
           <div class="space-y-2">
             <span class="text-sm font-medium">{m.share_expires()}</span>
@@ -163,40 +197,60 @@ function close() {
             </div>
           </div>
 
-          <div class="space-y-2">
-            <span class="text-sm font-medium">{m.share_guest_access()}</span>
-            <div class="flex gap-2">
-              <input type="email" bind:value={guestEmail} placeholder="guest@email.com" onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuest(); } }} class="flex h-9 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-              <button onclick={addGuest} class="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent">{m.share_add()}</button>
-            </div>
-            {#if guestEmails.length > 0}
-              <div class="flex flex-wrap gap-1.5">
-                {#each guestEmails as email}
-                  <span class="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs">
-                    {email}
-                    <button onclick={() => removeGuest(email)} class="text-muted-foreground hover:text-foreground">&times;</button>
-                  </span>
-                {/each}
-              </div>
-            {/if}
-          </div>
+	          {#if accessMode === "restricted"}<div class="space-y-2">
+	            <span class="text-sm font-medium">{m.share_guest_access()}</span>
+	            <div class="flex gap-2">
+	              <input type="email" bind:value={guestEmail} placeholder="guest@email.com" onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); addGuest(); } }} class="flex h-9 flex-1 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
+	              <SelectRoot
+	                type="single"
+	                value={guestRole}
+	                onValueChange={(value: string) => {
+	                  if (value === "viewer" || value === "commenter" || value === "editor") {
+	                    guestRole = value;
+	                  }
+	                }}
+	              >
+	                <SelectTrigger class="h-9 w-32 justify-between px-3 text-sm" aria-label="Guest role">
+	                  <SelectValue placeholder="Role">
+	                    {guestRole === "viewer" ? "Viewer" : guestRole === "commenter" ? "Commenter" : "Editor"}
+	                  </SelectValue>
+	                </SelectTrigger>
+	                <SelectContent>
+	                  <SelectItem value="viewer">Viewer</SelectItem>
+	                  <SelectItem value="commenter">Commenter</SelectItem>
+	                  <SelectItem value="editor">Editor</SelectItem>
+	                </SelectContent>
+	              </SelectRoot>
+	              <button onclick={addGuest} class="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent">{m.share_add()}</button>
+	            </div>
+	            {#if guests.length > 0}
+	              <div class="flex flex-wrap gap-1.5">
+	                {#each guests as guest}
+	                  <span class="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs">
+	                    {guest.email} · {guest.role}
+	                    <button onclick={() => removeGuest(guest.email)} class="text-muted-foreground hover:text-foreground">&times;</button>
+	                  </span>
+	                {/each}
+	              </div>
+	            {/if}
+	          </div>{/if}
 
           {#if error}
             <p class="text-xs text-destructive">{error}</p>
           {/if}
-          <button onclick={createLink} disabled={creating} class="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+	          <button onclick={createLink} disabled={creating || (accessMode === "restricted" && guests.length === 0) || (usePassword && password.length < 8)} class="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
             {creating ? m.share_creating() : m.share_create_link()}
           </button>
         </div>
       {:else}
         <div class="space-y-4">
-          <p class="text-sm text-muted-foreground">{m.share_link_created()}</p>
-          <div class="flex items-center gap-2">
-            <code class="flex-1 truncate rounded-md bg-muted px-3 py-2 text-sm">{shareUrl}</code>
+	          <p class="text-sm text-muted-foreground">{accessMode === "restricted" ? "Invitations were queued for delivery. This is not a public link." : m.share_link_created()}</p>
+	          {#if accessMode === "public"}<div class="flex items-center gap-2">
+	            <code class="flex-1 truncate rounded-md bg-muted px-3 py-2 text-sm">{shareUrl}</code>
             <button onclick={copyLink} class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
               {copied ? m.share_link_copied() : m.share_copy()}
             </button>
-          </div>
+	          </div>{/if}
           <button onclick={close} class="w-full rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{m.action_done()}</button>
         </div>
       {/if}

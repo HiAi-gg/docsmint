@@ -12,6 +12,13 @@ export interface ShareLink {
 	title?: string;
 	type?: "document" | "folder" | "category";
 	guestEmails: string[];
+	accessMode?: "public" | "restricted";
+	allowPasswordFallback?: boolean;
+	guests?: Array<{
+		email: string;
+		role: "viewer" | "commenter" | "editor";
+		status?: "pending" | "accepted" | "revoked";
+	}>;
 }
 
 export interface ShareContent {
@@ -26,6 +33,12 @@ export interface CreateShareLinkInput {
 	password?: string;
 	expiresIn?: "1h" | "1d" | "7d" | "30d" | "never";
 	guestEmails?: string[];
+	accessMode?: "public" | "restricted";
+	allowPasswordFallback?: boolean;
+	guests?: Array<{
+		email: string;
+		role: "viewer" | "commenter" | "editor";
+	}>;
 }
 
 // --- Share Links ---

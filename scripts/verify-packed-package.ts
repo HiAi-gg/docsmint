@@ -209,10 +209,12 @@ if (
 		"Packed backend must keep Pino external and must not embed thread-stream build paths",
 	);
 }
-if (!packagedFrontendStyles.includes("--layer-chrome")) {
+for (const layer of ["--layer-chrome", "--layer-panel", "--layer-popover", "--layer-modal"]) {
+	if (!packagedFrontendStyles.includes(layer)) {
 	throw new Error(
-		"Packed frontend stylesheet is missing DocsMint application layout utilities",
+		`Packed frontend stylesheet is missing DocsMint layer contract: ${layer}`,
 	);
+	}
 }
 for (const [subpath, conditionMap] of Object.entries(manifest.exports)) {
 	if (typeof conditionMap !== "object" || conditionMap === null) continue;

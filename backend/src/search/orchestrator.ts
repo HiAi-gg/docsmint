@@ -57,6 +57,7 @@ export interface SearchDiagnostics {
 	crossLanguageSuccess?: boolean;
 	graphAttempted: boolean;
 	graphFailed: boolean;
+	graphContribution: boolean;
 	confidenceReasons: string[];
 }
 
@@ -340,6 +341,7 @@ export async function searchDocuments(
 		...(expansionModel ? { expansionModel } : {}),
 		graphAttempted,
 		graphFailed,
+		graphContribution,
 		confidenceReasons: confidence.reasons,
 	};
 	return {

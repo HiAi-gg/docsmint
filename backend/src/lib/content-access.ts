@@ -107,7 +107,11 @@ export function contentAccessForExternalContext(
 		userId: ctx.userId,
 		categoryId: null,
 		permissions,
-		restricted: true,
+		// Workspace assertions are already tenant-bound by the signed
+		// workspaceId and RLS context. `restricted` is reserved for category-
+		// scoped API keys; treating a full workspace assertion as category
+		// restricted makes category/folder list routes return an empty set.
+		restricted: false,
 		externalRole: ctx.actorRole,
 	};
 }

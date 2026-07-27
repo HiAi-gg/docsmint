@@ -35,6 +35,11 @@ const settingsExtensions = $derived(
 		pathname: page.url.pathname,
 	}),
 );
+const profileActions = $derived(
+	resolveExtensions(frontendExtensions.profileActions, {
+		pathname: page.url.pathname,
+	}),
+);
 
 // Profile
 let name = $state("");
@@ -246,6 +251,10 @@ function close() {
 						onclick={() => searchPreferences.update({ graphSearchEnabled: !searchPreferences.graphSearchEnabled })}
 					><span></span></button>
 				</div>
+				{#each profileActions as action (action.id)}
+					{@const ProfileAction = action.component}
+					<ProfileAction />
+				{/each}
 				{#if profileError}
 					<p class="text-sm text-destructive">{profileError}</p>
 				{/if}

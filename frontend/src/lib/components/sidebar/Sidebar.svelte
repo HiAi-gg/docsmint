@@ -54,6 +54,11 @@ const sidebarTopExtensions = $derived(
 		pathname: page.url.pathname,
 	}),
 );
+const sidebarFooterActions = $derived(
+	resolveExtensions(frontendExtensions.sidebarFooterActions, {
+		pathname: page.url.pathname,
+	}),
+);
 const navigationExtensions = $derived(
 	resolveExtensions(frontendExtensions.navigation, {
 		pathname: page.url.pathname,
@@ -303,6 +308,10 @@ function persistCollapsed() {
   <div class="border-t border-border p-2">
     {#if isCollapsed}
       <div class="flex flex-col items-center gap-2">
+        {#each sidebarFooterActions as action (action.id)}
+          {@const FooterAction = action.component}
+          <FooterAction collapsed={true} />
+        {/each}
         <button
           type="button"
           onclick={() => { showSettings = true; }}
@@ -335,15 +344,21 @@ function persistCollapsed() {
         >
           {m.sidebar_powered_by()}
         </a>
-        <button
-          type="button"
-          onclick={() => { showSettings = true; }}
-          class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          title={m.settings_title()}
-          aria-label={m.settings_title()}
-        >
-          <SettingsIcon class="size-4" />
-        </button>
+        <div class="flex items-center gap-1">
+          {#each sidebarFooterActions as action (action.id)}
+            {@const FooterAction = action.component}
+            <FooterAction collapsed={false} />
+          {/each}
+          <button
+            type="button"
+            onclick={() => { showSettings = true; }}
+            class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            title={m.settings_title()}
+            aria-label={m.settings_title()}
+          >
+            <SettingsIcon class="size-4" />
+          </button>
+        </div>
       </div>
     {/if}
   </div>

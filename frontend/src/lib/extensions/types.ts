@@ -45,6 +45,14 @@ export interface SidebarTopExtension {
 	visible?: ExtensionVisibility;
 }
 
+/** Optional host action rendered beside Settings, or above it when collapsed. */
+export interface SidebarFooterActionExtension {
+	id: string;
+	component: Component<{ collapsed: boolean }>;
+	order?: number;
+	visible?: ExtensionVisibility;
+}
+
 export interface DashboardWidgetProps {
 	userId?: string;
 }
@@ -55,6 +63,8 @@ export interface DashboardWidgetExtension {
 	component: Component<DashboardWidgetProps>;
 	order?: number;
 	colSpan?: 1 | 2 | 3 | 4 | 6 | 12;
+	/** Render the component without the host card so it can own a transient shell. */
+	chrome?: boolean;
 	visible?: ExtensionVisibility;
 }
 
@@ -197,6 +207,7 @@ export interface SharedDocumentExtension {
  */
 export interface DocsmintFrontendExtensions {
 	sidebarTop: readonly SidebarTopExtension[];
+	sidebarFooterActions: readonly SidebarFooterActionExtension[];
 	navigation: readonly NavigationExtension[];
 	dashboardWidgets: readonly DashboardWidgetExtension[];
 	searchWidgets: readonly SearchWidgetExtension[];
@@ -204,6 +215,7 @@ export interface DocsmintFrontendExtensions {
 	editorActions: readonly EditorActionExtension[];
 	documentMenuActions: readonly DocumentMenuActionExtension[];
 	settingsSections: readonly SettingsSectionExtension[];
+	profileActions: readonly SettingsSectionExtension[];
 	commandPaletteActions: readonly CommandPaletteActionExtension[];
 	sharedDocumentHeaderActions: readonly SharedDocumentExtension[];
 	sharedDocumentTabs: readonly SharedDocumentExtension[];

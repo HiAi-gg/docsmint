@@ -32,6 +32,8 @@ import { relations, sql } from "drizzle-orm";
 // ============================================
 export const documentVisibilityEnum = pgEnum("document_visibility", ["private", "shared", "public"]);
 export const shareRoleEnum = pgEnum("share_role", ["viewer", "commenter", "editor"]);
+export const shareAccessModeEnum = pgEnum("share_access_mode", ["public", "restricted"]);
+export const shareGrantStatusEnum = pgEnum("share_grant_status", ["pending", "accepted", "revoked"]);
 export const embeddingStatusEnum = pgEnum("embedding_status", [
   "pending",
   "processing",
@@ -455,6 +457,9 @@ export const shareLinks = pgTable(
     token: text("token").notNull().unique(),
     passwordHash: text("password_hash"),
     role: shareRoleEnum("role").notNull().default("viewer"),
+    accessMode: shareAccessModeEnum("access_mode").notNull().default("public"),
+    allowPasswordFallback: boolean("allow_password_fallback").notNull().default(false),
+    policyVersion: integer("policy_version").notNull().default(1),
     expiresAt: timestamp("expires_at"),
     createdBy: uuid("created_by")
       .notNull()
@@ -506,9 +511,16 @@ export const guestAccess = pgTable(
       .references(() => shareLinks.id, { onDelete: "cascade" }),
     workspaceId: text("workspace_id"),
     guestEmail: text("guest_email").notNull(),
+    role: shareRoleEnum("role").notNull().default("viewer"),
+    status: shareGrantStatusEnum("status").notNull().default("pending"),
     grantedAt: timestamp("granted_at").defaultNow().notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    revokedAt: timestamp("revoked_at"),
   },
-  (table) => [index("guest_access_share_link_idx").on(table.shareLinkId)]
+  (table) => [
+    index("guest_access_share_link_idx").on(table.shareLinkId),
+    uniqueIndex("guest_access_share_link_email_unique_idx").on(table.shareLinkId, table.guestEmail),
+  ]
 );
 
 export const guestAccessRelations = relations(guestAccess, ({ one }) => ({
@@ -535,7 +547,10 @@ export const attachments = pgTable(
     storageKey: text("storage_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("attachments_document_id_idx").on(table.documentId)]
+  (table) => [
+    index("attachments_document_id_idx").on(table.documentId),
+    uniqueIndex("attachments_storage_key_unique").on(table.storageKey),
+  ]
 );
 
 export const attachmentRelations = relations(attachments, ({ one }) => ({

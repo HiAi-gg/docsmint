@@ -6,7 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { attachments, documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import { config } from "../../lib/config";
@@ -557,6 +557,32 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "quotaReservationId is required" };
 			}
 
+			// A transport retry after a successful confirm must return the
+			// original row without finalizing quota or inserting a duplicate.
+			const existing = await withTenant(ctx, async (tx) => {
+				const [row] = await tx
+					.select()
+					.from(attachments)
+					.where(
+						and(
+							eq(attachments.documentId, documentId),
+							eq(attachments.storageKey, key),
+						),
+					)
+					.limit(1);
+				return row ?? null;
+			});
+			if (existing) {
+				set.status = 201;
+				return {
+					id: existing.id,
+					filename: existing.filename,
+					mimeType: existing.mimeType,
+					size: existing.size,
+					url: `/api/attachments/${existing.id}/raw`,
+				};
+			}
+
 			// Verify the object actually exists in SeaweedFS before we record
 			// a row for it. A successful presign + failed PUT (network
 			// blip, user closed tab) should not become a dangling DB row.
@@ -602,6 +628,23 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 			try {
 				const created = await withTenant(ctx, async (tx) => {
+					// Serialize confirms for the same tenant-bound key without deleting
+					// or rewriting any historical rows. The lock is released with this
+					// transaction and makes the lookup+insert pair atomic for retries.
+					await tx.execute(
+						sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
+					);
+					const [raced] = await tx
+						.select()
+						.from(attachments)
+						.where(
+							and(
+								eq(attachments.documentId, documentId),
+								eq(attachments.storageKey, key),
+							),
+						)
+						.limit(1);
+					if (raced) return raced;
 					const [row] = await tx
 						.insert(attachments)
 						.values({
@@ -611,8 +654,20 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							size: storedSize,
 							storageKey: key,
 						})
+						.onConflictDoNothing({ target: attachments.storageKey })
 						.returning();
-					return row ?? null;
+					if (row) return row;
+					const [winner] = await tx
+						.select()
+						.from(attachments)
+						.where(
+							and(
+								eq(attachments.documentId, documentId),
+								eq(attachments.storageKey, key),
+							),
+						)
+						.limit(1);
+					return winner ?? null;
 				});
 
 				if (!created) {

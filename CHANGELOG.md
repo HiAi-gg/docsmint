@@ -36,6 +36,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-27
+
+### Added
+
+- Add a backwards-compatible dashboard extension contract for chrome-free and
+  full-width host widgets, including packed declaration coverage.
+- Add restricted document sharing metadata, per-recipient roles, policy
+  versioning, and the supporting database migration without changing existing
+  public routes.
+
+### Fixed
+
+- Preserve attachment quota reservation identifiers through the public
+  presign/confirm facade and make confirmation retries idempotent by storage
+  key.
+- Export the global frontend layer contract in the packed stylesheet and keep
+  sidebar, popover, modal, and toast ordering consistent in embedded hosts.
+- Render dashboard hint cards without empty extension cells so any two visible
+  hints share one row with equal sizing.
+- Use the canonical hiai-ui Select for restricted-share guest roles, including
+  aligned trigger text and chevron.
+- Keep embedded sidebar navigation and import routing synchronized with the
+  host workspace.
+
 ## [0.5.1] - 2026-07-26
 
 - Prevent embedded dashboard and search dropdowns from stretching their host rows by rendering menu content in portals.

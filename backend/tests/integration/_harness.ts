@@ -443,7 +443,8 @@ function buildInsertProxy(ctx: InsertCtx): any {
           ctx.values = Array.isArray(v) ? v : [v];
           return buildInsertProxy(ctx);
         };
-      if (prop === "onConflictDoNothing") return buildInsertProxy(ctx);
+      if (prop === "onConflictDoNothing")
+        return (_options?: unknown) => buildInsertProxy(ctx);
       if (prop === "returning")
         return () => {
           state.calls.push({ kind: "insert", table: getTableName(ctx.table) });

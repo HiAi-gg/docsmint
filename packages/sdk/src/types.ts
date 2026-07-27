@@ -202,6 +202,11 @@ export interface DocsSearchResponse {
 	total: number;
 	page: number;
 	limit: number;
+	diagnostics?: {
+		graphAttempted: boolean;
+		graphFailed: boolean;
+		graphContribution: boolean;
+	};
 }
 
 export interface DocsSearchOptions {

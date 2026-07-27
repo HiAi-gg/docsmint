@@ -1,0 +1,8 @@
+/* Public layering contract. Kept dependency-free so it can be safely shipped
+ * to browser and SSR package consumers without importing Tailwind's app CSS. */
+:root {
+	--layer-chrome: 30;
+	--layer-panel: 100;
+	--layer-popover: 200;
+	--layer-modal: 1000;
+}
