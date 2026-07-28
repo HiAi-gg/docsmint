@@ -36,6 +36,7 @@ import {
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
+import { folderNamesForSearchCategory } from "$lib/hosts/search-folder-options";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	normalizeSearchQuery,
@@ -180,6 +181,10 @@ const matchingCategories = $derived.by(() => {
 	if (!queryLower) return [];
 	return allCategories.filter((c) => c.name.toLowerCase().includes(queryLower));
 });
+
+const visibleFolderNames = $derived(
+	folderNamesForSearchCategory(folders, allFolders, activeCategoryId),
+);
 
 const hasAnyLocalMatches = $derived(
 	matchingDocs.length > 0 ||
@@ -344,10 +349,22 @@ function toggleTag(tag: string) {
 
 function toggleCategory(categoryId: string) {
 	activeCategoryId = activeCategoryId === categoryId ? "" : categoryId;
+	const categoryFolders = folderNamesForSearchCategory(
+		folders,
+		allFolders,
+		activeCategoryId,
+	);
+	if (activeFolder && !categoryFolders.includes(activeFolder)) {
+		activeFolder = "";
+	}
 	currentPage = 1;
 	navigateDocsmintRoute(
 		route,
-		buildUrl({ category: activeCategoryId, page: "1" }),
+		buildUrl({
+			category: activeCategoryId,
+			folder: activeFolder || undefined,
+			page: "1",
+		}),
 		{
 			replaceState: true,
 		},
@@ -613,8 +630,46 @@ function goToPage(page: number) {
       </button>
     {/if}
 
+    <!-- Category filter -->
+    {#if categories.length > 0}
+      <div>
+        <button
+          type="button"
+          onclick={() => (categoriesExpanded = !categoriesExpanded)}
+          class="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <span class="flex items-center gap-1.5">
+            <FolderKanban class="size-3.5" />
+            {m.categories_title()}
+          </span>
+          {#if categoriesExpanded}
+            <ChevronDown class="size-3" />
+          {:else}
+            <ChevronRight class="size-3" />
+          {/if}
+        </button>
+        {#if categoriesExpanded}
+          <div class="space-y-0.5">
+            {#each categories as category (category.id)}
+              <button
+                onclick={() => toggleCategory(category.id)}
+                class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeCategoryId === category.id
+                  ? 'bg-primary/10 font-medium text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
+              >
+                <span class="truncate">{category.name}</span>
+                {#if activeCategoryId === category.id}
+                  <X class="size-3 shrink-0" />
+                {/if}
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
+
     <!-- Folder filter -->
-    {#if folders.length > 0}
+    {#if visibleFolderNames.length > 0}
       <div>
         <button
           type="button"
@@ -633,7 +688,7 @@ function goToPage(page: number) {
         </button>
         {#if foldersExpanded}
           <div class="space-y-0.5">
-            {#each folders as folder}
+            {#each visibleFolderNames as folder}
               <button
                 onclick={() => toggleFolder(folder)}
                 class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeFolder === folder
@@ -675,44 +730,6 @@ function goToPage(page: number) {
             </button>
           {/each}
         </div>
-      </div>
-    {/if}
-
-    <!-- Category filter -->
-    {#if categories.length > 0}
-      <div>
-        <button
-          type="button"
-          onclick={() => (categoriesExpanded = !categoriesExpanded)}
-          class="mb-2 flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <span class="flex items-center gap-1.5">
-            <FolderKanban class="size-3.5" />
-            {m.categories_title()}
-          </span>
-          {#if categoriesExpanded}
-            <ChevronDown class="size-3" />
-          {:else}
-            <ChevronRight class="size-3" />
-          {/if}
-        </button>
-        {#if categoriesExpanded}
-          <div class="space-y-0.5">
-            {#each categories as category (category.id)}
-              <button
-                onclick={() => toggleCategory(category.id)}
-                class="flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-sm transition-colors {activeCategoryId === category.id
-                  ? 'bg-primary/10 font-medium text-primary'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'}"
-              >
-                <span class="truncate">{category.name}</span>
-                {#if activeCategoryId === category.id}
-                  <X class="size-3 shrink-0" />
-                {/if}
-              </button>
-            {/each}
-          </div>
-        {/if}
       </div>
     {/if}
 

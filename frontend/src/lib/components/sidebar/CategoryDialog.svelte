@@ -41,6 +41,7 @@ import {
 } from "$lib/api/api-keys";
 import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
+import { issueCategoryKeyAfterSavingAccess } from "./category-api-key-flow.js";
 import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 
 type Mode = "create" | "edit" | "delete";
@@ -120,14 +121,23 @@ async function refreshCategoryKeys(categoryId: string) {
 }
 
 async function issueCategoryKey() {
-	if (!category?.id) return;
+	if (!category?.id || !onSave) return;
 	keyBusy = true;
+	error = null;
 	try {
-		const issued = await createCategoryApiKey(
-			category.id,
-			undefined,
-			request.fetch,
-		);
+		const issued = await issueCategoryKeyAfterSavingAccess({
+			categoryId: category.id,
+			draft: {
+				name: trimmedName,
+				apiMode: normalizeApiMode(apiMode),
+				apiPermissionRead,
+				apiPermissionEdit,
+				apiPermissionWrite,
+			},
+			save: async (payload) => onSave(payload),
+			issue: async (categoryId) =>
+				createCategoryApiKey(categoryId, undefined, request.fetch),
+		});
 		issuedKeys = { ...issuedKeys, [issued.id]: issued.key };
 		latestIssuedId = issued.id;
 		await refreshCategoryKeys(category.id);
@@ -472,12 +482,9 @@ function handleDialogOpenChange(next: boolean) {
 			{#if mode === "edit" && apiMode === "category" && category?.id}
 				<div class="space-y-3 rounded-md border border-border/70 p-3">
 					<div class="flex items-center justify-between gap-2">
-						<div><Label>Category API keys</Label><p class="text-xs text-muted-foreground">Keys inherit the saved permissions above.</p></div>
-						<Button type="button" size="sm" onclick={issueCategoryKey} disabled={busy || keyBusy || category.apiMode !== "category"}>Create key</Button>
+						<div><Label>Category API keys</Label><p class="text-xs text-muted-foreground">The current permissions are saved before the key is issued.</p></div>
+						<Button type="button" size="sm" onclick={issueCategoryKey} disabled={busy || keyBusy || !trimmedName || !hasAnyPermission}>Create key</Button>
 					</div>
-					{#if category.apiMode !== "category"}
-						<p class="text-xs text-muted-foreground">Save Category API access first, then reopen settings to issue a key.</p>
-					{/if}
 					{#if latestIssuedKey}
 						<div class="rounded-lg border border-primary/30 bg-primary/10 p-3 text-primary">
 							<p class="text-xs font-medium">Copy now — this raw key is shown once.</p>

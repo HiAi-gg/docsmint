@@ -9,8 +9,14 @@ import {
 	mobileSidebar,
 } from "$lib/stores/mobile-sidebar.svelte";
 import { searchPreferences } from "$lib/stores/search-preferences.svelte";
+import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte";
+import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 import type { DocsmintFrontendExtensions } from "../extensions/types";
 import HiaiDocsExtensionProvider from "./HiaiDocsExtensionProvider.svelte";
+import {
+	hasMutationRefreshImpact,
+	mutationRefreshImpact,
+} from "./mutation-refresh";
 import { provideDocsmintRealtimeAdapter } from "./realtime-context";
 import {
 	provideDocsmintRequestAdapter,
@@ -44,8 +50,16 @@ provideDocsmintRouteAdapter({
 	navigate: (path, options) => route.navigate?.(path, options),
 });
 provideDocsmintRequestAdapter({
-	fetch: ((...args: Parameters<typeof fetch>) =>
-		request.fetch(...args)) as typeof fetch,
+	fetch: (async (...args: Parameters<typeof fetch>) => {
+		const response = await request.fetch(...args);
+		const impact = mutationRefreshImpact(args[0], args[1]);
+		if (response.ok && hasMutationRefreshImpact(impact)) {
+			if (impact.documents) refreshDocs();
+			if (impact.folders) refreshFolders();
+			if (impact.tags) refreshTags();
+		}
+		return response;
+	}) as typeof fetch,
 });
 const realtimeAdapter = untrack(() => realtime);
 if (realtimeAdapter) provideDocsmintRealtimeAdapter(realtimeAdapter);

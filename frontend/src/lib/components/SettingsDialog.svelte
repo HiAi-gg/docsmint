@@ -236,25 +236,36 @@ function close() {
 				<p class="text-xs text-muted-foreground">Verification is required before the new address becomes active.</p>
 			{/if}
 				</div>
-				<div class="flex items-center justify-between gap-4 rounded-md border p-3">
-					<span>
-						<span class="block text-sm font-medium">GraphRAG search</span>
-						<span class="block text-xs text-muted-foreground">Use graph expansion for related documents. Disable it for faster standard RAG search.</span>
-					</span>
-					<button
-						type="button"
-						role="switch"
-						class="preference-switch"
-						class:enabled={searchPreferences.graphSearchEnabled}
-						aria-checked={searchPreferences.graphSearchEnabled}
-						aria-label="Use GraphRAG search"
-						onclick={() => searchPreferences.update({ graphSearchEnabled: !searchPreferences.graphSearchEnabled })}
-					><span></span></button>
-				</div>
-				{#each profileActions as action (action.id)}
-					{@const ProfileAction = action.component}
-					<ProfileAction />
-				{/each}
+				<details class="profile-advanced border-t pt-4">
+					<summary class="flex cursor-pointer items-center justify-between gap-3 rounded-md px-1 py-2">
+						<span>
+							<span class="block text-sm font-medium">Advanced</span>
+							<span class="block text-xs text-muted-foreground">Search and additional profile controls</span>
+						</span>
+						<span class="profile-advanced-chevron" aria-hidden="true">⌄</span>
+					</summary>
+					<div class="mt-3 space-y-3">
+						<div class="flex items-center justify-between gap-4 rounded-md border p-3">
+							<span>
+								<span class="block text-sm font-medium">GraphRAG search</span>
+								<span class="block text-xs text-muted-foreground">Use graph expansion for related documents. Disable it for faster standard RAG search.</span>
+							</span>
+							<button
+								type="button"
+								role="switch"
+								class="preference-switch"
+								class:enabled={searchPreferences.graphSearchEnabled}
+								aria-checked={searchPreferences.graphSearchEnabled}
+								aria-label="Use GraphRAG search"
+								onclick={() => searchPreferences.update({ graphSearchEnabled: !searchPreferences.graphSearchEnabled })}
+							><span></span></button>
+						</div>
+						{#each profileActions as action (action.id)}
+							{@const ProfileAction = action.component}
+							<ProfileAction />
+						{/each}
+					</div>
+				</details>
 				{#if profileError}
 					<p class="text-sm text-destructive">{profileError}</p>
 				{/if}
@@ -438,6 +449,10 @@ function close() {
 	.editor-settings summary::-webkit-details-marker { display: none; }
 	.editor-settings-chevron { font-size: 20px; transition: transform 0.18s ease; }
 	.editor-settings[open] .editor-settings-chevron { transform: rotate(180deg); }
+	.profile-advanced summary { list-style: none; }
+	.profile-advanced summary::-webkit-details-marker { display: none; }
+	.profile-advanced-chevron { font-size: 20px; transition: transform 0.18s ease; }
+	.profile-advanced[open] .profile-advanced-chevron { transform: rotate(180deg); }
 	.preference-switch {
 		position: relative; flex: 0 0 auto; width: 42px; height: 24px; padding: 2px;
 		border: 1px solid var(--border); border-radius: 999px; background: var(--muted);

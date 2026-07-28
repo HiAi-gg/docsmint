@@ -44,6 +44,9 @@ let globalFolderRefreshNonce = $state(0);
 
 export function refreshFolders(): void {
 	globalFolderRefreshNonce++;
+	for (const folderId of Object.keys(foldersRegistry)) {
+		refreshNonces[folderId] = (refreshNonces[folderId] ?? 0) + 1;
+	}
 }
 
 export function getGlobalFolderRefreshNonce(): number {

@@ -75,6 +75,21 @@ describe("0.3.5 visual regression contracts", () => {
 		expect(shareDialog).not.toContain("<select bind:value={guestRole}");
 	});
 
+	test("groups GraphRAG and profile extension controls under one Advanced disclosure", () => {
+		const settings = read("./SettingsDialog.svelte");
+		const advancedStart = settings.indexOf(
+			'<details class="profile-advanced border-t pt-4">',
+		);
+		const advancedEnd = settings.indexOf("</details>", advancedStart);
+		const advanced = settings.slice(advancedStart, advancedEnd);
+
+		expect(advancedStart).toBeGreaterThan(-1);
+		expect(advanced).toContain("Advanced");
+		expect(advanced).toContain("GraphRAG search");
+		expect(advanced).toContain("{#each profileActions as action");
+		expect(settings.match(/GraphRAG search/g)).toHaveLength(2);
+	});
+
 	test("packs whichever dashboard hint cards are visible into the same two-column row", () => {
 		const dashboardHost = read("../hosts/HiaiDocsDashboardHost.svelte");
 

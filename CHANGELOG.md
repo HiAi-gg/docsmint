@@ -36,6 +36,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-07-28
+
+### Fixed
+
+- Refresh documents, folders, tags, and sidebar navigation immediately after
+  successful embedded-host mutations without requiring a page reload.
+- Save category API access before issuing a category key so the first key can
+  be created in one canonical dialog flow.
+- Restore the search filter order to Category, Folder, Tags, and Date, and
+  limit folder choices to the selected category, including nested folders.
+- Keep GraphRAG and host-provided profile controls inside the canonical
+  Advanced settings disclosure.
+
 ## [0.5.2] - 2026-07-27
 
 ### Added
