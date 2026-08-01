@@ -137,6 +137,10 @@ let folderDialogTarget = $state<{ id: string; name: string } | null>(null);
 let showDeleteFolderDialog = $state(false);
 let deleteFolderTargetId = $state<string | null>(null);
 let deleteFolderBusy = $state(false);
+let showDeleteDocumentDialog = $state(false);
+let deleteDocumentTargetId = $state<string | null>(null);
+let deleteDocumentTargetTitle = $state("");
+let deleteDocumentBusy = $state(false);
 
 let showShareDialog = $state(false);
 type ShareTarget =
@@ -238,14 +242,29 @@ async function confirmDeleteFolder() {
 	}
 }
 
-async function handleDeleteDocument(id: string) {
-	if (!confirm(`${m.action_delete()}?`)) return;
+function handleDeleteDocument(id: string) {
+	const document = filteredDocuments.find(
+		(candidate: { id: string; title?: string }) => candidate.id === id,
+	);
+	deleteDocumentTargetId = id;
+	deleteDocumentTargetTitle = document?.title || m.doc_title_placeholder();
+	showDeleteDocumentDialog = true;
+}
+
+async function confirmDeleteDocument() {
+	const id = deleteDocumentTargetId;
+	if (!id || deleteDocumentBusy) return;
+	deleteDocumentBusy = true;
 	try {
 		await apiFetch(`/api/documents/${id}`, { method: "DELETE" }, request.fetch);
+		showDeleteDocumentDialog = false;
+		deleteDocumentTargetId = null;
 		await invalidateAll();
 		refreshDocs();
 	} catch (e) {
 		console.error("Failed to delete document", e);
+	} finally {
+		deleteDocumentBusy = false;
 	}
 }
 
@@ -1044,6 +1063,18 @@ const isFolderEmpty = $derived(
   busy={deleteFolderBusy}
   onConfirm={confirmDeleteFolder}
   onCancel={() => (showDeleteFolderDialog = false)}
+/>
+
+<ConfirmDialog
+  bind:open={showDeleteDocumentDialog}
+  title="Move to Trash?"
+  description={`“${deleteDocumentTargetTitle}” will be moved to Trash and can be restored later.`}
+  confirmLabel="Move to Trash"
+  cancelLabel={m.action_cancel()}
+  variant="destructive"
+  busy={deleteDocumentBusy}
+  onConfirm={confirmDeleteDocument}
+  onCancel={() => (showDeleteDocumentDialog = false)}
 />
 
 <!-- Shared dialog for document, folder, and category entry points. -->

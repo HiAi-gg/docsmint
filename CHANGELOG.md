@@ -36,6 +36,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-01
+
+### Fixed
+
+- Replace the embedded dashboard's native document-delete prompt with the
+  branded confirmation dialog.
+- Refresh document and folder projections after a trash restore so restored
+  items return to navigation and dashboard views without a reload.
+
 ## [0.5.3] - 2026-07-28
 
 ### Fixed

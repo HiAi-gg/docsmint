@@ -37,6 +37,9 @@ export function mutationRefreshImpact(
 	if (/^\/api\/(?:v1\/)?(?:folders|categories)(?:\/|$)/.test(pathname)) {
 		return { documents: true, folders: true, tags: false };
 	}
+	if (/^\/api\/(?:v1\/)?trash(?:\/|$)/.test(pathname)) {
+		return { documents: true, folders: true, tags: false };
+	}
 	if (/^\/api\/(?:v1\/)?(?:documents|import|imports)(?:\/|$)/.test(pathname)) {
 		return { documents: true, folders: true, tags: false };
 	}
