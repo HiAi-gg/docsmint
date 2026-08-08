@@ -16,6 +16,7 @@ import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
 import { Textarea } from "@hiai-gg/hiai-ui/components/ui/textarea";
 import { Loader2 } from "lucide-svelte";
 import { ApiError, apiFetch } from "$lib/api/client";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 
 interface SnapshotResponse {
@@ -45,6 +46,7 @@ let description = $state("");
 let labelError = $state<string | null>(null);
 let submitError = $state<string | null>(null);
 let submitting = $state(false);
+const request = getDocsmintRequestAdapter();
 
 function reset() {
 	label = "";
@@ -103,10 +105,11 @@ async function doCreate(trimmedLabel: string, trimmedDescription: string) {
 		if (trimmedDescription.length > 0) {
 			body.description = trimmedDescription;
 		}
-		await apiFetch<SnapshotResponse>(`/api/documents/${documentId}/versions`, {
-			method: "POST",
-			body: JSON.stringify(body),
-		});
+		await apiFetch<SnapshotResponse>(
+			`/api/documents/${documentId}/versions`,
+			{ method: "POST", body: JSON.stringify(body) },
+			request.fetch,
+		);
 		onSuccess?.();
 		open = false;
 		reset();

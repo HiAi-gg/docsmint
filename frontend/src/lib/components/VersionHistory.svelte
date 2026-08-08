@@ -24,6 +24,7 @@ import {
 } from "lucide-svelte";
 import { ApiError, apiFetch } from "$lib/api/client";
 import CreateSnapshotDialog from "$lib/components/CreateSnapshotDialog.svelte";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 
 interface Version {
@@ -69,6 +70,7 @@ let restoreDialogOpen = $state(false);
 let pendingRestore = $state<Version | null>(null);
 let restoring = $state(false);
 let restoreError = $state<string | null>(null);
+const request = getDocsmintRequestAdapter();
 
 async function loadVersions() {
 	loading = true;
@@ -76,6 +78,8 @@ async function loadVersions() {
 	try {
 		versions = await apiFetch<Version[]>(
 			`/api/documents/${documentId}/versions`,
+			{},
+			request.fetch,
 		);
 	} catch (e) {
 		loadError = e instanceof Error ? e.message : String(e);
@@ -163,6 +167,7 @@ async function confirmRestore() {
 		await apiFetch<{ documentId: string; restoredFrom: string }>(
 			`/api/documents/${documentId}/versions/${target.id}/restore`,
 			{ method: "POST" },
+			request.fetch,
 		);
 		// Re-fetch the list so the new "current" version + restoredFrom
 		// bookkeeping appear, then notify the parent.

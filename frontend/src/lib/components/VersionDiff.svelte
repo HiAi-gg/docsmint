@@ -14,6 +14,7 @@
 <script lang="ts">
 import { ArrowLeftRight, Loader2 } from "lucide-svelte";
 import { ApiError, apiFetch } from "$lib/api/client";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 
 // Background colors specified by the API consumer (light theme).
@@ -65,6 +66,7 @@ let diff = $state<DiffResponse | null>(null);
 let diffLoading = $state(false);
 let diffError = $state<string | null>(null);
 let diffMode = $state<DiffMode>("inline");
+const request = getDocsmintRequestAdapter();
 
 // Stable function to load the version list. Re-fetched when the parent
 // swaps `documentId`.
@@ -74,6 +76,8 @@ async function loadVersions() {
 	try {
 		const all = await apiFetch<VersionListItem[]>(
 			`/api/documents/${documentId}/versions`,
+			{},
+			request.fetch,
 		);
 		versionList = all;
 		// Pick sensible defaults: newest two versions in chronological
@@ -141,6 +145,8 @@ async function fetchDiff(v1Id: string, v2Id: string) {
 	try {
 		const response = await apiFetch<DiffResponse>(
 			`/api/documents/${documentId}/versions/diff?from=${v1Id}&to=${v2Id}`,
+			{},
+			request.fetch,
 		);
 		diff = response;
 	} catch (e) {

@@ -36,6 +36,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-08-08
+
+### Fixed
+
+- Route snapshot creation, version history, restore, and diff requests through
+  the host-provided request adapter so embedded workspace headers are retained.
+
 ## [0.5.5] - 2026-08-01
 
 ### Fixed
