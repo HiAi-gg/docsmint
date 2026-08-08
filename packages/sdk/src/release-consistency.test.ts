@@ -24,7 +24,7 @@ test("all published and workspace release metadata reports 0.5.6", async () => {
 	const lockfile = await readFile(new URL("bun.lock", repositoryRoot), "utf8");
 	const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
 	expect(workspaceBlock).not.toContain('"version": "0.3.0"');
-	expect(workspaceBlock.match(/"version": "0\.5\.5"/g)).toHaveLength(6);
+	expect(workspaceBlock.match(/"version": "0\.5\.6"/g)).toHaveLength(6);
 
 	const frontendManifest = await json("frontend/package.json");
 	expect((frontendManifest.dependencies as Record<string, string>)["lucide-svelte"]).toBe("^0.577.0");
