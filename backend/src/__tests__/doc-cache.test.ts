@@ -171,11 +171,11 @@ describe("invalidateDocCache", () => {
 	it("deletes every per-user variant of a single doc", async () => {
 		const docId = "doc-42";
 		fakeStore.set(
-			mod.docSingleKey(docId, "user-A"),
+			`${mod.docSingleKey(docId, "user-A")}:scope:all`,
 			JSON.stringify({ id: docId, owner: "user-A" }),
 		);
 		fakeStore.set(
-			mod.docSingleKey(docId, "user-B"),
+			`${mod.docSingleKey(docId, "user-B", "workspace-B")}:scope:category-1`,
 			JSON.stringify({ id: docId, owner: "user-B" }),
 		);
 		// A list-cache key for the same userId + docId substring must
@@ -190,8 +190,14 @@ describe("invalidateDocCache", () => {
 
 		await mod.invalidateDocCache(docId);
 
-		expect(fakeStore.has(mod.docSingleKey(docId, "user-A"))).toBe(false);
-		expect(fakeStore.has(mod.docSingleKey(docId, "user-B"))).toBe(false);
+		expect(
+			fakeStore.has(`${mod.docSingleKey(docId, "user-A")}:scope:all`),
+		).toBe(false);
+		expect(
+			fakeStore.has(
+				`${mod.docSingleKey(docId, "user-B", "workspace-B")}:scope:category-1`,
+			),
+		).toBe(false);
 		expect(fakeStore.has("hiai-docs:cache:docs:list:user-A:p:1:l:20")).toBe(
 			true,
 		);
@@ -202,7 +208,7 @@ describe("invalidateDocCache", () => {
 		await mod.invalidateDocCache("doc-99");
 		expect(fakeScanCalls.length).toBeGreaterThan(0);
 		for (const call of fakeScanCalls) {
-			expect(call.pattern).toBe("hiai-docs:cache:docs:single:*:doc-99");
+			expect(call.pattern).toBe("hiai-docs:cache:docs:single:*:doc-99:scope:*");
 		}
 	});
 

@@ -36,6 +36,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-10
+
+### Fixed
+
+- Invalidate scoped single-document Redis entries after saves so an immediate
+  reload returns the persisted title and content instead of a stale cache hit.
+
 ## [0.5.6] - 2026-08-08
 
 ### Fixed

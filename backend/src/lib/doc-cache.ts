@@ -85,7 +85,10 @@ export async function invalidateDocCache(docId: string): Promise<void> {
 	// the prefix without blocking Redis on KEYS, and DEL the matching
 	// batch in chunks so a doc shared across many users does not blow
 	// up the command argv.
-	const pattern = `${SINGLE_PREFIX}*:${docId}`;
+	// Read keys append the authorized category scope after the document id.
+	// Keep that suffix in the pattern; otherwise a successful save leaves the
+	// just-read `:scope:*` entry alive and the editor reloads stale content.
+	const pattern = `${SINGLE_PREFIX}*:${docId}:scope:*`;
 	try {
 		let cursor = "0";
 		do {
