@@ -36,6 +36,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-08-11
+
+### Fixed
+
+- Filter authorized and non-deleted search candidates before pagination so
+  result pages remain full and totals match visible documents.
+- Prevent relative editor image sources from resolving into application
+  document routes and exhausting API database connections.
+
 ## [0.5.7] - 2026-08-10
 
 ### Fixed
