@@ -21,8 +21,26 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 import { common, createLowlight } from "lowlight";
+import { isSafeEditorImageSource } from "./editor-content-sanitizer";
 
 const lowlight = createLowlight(common);
+
+const SafeImage = Image.extend({
+	addAttributes() {
+		return {
+			src: {
+				default: null,
+				renderHTML: (attributes) => ({
+					src: isSafeEditorImageSource(attributes.src) ? attributes.src : null,
+				}),
+			},
+			alt: { default: null },
+			title: { default: null },
+			width: { default: null },
+			height: { default: null },
+		};
+	},
+});
 
 // Sentinel string emitted by the upstream Paragraph extension so that two or
 // more consecutive empty paragraphs survive the markdown round-trip without
@@ -296,7 +314,7 @@ export const editorExtensions = [
 		openOnClick: false,
 		HTMLAttributes: { class: "doc-link" },
 	}),
-	Image.configure({
+	SafeImage.configure({
 		inline: false,
 		allowBase64: false,
 		HTMLAttributes: { class: "doc-image" },

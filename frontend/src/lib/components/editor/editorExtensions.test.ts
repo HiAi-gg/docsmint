@@ -27,6 +27,35 @@ function makeManager(): MarkdownManager {
 }
 
 describe("Resizable image", () => {
+	test("does not render relative sources from collaborative documents", () => {
+		const image = editorExtensions.find(
+			(extension) => extension.name === "image",
+		) as
+			| ((typeof editorExtensions)[number] & {
+					config: {
+						addAttributes?: () => Record<
+							string,
+							{
+								renderHTML?: (
+									attrs: Record<string, unknown>,
+								) => Record<string, unknown>;
+							}
+						>;
+					};
+			  })
+			| undefined;
+		const attributes = image?.config.addAttributes?.call(image);
+		const renderSource = attributes?.src?.renderHTML;
+
+		expect(renderSource?.({ src: "image" })).toEqual({ src: null });
+		expect(renderSource?.({ src: "./code-icon" })).toEqual({ src: null });
+		expect(
+			renderSource?.({ src: "https://cdn.example.com/image.png" }),
+		).toEqual({
+			src: "https://cdn.example.com/image.png",
+		});
+	});
+
 	test("uses TipTap's native aspect-ratio-preserving resize node view", () => {
 		const image = editorExtensions.find(
 			(extension) => extension.name === "image",

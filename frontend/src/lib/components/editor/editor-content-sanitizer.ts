@@ -16,7 +16,24 @@ function isAttachmentImage(node: EditorNode): boolean {
 	);
 }
 
+export function isSafeEditorImageSource(value: unknown): value is string {
+	if (typeof value !== "string") return false;
+	const src = value.trim();
+	return (
+		ATTACHMENT_RAW_URL.test(src) ||
+		/^https?:\/\//i.test(src) ||
+		/^blob:/i.test(src) ||
+		/^data:image\//i.test(src)
+	);
+}
+
+function isLoadableImage(node: EditorNode): boolean {
+	if (node.type !== "image") return true;
+	return isSafeEditorImageSource(node.attrs?.src);
+}
+
 function sanitizeNode(node: EditorNode): EditorNode[] {
+	if (!isLoadableImage(node)) return [];
 	if (!node.content) return [node];
 	const children = node.content.flatMap((child) => sanitizeNode(child));
 	if (node.type === "paragraph") {

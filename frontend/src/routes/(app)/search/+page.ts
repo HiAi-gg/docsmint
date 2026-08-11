@@ -32,7 +32,7 @@ export const load: PageLoad = async ({ url }) => {
 	);
 	const limit = Math.max(
 		1,
-		Number.parseInt(url.searchParams.get("limit") ?? "5", 10),
+		Number.parseInt(url.searchParams.get("limit") ?? "10", 10),
 	);
 
 	return {

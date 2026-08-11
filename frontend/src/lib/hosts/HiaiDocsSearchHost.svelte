@@ -85,7 +85,7 @@ let activeCategoryId = $state("");
 let dateFrom = $state("");
 let dateTo = $state("");
 let currentPage = $state(1);
-let pageSize = $state(5);
+let pageSize = $state(10);
 let sortOrder = $state<
 	"relevance" | "date_desc" | "date_asc" | "name_asc" | "name_desc"
 >("relevance");
@@ -107,7 +107,7 @@ $effect(() => {
 	dateFrom = data.filters?.dateFrom ?? "";
 	dateTo = data.filters?.dateTo ?? "";
 	currentPage = data.page ?? 1;
-	pageSize = data.limit ?? 5;
+	pageSize = data.limit ?? 10;
 });
 
 let searchResponse = $state<SearchResponse | null>(null);
@@ -272,7 +272,7 @@ function buildUrl(overrides: Record<string, string | undefined>) {
 	if (df) params.set("dateFrom", df);
 	if (dt) params.set("dateTo", dt);
 	if (p && p !== "1") params.set("page", p);
-	if (l && l !== "5") params.set("limit", l);
+	if (l && l !== "10") params.set("limit", l);
 
 	return `/search?${params.toString()}`;
 }

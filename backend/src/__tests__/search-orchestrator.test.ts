@@ -83,6 +83,46 @@ function expansion(plan: QueryPlan, variants = ["English"] as string[]) {
 }
 
 describe("automatic GraphRAG search orchestration", () => {
+	test("filters authorized candidates before pagination so a page stays full", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "Vladislav",
+				page: 1,
+				limit: 5,
+				visibilityScope: {
+					kind: "tenant",
+					ownerId: OWNER,
+					includePublic: true,
+				},
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: Array.from({ length: 8 }, (_, index) =>
+							candidate(`doc-${index + 1}`, "exact", index + 1),
+						),
+					}),
+				expand: async () => null,
+				retrieveGraph: async () => [],
+				filterRanked: async (_ctx, items) =>
+					items.filter(
+						(item) =>
+							item.documentId !== "doc-1" && item.documentId !== "doc-2",
+					),
+			},
+		);
+
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"doc-3",
+			"doc-4",
+			"doc-5",
+			"doc-6",
+			"doc-7",
+		]);
+		expect(response.total).toBe(6);
+	});
+
 	test("does not apply a folder category from another owner", () => {
 		expect(
 			folderCategoryMatchesOwner(

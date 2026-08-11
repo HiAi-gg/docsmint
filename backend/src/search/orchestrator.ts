@@ -1,6 +1,6 @@
 import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
@@ -90,6 +90,12 @@ export interface SearchAdapterOptions {
 	) => Promise<ChannelResult[]>;
 	expand?: typeof expandQuery;
 	retrieveGraph?: typeof retrieveGraphCandidates;
+	filterRanked?: (
+		ctx: TenantContext,
+		items: RankedSearchResult[],
+		filters: SearchFilters,
+		visibilityScope?: GraphVisibilityScope,
+	) => Promise<RankedSearchResult[]>;
 }
 
 /** A folder category is usable only when the joined folder belongs to the caller. */
@@ -125,6 +131,7 @@ export async function searchDocuments(
 	const embeddingProvider = adapters.getEmbedding ?? getEmbedding;
 	const expand = adapters.expand ?? expandQuery;
 	const retrieveGraph = adapters.retrieveGraph ?? retrieveGraphCandidates;
+	const filterRanked = adapters.filterRanked ?? applySearchFilters;
 	const channelErrors: Record<string, string> = {};
 	// The vector channel and chunk hydration are part of one request. Keep a
 	// promise cache at this boundary so both consumers share the same provider
@@ -304,14 +311,10 @@ export async function searchDocuments(
 				Array.isArray(value) ? value.length > 0 : value !== undefined,
 			),
 	);
-	const filtered = hasFilters
-		? await applySearchFilters(
-				ctx,
-				ranked,
-				filters as SearchFilters,
-				request.visibilityScope,
-			)
-		: ranked;
+	const filtered =
+		hasFilters || request.visibilityScope !== undefined
+			? await filterRanked(ctx, ranked, filters ?? {}, request.visibilityScope)
+			: ranked;
 	const offset = (page - 1) * limit;
 	const items = filtered.slice(offset, offset + limit);
 	const graphContribution = items.some((item) =>
@@ -475,7 +478,13 @@ async function applySearchFilters(
 					eq(folders.ownerId, ctx.userId),
 				),
 			)
-			.where(and(visibility, inArray(documents.id, ids))),
+			.where(
+				and(
+					visibility,
+					isNull(documents.deletedAt),
+					inArray(documents.id, ids),
+				),
+			),
 	);
 	const byId = new Map(rows.map((row) => [row.id, row]));
 	let filtered = items.filter((item) => {
