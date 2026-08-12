@@ -12,8 +12,8 @@ describe("embedded dashboard navigation", () => {
 		expect(dashboardSource).toContain(
 			'href={resolveDocsmintRoute(route, "/")}',
 		);
-		expect(folderTreeSource).toContain(
-			'href={resolveDocsmintRoute(route, "/")}',
+		expect(folderTreeSource).toMatch(
+			/href=\{resolveDocsmintRoute\(route, ["']\/["']\)\}/,
 		);
 		expect(dashboardSource).not.toMatch(/\bhref="\/"/);
 		expect(folderTreeSource).not.toMatch(/\bhref="\/"/);

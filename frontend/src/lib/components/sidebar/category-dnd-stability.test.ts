@@ -9,8 +9,8 @@ describe("category drag-and-drop stability", () => {
 		);
 		expect(source).toContain("result.push(bucket)");
 		expect(source).toContain("data-is-dnd-shadow-item-hint");
-		expect(source).toContain(
-			'SHADOW_ITEM_MARKER_PROPERTY_NAME] ? "shadow" : "item"',
+		expect(source).toMatch(
+			/SHADOW_ITEM_MARKER_PROPERTY_NAME\]\s*\?\s*["']shadow["']\s*:\s*["']item["']/,
 		);
 		expect(source).not.toContain("ignored duplicate category DnD item");
 	});

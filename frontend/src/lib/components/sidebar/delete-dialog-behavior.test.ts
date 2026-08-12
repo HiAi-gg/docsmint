@@ -23,7 +23,9 @@ describe("delete confirmation UX", () => {
 		expect(dialogSource).toContain("successTitle");
 		expect(dialogSource).toContain("border-primary/30 bg-primary/10");
 		expect(dialogSource).toContain('role="status"');
-		expect(folderTreeSource).toContain('targetName={deleteTarget?.name ?? ""}');
+		expect(folderTreeSource).toMatch(
+			/targetName=\{deleteTarget\?\.name\s*\?\?\s*["']["']\}/,
+		);
 		expect(folderTreeSource).toContain("m.folders_delete_success()");
 	});
 

@@ -1,756 +1,780 @@
 <!-- EditorToolbar.svelte — Formatting toolbar for TipTap editor -->
 <script lang="ts">
-  import type { Editor } from '@tiptap/core';
-  // biome-ignore lint/style/useImportType: Bold is used as a value in the Svelte template
-  import {
-    AlignCenter,
-    AlignJustify,
-    AlignLeft,
-    AlignRight,
-    Bold,
-    Camera,
-    Check,
-    ChevronDown,
-    Code2,
-    Copy,
-    GripHorizontal,
-    Heading1,
-    Heading2,
-    Heading3,
-    Highlighter,
-    Image as ImageIcon,
-    Italic,
-    Link as LinkIcon,
-    List,
-    ListChecks,
-    ListOrdered,
-    Loader2,
-    Minus,
-    Quote,
-    Redo,
-    Smile,
-    Table as TableIcon,
-    Type,
-    Underline,
-    Undo,
-    X,
-  } from 'lucide-svelte';
-  import type { Snippet } from 'svelte';
-  import { isFileSizeAllowed, isImageFile, uploadAttachment } from '$lib/api/attachments';
-  import type { EditorActionContext, EditorActionExtension } from '$lib/extensions/types';
-  import { getDocsmintRequestAdapter } from '$lib/hosts/route-context';
-  import * as m from '$lib/paraglide/messages.js';
-  import { copyToClipboard } from '$lib/utils/clipboard';
-  import CreateSnapshotDialog from '../CreateSnapshotDialog.svelte';
-  import LinkDialog from './LinkDialog.svelte';
+import type { Editor } from "@tiptap/core";
+// biome-ignore lint/style/useImportType: Bold is used as a value in the Svelte template
+import {
+	AlignCenter,
+	AlignJustify,
+	AlignLeft,
+	AlignRight,
+	Bold,
+	Camera,
+	Check,
+	ChevronDown,
+	Code2,
+	Copy,
+	GripHorizontal,
+	Heading1,
+	Heading2,
+	Heading3,
+	Highlighter,
+	Image as ImageIcon,
+	Italic,
+	Link as LinkIcon,
+	List,
+	ListChecks,
+	ListOrdered,
+	Loader2,
+	Minus,
+	Quote,
+	Redo,
+	Smile,
+	Table as TableIcon,
+	Type,
+	Underline,
+	Undo,
+	X,
+} from "lucide-svelte";
+import type { Snippet } from "svelte";
+import {
+	isFileSizeAllowed,
+	isImageFile,
+	uploadAttachment,
+} from "$lib/api/attachments";
+import type {
+	EditorActionContext,
+	EditorActionExtension,
+} from "$lib/extensions/types";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
+import * as m from "$lib/paraglide/messages.js";
+import { copyToClipboard } from "$lib/utils/clipboard";
+import CreateSnapshotDialog from "../CreateSnapshotDialog.svelte";
+import LinkDialog from "./LinkDialog.svelte";
 
-  const request = getDocsmintRequestAdapter();
-  const {
-    editor = null,
-    documentId = '',
-    toolbarExtensions = null,
-    editorActions = [],
-    editorActionContext,
-    minimal = false,
-  }: {
-    editor?: Editor | null;
-    documentId?: string;
-    /**
-     * Optional snippet rendered in the toolbar between the built-in tools and
-     * the actions divider. Use this to inject custom buttons/menus (e.g. an AI
-     * menu) from an external project without modifying this file.
-     *
-     * @example
-     * ```svelte
-     * <EditorToolbar {editor} {documentId}>
-     *   {#snippet toolbarExtensions({ editor })}
-     *     <MyAiButton {editor} />
-     *   {/snippet}
-     * </EditorToolbar>
-     * ```
-     */
-    toolbarExtensions?: Snippet<[{ editor: Editor | null }]> | null;
-    /** Typed actions supplied by a host extension manifest. */
-    editorActions?: readonly EditorActionExtension[];
-    editorActionContext?: Omit<EditorActionContext, 'selection' | 'commands'>;
-    minimal?: boolean;
-  } = $props();
+const request = getDocsmintRequestAdapter();
+const {
+	editor = null,
+	documentId = "",
+	toolbarExtensions = null,
+	editorActions = [],
+	editorActionContext,
+	minimal = false,
+}: {
+	editor?: Editor | null;
+	documentId?: string;
+	/**
+	 * Optional snippet rendered in the toolbar between the built-in tools and
+	 * the actions divider. Use this to inject custom buttons/menus (e.g. an AI
+	 * menu) from an external project without modifying this file.
+	 *
+	 * @example
+	 * ```svelte
+	 * <EditorToolbar {editor} {documentId}>
+	 *   {#snippet toolbarExtensions({ editor })}
+	 *     <MyAiButton {editor} />
+	 *   {/snippet}
+	 * </EditorToolbar>
+	 * ```
+	 */
+	toolbarExtensions?: Snippet<[{ editor: Editor | null }]> | null;
+	/** Typed actions supplied by a host extension manifest. */
+	editorActions?: readonly EditorActionExtension[];
+	editorActionContext?: Omit<EditorActionContext, "selection" | "commands">;
+	minimal?: boolean;
+} = $props();
 
-  function createExtensionCommands(): Readonly<Record<string, (...args: unknown[]) => unknown>> {
-    return {
-      focus: () => editor?.commands.focus(),
-      // The public extension facade intentionally accepts unknown; TipTap validates
-      // the content at its command boundary before applying it.
-      insertContent: (content: unknown) => editor?.commands.insertContent(content as never),
-      setContent: (content: unknown) => editor?.commands.setContent(content as never),
-      getJSON: () => editor?.getJSON(),
-      getText: () => editor?.getText(),
-      getHTML: () => editor?.getHTML(),
-    };
-  }
+function createExtensionCommands(): Readonly<
+	Record<string, (...args: unknown[]) => unknown>
+> {
+	return {
+		focus: () => editor?.commands.focus(),
+		// The public extension facade intentionally accepts unknown; TipTap validates
+		// the content at its command boundary before applying it.
+		insertContent: (content: unknown) =>
+			editor?.commands.insertContent(content as never),
+		setContent: (content: unknown) =>
+			editor?.commands.setContent(content as never),
+		getJSON: () => editor?.getJSON(),
+		getText: () => editor?.getText(),
+		getHTML: () => editor?.getHTML(),
+	};
+}
 
-  function actionIsDisabled(action: EditorActionExtension): boolean {
-    if (typeof action.disabled === 'boolean') return action.disabled;
-    if (!action.disabled) return false;
-    try {
-      return action.disabled(createEditorActionContext());
-    } catch {
-      return true;
-    }
-  }
+function actionIsDisabled(action: EditorActionExtension): boolean {
+	if (typeof action.disabled === "boolean") return action.disabled;
+	if (!action.disabled) return false;
+	try {
+		return action.disabled(createEditorActionContext());
+	} catch {
+		return true;
+	}
+}
 
-  function createEditorActionContext(): EditorActionContext {
-    return {
-      documentId: editorActionContext?.documentId ?? documentId,
-      content: editorActionContext?.content ?? '',
-      contentJson: editorActionContext?.contentJson,
-      selection: editor?.state.selection.toJSON(),
-      commands: createExtensionCommands(),
-    };
-  }
+function createEditorActionContext(): EditorActionContext {
+	return {
+		documentId: editorActionContext?.documentId ?? documentId,
+		content: editorActionContext?.content ?? "",
+		contentJson: editorActionContext?.contentJson,
+		selection: editor?.state.selection.toJSON(),
+		commands: createExtensionCommands(),
+	};
+}
 
-  async function runEditorAction(action: EditorActionExtension) {
-    if (actionIsDisabled(action)) return;
-    try {
-      await action.run(createEditorActionContext());
-    } catch (error) {
-      // A product extension must not take down the stock toolbar when it fails.
-      console.error(`DocsMint editor extension "${action.id}" failed`, error);
-    }
-  }
+async function runEditorAction(action: EditorActionExtension) {
+	if (actionIsDisabled(action)) return;
+	try {
+		await action.run(createEditorActionContext());
+	} catch (error) {
+		// A product extension must not take down the stock toolbar when it fails.
+		console.error(`DocsMint editor extension "${action.id}" failed`, error);
+	}
+}
 
-  interface ToolbarAction {
-    icon: typeof Bold;
-    label: string;
-    // Lookup key into the `activeStates` record so the template can
-    // read a fresh boolean without calling `editor.isActive(...)` itself
-    // (which would skip Svelte's reactive graph).
-    key: string;
-    onClick: () => void;
-  }
+interface ToolbarAction {
+	icon: typeof Bold;
+	label: string;
+	// Lookup key into the `activeStates` record so the template can
+	// read a fresh boolean without calling `editor.isActive(...)` itself
+	// (which would skip Svelte's reactive graph).
+	key: string;
+	onClick: () => void;
+}
 
-  // 8 preset highlight colors, keyed to the swatches shown in the popover.
-  const HIGHLIGHT_COLORS = [
-    { name: m.editor_highlight_yellow(), value: '#fde68a' },
-    { name: m.editor_highlight_orange(), value: '#fed7aa' },
-    { name: m.editor_highlight_red(), value: '#fecaca' },
-    { name: m.editor_highlight_green(), value: '#bbf7d0' },
-    { name: m.editor_highlight_blue(), value: '#bfdbfe' },
-    { name: m.editor_highlight_purple(), value: '#e9d5ff' },
-    { name: m.editor_highlight_pink(), value: '#fbcfe8' },
-    { name: m.editor_highlight_gray(), value: '#e5e7eb' },
-  ] as const;
+// 8 preset highlight colors, keyed to the swatches shown in the popover.
+const HIGHLIGHT_COLORS = [
+	{ name: m.editor_highlight_yellow(), value: "#fde68a" },
+	{ name: m.editor_highlight_orange(), value: "#fed7aa" },
+	{ name: m.editor_highlight_red(), value: "#fecaca" },
+	{ name: m.editor_highlight_green(), value: "#bbf7d0" },
+	{ name: m.editor_highlight_blue(), value: "#bfdbfe" },
+	{ name: m.editor_highlight_purple(), value: "#e9d5ff" },
+	{ name: m.editor_highlight_pink(), value: "#fbcfe8" },
+	{ name: m.editor_highlight_gray(), value: "#e5e7eb" },
+] as const;
 
-  type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]['value'];
+type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]["value"];
 
-  // Curated list of 20 common emojis shown in the picker popover. Kept short
-  // and useful (faces, gestures, common objects) instead of an exhaustive
-  // catalog — the native OS emoji picker is still one click away on most
-  // platforms.
-  const EMOJIS = [
-    '😀',
-    '😂',
-    '😍',
-    '🤔',
-    '😎',
-    '😢',
-    '😡',
-    '🥳',
-    '👍',
-    '👏',
-    '🙏',
-    '🔥',
-    '⭐',
-    '✅',
-    '❌',
-    '❤️',
-    '🎉',
-    '💡',
-    '📌',
-    '🚀',
-  ] as const;
+// Curated list of 20 common emojis shown in the picker popover. Kept short
+// and useful (faces, gestures, common objects) instead of an exhaustive
+// catalog — the native OS emoji picker is still one click away on most
+// platforms.
+const EMOJIS = [
+	"😀",
+	"😂",
+	"😍",
+	"🤔",
+	"😎",
+	"😢",
+	"😡",
+	"🥳",
+	"👍",
+	"👏",
+	"🙏",
+	"🔥",
+	"⭐",
+	"✅",
+	"❌",
+	"❤️",
+	"🎉",
+	"💡",
+	"📌",
+	"🚀",
+] as const;
 
-  type TextAlignValue = 'left' | 'center' | 'right' | 'justify';
+type TextAlignValue = "left" | "center" | "right" | "justify";
 
-  // Dropdown open flags + popover roots (one per dropdown).
-  let linkDialogOpen = $state(false);
-  let highlightPickerOpen = $state(false);
-  let highlightPickerRoot = $state<HTMLDivElement | null>(null);
-  let emojiPickerOpen = $state(false);
-  let emojiPickerRoot = $state<HTMLDivElement | null>(null);
-  let tablePickerOpen = $state(false);
-  let tablePickerRoot = $state<HTMLDivElement | null>(null);
-  // Hovered cell extent in the table size-picker grid (1-based; 0 = none).
-  let tableHoverRows = $state(0);
-  let tableHoverCols = $state(0);
-  let headingDropdownOpen = $state(false);
-  let headingDropdownRoot = $state<HTMLDivElement | null>(null);
-  let listDropdownOpen = $state(false);
-  let listDropdownRoot = $state<HTMLDivElement | null>(null);
-  let alignDropdownOpen = $state(false);
-  let alignDropdownRoot = $state<HTMLDivElement | null>(null);
-  let copyConfirmation = $state(false);
-  let snapshotDialogOpen = $state(false);
+// Dropdown open flags + popover roots (one per dropdown).
+let linkDialogOpen = $state(false);
+let highlightPickerOpen = $state(false);
+let highlightPickerRoot = $state<HTMLDivElement | null>(null);
+let emojiPickerOpen = $state(false);
+let emojiPickerRoot = $state<HTMLDivElement | null>(null);
+let tablePickerOpen = $state(false);
+let tablePickerRoot = $state<HTMLDivElement | null>(null);
+// Hovered cell extent in the table size-picker grid (1-based; 0 = none).
+let tableHoverRows = $state(0);
+let tableHoverCols = $state(0);
+let headingDropdownOpen = $state(false);
+let headingDropdownRoot = $state<HTMLDivElement | null>(null);
+let listDropdownOpen = $state(false);
+let listDropdownRoot = $state<HTMLDivElement | null>(null);
+let alignDropdownOpen = $state(false);
+let alignDropdownRoot = $state<HTMLDivElement | null>(null);
+let copyConfirmation = $state(false);
+let snapshotDialogOpen = $state(false);
 
-  // Popover direction states
-  let headingOpenUp = $state(false);
-  let listOpenUp = $state(false);
-  let alignOpenUp = $state(false);
-  let highlightOpenUp = $state(false);
-  let emojiOpenUp = $state(false);
-  let tableOpenUp = $state(false);
-  let headingOpenLeft = $state(false);
-  let listOpenLeft = $state(false);
-  let alignOpenLeft = $state(false);
-  let highlightOpenLeft = $state(false);
-  let emojiOpenLeft = $state(false);
-  let tableOpenLeft = $state(false);
+// Popover direction states
+let headingOpenUp = $state(false);
+let listOpenUp = $state(false);
+let alignOpenUp = $state(false);
+let highlightOpenUp = $state(false);
+let emojiOpenUp = $state(false);
+let tableOpenUp = $state(false);
+let headingOpenLeft = $state(false);
+let listOpenLeft = $state(false);
+let alignOpenLeft = $state(false);
+let highlightOpenLeft = $state(false);
+let emojiOpenLeft = $state(false);
+let tableOpenLeft = $state(false);
 
-  function checkOpenUp(element: HTMLElement | null): boolean {
-    if (!element) return false;
-    const rect = element.getBoundingClientRect();
-    return rect.top > window.innerHeight / 2;
-  }
+function checkOpenUp(element: HTMLElement | null): boolean {
+	if (!element) return false;
+	const rect = element.getBoundingClientRect();
+	return rect.top > window.innerHeight / 2;
+}
 
-  function checkOpenLeft(element: HTMLElement | null): boolean {
-    if (!element) return false;
-    const rect = element.getBoundingClientRect();
-    // Keep a comfortable margin for the widest toolbar popover. Aligning its
-    // right edge to the trigger is preferable to letting it leave the viewport.
-    return rect.left + 200 > window.innerWidth - 8;
-  }
+function checkOpenLeft(element: HTMLElement | null): boolean {
+	if (!element) return false;
+	const rect = element.getBoundingClientRect();
+	// Keep a comfortable margin for the widest toolbar popover. Aligning its
+	// right edge to the trigger is preferable to letting it leave the viewport.
+	return rect.left + 200 > window.innerWidth - 8;
+}
 
-  // TipTap mutates its internal state during transactions but doesn't bump
-  // Svelte's reactive graph, so template calls to `editor.isActive(...)` would
-  // only re-evaluate when something *else* in the script changes. We track a
-  // monotonic revision counter on selection/mark changes and read it from
-  // deriveds/template expressions so the toolbar re-renders in sync with the
-  // editor.
-  let editorRevision = $state(0);
-  const readEditorRevision = $derived(editorRevision);
+// TipTap mutates its internal state during transactions but doesn't bump
+// Svelte's reactive graph, so template calls to `editor.isActive(...)` would
+// only re-evaluate when something *else* in the script changes. We track a
+// monotonic revision counter on selection/mark changes and read it from
+// deriveds/template expressions so the toolbar re-renders in sync with the
+// editor.
+let editorRevision = $state(0);
+const readEditorRevision = $derived(editorRevision);
 
-  $effect(() => {
-    if (!editor) return;
-    const bump = () => {
-      editorRevision++;
-    };
-    editor.on('selectionUpdate', bump);
-    editor.on('transaction', bump);
-    return () => {
-      editor.off('selectionUpdate', bump);
-      editor.off('transaction', bump);
-    };
-  });
+$effect(() => {
+	if (!editor) return;
+	const bump = () => {
+		editorRevision++;
+	};
+	editor.on("selectionUpdate", bump);
+	editor.on("transaction", bump);
+	return () => {
+		editor.off("selectionUpdate", bump);
+		editor.off("transaction", bump);
+	};
+});
 
-  // Active-state snapshot for the current selection. Recomputed whenever
-  // the editor fires `selectionUpdate`/`transaction` so the toolbar
-  // buttons track the caret (or programmatic changes) without a manual
-  // rerender. Plain boolean — `class:active` and `aria-pressed` only
-  // care about true/false.
-  type ActiveStates = Partial<Record<string, boolean>>;
-  const activeStates = $derived.by<ActiveStates>(() => {
-    // Read `readEditorRevision` for its reactive dependency, not its
-    // value. Each key in the returned record corresponds to a toolbar
-    // action's name, so the template can look up the right state in O(1).
-    void readEditorRevision;
-    if (!editor) return {};
-    return {
-      bold: editor.isActive('bold'),
-      italic: editor.isActive('italic'),
-      underline: editor.isActive('underline'),
-      heading1: editor.isActive('heading', { level: 1 }),
-      heading2: editor.isActive('heading', { level: 2 }),
-      heading3: editor.isActive('heading', { level: 3 }),
-      bulletList: editor.isActive('bulletList'),
-      orderedList: editor.isActive('orderedList'),
-      taskList: editor.isActive('taskList'),
-      blockquote: editor.isActive('blockquote'),
-      codeBlock: editor.isActive('codeBlock'),
-      link: editor.isActive('link'),
-      highlight: editor.isActive('highlight'),
-      alignLeft: editor.isActive({ textAlign: 'left' }),
-      alignCenter: editor.isActive({ textAlign: 'center' }),
-      alignRight: editor.isActive({ textAlign: 'right' }),
-      alignJustify: editor.isActive({ textAlign: 'justify' }),
-    };
-  });
+// Active-state snapshot for the current selection. Recomputed whenever
+// the editor fires `selectionUpdate`/`transaction` so the toolbar
+// buttons track the caret (or programmatic changes) without a manual
+// rerender. Plain boolean — `class:active` and `aria-pressed` only
+// care about true/false.
+type ActiveStates = Partial<Record<string, boolean>>;
+const activeStates = $derived.by<ActiveStates>(() => {
+	// Read `readEditorRevision` for its reactive dependency, not its
+	// value. Each key in the returned record corresponds to a toolbar
+	// action's name, so the template can look up the right state in O(1).
+	void readEditorRevision;
+	if (!editor) return {};
+	return {
+		bold: editor.isActive("bold"),
+		italic: editor.isActive("italic"),
+		underline: editor.isActive("underline"),
+		heading1: editor.isActive("heading", { level: 1 }),
+		heading2: editor.isActive("heading", { level: 2 }),
+		heading3: editor.isActive("heading", { level: 3 }),
+		bulletList: editor.isActive("bulletList"),
+		orderedList: editor.isActive("orderedList"),
+		taskList: editor.isActive("taskList"),
+		blockquote: editor.isActive("blockquote"),
+		codeBlock: editor.isActive("codeBlock"),
+		link: editor.isActive("link"),
+		highlight: editor.isActive("highlight"),
+		alignLeft: editor.isActive({ textAlign: "left" }),
+		alignCenter: editor.isActive({ textAlign: "center" }),
+		alignRight: editor.isActive({ textAlign: "right" }),
+		alignJustify: editor.isActive({ textAlign: "justify" }),
+	};
+});
 
-  const tableContext = $derived.by(() => {
-    void readEditorRevision;
-    if (!editor?.isActive('table')) {
-      return { insideTable: false, canMerge: false, canSplit: false };
-    }
-    return {
-      insideTable: true,
-      canMerge: editor.can().mergeCells(),
-      canSplit: editor.can().splitCell(),
-    };
-  });
+const tableContext = $derived.by(() => {
+	void readEditorRevision;
+	if (!editor?.isActive("table")) {
+		return { insideTable: false, canMerge: false, canSplit: false };
+	}
+	return {
+		insideTable: true,
+		canMerge: editor.can().mergeCells(),
+		canSplit: editor.can().splitCell(),
+	};
+});
 
-  // Resolve the current heading level (1/2/3) or null if the selection is in
-  // a paragraph. Used to drive the Heading dropdown trigger label and icon.
-  const activeHeadingLevel = $derived.by<1 | 2 | 3 | null>(() => {
-    void readEditorRevision;
-    if (!editor) return null;
-    if (editor.isActive('heading', { level: 1 })) return 1;
-    if (editor.isActive('heading', { level: 2 })) return 2;
-    if (editor.isActive('heading', { level: 3 })) return 3;
-    return null;
-  });
+// Resolve the current heading level (1/2/3) or null if the selection is in
+// a paragraph. Used to drive the Heading dropdown trigger label and icon.
+const activeHeadingLevel = $derived.by<1 | 2 | 3 | null>(() => {
+	void readEditorRevision;
+	if (!editor) return null;
+	if (editor.isActive("heading", { level: 1 })) return 1;
+	if (editor.isActive("heading", { level: 2 })) return 2;
+	if (editor.isActive("heading", { level: 3 })) return 3;
+	return null;
+});
 
-  // Resolve the current text alignment. Defaults to "left" because that's
-  // the editor's default for new content.
-  const activeAlignment = $derived.by<TextAlignValue>(() => {
-    void readEditorRevision;
-    if (!editor) return 'left';
-    if (editor.isActive({ textAlign: 'center' })) return 'center';
-    if (editor.isActive({ textAlign: 'right' })) return 'right';
-    if (editor.isActive({ textAlign: 'justify' })) return 'justify';
-    return 'left';
-  });
+// Resolve the current text alignment. Defaults to "left" because that's
+// the editor's default for new content.
+const activeAlignment = $derived.by<TextAlignValue>(() => {
+	void readEditorRevision;
+	if (!editor) return "left";
+	if (editor.isActive({ textAlign: "center" })) return "center";
+	if (editor.isActive({ textAlign: "right" })) return "right";
+	if (editor.isActive({ textAlign: "justify" })) return "justify";
+	return "left";
+});
 
-  // Resolve the active highlight color from the current selection, if any.
-  const activeHighlightColor = $derived.by<HighlightColor | null>(() => {
-    if (!editor) return null;
-    // Re-run when the editor publishes a selection/transaction so the swatch
-    // and the `.active` class on the highlight button track the caret.
-    void readEditorRevision;
-    if (!editor.isActive('highlight')) return null;
-    const attrs = editor.getAttributes('highlight');
-    const color = (attrs.color ?? '') as string;
-    const match = HIGHLIGHT_COLORS.find((c) => c.value === color);
-    return (match?.value as HighlightColor) ?? null;
-  });
+// Resolve the active highlight color from the current selection, if any.
+const activeHighlightColor = $derived.by<HighlightColor | null>(() => {
+	if (!editor) return null;
+	// Re-run when the editor publishes a selection/transaction so the swatch
+	// and the `.active` class on the highlight button track the caret.
+	void readEditorRevision;
+	if (!editor.isActive("highlight")) return null;
+	const attrs = editor.getAttributes("highlight");
+	const color = (attrs.color ?? "") as string;
+	const match = HIGHLIGHT_COLORS.find((c) => c.value === color);
+	return (match?.value as HighlightColor) ?? null;
+});
 
-  function isDisabled(): boolean {
-    if (!editor) return true;
-    return !editor.isEditable;
-  }
+function isDisabled(): boolean {
+	if (!editor) return true;
+	return !editor.isEditable;
+}
 
-  function toggleHighlightPicker() {
-    highlightPickerOpen = !highlightPickerOpen;
-    if (highlightPickerOpen) {
-      highlightOpenUp = checkOpenUp(highlightPickerRoot);
-      highlightOpenLeft = checkOpenLeft(highlightPickerRoot);
-    }
-  }
+function toggleHighlightPicker() {
+	highlightPickerOpen = !highlightPickerOpen;
+	if (highlightPickerOpen) {
+		highlightOpenUp = checkOpenUp(highlightPickerRoot);
+		highlightOpenLeft = checkOpenLeft(highlightPickerRoot);
+	}
+}
 
-  function applyHighlight(color: HighlightColor) {
-    if (!editor) return;
-    editor.chain().focus().toggleHighlight({ color }).run();
-    highlightPickerOpen = false;
-  }
+function applyHighlight(color: HighlightColor) {
+	if (!editor) return;
+	editor.chain().focus().toggleHighlight({ color }).run();
+	highlightPickerOpen = false;
+}
 
-  function clearHighlight() {
-    if (!editor) return;
-    editor.chain().focus().unsetHighlight().run();
-    highlightPickerOpen = false;
-  }
+function clearHighlight() {
+	if (!editor) return;
+	editor.chain().focus().unsetHighlight().run();
+	highlightPickerOpen = false;
+}
 
-  function toggleEmojiPicker() {
-    emojiPickerOpen = !emojiPickerOpen;
-    if (emojiPickerOpen) {
-      emojiOpenUp = checkOpenUp(emojiPickerRoot);
-      emojiOpenLeft = checkOpenLeft(emojiPickerRoot);
-    }
-  }
+function toggleEmojiPicker() {
+	emojiPickerOpen = !emojiPickerOpen;
+	if (emojiPickerOpen) {
+		emojiOpenUp = checkOpenUp(emojiPickerRoot);
+		emojiOpenLeft = checkOpenLeft(emojiPickerRoot);
+	}
+}
 
-  function insertEmoji(emoji: string) {
-    if (!editor) return;
-    editor.chain().focus().insertContent(emoji).run();
-    emojiPickerOpen = false;
-  }
+function insertEmoji(emoji: string) {
+	if (!editor) return;
+	editor.chain().focus().insertContent(emoji).run();
+	emojiPickerOpen = false;
+}
 
-  // Table size-picker: an 8×8 grid where the user hovers to choose how many
-  // rows/columns and clicks to insert the table (with a header row).
-  const TABLE_GRID_MAX = 8;
+// Table size-picker: an 8×8 grid where the user hovers to choose how many
+// rows/columns and clicks to insert the table (with a header row).
+const TABLE_GRID_MAX = 8;
 
-  function toggleTablePicker() {
-    tablePickerOpen = !tablePickerOpen;
-    tableHoverRows = 0;
-    tableHoverCols = 0;
-    if (tablePickerOpen) {
-      tableOpenUp = checkOpenUp(tablePickerRoot);
-      tableOpenLeft = checkOpenLeft(tablePickerRoot);
-    }
-  }
+function toggleTablePicker() {
+	tablePickerOpen = !tablePickerOpen;
+	tableHoverRows = 0;
+	tableHoverCols = 0;
+	if (tablePickerOpen) {
+		tableOpenUp = checkOpenUp(tablePickerRoot);
+		tableOpenLeft = checkOpenLeft(tablePickerRoot);
+	}
+}
 
-  function insertTable(rows: number, cols: number) {
-    if (!editor) return;
-    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
-    tablePickerOpen = false;
-  }
+function insertTable(rows: number, cols: number) {
+	if (!editor) return;
+	editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+	tablePickerOpen = false;
+}
 
-  type TableCommand =
-    | 'addRowBefore'
-    | 'addRowAfter'
-    | 'deleteRow'
-    | 'addColumnBefore'
-    | 'addColumnAfter'
-    | 'deleteColumn'
-    | 'mergeCells'
-    | 'splitCell'
-    | 'deleteTable';
+type TableCommand =
+	| "addRowBefore"
+	| "addRowAfter"
+	| "deleteRow"
+	| "addColumnBefore"
+	| "addColumnAfter"
+	| "deleteColumn"
+	| "mergeCells"
+	| "splitCell"
+	| "deleteTable";
 
-  function runTableCommand(command: TableCommand) {
-    if (!editor || !tableContext.insideTable) return;
-    const chain = editor.chain().focus();
-    switch (command) {
-      case 'addRowBefore':
-        chain.addRowBefore().run();
-        break;
-      case 'addRowAfter':
-        chain.addRowAfter().run();
-        break;
-      case 'deleteRow':
-        chain.deleteRow().run();
-        break;
-      case 'addColumnBefore':
-        chain.addColumnBefore().run();
-        break;
-      case 'addColumnAfter':
-        chain.addColumnAfter().run();
-        break;
-      case 'deleteColumn':
-        chain.deleteColumn().run();
-        break;
-      case 'mergeCells':
-        if (tableContext.canMerge) chain.mergeCells().run();
-        break;
-      case 'splitCell':
-        if (tableContext.canSplit) chain.splitCell().run();
-        break;
-      case 'deleteTable':
-        chain.deleteTable().run();
-        break;
-    }
-  }
+function runTableCommand(command: TableCommand) {
+	if (!editor || !tableContext.insideTable) return;
+	const chain = editor.chain().focus();
+	switch (command) {
+		case "addRowBefore":
+			chain.addRowBefore().run();
+			break;
+		case "addRowAfter":
+			chain.addRowAfter().run();
+			break;
+		case "deleteRow":
+			chain.deleteRow().run();
+			break;
+		case "addColumnBefore":
+			chain.addColumnBefore().run();
+			break;
+		case "addColumnAfter":
+			chain.addColumnAfter().run();
+			break;
+		case "deleteColumn":
+			chain.deleteColumn().run();
+			break;
+		case "mergeCells":
+			if (tableContext.canMerge) chain.mergeCells().run();
+			break;
+		case "splitCell":
+			if (tableContext.canSplit) chain.splitCell().run();
+			break;
+		case "deleteTable":
+			chain.deleteTable().run();
+			break;
+	}
+}
 
-  function toggleHeadingDropdown() {
-    headingDropdownOpen = !headingDropdownOpen;
-    if (headingDropdownOpen) {
-      headingOpenUp = checkOpenUp(headingDropdownRoot);
-      headingOpenLeft = checkOpenLeft(headingDropdownRoot);
-    }
-  }
+function toggleHeadingDropdown() {
+	headingDropdownOpen = !headingDropdownOpen;
+	if (headingDropdownOpen) {
+		headingOpenUp = checkOpenUp(headingDropdownRoot);
+		headingOpenLeft = checkOpenLeft(headingDropdownRoot);
+	}
+}
 
-  function applyHeading(level: 1 | 2 | 3 | null) {
-    if (!editor) return;
-    if (level === null) {
-      editor.chain().focus().setParagraph().run();
-    } else {
-      editor.chain().focus().toggleHeading({ level }).run();
-    }
-    headingDropdownOpen = false;
-  }
+function applyHeading(level: 1 | 2 | 3 | null) {
+	if (!editor) return;
+	if (level === null) {
+		editor.chain().focus().setParagraph().run();
+	} else {
+		editor.chain().focus().toggleHeading({ level }).run();
+	}
+	headingDropdownOpen = false;
+}
 
-  function toggleListDropdown() {
-    listDropdownOpen = !listDropdownOpen;
-    if (listDropdownOpen) {
-      listOpenUp = checkOpenUp(listDropdownRoot);
-      listOpenLeft = checkOpenLeft(listDropdownRoot);
-    }
-  }
+function toggleListDropdown() {
+	listDropdownOpen = !listDropdownOpen;
+	if (listDropdownOpen) {
+		listOpenUp = checkOpenUp(listDropdownRoot);
+		listOpenLeft = checkOpenLeft(listDropdownRoot);
+	}
+}
 
-  function applyList(kind: 'bullet' | 'ordered' | 'task') {
-    if (!editor) return;
-    const commands = editor.commands as Record<string, (...args: unknown[]) => boolean>;
-    if (kind === 'bullet') {
-      if (typeof editor.commands.toggleBulletList === 'function') {
-        editor.chain().focus().toggleBulletList().run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .command(() => commands.toggleList?.('bulletList', 'listItem') ?? false)
-          .run();
-      }
-    } else if (kind === 'ordered') {
-      if (typeof editor.commands.toggleOrderedList === 'function') {
-        editor.chain().focus().toggleOrderedList().run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .command(() => commands.toggleList?.('orderedList', 'listItem') ?? false)
-          .run();
-      }
-    } else {
-      if (typeof editor.commands.toggleTaskList === 'function') {
-        editor.chain().focus().toggleTaskList().run();
-      } else {
-        editor
-          .chain()
-          .focus()
-          .command(() => commands.toggleList?.('taskList', 'taskItem') ?? false)
-          .run();
-      }
-    }
-    listDropdownOpen = false;
-  }
+function applyList(kind: "bullet" | "ordered" | "task") {
+	if (!editor) return;
+	const commands = editor.commands as Record<
+		string,
+		(...args: unknown[]) => boolean
+	>;
+	if (kind === "bullet") {
+		if (typeof editor.commands.toggleBulletList === "function") {
+			editor.chain().focus().toggleBulletList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(() => commands.toggleList?.("bulletList", "listItem") ?? false)
+				.run();
+		}
+	} else if (kind === "ordered") {
+		if (typeof editor.commands.toggleOrderedList === "function") {
+			editor.chain().focus().toggleOrderedList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(
+					() => commands.toggleList?.("orderedList", "listItem") ?? false,
+				)
+				.run();
+		}
+	} else {
+		if (typeof editor.commands.toggleTaskList === "function") {
+			editor.chain().focus().toggleTaskList().run();
+		} else {
+			editor
+				.chain()
+				.focus()
+				.command(() => commands.toggleList?.("taskList", "taskItem") ?? false)
+				.run();
+		}
+	}
+	listDropdownOpen = false;
+}
 
-  function toggleBlockquote() {
-    if (!editor) return;
-    editor.chain().focus().toggleBlockquote().run();
-  }
+function toggleBlockquote() {
+	if (!editor) return;
+	editor.chain().focus().toggleBlockquote().run();
+}
 
-  function insertHorizontalRule() {
-    if (!editor) return;
-    editor.chain().focus().setHorizontalRule().run();
-  }
+function insertHorizontalRule() {
+	if (!editor) return;
+	editor.chain().focus().setHorizontalRule().run();
+}
 
-  function toggleAlignDropdown() {
-    alignDropdownOpen = !alignDropdownOpen;
-    if (alignDropdownOpen) {
-      alignOpenUp = checkOpenUp(alignDropdownRoot);
-      alignOpenLeft = checkOpenLeft(alignDropdownRoot);
-    }
-  }
+function toggleAlignDropdown() {
+	alignDropdownOpen = !alignDropdownOpen;
+	if (alignDropdownOpen) {
+		alignOpenUp = checkOpenUp(alignDropdownRoot);
+		alignOpenLeft = checkOpenLeft(alignDropdownRoot);
+	}
+}
 
-  function applyAlignment(value: TextAlignValue) {
-    if (!editor) return;
-    const chain = editor.chain().focus();
-    const commands = editor.commands as Record<string, (...args: unknown[]) => boolean>;
-    if (
-      value === 'left' &&
-      typeof (chain as { unsetTextAlign: () => unknown }).unsetTextAlign === 'function'
-    ) {
-      chain.unsetTextAlign().run();
-      alignDropdownOpen = false;
-      return;
-    }
-    if (
-      typeof (chain as { setTextAlign: (value: TextAlignValue) => unknown }).setTextAlign ===
-      'function'
-    ) {
-      chain.setTextAlign(value).run();
-    } else if (typeof commands.setTextAlign === 'function') {
-      commands.setTextAlign(value);
-    }
-    alignDropdownOpen = false;
-  }
+function applyAlignment(value: TextAlignValue) {
+	if (!editor) return;
+	const chain = editor.chain().focus();
+	const commands = editor.commands as Record<
+		string,
+		(...args: unknown[]) => boolean
+	>;
+	if (
+		value === "left" &&
+		typeof (chain as { unsetTextAlign: () => unknown }).unsetTextAlign ===
+			"function"
+	) {
+		chain.unsetTextAlign().run();
+		alignDropdownOpen = false;
+		return;
+	}
+	if (
+		typeof (chain as { setTextAlign: (value: TextAlignValue) => unknown })
+			.setTextAlign === "function"
+	) {
+		chain.setTextAlign(value).run();
+	} else if (typeof commands.setTextAlign === "function") {
+		commands.setTextAlign(value);
+	}
+	alignDropdownOpen = false;
+}
 
-  function undo() {
-    if (!editor) return;
-    editor.chain().focus().undo().run();
-  }
+function undo() {
+	if (!editor) return;
+	editor.chain().focus().undo().run();
+}
 
-  function redo() {
-    if (!editor) return;
-    editor.chain().focus().redo().run();
-  }
+function redo() {
+	if (!editor) return;
+	editor.chain().focus().redo().run();
+}
 
-  // Copy the editor's current markdown (falling back to plain text when the
-  // Markdown extension's getMarkdown() helper is not available, e.g. while a
-  // collaboration doc is mounted without the markdown plugin). The Copy
-  // button shows a brief "Copied" confirmation next to the icon for ~1.5s.
-  async function copyContent() {
-    if (!editor) return;
-    const ed = editor as Editor & { getMarkdown?: () => string };
-    const content = ed.getMarkdown ? ed.getMarkdown() : editor.getText();
-    try {
-      await copyToClipboard(content);
-      copyConfirmation = true;
-      setTimeout(() => {
-        copyConfirmation = false;
-      }, 1500);
-    } catch (_err) {
-      // Clipboard API can throw if the page is not focused or the
-      // permission was denied; swallow — the user can retry or copy
-      // manually from the document body.
-    }
-  }
+// Copy the editor's current markdown (falling back to plain text when the
+// Markdown extension's getMarkdown() helper is not available, e.g. while a
+// collaboration doc is mounted without the markdown plugin). The Copy
+// button shows a brief "Copied" confirmation next to the icon for ~1.5s.
+async function copyContent() {
+	if (!editor) return;
+	const ed = editor as Editor & { getMarkdown?: () => string };
+	const content = ed.getMarkdown ? ed.getMarkdown() : editor.getText();
+	try {
+		await copyToClipboard(content);
+		copyConfirmation = true;
+		setTimeout(() => {
+			copyConfirmation = false;
+		}, 1500);
+	} catch (_err) {
+		// Clipboard API can throw if the page is not focused or the
+		// permission was denied; swallow — the user can retry or copy
+		// manually from the document body.
+	}
+}
 
-  // --- Image upload state ---
-  let imageFileInput = $state<HTMLInputElement | null>(null);
-  let imageUploading = $state(false);
-  let imageError = $state<string | null>(null);
+// --- Image upload state ---
+let imageFileInput = $state<HTMLInputElement | null>(null);
+let imageUploading = $state(false);
+let imageError = $state<string | null>(null);
 
-  function formatMegabytes(bytes: number): string {
-    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
-  }
+function formatMegabytes(bytes: number): string {
+	return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
 
-  function triggerImageUpload() {
-    if (imageUploading) return;
-    imageError = null;
-    imageFileInput?.click();
-  }
+function triggerImageUpload() {
+	if (imageUploading) return;
+	imageError = null;
+	imageFileInput?.click();
+}
 
-  async function handleImageSelected(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    // Always reset the input so the same file can be re-selected.
-    input.value = '';
-    if (!file || !editor) return;
+async function handleImageSelected(event: Event) {
+	const input = event.currentTarget as HTMLInputElement;
+	const file = input.files?.[0];
+	// Always reset the input so the same file can be re-selected.
+	input.value = "";
+	if (!file || !editor) return;
 
-    if (!isImageFile(file)) {
-      imageError = m.attachment_types_hint();
-      return;
-    }
-    if (!isFileSizeAllowed(file)) {
-      imageError = m.attachment_file_too_large({
-        size: formatMegabytes(file.size),
-      });
-      return;
-    }
-    if (!documentId) {
-      imageError = m.error_generic();
-      return;
-    }
+	if (!isImageFile(file)) {
+		imageError = m.attachment_types_hint();
+		return;
+	}
+	if (!isFileSizeAllowed(file)) {
+		imageError = m.attachment_file_too_large({
+			size: formatMegabytes(file.size),
+		});
+		return;
+	}
+	if (!documentId) {
+		imageError = m.error_generic();
+		return;
+	}
 
-    imageUploading = true;
-    imageError = null;
-    try {
-      const attachment = await uploadAttachment(documentId, file, request.fetch);
-      editor.chain().focus().setImage({ src: attachment.url, alt: attachment.filename }).run();
-    } catch (_err) {
-      imageError = m.error_server();
-    } finally {
-      imageUploading = false;
-    }
-  }
+	imageUploading = true;
+	imageError = null;
+	try {
+		const attachment = await uploadAttachment(documentId, file, request.fetch);
+		editor
+			.chain()
+			.focus()
+			.setImage({ src: attachment.url, alt: attachment.filename })
+			.run();
+	} catch (_err) {
+		imageError = m.error_server();
+	} finally {
+		imageUploading = false;
+	}
+}
 
-  // Close all popovers/dropdowns when clicking outside their root element.
-  // Each popover shares the same outside-pointer + Escape dismissal logic;
-  // the only difference is which open flag and root element they read.
-  $effect(() => {
-    if (
-      !highlightPickerOpen &&
-      !emojiPickerOpen &&
-      !tablePickerOpen &&
-      !headingDropdownOpen &&
-      !listDropdownOpen &&
-      !alignDropdownOpen
-    ) {
-      return;
-    }
-    function onDocPointer(e: PointerEvent) {
-      const target = e.target as Node | null;
-      if (!target) return;
-      if (highlightPickerOpen) {
-        const root = highlightPickerRoot;
-        if (root && !root.contains(target)) {
-          highlightPickerOpen = false;
-        }
-      }
-      if (emojiPickerOpen) {
-        const root = emojiPickerRoot;
-        if (root && !root.contains(target)) {
-          emojiPickerOpen = false;
-        }
-      }
-      if (tablePickerOpen) {
-        const root = tablePickerRoot;
-        if (root && !root.contains(target)) {
-          tablePickerOpen = false;
-        }
-      }
-      if (headingDropdownOpen) {
-        const root = headingDropdownRoot;
-        if (root && !root.contains(target)) {
-          headingDropdownOpen = false;
-        }
-      }
-      if (listDropdownOpen) {
-        const root = listDropdownRoot;
-        if (root && !root.contains(target)) {
-          listDropdownOpen = false;
-        }
-      }
-      if (alignDropdownOpen) {
-        const root = alignDropdownRoot;
-        if (root && !root.contains(target)) {
-          alignDropdownOpen = false;
-        }
-      }
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        highlightPickerOpen = false;
-        emojiPickerOpen = false;
-        tablePickerOpen = false;
-        headingDropdownOpen = false;
-        listDropdownOpen = false;
-        alignDropdownOpen = false;
-      }
-    }
-    document.addEventListener('pointerdown', onDocPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDocPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  });
+// Close all popovers/dropdowns when clicking outside their root element.
+// Each popover shares the same outside-pointer + Escape dismissal logic;
+// the only difference is which open flag and root element they read.
+$effect(() => {
+	if (
+		!highlightPickerOpen &&
+		!emojiPickerOpen &&
+		!tablePickerOpen &&
+		!headingDropdownOpen &&
+		!listDropdownOpen &&
+		!alignDropdownOpen
+	) {
+		return;
+	}
+	function onDocPointer(e: PointerEvent) {
+		const target = e.target as Node | null;
+		if (!target) return;
+		if (highlightPickerOpen) {
+			const root = highlightPickerRoot;
+			if (root && !root.contains(target)) {
+				highlightPickerOpen = false;
+			}
+		}
+		if (emojiPickerOpen) {
+			const root = emojiPickerRoot;
+			if (root && !root.contains(target)) {
+				emojiPickerOpen = false;
+			}
+		}
+		if (tablePickerOpen) {
+			const root = tablePickerRoot;
+			if (root && !root.contains(target)) {
+				tablePickerOpen = false;
+			}
+		}
+		if (headingDropdownOpen) {
+			const root = headingDropdownRoot;
+			if (root && !root.contains(target)) {
+				headingDropdownOpen = false;
+			}
+		}
+		if (listDropdownOpen) {
+			const root = listDropdownRoot;
+			if (root && !root.contains(target)) {
+				listDropdownOpen = false;
+			}
+		}
+		if (alignDropdownOpen) {
+			const root = alignDropdownRoot;
+			if (root && !root.contains(target)) {
+				alignDropdownOpen = false;
+			}
+		}
+	}
+	function onKey(e: KeyboardEvent) {
+		if (e.key === "Escape") {
+			highlightPickerOpen = false;
+			emojiPickerOpen = false;
+			tablePickerOpen = false;
+			headingDropdownOpen = false;
+			listDropdownOpen = false;
+			alignDropdownOpen = false;
+		}
+	}
+	document.addEventListener("pointerdown", onDocPointer);
+	document.addEventListener("keydown", onKey);
+	return () => {
+		document.removeEventListener("pointerdown", onDocPointer);
+		document.removeEventListener("keydown", onKey);
+	};
+});
 
-  let isScrolled = $state(false);
-  let isFloatingExpanded = $state(false);
+let isScrolled = $state(false);
+let isFloatingExpanded = $state(false);
 
-  let isDragging = $state(false);
-  let dragOffsetX = $state(0);
-  let dragOffsetY = $state(0);
-  let floatingX = $state<number | null>(null);
-  let floatingY = $state<number | null>(null);
+let isDragging = $state(false);
+let dragOffsetX = $state(0);
+let dragOffsetY = $state(0);
+let floatingX = $state<number | null>(null);
+let floatingY = $state<number | null>(null);
 
-  function startDrag(e: PointerEvent) {
-    if (!isScrolled) return;
-    const target = e.target as HTMLElement;
-    if (
-      target.closest('button') ||
-      target.closest('select') ||
-      target.closest('input') ||
-      target.closest('.dropdown-popover') ||
-      target.closest('.highlight-popover') ||
-      target.closest('.emoji-popover') ||
-      target.closest('.table-popover')
-    ) {
-      return;
-    }
-    isDragging = true;
-    target.setPointerCapture(e.pointerId);
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    dragOffsetX = e.clientX - rect.left;
-    dragOffsetY = e.clientY - rect.top;
-  }
+function startDrag(e: PointerEvent) {
+	if (!isScrolled) return;
+	const target = e.target as HTMLElement;
+	if (
+		target.closest("button") ||
+		target.closest("select") ||
+		target.closest("input") ||
+		target.closest(".dropdown-popover") ||
+		target.closest(".highlight-popover") ||
+		target.closest(".emoji-popover") ||
+		target.closest(".table-popover")
+	) {
+		return;
+	}
+	isDragging = true;
+	target.setPointerCapture(e.pointerId);
+	const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+	dragOffsetX = e.clientX - rect.left;
+	dragOffsetY = e.clientY - rect.top;
+}
 
-  function onDrag(e: PointerEvent) {
-    if (!isDragging) return;
-    floatingX = e.clientX - dragOffsetX;
-    floatingY = e.clientY - dragOffsetY;
-  }
+function onDrag(e: PointerEvent) {
+	if (!isDragging) return;
+	floatingX = e.clientX - dragOffsetX;
+	floatingY = e.clientY - dragOffsetY;
+}
 
-  function stopDrag(e: PointerEvent) {
-    if (!isDragging) return;
-    isDragging = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch (_) {}
-  }
+function stopDrag(e: PointerEvent) {
+	if (!isDragging) return;
+	isDragging = false;
+	try {
+		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+	} catch (_) {}
+}
 
-  $effect(() => {
-    if (typeof document === 'undefined') return;
-    function handleScroll(e: Event) {
-      const target = e.target as HTMLElement;
-      if (
-        target &&
-        (target.id === 'main-content' ||
-          target.tagName === 'MAIN' ||
-          target === document.documentElement)
-      ) {
-        isScrolled = target.scrollTop > 150;
-        if (!isScrolled) {
-          floatingX = null;
-          floatingY = null;
-        }
-      }
-    }
-    document.addEventListener('scroll', handleScroll, {
-      capture: true,
-      passive: true,
-    });
-    return () => {
-      document.removeEventListener('scroll', handleScroll, { capture: true });
-    };
-  });
+$effect(() => {
+	if (typeof document === "undefined") return;
+	function handleScroll(e: Event) {
+		const target = e.target as HTMLElement;
+		if (
+			target &&
+			(target.id === "main-content" ||
+				target.tagName === "MAIN" ||
+				target === document.documentElement)
+		) {
+			isScrolled = target.scrollTop > 150;
+			if (!isScrolled) {
+				floatingX = null;
+				floatingY = null;
+			}
+		}
+	}
+	document.addEventListener("scroll", handleScroll, {
+		capture: true,
+		passive: true,
+	});
+	return () => {
+		document.removeEventListener("scroll", handleScroll, { capture: true });
+	};
+});
 </script>
 
 {#snippet undoRedoSnippet()}

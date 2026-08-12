@@ -14,315 +14,341 @@
        - Enter submits the create/edit form.
        - Escape closes (handled by the underlying Dialog). -->
 <script lang="ts">
-  import { Button } from '@hiai-gg/hiai-ui/components/ui/button';
-  import {
-    Dialog,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-  } from '@hiai-gg/hiai-ui/components/ui/dialog';
-  import { Input } from '@hiai-gg/hiai-ui/components/ui/input';
-  import { Label } from '@hiai-gg/hiai-ui/components/ui/label';
-  import SelectRoot from '@hiai-gg/hiai-ui/components/ui/select/select.svelte';
-  import SelectContent from '@hiai-gg/hiai-ui/components/ui/select/select-content.svelte';
-  import SelectItem from '@hiai-gg/hiai-ui/components/ui/select/select-item.svelte';
-  import SelectTrigger from '@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte';
-  import SelectValue from '@hiai-gg/hiai-ui/components/ui/select/select-value.svelte';
-  import { CheckCircle2, Copy, Loader2 } from 'lucide-svelte';
-  import {
-    type ApiKeySummary,
-    apiKeyClipboardValue,
-    categoryIdFromScopes,
-    createCategoryApiKey,
-    listApiKeys,
-    revealCategoryApiKey,
-    revokeApiKey,
-  } from '$lib/api/api-keys';
-  import { getDocsmintRequestAdapter } from '$lib/hosts/route-context';
-  import * as m from '$lib/paraglide/messages.js';
-  import { issueCategoryKeyAfterSavingAccess } from './category-api-key-flow.js';
-  import { categoryDialogErrorMessage } from './category-dialog-feedback.js';
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import {
+	Dialog,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@hiai-gg/hiai-ui/components/ui/dialog";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
+import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
+import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
+import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
+import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
+import { CheckCircle2, Copy, Loader2 } from "lucide-svelte";
+import {
+	type ApiKeySummary,
+	apiKeyClipboardValue,
+	categoryIdFromScopes,
+	createCategoryApiKey,
+	listApiKeys,
+	revealCategoryApiKey,
+	revokeApiKey,
+} from "$lib/api/api-keys";
+import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
+import * as m from "$lib/paraglide/messages.js";
+import { issueCategoryKeyAfterSavingAccess } from "./category-api-key-flow.js";
+import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 
-  type Mode = 'create' | 'edit' | 'delete';
-  type ApiMode = 'unavailable' | 'global' | 'category';
+type Mode = "create" | "edit" | "delete";
+type ApiMode = "unavailable" | "global" | "category";
 
-  type CategoryAccessState = {
-    apiMode?: string | null;
-    apiPermissionRead?: boolean | null;
-    apiPermissionEdit?: boolean | null;
-    apiPermissionWrite?: boolean | null;
-  };
+type CategoryAccessState = {
+	apiMode?: string | null;
+	apiPermissionRead?: boolean | null;
+	apiPermissionEdit?: boolean | null;
+	apiPermissionWrite?: boolean | null;
+};
 
-  type SavePayload = {
-    name: string;
-    apiMode: 'unavailable' | 'global' | 'category';
-    apiPermissionRead: boolean;
-    apiPermissionEdit: boolean;
-    apiPermissionWrite: boolean;
-  };
+type SavePayload = {
+	name: string;
+	apiMode: "unavailable" | "global" | "category";
+	apiPermissionRead: boolean;
+	apiPermissionEdit: boolean;
+	apiPermissionWrite: boolean;
+};
 
-  const Select = {
-    Root: SelectRoot,
-    Content: SelectContent,
-    Item: SelectItem,
-    Trigger: SelectTrigger,
-    Value: SelectValue,
-  };
-  const request = getDocsmintRequestAdapter();
+const Select = {
+	Root: SelectRoot,
+	Content: SelectContent,
+	Item: SelectItem,
+	Trigger: SelectTrigger,
+	Value: SelectValue,
+};
+const request = getDocsmintRequestAdapter();
 
-  let {
-    open = $bindable(false),
-    mode,
-    category,
-    onSave,
-    onDelete,
-    onClose,
-  }: {
-    open: boolean;
-    mode: Mode;
-    category?: { id: string; name: string } & CategoryAccessState;
-    onSave?: (
-      payload: SavePayload
-    ) =>
-      Promise<{ id: string; name: string } | undefined> | { id: string; name: string } | undefined;
-    onDelete?: () => Promise<void> | void;
-    onClose?: () => void;
-  } = $props();
+let {
+	open = $bindable(false),
+	mode,
+	category,
+	onSave,
+	onDelete,
+	onClose,
+}: {
+	open: boolean;
+	mode: Mode;
+	category?: { id: string; name: string } & CategoryAccessState;
+	onSave?: (
+		payload: SavePayload,
+	) =>
+		| Promise<{ id: string; name: string } | undefined>
+		| { id: string; name: string }
+		| undefined;
+	onDelete?: () => Promise<void> | void;
+	onClose?: () => void;
+} = $props();
 
-  // Local form state. Kept in sync with the inbound `category` so that
-  // switching from "create" → "edit" (or selecting a different category)
-  // repopulates the input.
-  let name = $state('');
-  let error = $state<string | null>(null);
-  let busy = $state(false);
-  let apiMode = $state<ApiMode>('unavailable');
-  let apiPermissionRead = $state(false);
-  let apiPermissionEdit = $state(false);
-  let apiPermissionWrite = $state(false);
-  let categoryKeys = $state<ApiKeySummary[]>([]);
-  let issuedKeys = $state<Record<string, string>>({});
-  let latestIssuedId = $state<string | null>(null);
-  let keyBusy = $state(false);
-  let createdCategoryName = $state<string | null>(null);
-  let createdCategoryKey = $state<string | null>(null);
-  let deletedCategoryName = $state<string | null>(null);
-  const latestIssuedKey = $derived(latestIssuedId ? issuedKeys[latestIssuedId] : undefined);
+// Local form state. Kept in sync with the inbound `category` so that
+// switching from "create" → "edit" (or selecting a different category)
+// repopulates the input.
+let name = $state("");
+let error = $state<string | null>(null);
+let busy = $state(false);
+let apiMode = $state<ApiMode>("unavailable");
+let apiPermissionRead = $state(false);
+let apiPermissionEdit = $state(false);
+let apiPermissionWrite = $state(false);
+let categoryKeys = $state<ApiKeySummary[]>([]);
+let issuedKeys = $state<Record<string, string>>({});
+let latestIssuedId = $state<string | null>(null);
+let keyBusy = $state(false);
+let createdCategoryName = $state<string | null>(null);
+let createdCategoryKey = $state<string | null>(null);
+let deletedCategoryName = $state<string | null>(null);
+const latestIssuedKey = $derived(
+	latestIssuedId ? issuedKeys[latestIssuedId] : undefined,
+);
 
-  async function refreshCategoryKeys(categoryId: string) {
-    const result = await listApiKeys(request.fetch);
-    categoryKeys = result.keys.filter((key) => categoryIdFromScopes(key.scopes) === categoryId);
-  }
+async function refreshCategoryKeys(categoryId: string) {
+	const result = await listApiKeys(request.fetch);
+	categoryKeys = result.keys.filter(
+		(key) => categoryIdFromScopes(key.scopes) === categoryId,
+	);
+}
 
-  async function issueCategoryKey() {
-    if (!category?.id || !onSave) return;
-    keyBusy = true;
-    error = null;
-    try {
-      const issued = await issueCategoryKeyAfterSavingAccess({
-        categoryId: category.id,
-        draft: {
-          name: trimmedName,
-          apiMode: normalizeApiMode(apiMode),
-          apiPermissionRead,
-          apiPermissionEdit,
-          apiPermissionWrite,
-        },
-        save: async (payload) => onSave(payload),
-        issue: async (categoryId) => createCategoryApiKey(categoryId, undefined, request.fetch),
-      });
-      issuedKeys = { ...issuedKeys, [issued.id]: issued.key };
-      latestIssuedId = issued.id;
-      await refreshCategoryKeys(category.id);
-    } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to create category API key';
-    } finally {
-      keyBusy = false;
-    }
-  }
+async function issueCategoryKey() {
+	if (!category?.id || !onSave) return;
+	keyBusy = true;
+	error = null;
+	try {
+		const issued = await issueCategoryKeyAfterSavingAccess({
+			categoryId: category.id,
+			draft: {
+				name: trimmedName,
+				apiMode: normalizeApiMode(apiMode),
+				apiPermissionRead,
+				apiPermissionEdit,
+				apiPermissionWrite,
+			},
+			save: async (payload) => onSave(payload),
+			issue: async (categoryId) =>
+				createCategoryApiKey(categoryId, undefined, request.fetch),
+		});
+		issuedKeys = { ...issuedKeys, [issued.id]: issued.key };
+		latestIssuedId = issued.id;
+		await refreshCategoryKeys(category.id);
+	} catch (err) {
+		error =
+			err instanceof Error ? err.message : "Failed to create category API key";
+	} finally {
+		keyBusy = false;
+	}
+}
 
-  async function revokeCategoryKey(id: string) {
-    if (!category?.id) return;
-    keyBusy = true;
-    try {
-      await revokeApiKey(id, request.fetch);
-      const { [id]: _revoked, ...remainingIssuedKeys } = issuedKeys;
-      issuedKeys = remainingIssuedKeys;
-      if (latestIssuedId === id) latestIssuedId = null;
-      await refreshCategoryKeys(category.id);
-    } finally {
-      keyBusy = false;
-    }
-  }
+async function revokeCategoryKey(id: string) {
+	if (!category?.id) return;
+	keyBusy = true;
+	try {
+		await revokeApiKey(id, request.fetch);
+		const { [id]: _revoked, ...remainingIssuedKeys } = issuedKeys;
+		issuedKeys = remainingIssuedKeys;
+		if (latestIssuedId === id) latestIssuedId = null;
+		await refreshCategoryKeys(category.id);
+	} finally {
+		keyBusy = false;
+	}
+}
 
-  async function copyCategoryKey(key: ApiKeySummary) {
-    const rawKey = issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id, request.fetch));
-    await navigator.clipboard.writeText(apiKeyClipboardValue(key, rawKey));
-  }
+async function copyCategoryKey(key: ApiKeySummary) {
+	const rawKey =
+		issuedKeys[key.id] ?? (await revealCategoryApiKey(key.id, request.fetch));
+	await navigator.clipboard.writeText(apiKeyClipboardValue(key, rawKey));
+}
 
-  $effect(() => {
-    // Only reset the input when the dialog actually opens — we don't
-    // want to clobber the user's in-progress text while typing.
-    if (!open) return;
-    name = category?.name ?? '';
-    const initialApiMode: ApiMode =
-      category?.apiMode === 'category'
-        ? 'category'
-        : category?.apiMode === 'global'
-          ? 'global'
-          : 'unavailable';
-    apiMode = initialApiMode;
-    apiPermissionRead = Boolean(category?.apiPermissionRead);
-    apiPermissionEdit = Boolean(category?.apiPermissionEdit);
-    apiPermissionWrite = Boolean(category?.apiPermissionWrite);
-    // Use the non-reactive initial value here. Reading `apiMode` after
-    // assigning it made this effect subscribe to the editable form state,
-    // so every selection immediately reran the reset and appeared not to
-    // persist.
-    if (initialApiMode === 'unavailable') {
-      apiPermissionRead = false;
-      apiPermissionEdit = false;
-      apiPermissionWrite = false;
-    }
-    issuedKeys = {};
-    latestIssuedId = null;
-    categoryKeys = [];
-    createdCategoryName = null;
-    createdCategoryKey = null;
-    deletedCategoryName = null;
-    if (mode === 'edit' && category?.id) void refreshCategoryKeys(category.id);
-    error = null;
-  });
+$effect(() => {
+	// Only reset the input when the dialog actually opens — we don't
+	// want to clobber the user's in-progress text while typing.
+	if (!open) return;
+	name = category?.name ?? "";
+	const initialApiMode: ApiMode =
+		category?.apiMode === "category"
+			? "category"
+			: category?.apiMode === "global"
+				? "global"
+				: "unavailable";
+	apiMode = initialApiMode;
+	apiPermissionRead = Boolean(category?.apiPermissionRead);
+	apiPermissionEdit = Boolean(category?.apiPermissionEdit);
+	apiPermissionWrite = Boolean(category?.apiPermissionWrite);
+	// Use the non-reactive initial value here. Reading `apiMode` after
+	// assigning it made this effect subscribe to the editable form state,
+	// so every selection immediately reran the reset and appeared not to
+	// persist.
+	if (initialApiMode === "unavailable") {
+		apiPermissionRead = false;
+		apiPermissionEdit = false;
+		apiPermissionWrite = false;
+	}
+	issuedKeys = {};
+	latestIssuedId = null;
+	categoryKeys = [];
+	createdCategoryName = null;
+	createdCategoryKey = null;
+	deletedCategoryName = null;
+	if (mode === "edit" && category?.id) void refreshCategoryKeys(category.id);
+	error = null;
+});
 
-  const trimmedName = $derived(name.trim());
-  const isDeleteMode = $derived(mode === 'delete');
-  const hasAnyPermission = $derived(apiPermissionRead || apiPermissionEdit || apiPermissionWrite);
-  const title = $derived(
-    deletedCategoryName
-      ? m.categories_delete_success()
-      : isDeleteMode
-        ? m.categories_delete_title()
-        : mode === 'edit'
-          ? m.categories_edit_title()
-          : m.categories_create_title()
-  );
-  const submitLabel = $derived(
-    isDeleteMode ? m.action_delete() : mode === 'edit' ? m.action_save() : m.action_create()
-  );
+const trimmedName = $derived(name.trim());
+const isDeleteMode = $derived(mode === "delete");
+const hasAnyPermission = $derived(
+	apiPermissionRead || apiPermissionEdit || apiPermissionWrite,
+);
+const title = $derived(
+	deletedCategoryName
+		? m.categories_delete_success()
+		: isDeleteMode
+			? m.categories_delete_title()
+			: mode === "edit"
+				? m.categories_edit_title()
+				: m.categories_create_title(),
+);
+const submitLabel = $derived(
+	isDeleteMode
+		? m.action_delete()
+		: mode === "edit"
+			? m.action_save()
+			: m.action_create(),
+);
 
-  function normalizeApiMode(value: ApiMode): 'unavailable' | 'global' | 'category' {
-    if (value === 'category') return 'category';
-    if (value === 'global') return 'global';
-    return 'unavailable';
-  }
+function normalizeApiMode(
+	value: ApiMode,
+): "unavailable" | "global" | "category" {
+	if (value === "category") return "category";
+	if (value === "global") return "global";
+	return "unavailable";
+}
 
-  function applyPermissionPreset(preset: 'read' | 'write' | 'read-write' | 'read-edit-write') {
-    if (preset === 'read') {
-      apiPermissionRead = true;
-      apiPermissionEdit = false;
-      apiPermissionWrite = false;
-      return;
-    }
-    if (preset === 'write') {
-      apiPermissionRead = false;
-      apiPermissionEdit = false;
-      apiPermissionWrite = true;
-      return;
-    }
-    if (preset === 'read-write') {
-      apiPermissionRead = true;
-      apiPermissionEdit = false;
-      apiPermissionWrite = true;
-      return;
-    }
-    apiPermissionRead = true;
-    apiPermissionEdit = true;
-    apiPermissionWrite = true;
-  }
+function applyPermissionPreset(
+	preset: "read" | "write" | "read-write" | "read-edit-write",
+) {
+	if (preset === "read") {
+		apiPermissionRead = true;
+		apiPermissionEdit = false;
+		apiPermissionWrite = false;
+		return;
+	}
+	if (preset === "write") {
+		apiPermissionRead = false;
+		apiPermissionEdit = false;
+		apiPermissionWrite = true;
+		return;
+	}
+	if (preset === "read-write") {
+		apiPermissionRead = true;
+		apiPermissionEdit = false;
+		apiPermissionWrite = true;
+		return;
+	}
+	apiPermissionRead = true;
+	apiPermissionEdit = true;
+	apiPermissionWrite = true;
+}
 
-  async function handleSubmit(e?: Event) {
-    e?.preventDefault();
-    if (busy) return;
-    if (isDeleteMode) {
-      if (!onDelete) {
-        close();
-        return;
-      }
-      busy = true;
-      try {
-        await onDelete();
-        deletedCategoryName = category?.name ?? 'Category';
-      } catch (err) {
-        console.error('CategoryDialog: delete failed', err);
-        error = err instanceof Error ? err.message : m.categories_delete_error();
-      } finally {
-        busy = false;
-      }
-      return;
-    }
+async function handleSubmit(e?: Event) {
+	e?.preventDefault();
+	if (busy) return;
+	if (isDeleteMode) {
+		if (!onDelete) {
+			close();
+			return;
+		}
+		busy = true;
+		try {
+			await onDelete();
+			deletedCategoryName = category?.name ?? "Category";
+		} catch (err) {
+			console.error("CategoryDialog: delete failed", err);
+			error = err instanceof Error ? err.message : m.categories_delete_error();
+		} finally {
+			busy = false;
+		}
+		return;
+	}
 
-    if (trimmedName.length === 0) {
-      error = 'Name is required';
-      return;
-    }
-    if (apiMode !== 'unavailable' && !hasAnyPermission) {
-      error = 'Select at least one permission';
-      return;
-    }
-    if (!onSave) {
-      close();
-      return;
-    }
-    error = null;
-    busy = true;
-    try {
-      const savedCategory = await onSave({
-        name: trimmedName,
-        apiMode: normalizeApiMode(apiMode),
-        apiPermissionRead: apiMode === 'unavailable' ? false : apiPermissionRead,
-        apiPermissionEdit: apiMode === 'unavailable' ? false : apiPermissionEdit,
-        apiPermissionWrite: apiMode === 'unavailable' ? false : apiPermissionWrite,
-      });
-      if (mode === 'create' && savedCategory) {
-        createdCategoryName = savedCategory.name;
-        if (apiMode === 'category') {
-          try {
-            const issued = await createCategoryApiKey(savedCategory.id, undefined, request.fetch);
-            createdCategoryKey = issued.key;
-          } catch (keyError) {
-            error = `Category created, but its API key could not be created: ${categoryDialogErrorMessage(keyError, 'Unknown error')}`;
-          }
-        }
-        return;
-      }
-      close();
-    } catch (err) {
-      console.error('CategoryDialog: save failed', err);
-      error = categoryDialogErrorMessage(
-        err,
-        mode === 'edit' ? m.categories_update_error() : m.categories_create_error()
-      );
-    } finally {
-      busy = false;
-    }
-  }
+	if (trimmedName.length === 0) {
+		error = "Name is required";
+		return;
+	}
+	if (apiMode !== "unavailable" && !hasAnyPermission) {
+		error = "Select at least one permission";
+		return;
+	}
+	if (!onSave) {
+		close();
+		return;
+	}
+	error = null;
+	busy = true;
+	try {
+		const savedCategory = await onSave({
+			name: trimmedName,
+			apiMode: normalizeApiMode(apiMode),
+			apiPermissionRead: apiMode === "unavailable" ? false : apiPermissionRead,
+			apiPermissionEdit: apiMode === "unavailable" ? false : apiPermissionEdit,
+			apiPermissionWrite:
+				apiMode === "unavailable" ? false : apiPermissionWrite,
+		});
+		if (mode === "create" && savedCategory) {
+			createdCategoryName = savedCategory.name;
+			if (apiMode === "category") {
+				try {
+					const issued = await createCategoryApiKey(
+						savedCategory.id,
+						undefined,
+						request.fetch,
+					);
+					createdCategoryKey = issued.key;
+				} catch (keyError) {
+					error = `Category created, but its API key could not be created: ${categoryDialogErrorMessage(keyError, "Unknown error")}`;
+				}
+			}
+			return;
+		}
+		close();
+	} catch (err) {
+		console.error("CategoryDialog: save failed", err);
+		error = categoryDialogErrorMessage(
+			err,
+			mode === "edit"
+				? m.categories_update_error()
+				: m.categories_create_error(),
+		);
+	} finally {
+		busy = false;
+	}
+}
 
-  function close() {
-    if (busy) return;
-    open = false;
-    onClose?.();
-  }
+function close() {
+	if (busy) return;
+	open = false;
+	onClose?.();
+}
 
-  function handleDialogOpenChange(next: boolean) {
-    // Dialog bindings are updated before this callback runs. Keep the modal
-    // open while a delete/save request is in flight so errors and success
-    // feedback cannot be lost to Escape or a backdrop click.
-    if (!next && busy) {
-      open = true;
-      return;
-    }
-    if (!next) close();
-  }
+function handleDialogOpenChange(next: boolean) {
+	// Dialog bindings are updated before this callback runs. Keep the modal
+	// open while a delete/save request is in flight so errors and success
+	// feedback cannot be lost to Escape or a backdrop click.
+	if (!next && busy) {
+		open = true;
+		return;
+	}
+	if (!next) close();
+}
 </script>
 
 <Dialog bind:open onOpenChange={handleDialogOpenChange}>
