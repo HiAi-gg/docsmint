@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/sdk",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",

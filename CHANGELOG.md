@@ -36,6 +36,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-08-12
+
+### Fixed
+
+- Make the mobile sidebar reliably open by touch and by a wider edge swipe
+  without intercepting vertical document scrolling.
+- Keep editor formatting, emoji, table, and alignment menus inside the mobile
+  viewport and above the editor surface.
+- Keep sidebar document actions and category settings directly reachable on
+  coarse-pointer Android devices.
+
 ## [0.5.8] - 2026-08-11
 
 ### Fixed
