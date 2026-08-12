@@ -184,14 +184,34 @@ export async function reembedDocsInFolder(
 export async function reembedDocsInFolderAdmin(
 	folderId: string,
 ): Promise<number> {
-	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
-	const rows = await withTenant(REEMBED_ADMIN_TENANT, (tx) => {
+	return reembedDocsInFolderAdminWith(folderId, loadAdminFolderDocumentIds);
+}
+
+type AdminFolderDocumentLoader = (
+	folderId: string,
+	limit: number,
+) => Promise<Array<{ id: string }>>;
+
+async function loadAdminFolderDocumentIds(
+	folderId: string,
+	limit: number,
+): Promise<Array<{ id: string }>> {
+	return withTenant(REEMBED_ADMIN_TENANT, (tx) => {
 		const query = tx
 			.select({ id: documents.id })
 			.from(documents)
 			.where(eq(documents.folderId, folderId));
 		return limit > 0 ? query.limit(limit) : query;
 	});
+}
+
+/** @internal Test seam for the operator reindex orchestration. */
+export async function reembedDocsInFolderAdminWith(
+	folderId: string,
+	loadRows: AdminFolderDocumentLoader,
+): Promise<number> {
+	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
+	const rows = await loadRows(folderId, limit);
 	const enqueued = await enqueueReembed(rows.map((r) => r.id));
 	if (enqueued > 0) {
 		logger.info(

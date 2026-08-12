@@ -31,7 +31,7 @@
  * the route integration suite.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
 // Mock the Redis module before importing reembed so the dedup helper sees
 // our fake. We also mock `enqueueEmbedding` (the queue's actual push) so
@@ -63,57 +63,17 @@ const fakeEnqueue = mock((_id: string) => {
 	// no-op - we count via mock.calls.length
 });
 
-// Mock the db module so `reembedDocsInFolderAdmin` can exercise its
-// end-to-end happy path without a real Postgres. We only model the
-// `select().from().where().limit()` chain shape used by the helper; any
-// other shape (e.g. `.insert()`, `.update()`) is out of scope here.
-//
-// Rows are returned unconditionally - the mock does not actually filter by
-// the WHERE argument. This is intentional: the unit test locks in the
-// helper's contract ("take a folderId, return whatever the db returns,
-// push through dedup") rather than the SQL semantics, which require a
-// real db to test meaningfully. The owner_id-bypass regression is covered
-// by the route integration suite.
 const adminMockRows: Array<{ id: string }> = [
 	{ id: "admin-doc-1" },
 	{ id: "admin-doc-2" },
 ];
-const dbChain: {
-	where: ReturnType<typeof mock>;
-	limit: ReturnType<typeof mock>;
-} = {
-	where: mock(() => dbChain),
-	limit: mock(() => Promise.resolve(adminMockRows)),
-};
-
-const fakeDb = {
-	select: mock(() => ({ from: mock(() => dbChain) })),
-};
-const fakeClient = { unsafe: mock(async () => []) };
 
 mock.module("../lib/redis", () => ({ redis: fakeRedis }));
 mock.module("../lib/embedding-queue", () => ({
 	enqueueEmbedding: fakeEnqueue,
 }));
-mock.module("../lib/db", () => ({
-	db: fakeDb,
-	client: fakeClient,
-}));
-mock.module("@hiai-docs/db/with-tenant", () => ({
-	ZERO_UUID: "00000000-0000-0000-0000-000000000000",
-	adminTenantContext: (userId: string) => ({ userId, role: "admin" as const }),
-	shareGuestTenantContext: (userId: string) => ({
-		userId,
-		role: "user" as const,
-	}),
-	withTenant: async <T>(
-		_context: unknown,
-		callback: (tx: typeof fakeDb) => Promise<T>,
-	): Promise<T> => callback(fakeDb),
-}));
-
 // Now safe to import the module under test.
-const { enqueueReembed, reembedDocsInFolderAdmin } = await import(
+const { enqueueReembed, reembedDocsInFolderAdminWith } = await import(
 	"../lib/reembed"
 );
 
@@ -203,47 +163,29 @@ describe("enqueueReembed best-effort on Redis failure", () => {
 });
 
 describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
-	beforeEach(() => {
-		// Reset the db-chain mock counters between tests so a per-test
-		// call count assertion is meaningful.
-		dbChain.where.mockClear();
-		dbChain.limit.mockClear();
-	});
-
 	test("returns the docs the db layer hands back, bypassing owner_id", async () => {
 		// Smoke test: the helper takes only a folderId (no ownerId argument),
 		// reads from the db, and pushes the returned ids through the dedup
 		// path. The pre-fix code path (admin route passing "" as ownerId to
 		// the user-scoped helper) would have returned 0 instead of 2 here.
-		const pushed = await reembedDocsInFolderAdmin("folder-x");
+		const loadRows = mock(async () => adminMockRows);
+		const pushed = await reembedDocsInFolderAdminWith("folder-x", loadRows);
 
 		expect(pushed).toBe(2);
 		expect(fakeEnqueue.mock.calls.map((c) => c[0])).toEqual([
 			"admin-doc-1",
 			"admin-doc-2",
 		]);
-		// Verify the helper actually queried the db (select + from + where + limit
-		// chain was exercised). This catches a future refactor that accidentally
-		// short-circuits the db call.
-		expect(dbChain.where.mock.calls.length).toBe(1);
-		expect(dbChain.limit.mock.calls.length).toBe(1);
+		expect(loadRows).toHaveBeenCalledWith("folder-x", expect.any(Number));
 	});
 
 	test("returns 0 when the db returns no rows for the folder", async () => {
-		// Swap the db-chain's `.limit` to return an empty array for this test.
-		const originalLimit = dbChain.limit.getMockImplementation();
-		dbChain.limit = mock(() => Promise.resolve([]));
-
-		const pushed = await reembedDocsInFolderAdmin("empty-folder");
+		const pushed = await reembedDocsInFolderAdminWith(
+			"empty-folder",
+			async () => [],
+		);
 
 		expect(pushed).toBe(0);
 		expect(fakeEnqueue.mock.calls.length).toBe(0);
-
-		// Restore for the next test in the suite.
-		// The cast widens the union (Mock | raw function | undefined) into
-		// the Mock type expected by the `dbChain.limit` slot — without it
-		// TypeScript narrows the union and rejects the raw-function branch.
-		dbChain.limit = (originalLimit ??
-			mock(() => Promise.resolve(adminMockRows))) as ReturnType<typeof mock>;
 	});
 });
