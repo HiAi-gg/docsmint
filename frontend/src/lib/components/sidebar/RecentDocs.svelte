@@ -1,243 +1,238 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog";
-import {
-	Dialog,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import { Check, Copy, FileText, Loader2, MoreVertical } from "lucide-svelte";
-import { onDestroy, onMount } from "svelte";
-import {
-	type Document,
-	deleteDocument,
-	getDocument,
-	listDocuments,
-	updateDocument,
-} from "$lib/api/documents";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import {
-	getDocRefreshNonce,
-	getSelectedTag,
-	refreshDocs,
-} from "$lib/stores/tag-store.svelte";
-import { copyToClipboard } from "$lib/utils/clipboard.js";
-import { cn } from "$lib/utils.js";
+  import { Button } from '@hiai-gg/hiai-ui/components/ui/button';
+  import { ConfirmDialog } from '@hiai-gg/hiai-ui/components/ui/confirm-dialog';
+  import {
+    Dialog,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+  } from '@hiai-gg/hiai-ui/components/ui/dialog';
+  import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+  } from '@hiai-gg/hiai-ui/components/ui/dropdown-menu';
+  import { Input } from '@hiai-gg/hiai-ui/components/ui/input';
+  import { Label } from '@hiai-gg/hiai-ui/components/ui/label';
+  import { Check, Copy, FileText, Loader2, MoreVertical } from 'lucide-svelte';
+  import { onDestroy, onMount } from 'svelte';
+  import {
+    type Document,
+    deleteDocument,
+    getDocument,
+    listDocuments,
+    updateDocument,
+  } from '$lib/api/documents';
+  import { getDocsmintRequestAdapter } from '$lib/hosts/route-context';
+  import * as m from '$lib/paraglide/messages.js';
+  import { getDocRefreshNonce, getSelectedTag, refreshDocs } from '$lib/stores/tag-store.svelte';
+  import { copyToClipboard } from '$lib/utils/clipboard.js';
+  import { cn } from '$lib/utils.js';
 
-const request = getDocsmintRequestAdapter();
-let recentDocs = $state<Document[]>([]);
-let activeId = $state<string | null>(null);
-let loadError = $state<string | null>(null);
-let copiedDocId = $state<string | null>(null);
-let copyLoadingDocId = $state<string | null>(null);
-let copyTimer: ReturnType<typeof setTimeout> | null = null;
-// Tiny initial-fetch delay so the sidebar lists (RecentDocs, FolderTree)
-// don't fire their listDocuments calls at exactly the same instant on a
-// cold page load — staggered delays here keep the burst under the
-// documentRateLimiter threshold.
-const INITIAL_FETCH_DELAY_MS = 0;
+  const request = getDocsmintRequestAdapter();
+  let recentDocs = $state<Document[]>([]);
+  let activeId = $state<string | null>(null);
+  let loadError = $state<string | null>(null);
+  let copiedDocId = $state<string | null>(null);
+  let copyLoadingDocId = $state<string | null>(null);
+  let copyTimer: ReturnType<typeof setTimeout> | null = null;
+  // Tiny initial-fetch delay so the sidebar lists (RecentDocs, FolderTree)
+  // don't fire their listDocuments calls at exactly the same instant on a
+  // cold page load — staggered delays here keep the burst under the
+  // documentRateLimiter threshold.
+  const INITIAL_FETCH_DELAY_MS = 0;
 
-// Rename dialog state.
-let showRenameDialog = $state(false);
-let renameTarget = $state<{ id: string; title: string } | null>(null);
-let renameValue = $state("");
-let renameError = $state<string | null>(null);
-let renameSubmitting = $state(false);
+  // Rename dialog state.
+  let showRenameDialog = $state(false);
+  let renameTarget = $state<{ id: string; title: string } | null>(null);
+  let renameValue = $state('');
+  let renameError = $state<string | null>(null);
+  let renameSubmitting = $state(false);
 
-// Delete confirmation state.
-let showDeleteDialog = $state(false);
-let deleteTarget = $state<{ id: string; title: string } | null>(null);
-let deleteBusy = $state(false);
+  // Delete confirmation state.
+  let showDeleteDialog = $state(false);
+  let deleteTarget = $state<{ id: string; title: string } | null>(null);
+  let deleteBusy = $state(false);
 
-async function fetchRecentDocs() {
-	try {
-		const tag = getSelectedTag();
-		const res = await listDocuments(
-			{ limit: 6, ...(tag ? { tag } : {}) },
-			request.fetch,
-		);
-		recentDocs = res.items;
-		loadError = null;
-	} catch (e) {
-		console.error("RecentDocs: failed to load recent documents", e);
-		loadError = "Failed to load recent documents";
-	}
-}
+  async function fetchRecentDocs() {
+    try {
+      const tag = getSelectedTag();
+      const res = await listDocuments({ limit: 6, ...(tag ? { tag } : {}) }, request.fetch);
+      recentDocs = res.items;
+      loadError = null;
+    } catch (e) {
+      console.error('RecentDocs: failed to load recent documents', e);
+      loadError = 'Failed to load recent documents';
+    }
+  }
 
-onMount(() => {
-	if (INITIAL_FETCH_DELAY_MS <= 0) {
-		void fetchRecentDocs();
-		return;
-	}
-	const timer = setTimeout(() => {
-		void fetchRecentDocs();
-	}, INITIAL_FETCH_DELAY_MS);
-	return () => clearTimeout(timer);
-});
+  onMount(() => {
+    if (INITIAL_FETCH_DELAY_MS <= 0) {
+      void fetchRecentDocs();
+      return;
+    }
+    const timer = setTimeout(() => {
+      void fetchRecentDocs();
+    }, INITIAL_FETCH_DELAY_MS);
+    return () => clearTimeout(timer);
+  });
 
-$effect(() => {
-	const nonce = getDocRefreshNonce();
-	if (nonce === 0) return;
-	void fetchRecentDocs();
-});
+  $effect(() => {
+    const nonce = getDocRefreshNonce();
+    if (nonce === 0) return;
+    void fetchRecentDocs();
+  });
 
-let firstTagRun = true;
-$effect(() => {
-	const tag = getSelectedTag();
-	if (firstTagRun) {
-		firstTagRun = false;
-		return;
-	}
-	void fetchRecentDocs();
-});
+  let firstTagRun = true;
+  $effect(() => {
+    const tag = getSelectedTag();
+    if (firstTagRun) {
+      firstTagRun = false;
+      return;
+    }
+    void fetchRecentDocs();
+  });
 
-// Note: a previous `$effect` here watched `getDocRefreshNonce()` and
-// `getSelectedTag()` to refetch the list on every refresh/tag change.
-// It caused the sidebar to fire a listDocuments call on EVERY reactive
-// dependency change — which combined with the other sidebar components
-// burst past the documentRateLimiter and triggered 429s on cold loads.
-//
-// We now refresh only:
-//   - once on mount (above)
-//   - after local rename/delete handlers (which already call fetchRecentDocs)
-//   - when the explicit `refreshRecentDocs()` helper below is invoked from
-//     outside (e.g. by the dashboard after import) via refreshDocs().
-//
-// Cross-component invalidation flows through `refreshDocs()` (the nonce
-// store), but consumers should call `refreshRecentDocs()` directly when
-// they need an immediate reload rather than relying on a shared $effect.
+  // Note: a previous `$effect` here watched `getDocRefreshNonce()` and
+  // `getSelectedTag()` to refetch the list on every refresh/tag change.
+  // It caused the sidebar to fire a listDocuments call on EVERY reactive
+  // dependency change — which combined with the other sidebar components
+  // burst past the documentRateLimiter and triggered 429s on cold loads.
+  //
+  // We now refresh only:
+  //   - once on mount (above)
+  //   - after local rename/delete handlers (which already call fetchRecentDocs)
+  //   - when the explicit `refreshRecentDocs()` helper below is invoked from
+  //     outside (e.g. by the dashboard after import) via refreshDocs().
+  //
+  // Cross-component invalidation flows through `refreshDocs()` (the nonce
+  // store), but consumers should call `refreshRecentDocs()` directly when
+  // they need an immediate reload rather than relying on a shared $effect.
 
-/**
- * Public reload entry point. Exposed so other components (dashboard
- * after import, FolderTree after rename/delete, etc.) can request an
- * immediate refresh without going through the shared nonce store —
- * keeps the burst of initial fetches under control.
- */
-export async function refreshRecentDocs(): Promise<void> {
-	await fetchRecentDocs();
-}
+  /**
+   * Public reload entry point. Exposed so other components (dashboard
+   * after import, FolderTree after rename/delete, etc.) can request an
+   * immediate refresh without going through the shared nonce store —
+   * keeps the burst of initial fetches under control.
+   */
+  export async function refreshRecentDocs(): Promise<void> {
+    await fetchRecentDocs();
+  }
 
-onDestroy(() => {
-	if (copyTimer) {
-		clearTimeout(copyTimer);
-		copyTimer = null;
-	}
-});
+  onDestroy(() => {
+    if (copyTimer) {
+      clearTimeout(copyTimer);
+      copyTimer = null;
+    }
+  });
 
-async function handleCopyContent(e: MouseEvent, docId: string) {
-	e.preventDefault();
-	e.stopPropagation();
-	if (typeof window === "undefined") return;
-	// Copy the document's full markdown source. The list endpoint returns
-	// `content` truncated to 200 chars at the SQL level, so we fetch the
-	// single-document endpoint first to get the complete text. If the
-	// fetch fails we fall back to whatever the list payload already has
-	// (excerpt, then truncated content) so the button never silently
-	// does nothing.
-	const cached = recentDocs.find((d) => d.id === docId);
-	let text = "";
-	copyLoadingDocId = docId;
-	try {
-		const full = await getDocument(docId, request.fetch);
-		text = full.content ?? "";
-	} catch (err) {
-		console.error("RecentDocs: failed to fetch full document for copy", err);
-		text = cached?.excerpt ?? cached?.content ?? "";
-	} finally {
-		copyLoadingDocId = null;
-	}
-	if (!text) return;
-	const ok = await copyToClipboard(text);
-	if (!ok) return;
-	copiedDocId = docId;
-	if (copyTimer) clearTimeout(copyTimer);
-	copyTimer = setTimeout(() => {
-		copiedDocId = null;
-		copyTimer = null;
-	}, 2000);
-}
+  async function handleCopyContent(e: MouseEvent, docId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window === 'undefined') return;
+    // Copy the document's full markdown source. The list endpoint returns
+    // `content` truncated to 200 chars at the SQL level, so we fetch the
+    // single-document endpoint first to get the complete text. If the
+    // fetch fails we fall back to whatever the list payload already has
+    // (excerpt, then truncated content) so the button never silently
+    // does nothing.
+    const cached = recentDocs.find((d) => d.id === docId);
+    let text = '';
+    copyLoadingDocId = docId;
+    try {
+      const full = await getDocument(docId, request.fetch);
+      text = full.content ?? '';
+    } catch (err) {
+      console.error('RecentDocs: failed to fetch full document for copy', err);
+      text = cached?.excerpt ?? cached?.content ?? '';
+    } finally {
+      copyLoadingDocId = null;
+    }
+    if (!text) return;
+    const ok = await copyToClipboard(text);
+    if (!ok) return;
+    copiedDocId = docId;
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      copiedDocId = null;
+      copyTimer = null;
+    }, 2000);
+  }
 
-// --- Rename / delete ---
-function startRename(id: string, title: string) {
-	renameTarget = { id, title };
-	renameValue = title;
-	renameError = null;
-	showRenameDialog = true;
-}
+  // --- Rename / delete ---
+  function startRename(id: string, title: string) {
+    renameTarget = { id, title };
+    renameValue = title;
+    renameError = null;
+    showRenameDialog = true;
+  }
 
-function closeRenameDialog() {
-	showRenameDialog = false;
-	renameTarget = null;
-	renameValue = "";
-	renameError = null;
-	renameSubmitting = false;
-}
+  function closeRenameDialog() {
+    showRenameDialog = false;
+    renameTarget = null;
+    renameValue = '';
+    renameError = null;
+    renameSubmitting = false;
+  }
 
-async function submitRename(e?: Event) {
-	e?.preventDefault();
-	const target = renameTarget;
-	if (!target) return;
-	const trimmed = renameValue.trim();
-	if (trimmed.length === 0) {
-		renameError = "Name is required";
-		return;
-	}
-	renameSubmitting = true;
-	try {
-		await updateDocument(target.id, { title: trimmed }, request.fetch);
-		closeRenameDialog();
-		await fetchRecentDocs();
-		// Notify the other sidebar lists (FolderTree) to refetch.
-		refreshDocs();
-	} catch (err) {
-		console.error("RecentDocs: rename failed", err);
-		renameError = err instanceof Error ? err.message : m.error_generic();
-	} finally {
-		renameSubmitting = false;
-	}
-}
+  async function submitRename(e?: Event) {
+    e?.preventDefault();
+    const target = renameTarget;
+    if (!target) return;
+    const trimmed = renameValue.trim();
+    if (trimmed.length === 0) {
+      renameError = 'Name is required';
+      return;
+    }
+    renameSubmitting = true;
+    try {
+      await updateDocument(target.id, { title: trimmed }, request.fetch);
+      closeRenameDialog();
+      await fetchRecentDocs();
+      // Notify the other sidebar lists (FolderTree) to refetch.
+      refreshDocs();
+    } catch (err) {
+      console.error('RecentDocs: rename failed', err);
+      renameError = err instanceof Error ? err.message : m.error_generic();
+    } finally {
+      renameSubmitting = false;
+    }
+  }
 
-function startDelete(id: string, title: string) {
-	deleteTarget = { id, title };
-	showDeleteDialog = true;
-}
+  function startDelete(id: string, title: string) {
+    deleteTarget = { id, title };
+    showDeleteDialog = true;
+  }
 
-function cancelDelete() {
-	showDeleteDialog = false;
-	deleteTarget = null;
-	deleteBusy = false;
-}
+  function cancelDelete() {
+    showDeleteDialog = false;
+    deleteTarget = null;
+    deleteBusy = false;
+  }
 
-async function confirmDelete() {
-	const target = deleteTarget;
-	if (!target || deleteBusy) return;
-	deleteBusy = true;
-	try {
-		await deleteDocument(target.id, request.fetch);
-		cancelDelete();
-		await fetchRecentDocs();
-		refreshDocs();
-	} catch (err) {
-		console.error("RecentDocs: delete failed", err);
-		loadError = err instanceof Error ? err.message : m.error_generic();
-		deleteBusy = false;
-	}
-}
+  async function confirmDelete() {
+    const target = deleteTarget;
+    if (!target || deleteBusy) return;
+    deleteBusy = true;
+    try {
+      await deleteDocument(target.id, request.fetch);
+      cancelDelete();
+      await fetchRecentDocs();
+      refreshDocs();
+    } catch (err) {
+      console.error('RecentDocs: delete failed', err);
+      loadError = err instanceof Error ? err.message : m.error_generic();
+      deleteBusy = false;
+    }
+  }
 </script>
 
 <div class="space-y-1">
-  <h3 class="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">{m.sidebar_recent()}</h3>
+  <h3 class="mb-2 px-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    {m.sidebar_recent()}
+  </h3>
   {#if loadError}
     <p class="px-2 text-xs text-destructive">{loadError}</p>
   {/if}
@@ -245,10 +240,12 @@ async function confirmDelete() {
     <div class="group/doc flex min-w-0 items-center gap-1">
       <a
         href={`/docs/${doc.id}`}
-        onclick={() => { activeId = doc.id; }}
+        onclick={() => {
+          activeId = doc.id;
+        }}
         class={cn(
-          "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
-          activeId === doc.id && "bg-accent text-accent-foreground"
+          'flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+          activeId === doc.id && 'bg-accent text-accent-foreground'
         )}
       >
         <FileText class="size-4 shrink-0 text-muted-foreground" />
@@ -259,7 +256,10 @@ async function confirmDelete() {
       </a>
       <button
         type="button"
-        class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {copiedDocId === doc.id || copyLoadingDocId === doc.id ? 'opacity-100' : ''}"
+        class="sidebar-touch-action inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring {copiedDocId ===
+          doc.id || copyLoadingDocId === doc.id
+          ? 'opacity-100'
+          : ''}"
         aria-label={m.action_copy_content()}
         title={m.action_copy_content()}
         disabled={copyLoadingDocId === doc.id}
@@ -279,10 +279,13 @@ async function confirmDelete() {
             <button
               {...props}
               type="button"
-              class="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              class="sidebar-touch-action inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-accent-foreground group-hover/doc:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={m.editor_more_options()}
               title={m.editor_more_options()}
-              onclick={(e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); }}
+              onclick={(e: MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
               <MoreVertical class="size-3.5" />
             </button>
@@ -305,7 +308,12 @@ async function confirmDelete() {
 </div>
 
 <!-- Rename dialog -->
-<Dialog bind:open={showRenameDialog} onOpenChange={(next) => { if (!next) closeRenameDialog(); }}>
+<Dialog
+  bind:open={showRenameDialog}
+  onOpenChange={(next) => {
+    if (!next) closeRenameDialog();
+  }}
+>
   <DialogHeader>
     <DialogTitle>{m.folders_rename()}</DialogTitle>
     <DialogDescription>{m.doc_title_label()}</DialogDescription>
@@ -322,12 +330,14 @@ async function confirmDelete() {
         maxlength={255}
         required
         disabled={renameSubmitting}
-        aria-invalid={renameError ? "true" : undefined}
-        aria-describedby={renameError ? "recent-rename-input-error" : undefined}
+        aria-invalid={renameError ? 'true' : undefined}
+        aria-describedby={renameError ? 'recent-rename-input-error' : undefined}
         autocomplete="off"
       />
       {#if renameError}
-        <p id="recent-rename-input-error" class="text-xs text-destructive" role="alert">{renameError}</p>
+        <p id="recent-rename-input-error" class="text-xs text-destructive" role="alert">
+          {renameError}
+        </p>
       {/if}
     </div>
   </form>
@@ -358,3 +368,13 @@ async function confirmDelete() {
   onConfirm={confirmDelete}
   onCancel={cancelDelete}
 />
+
+<style>
+  @media (pointer: coarse) {
+    .sidebar-touch-action {
+      min-width: 36px;
+      min-height: 36px;
+      opacity: 1;
+    }
+  }
+</style>
