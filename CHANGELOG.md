@@ -36,6 +36,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.5.10] - 2026-08-12
+
+### Fixed
+
+- Make the admin re-embedding orchestration test deterministic when the full
+  backend suite runs concurrently in CI.
+
 ## [0.5.9] - 2026-08-12
 
 ### Fixed
