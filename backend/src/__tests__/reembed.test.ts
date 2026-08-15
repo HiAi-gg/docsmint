@@ -168,7 +168,9 @@ describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
 		// reads from the db, and pushes the returned ids through the dedup
 		// path. The pre-fix code path (admin route passing "" as ownerId to
 		// the user-scoped helper) would have returned 0 instead of 2 here.
-		const loadRows = mock(async () => adminMockRows);
+		const loadRows = mock((_folderId: string, _limit: number) =>
+			Promise.resolve(adminMockRows),
+		);
 		const pushed = await reembedDocsInFolderAdminWith("folder-x", loadRows);
 
 		expect(pushed).toBe(2);
@@ -176,7 +178,8 @@ describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
 			"admin-doc-1",
 			"admin-doc-2",
 		]);
-		expect(loadRows).toHaveBeenCalledWith("folder-x", expect.any(Number));
+		expect(loadRows).toHaveBeenCalledTimes(1);
+		expect(loadRows.mock.calls[0]?.[0]).toBe("folder-x");
 	});
 
 	test("returns 0 when the db returns no rows for the folder", async () => {
