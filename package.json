@@ -18,7 +18,8 @@
     "frontend",
     "packages/*"
   ],
-  "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
+  "license": "Apache-2.0",
+  "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"
@@ -29,11 +30,14 @@
   },
   "keywords": [
     "knowledge-base",
+    "knowledge-management",
     "ai-native",
+    "ai-agents",
     "wiki",
     "markdown",
     "ai-embeddings",
     "rag",
+    "graphrag",
     "semantic-search",
     "self-hosted",
     "pgvector",
@@ -41,6 +45,7 @@
     "local-llm",
     "pwa",
     "progressive-web-app",
+    "mcp",
     "offline-knowledge-base",
     "docsmint",
     "outline-alternative",
@@ -186,10 +191,10 @@
       "import": "./backend/src/lib/api-keys.ts",
       "types": "./backend/src/lib/api-keys.ts"
     },
-	"./backend/lib/api-key-facade": {
-		"import": "./packages/sdk/dist/backend-api-key-facade.js",
-		"types": "./backend/src/lib/api-key-facade.ts"
-	},
+    "./backend/lib/api-key-facade": {
+      "import": "./packages/sdk/dist/backend-api-key-facade.js",
+      "types": "./backend/src/lib/api-key-facade.ts"
+    },
     "./backend/lib/audit": {
       "import": "./backend/src/lib/audit.ts",
       "types": "./backend/src/lib/audit.ts"

@@ -64,6 +64,9 @@ export interface DocsDocumentListItem {
 	title: string;
 	content: string;
 	folderId: string | null;
+	folderName: string | null;
+	categoryId: string | null;
+	categoryName: string | null;
 	createdAt: string;
 	updatedAt: string;
 	tags: DocsTag[];
@@ -81,6 +84,9 @@ export interface DocsDocumentCursorPage {
 	items: DocsDocumentListItem[];
 	nextCursor: string | null;
 }
+
+export type DocsDocumentSortField = "title" | "category" | "folder" | "updated";
+export type DocsSortOrder = "asc" | "desc";
 
 // ---------------------------------------------------------------------------
 // Folders
@@ -118,10 +124,7 @@ export interface DocsFolderUpdateInput {
 // Categories
 // ---------------------------------------------------------------------------
 
-export type DocsCategoryApiMode =
-	| "unavailable"
-	| "global"
-	| "category";
+export type DocsCategoryApiMode = "unavailable" | "global" | "category";
 
 export interface DocsCategory {
 	id: string;

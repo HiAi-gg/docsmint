@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.5.10",
+  "version": "0.6.0",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -14,7 +14,7 @@
     "./dist/backend-account-runtime-cleanup.js": false
   },
   "license": "Apache-2.0",
-  "description": "The lightweight, AI-native self-hosted knowledge base \u2014 built-in RAG, hybrid semantic search, and a clean REST API for AI agents.",
+  "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"
@@ -25,11 +25,14 @@
   },
   "keywords": [
     "knowledge-base",
+    "knowledge-management",
     "ai-native",
+    "ai-agents",
     "wiki",
     "markdown",
     "ai-embeddings",
     "rag",
+    "graphrag",
     "semantic-search",
     "self-hosted",
     "pgvector",
@@ -37,6 +40,7 @@
     "local-llm",
     "pwa",
     "progressive-web-app",
+    "mcp",
     "offline-knowledge-base",
     "docsmint",
     "outline-alternative",
@@ -88,10 +92,10 @@
       "import": "./dist/storage-quota.js",
       "types": "./dist/storage-quota.d.ts"
     },
-	"./backend/lib/api-key-facade": {
-		"import": "./dist/backend-api-key-facade.js",
-		"types": "./backend/src/lib/api-key-facade.ts"
-	},
+    "./backend/lib/api-key-facade": {
+      "import": "./dist/backend-api-key-facade.js",
+      "types": "./backend/src/lib/api-key-facade.ts"
+    },
     "./frontend/app-shell": {
       "node": "./dist/frontend-ssr/app-shell.js",
       "import": "./dist/frontend/app-shell.js",
@@ -182,6 +186,16 @@
       "node": "./dist/frontend-ssr/components/editor/document-editor.js",
       "import": "./dist/frontend/components/editor/document-editor.js",
       "types": "./dist/frontend/components/editor/document-editor.d.ts"
+    },
+    "./frontend/components/editor/compact-editor": {
+      "node": "./dist/frontend-ssr/components/editor/compact-editor.js",
+      "import": "./dist/frontend/components/editor/compact-editor.js",
+      "types": "./dist/frontend/components/editor/compact-editor.d.ts"
+    },
+    "./frontend/editor-preferences": {
+      "node": "./dist/frontend-ssr/editor-preferences.js",
+      "import": "./dist/frontend/editor-preferences.js",
+      "types": "./dist/frontend/editor-preferences.d.ts"
     },
     "./frontend/components/folder-tree-selector": {
       "node": "./dist/frontend-ssr/components/folder-tree-selector.js",
@@ -340,9 +354,9 @@
     "backend/src/lib/redis-factory.ts",
     "backend/src/lib/storage-factory.ts",
     "backend/src/lib/logger.ts",
-	"backend/src/lib/api-key-facade.ts",
-	"backend/src/lib/api-keys.ts",
-	"backend/src/lib/api-key-encryption.ts",
+    "backend/src/lib/api-key-facade.ts",
+    "backend/src/lib/api-keys.ts",
+    "backend/src/lib/api-key-encryption.ts",
     "backend/src/lib/lifecycle-service.ts",
     "README.md",
     "LICENSE"

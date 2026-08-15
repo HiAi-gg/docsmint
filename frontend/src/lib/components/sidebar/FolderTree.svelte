@@ -2064,7 +2064,7 @@ const buckets = $derived.by(() => {
 />
 
 <style>
-  @media (pointer: coarse) {
+  @media (hover: none), (pointer: coarse) {
     .sidebar-touch-action {
       min-width: 36px;
       min-height: 36px;

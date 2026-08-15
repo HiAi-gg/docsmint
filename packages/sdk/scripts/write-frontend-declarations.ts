@@ -20,8 +20,10 @@ export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; reques
 export declare const DocsmintAppShellHost: Component<DocsmintAppShellHostProps>;
 export declare function getDocsmintRequestAdapter(): DocsmintRequestAdapter;
 `,
-	"dashboard.d.ts": 'import type { Component } from "svelte";\nexport declare const DocsmintDashboardHost: Component;\n',
-	"search.d.ts": 'import type { Component } from "svelte";\nexport declare const DocsmintSearchHost: Component;\n',
+	"dashboard.d.ts":
+		'import type { Component } from "svelte";\nexport declare const DocsmintDashboardHost: Component;\n',
+	"search.d.ts":
+		'import type { Component } from "svelte";\nexport declare const DocsmintSearchHost: Component;\n',
 	"shared-document.d.ts": `import type { Component } from "svelte";
 export declare const DocsmintSharedDocumentHost: Component;
 export interface ProseMirrorNode {
@@ -78,10 +80,14 @@ export type FrontendExtensions = DocsmintFrontendExtensions;
 export interface DocsmintExtensionProviderProps { extensions?: Partial<DocsmintFrontendExtensions>; children: Snippet; }
 export declare const DocsmintExtensionProvider: Component<DocsmintExtensionProviderProps>;
 `,
-	"components/sidebar.d.ts": 'import type { Component } from "svelte";\nexport declare const Sidebar: Component;\n',
-	"components/settings.d.ts": 'import type { Component } from "svelte";\nexport declare const SettingsDialog: Component;\n',
-	"theme.d.ts": 'export type ThemeMode = "light" | "dark" | "system";\nexport declare const theme: { readonly value: ThemeMode; readonly isDark: boolean };\nexport declare function setTheme(value: ThemeMode): void;\nexport declare function toggleTheme(): void;\n',
-	"i18n.d.ts": 'export type Locale = string;\nexport declare const messages: Record<string, unknown>;\nexport declare const supportedLocales: readonly Locale[];\nexport declare function setLocale(locale: Locale): unknown;\nexport declare function getMessage(name: string): unknown;\n',
+	"components/sidebar.d.ts":
+		'import type { Component } from "svelte";\nexport declare const Sidebar: Component;\n',
+	"components/settings.d.ts":
+		'import type { Component } from "svelte";\nexport declare const SettingsDialog: Component;\n',
+	"theme.d.ts":
+		'export type ThemeMode = "light" | "dark" | "system";\nexport declare const theme: { readonly value: ThemeMode; readonly isDark: boolean };\nexport declare function setTheme(value: ThemeMode): void;\nexport declare function toggleTheme(): void;\n',
+	"i18n.d.ts":
+		"export type Locale = string;\nexport declare const messages: Record<string, unknown>;\nexport declare const supportedLocales: readonly Locale[];\nexport declare function setLocale(locale: Locale): unknown;\nexport declare function getMessage(name: string): unknown;\n",
 };
 
 declarations["api/categories.d.ts"] = `
@@ -159,15 +165,16 @@ export declare function updateEmbeddingConfig(data: Partial<EmbeddingConfigDto>)
 export declare function deleteAccount(): Promise<void>;
 `;
 
-
-declarations["types.d.ts"] = `export interface Document { id: string; title: string; content?: string; folderId: string | null; folderName: string; categoryId?: string | null; tags: string[]; createdAt: string; updatedAt: string; excerpt: string; }
+declarations["types.d.ts"] =
+	`export interface Document { id: string; title: string; content?: string; folderId: string | null; folderName: string; categoryId?: string | null; tags: string[]; createdAt: string; updatedAt: string; excerpt: string; }
 export interface Folder { id: string; name: string; parentId: string | null; categoryId?: string | null; order: number; documentCount: number; subfolderCount: number; children: Folder[]; documents: Document[]; createdAt: string; updatedAt: string; }
 export interface Tag { id: string; name: string; color: string; }
 export type ViewMode = "grid" | "list";
 export type SortOption = "name" | "updated" | "created";
 export type SortDirection = "asc" | "desc";
 `;
-declarations["keyboard.d.ts"] = `export type ShortcutScope = "global" | "editor" | "dialog" | "list";
+declarations["keyboard.d.ts"] =
+	`export type ShortcutScope = "global" | "editor" | "dialog" | "list";
 export interface Shortcut { id: string; keys: string; handler: (event: KeyboardEvent) => void; scope?: ShortcutScope; description: string; enabled?: boolean; overrideInput?: boolean; }
 export declare function normaliseKeys(keys: string): string;
 export declare function registerShortcut(shortcut: Shortcut): void;
@@ -182,7 +189,8 @@ export declare function setShortcutHelpOpen(open: boolean): void;
 export declare function registerDefaultShortcuts(): void;
 export declare function handleKeyEvent(event: KeyboardEvent): boolean;
 `;
-declarations["folder-refresh.d.ts"] = `export declare function refreshFolders(): void;
+declarations["folder-refresh.d.ts"] =
+	`export declare function refreshFolders(): void;
 export declare function getGlobalFolderRefreshNonce(): number;
 export declare function bumpSubfoldersRefresh(folderId: string): void;
 export declare function getSubfoldersRefresh(folderId: string): number;
@@ -196,26 +204,31 @@ export declare function cn(...inputs: ClassValue[]): string;
 export type WithElementRef<T> = T & { ref?: Element | null };
 export declare function formatRelativeTime(isoDate: string): string;
 `;
-declarations["utils/clipboard.d.ts"] = "export declare function copyToClipboard(text: string): Promise<boolean>;\n";
-declarations["utils/dndzone.d.ts"] = `import type { ActionReturn } from "svelte/action";
+declarations["utils/clipboard.d.ts"] =
+	"export declare function copyToClipboard(text: string): Promise<boolean>;\n";
+declarations["utils/dndzone.d.ts"] =
+	`import type { ActionReturn } from "svelte/action";
 import type { DndEvent, DndZoneAttributes, Item, Options } from "svelte-dnd-action";
 export type { DndEvent, Item, Options };
 export declare function dndzone<T extends Item>(node: HTMLElement, options: Options<T>): ActionReturn<Options<T>, DndZoneAttributes<T>>;
 `;
-declarations["api/share.d.ts"] = `export interface ShareLink { id: string; token: string; documentId?: string; folderId?: string; categoryId?: string; hasPassword: boolean; expiresAt?: string | null; createdAt: string; title?: string; type?: "document" | "folder" | "category"; guestEmails: string[]; }
+declarations["api/share.d.ts"] =
+	`export interface ShareLink { id: string; token: string; documentId?: string; folderId?: string; categoryId?: string; hasPassword: boolean; expiresAt?: string | null; createdAt: string; title?: string; type?: "document" | "folder" | "category"; guestEmails: string[]; }
 export interface CreateShareLinkInput { documentId?: string; folderId?: string; categoryId?: string; password?: string; expiresIn?: "1h" | "1d" | "7d" | "30d" | "never"; guestEmails?: string[]; }
 export declare function createShareLink(data: CreateShareLinkInput): Promise<ShareLink>;
 export declare function listShareLinks(params?: { documentId?: string }): Promise<{ links: ShareLink[] }>;
 export declare function revokeShareLink(id: string): Promise<void>;
 `;
-declarations["api/attachments.d.ts"] = `export interface Attachment { id: string; filename: string; mimeType: string; size: number; url: string; }
+declarations["api/attachments.d.ts"] =
+	`export interface Attachment { id: string; filename: string; mimeType: string; size: number; url: string; }
 export interface AttachmentListResponse { items: Attachment[]; }
 export declare function uploadAttachment(documentId: string, file: File): Promise<Attachment>;
 export declare function listAttachments(documentId: string): Promise<AttachmentListResponse>;
 export declare function isImageFile(file: File): boolean;
 export declare function isFileSizeAllowed(file: File): boolean;
 `;
-declarations["collaboration.d.ts"] = `import type { WebsocketProvider } from "y-websocket";
+declarations["collaboration.d.ts"] =
+	`import type { WebsocketProvider } from "y-websocket";
 import type * as Y from "yjs";
 export interface CollaborationSession { provider: WebsocketProvider; doc: Y.Doc; destroy(): void; }
 export interface DocsmintRealtimeConnection { serverUrl: string; roomName: string; params?: Record<string, string>; }
@@ -224,21 +237,28 @@ export declare function startCollaboration(documentId: string, accessToken?: str
 export declare function stopCollaboration(session?: CollaborationSession): void;
 export declare function getActiveSession(): CollaborationSession | null;
 `;
-declarations["components/create-snapshot-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const CreateSnapshotDialog: Component;\n';
-declarations["components/delete-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const DeleteDialog: Component;\n';
-declarations["components/category-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const CategoryDialog: Component;\n';
-declarations["components/folder-node.d.ts"] = 'import type { Component } from "svelte";\nexport interface FolderNodeItem { id: string; name: string; categoryId?: string | null; parentId?: string | null; order?: number; }\nexport declare const FolderNode: Component;\n';
-declarations["document-drop-coordinator.d.ts"] = `export interface SidebarDocumentPlacement { folderId: string | null; categoryId: string | null; }
+declarations["components/create-snapshot-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const CreateSnapshotDialog: Component;\n';
+declarations["components/delete-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const DeleteDialog: Component;\n';
+declarations["components/category-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const CategoryDialog: Component;\n';
+declarations["components/folder-node.d.ts"] =
+	'import type { Component } from "svelte";\nexport interface FolderNodeItem { id: string; name: string; categoryId?: string | null; parentId?: string | null; order?: number; }\nexport declare const FolderNode: Component;\n';
+declarations["document-drop-coordinator.d.ts"] =
+	`export interface SidebarDocumentPlacement { folderId: string | null; categoryId: string | null; }
 export declare function createDocumentDropCoordinator(options: { persist(id: string, placement: SidebarDocumentPlacement): void; }): { pendingId(token: number): string | null; begin(id: string, token: number): void; end(id: string, token: number): void; cancel(): void; zone(id: string, placement: SidebarDocumentPlacement): void; header(id: string, placement: SidebarDocumentPlacement): void; };
 `;
-declarations["offline/identity.d.ts"] = `export interface OfflineIdentity { appId: string; deploymentId: string; ownerId: string; tenantId?: string; }
+declarations["offline/identity.d.ts"] =
+	`export interface OfflineIdentity { appId: string; deploymentId: string; ownerId: string; tenantId?: string; }
 export declare function offlineAccessEnabled(): boolean;
 export declare function enableOfflineAccess(identity: OfflineIdentity): void;
 export declare function disableOfflineAccess(): void;
 export declare function offlineDbName(identity: OfflineIdentity): string;
 export declare function resolveOfflineIdentity(): Promise<OfflineIdentity>;
 `;
-declarations["doc-tabs.d.ts"] = `import type { Component, ComponentType } from "svelte";
+declarations["doc-tabs.d.ts"] =
+	`import type { Component, ComponentType } from "svelte";
 export interface DocTabPanelProps { documentId: string; content: string; contentJson: object | undefined; }
 export interface DocTabDefinition { id: string; label: string; component: Component<DocTabPanelProps>; order?: number; icon?: ComponentType; disabled?: boolean; }
 export declare const docTabRegistry: DocTabDefinition[];
@@ -247,18 +267,33 @@ export declare function registerDocTabIn(registry: DocTabDefinition[], tab: DocT
 export declare function registerDocTab(tab: DocTabDefinition): void;
 `;
 
-declarations["components/editor/document-editor.d.ts"] = 'import type { Component } from "svelte";\nexport interface EditorOutput { markdown: string; json: object; }\nexport declare const DocsmintDocumentEditorHost: Component;\n';
-declarations["components/folder-tree-selector.d.ts"] = 'import type { Component } from "svelte";\nexport declare const FolderTreeSelector: Component;\n';
-declarations["components/save-as-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const SaveAsDialog: Component;\n';
-declarations["components/share-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const ShareDialog: Component;\n';
-declarations["components/tag-create-dialog.d.ts"] = 'import type { Component } from "svelte";\nexport declare const TagCreateDialog: Component;\n';
-declarations["components/version-history.d.ts"] = 'import type { Component } from "svelte";\nexport declare const VersionHistory: Component;\n';
-declarations["components/editor/document-title.d.ts"] = 'import type { Component } from "svelte";\nexport declare const DocumentTitle: Component;\n';
-declarations["components/editor/markdown-toggle.d.ts"] = 'import type { Component } from "svelte";\nexport declare const MarkdownToggle: Component;\n';
-declarations["components/editor/extensions.d.ts"] = 'import type { Extensions } from "@tiptap/core";\nexport declare const editorExtensions: Extensions;\n';
-declarations["components/editor/markdown.d.ts"] = 'export declare function markdownToJson(markdown: string): Promise<object>;\n';
+declarations["components/editor/document-editor.d.ts"] =
+	'import type { Component } from "svelte";\nexport interface EditorOutput { markdown: string; json: object; }\nexport declare const DocsmintDocumentEditorHost: Component;\n';
+declarations["components/editor/compact-editor.d.ts"] =
+	'import type { Component } from "svelte";\nexport interface EditorOutput { markdown: string; json: object; }\nexport declare const CompactEditor: Component<{ content?: string; contentJson?: object; placeholder?: string; onUpdate?: (output: EditorOutput) => void; editable?: boolean; documentId?: string; documentUpdatedAt?: string; }>;\n';
+declarations["editor-preferences.d.ts"] =
+	"export interface EditorPreferences { showVisualMode: boolean; showMarkdownMode: boolean; minimalToolbar: boolean; showScrollToTop: boolean; }\nexport declare const DEFAULT_EDITOR_PREFERENCES: Readonly<EditorPreferences>;\nexport declare function normalizeEditorPreferences(value: unknown): EditorPreferences;\nexport declare const editorPreferences: { readonly value: EditorPreferences; readonly showMarkdownMode: boolean; readonly showVisualMode: boolean; readonly minimalToolbar: boolean; readonly showScrollToTop: boolean; init(): void; update(patch: Partial<EditorPreferences>): void; };\n";
+declarations["components/folder-tree-selector.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const FolderTreeSelector: Component;\n';
+declarations["components/save-as-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const SaveAsDialog: Component;\n';
+declarations["components/share-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport interface ShareCreatedResult { token: string; url: string; accessMode: "public" | "restricted"; }\nexport declare const ShareDialog: Component<{ onCreated?: (result: ShareCreatedResult) => void; }>;\n';
+declarations["components/tag-create-dialog.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const TagCreateDialog: Component;\n';
+declarations["components/version-history.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const VersionHistory: Component;\n';
+declarations["components/editor/document-title.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const DocumentTitle: Component;\n';
+declarations["components/editor/markdown-toggle.d.ts"] =
+	'import type { Component } from "svelte";\nexport declare const MarkdownToggle: Component;\n';
+declarations["components/editor/extensions.d.ts"] =
+	'import type { Extensions } from "@tiptap/core";\nexport declare const editorExtensions: Extensions;\n';
+declarations["components/editor/markdown.d.ts"] =
+	"export declare function markdownToJson(markdown: string): Promise<object>;\n";
 
-declarations["components/editor/docx-serializer.d.ts"] = "import type { File } from \"docx\";\nexport declare const customSerializerAsync: { serializeAsync(document: unknown, options?: unknown): Promise<File> };\n";
+declarations["components/editor/docx-serializer.d.ts"] =
+	'import type { File } from "docx";\nexport declare const customSerializerAsync: { serializeAsync(document: unknown, options?: unknown): Promise<File> };\n';
 
 const out = new URL("../dist/frontend/", import.meta.url);
 for (const [name, contents] of Object.entries(declarations)) {

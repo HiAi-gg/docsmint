@@ -139,8 +139,10 @@ describe("responsive editor and settings UI", () => {
 		expect(recentDocs).toContain("sidebar-touch-action");
 		expect(folderTree).toContain("sidebar-touch-action");
 		for (const source of [recentDocs, folderTree]) {
-			expect(source).toContain("@media (pointer: coarse)");
+			expect(source).toContain("@media (hover: none), (pointer: coarse)");
 			expect(source).toContain("opacity: 1");
+			expect(source).toContain("min-width: 36px");
+			expect(source).toContain("min-height: 36px");
 		}
 	});
 

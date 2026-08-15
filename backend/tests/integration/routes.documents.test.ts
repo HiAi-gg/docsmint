@@ -260,6 +260,30 @@ describe("GET /api/documents/cursor", () => {
 			"Cursor does not match this listing scope",
 		);
 	});
+
+	it("binds a cursor to the requested global sort", async () => {
+		for (const [index, title] of ["Alpha", "Bravo"].entries()) {
+			seedDocument({
+				id: `${index + 1}0000000-0000-4000-8000-000000000000`,
+				title,
+			});
+		}
+
+		const first = await authedGet(
+			"/api/documents/cursor?limit=1&sortBy=title&sortOrder=asc",
+		);
+		expect(first.status).toBe(200);
+		expect((first.body as any).items[0].title).toBe("Alpha");
+		const cursor = (first.body as any).nextCursor;
+
+		const mismatched = await authedGet(
+			`/api/documents/cursor?limit=1&sortBy=updated&sortOrder=desc&cursor=${encodeURIComponent(cursor)}`,
+		);
+		expect(mismatched.status).toBe(400);
+		expect((mismatched.body as any).error).toBe(
+			"Cursor does not match this listing scope",
+		);
+	});
 });
 
 describe("GET /api/documents/:id", () => {

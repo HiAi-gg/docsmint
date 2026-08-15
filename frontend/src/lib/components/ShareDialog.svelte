@@ -13,6 +13,12 @@ import {
 } from "$lib/stores/keyboard.svelte";
 import { copyToClipboard } from "$lib/utils/clipboard";
 
+export type ShareCreatedResult = {
+	token: string;
+	url: string;
+	accessMode: "public" | "restricted";
+};
+
 let {
 	open = $bindable(false),
 	documentId = "",
@@ -21,6 +27,7 @@ let {
 	folderName = "",
 	categoryId = "",
 	categoryName = "",
+	onCreated,
 }: {
 	open?: boolean;
 	documentId?: string;
@@ -29,6 +36,7 @@ let {
 	folderName?: string;
 	categoryId?: string;
 	categoryName?: string;
+	onCreated?: (result: ShareCreatedResult) => void;
 } = $props();
 
 let usePassword = $state(false);
@@ -105,6 +113,7 @@ async function createLink() {
 			request.fetch,
 		);
 		shareUrl = `${window.location.origin}/s/${result.token}`;
+		onCreated?.({ token: result.token, url: shareUrl, accessMode });
 	} catch (e) {
 		error = e instanceof Error ? e.message : m.error_generic();
 		console.error("ShareDialog: createShareLink failed", e);
@@ -245,12 +254,12 @@ function close() {
       {:else}
         <div class="space-y-4">
 	          <p class="text-sm text-muted-foreground">{accessMode === "restricted" ? "Invitations were queued for delivery. This is not a public link." : m.share_link_created()}</p>
-	          {#if accessMode === "public"}<div class="flex items-center gap-2">
-	            <code class="flex-1 truncate rounded-md bg-muted px-3 py-2 text-sm">{shareUrl}</code>
-            <button onclick={copyLink} class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+	          <div data-share-created-url class="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+	            <code class="min-w-0 flex-1 break-all rounded-md bg-muted px-3 py-2 text-sm">{shareUrl}</code>
+            <button data-share-copy-action onclick={copyLink} class="w-full shrink-0 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:w-auto">
               {copied ? m.share_link_copied() : m.share_copy()}
             </button>
-	          </div>{/if}
+	          </div>
           <button onclick={close} class="w-full rounded-md border border-border px-4 py-2 text-sm font-medium hover:bg-accent">{m.action_done()}</button>
         </div>
       {/if}

@@ -21,8 +21,8 @@ import type {
 	DocsCategoryUpdate,
 	DocsDocument,
 	DocsDocumentCreateInput,
-	DocsDocumentListResponse,
 	DocsDocumentCursorPage,
+	DocsDocumentListResponse,
 	DocsDocumentPipeline,
 	DocsDocumentUpdateInput,
 	DocsFolder,
@@ -208,29 +208,47 @@ export class DocsClient {
 		updates: DocsDocumentUpdateInput,
 		context?: DocsRequestContext,
 	): Promise<DocsDocument> {
-		return this.request<DocsDocument>("PATCH", `/api/documents/${encodeURIComponent(id)}`, {
-			json: updates,
-		}, context);
+		return this.request<DocsDocument>(
+			"PATCH",
+			`/api/documents/${encodeURIComponent(id)}`,
+			{
+				json: updates,
+			},
+			context,
+		);
 	}
 
 	async deleteDoc(id: string, context?: DocsRequestContext): Promise<void> {
-		await this.request<unknown>("DELETE", `/api/documents/${encodeURIComponent(id)}`, undefined, context);
+		await this.request<unknown>(
+			"DELETE",
+			`/api/documents/${encodeURIComponent(id)}`,
+			undefined,
+			context,
+		);
 	}
 
-	async listDocs(options?: {
-		folderId?: string;
-		tag?: string;
-		page?: number;
-		limit?: number;
-	}, context?: DocsRequestContext): Promise<DocsDocumentListResponse> {
-		return this.request<DocsDocumentListResponse>("GET", "/api/documents", {
-			query: this.cleanQuery({
-				folderId: options?.folderId,
-				tag: options?.tag,
-				page: options?.page,
-				limit: options?.limit,
-			}),
-		}, context);
+	async listDocs(
+		options?: {
+			folderId?: string;
+			tag?: string;
+			page?: number;
+			limit?: number;
+		},
+		context?: DocsRequestContext,
+	): Promise<DocsDocumentListResponse> {
+		return this.request<DocsDocumentListResponse>(
+			"GET",
+			"/api/documents",
+			{
+				query: this.cleanQuery({
+					folderId: options?.folderId,
+					tag: options?.tag,
+					page: options?.page,
+					limit: options?.limit,
+				}),
+			},
+			context,
+		);
 	}
 
 	/**
@@ -238,19 +256,35 @@ export class DocsClient {
 	 * bound by the server to the authenticated workspace and category scope.
 	 */
 	async listDocuments(
-		options: { categoryId?: string; cursor?: string; limit?: number } = {},
+		options: {
+			categoryId?: string;
+			cursor?: string;
+			limit?: number;
+			sortBy?: import("./types").DocsDocumentSortField;
+			sortOrder?: import("./types").DocsSortOrder;
+		} = {},
 		context?: DocsRequestContext,
 	): Promise<DocsDocumentCursorPage> {
-		return this.request<DocsDocumentCursorPage>("GET", "/api/documents/cursor", {
-			query: this.cleanQuery({
-				categoryId: options.categoryId,
-				cursor: options.cursor,
-				limit: options.limit,
-			}),
-		}, context);
+		return this.request<DocsDocumentCursorPage>(
+			"GET",
+			"/api/documents/cursor",
+			{
+				query: this.cleanQuery({
+					categoryId: options.categoryId,
+					cursor: options.cursor,
+					limit: options.limit,
+					sortBy: options.sortBy,
+					sortOrder: options.sortOrder,
+				}),
+			},
+			context,
+		);
 	}
 
-	async duplicateDoc(id: string, context?: DocsRequestContext): Promise<DocsDocument> {
+	async duplicateDoc(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsDocument> {
 		return this.request<DocsDocument>(
 			"POST",
 			`/api/documents/${encodeURIComponent(id)}/duplicate`,
@@ -307,30 +341,62 @@ export class DocsClient {
 	 * Import a document from raw content. Posts JSON to
 	 * `POST /api/documents/import`.
 	 */
-	async importDoc(input: {
-		title?: string;
-		content: string;
-		folderId?: string;
-	}, context?: DocsRequestContext): Promise<DocsDocument> {
-		return this.request<DocsDocument>("POST", "/api/documents/import", { json: input }, context);
+	async importDoc(
+		input: {
+			title?: string;
+			content: string;
+			folderId?: string;
+		},
+		context?: DocsRequestContext,
+	): Promise<DocsDocument> {
+		return this.request<DocsDocument>(
+			"POST",
+			"/api/documents/import",
+			{ json: input },
+			context,
+		);
 	}
 
 	// ── Folders ──────────────────────────────────────────────────────────
 
-	async listFolders(parentId?: string, context?: DocsRequestContext): Promise<DocsFolder[]> {
-		return this.request<DocsFolder[]>("GET", "/api/folders", {
-			query: this.cleanQuery({ parentId }),
-		}, context);
+	async listFolders(
+		parentId?: string,
+		context?: DocsRequestContext,
+	): Promise<DocsFolder[]> {
+		return this.request<DocsFolder[]>(
+			"GET",
+			"/api/folders",
+			{
+				query: this.cleanQuery({ parentId }),
+			},
+			context,
+		);
 	}
 
-	async getFolder(id: string, context?: DocsRequestContext): Promise<DocsFolder> {
-		return this.request<DocsFolder>("GET", `/api/folders/${encodeURIComponent(id)}`, undefined, context);
+	async getFolder(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsFolder> {
+		return this.request<DocsFolder>(
+			"GET",
+			`/api/folders/${encodeURIComponent(id)}`,
+			undefined,
+			context,
+		);
 	}
 
-	async createFolder(input: DocsFolderCreateInput, context?: DocsRequestContext): Promise<DocsFolder> {
-		return this.request<DocsFolder>("POST", "/api/folders", {
-			json: input,
-		}, context);
+	async createFolder(
+		input: DocsFolderCreateInput,
+		context?: DocsRequestContext,
+	): Promise<DocsFolder> {
+		return this.request<DocsFolder>(
+			"POST",
+			"/api/folders",
+			{
+				json: input,
+			},
+			context,
+		);
 	}
 
 	async updateFolder(
@@ -338,13 +404,23 @@ export class DocsClient {
 		updates: DocsFolderUpdateInput,
 		context?: DocsRequestContext,
 	): Promise<DocsFolder> {
-		return this.request<DocsFolder>("PATCH", `/api/folders/${encodeURIComponent(id)}`, {
-			json: updates,
-		}, context);
+		return this.request<DocsFolder>(
+			"PATCH",
+			`/api/folders/${encodeURIComponent(id)}`,
+			{
+				json: updates,
+			},
+			context,
+		);
 	}
 
 	async deleteFolder(id: string, context?: DocsRequestContext): Promise<void> {
-		await this.request<unknown>("DELETE", `/api/folders/${encodeURIComponent(id)}`, undefined, context);
+		await this.request<unknown>(
+			"DELETE",
+			`/api/folders/${encodeURIComponent(id)}`,
+			undefined,
+			context,
+		);
 	}
 
 	// ── Tags ─────────────────────────────────────────────────────────────
@@ -353,21 +429,42 @@ export class DocsClient {
 		return this.request<DocsTag[]>("GET", "/api/tags", undefined, context);
 	}
 
-	async createTag(input: { name: string; color?: string }, context?: DocsRequestContext): Promise<DocsTag> {
+	async createTag(
+		input: { name: string; color?: string },
+		context?: DocsRequestContext,
+	): Promise<DocsTag> {
 		return this.request<DocsTag>("POST", "/api/tags", { json: input }, context);
 	}
 
-	async updateTag(id: string, updates: { name?: string; color?: string }, context?: DocsRequestContext): Promise<DocsTag> {
-		return this.request<DocsTag>("PATCH", `/api/tags/${encodeURIComponent(id)}`, {
-			json: updates,
-		}, context);
+	async updateTag(
+		id: string,
+		updates: { name?: string; color?: string },
+		context?: DocsRequestContext,
+	): Promise<DocsTag> {
+		return this.request<DocsTag>(
+			"PATCH",
+			`/api/tags/${encodeURIComponent(id)}`,
+			{
+				json: updates,
+			},
+			context,
+		);
 	}
 
 	async deleteTag(id: string, context?: DocsRequestContext): Promise<void> {
-		await this.request<unknown>("DELETE", `/api/tags/${encodeURIComponent(id)}`, undefined, context);
+		await this.request<unknown>(
+			"DELETE",
+			`/api/tags/${encodeURIComponent(id)}`,
+			undefined,
+			context,
+		);
 	}
 
-	async addTagToDoc(documentId: string, tagId: string, context?: DocsRequestContext): Promise<void> {
+	async addTagToDoc(
+		documentId: string,
+		tagId: string,
+		context?: DocsRequestContext,
+	): Promise<void> {
 		await this.request<unknown>(
 			"POST",
 			`/api/documents/${encodeURIComponent(documentId)}/tags`,
@@ -506,23 +603,28 @@ export class DocsClient {
 		options?: DocsSearchOptions,
 		context?: DocsRequestContext,
 	): Promise<DocsSearchResponse> {
-		return this.request<DocsSearchResponse>("GET", "/api/search", {
-			query: this.cleanQuery({
-				q: query,
-				folder: options?.folder,
-				tags: options?.tags,
-				category: options?.category,
-				dateFrom: options?.dateFrom,
-				dateTo: options?.dateTo,
-				sort: options?.sort,
-				page: options?.page,
-				limit: options?.limit,
-				graph: options?.graph,
-				graphHops: options?.graphHops,
-				graphBoost: options?.graphBoost,
-				includeChunks: options?.includeChunks,
-			}),
-		}, context);
+		return this.request<DocsSearchResponse>(
+			"GET",
+			"/api/search",
+			{
+				query: this.cleanQuery({
+					q: query,
+					folder: options?.folder,
+					tags: options?.tags,
+					category: options?.category,
+					dateFrom: options?.dateFrom,
+					dateTo: options?.dateTo,
+					sort: options?.sort,
+					page: options?.page,
+					limit: options?.limit,
+					graph: options?.graph,
+					graphHops: options?.graphHops,
+					graphBoost: options?.graphBoost,
+					includeChunks: options?.includeChunks,
+				}),
+			},
+			context,
+		);
 	}
 
 	/**
@@ -546,27 +648,49 @@ export class DocsClient {
 		);
 	}
 
-	async suggest(query: string, context?: DocsRequestContext): Promise<DocsSearchSuggestItem[]> {
-		return this.request<DocsSearchSuggestItem[]>("GET", "/api/search/suggest", {
-			query: this.cleanQuery({ q: query }),
-		}, context);
+	async suggest(
+		query: string,
+		context?: DocsRequestContext,
+	): Promise<DocsSearchSuggestItem[]> {
+		return this.request<DocsSearchSuggestItem[]>(
+			"GET",
+			"/api/search/suggest",
+			{
+				query: this.cleanQuery({ q: query }),
+			},
+			context,
+		);
 	}
 
 	// ── Graph metadata ───────────────────────────────────────────────────
 
 	/** Return entities linked to a document through the AGE graph. */
-	async getGraphEntities(docId: string, context?: DocsRequestContext): Promise<DocsGraphEntitiesResponse> {
-		return this.request<DocsGraphEntitiesResponse>("GET", "/api/graph/entities", {
-			query: this.cleanQuery({ docId }),
-		}, context);
+	async getGraphEntities(
+		docId: string,
+		context?: DocsRequestContext,
+	): Promise<DocsGraphEntitiesResponse> {
+		return this.request<DocsGraphEntitiesResponse>(
+			"GET",
+			"/api/graph/entities",
+			{
+				query: this.cleanQuery({ docId }),
+			},
+			context,
+		);
 	}
 
-	async listGraphEntities(docId: string, context?: DocsRequestContext): Promise<DocsGraphEntitiesResponse> {
+	async listGraphEntities(
+		docId: string,
+		context?: DocsRequestContext,
+	): Promise<DocsGraphEntitiesResponse> {
 		return this.getGraphEntities(docId, context);
 	}
 
 	/** Return graph-related documents and their relation metadata. */
-	async getRelatedDocuments(docId: string, context?: DocsRequestContext): Promise<DocsGraphRelatedResponse> {
+	async getRelatedDocuments(
+		docId: string,
+		context?: DocsRequestContext,
+	): Promise<DocsGraphRelatedResponse> {
 		return this.request<DocsGraphRelatedResponse>(
 			"GET",
 			`/api/graph/related/${encodeURIComponent(docId)}`,
@@ -587,9 +711,14 @@ export class DocsClient {
 		input: { query?: string; docIds: string[]; maxResults?: number },
 		context?: DocsRequestContext,
 	): Promise<DocsGraphSearchResponse> {
-		return this.request<DocsGraphSearchResponse>("POST", "/api/graph/search", {
-			json: input,
-		}, context);
+		return this.request<DocsGraphSearchResponse>(
+			"POST",
+			"/api/graph/search",
+			{
+				json: input,
+			},
+			context,
+		);
 	}
 
 	/** Compatibility alias for callers that prefer verb-first naming. */
@@ -602,27 +731,50 @@ export class DocsClient {
 
 	// ── Share ────────────────────────────────────────────────────────────
 
-	async createShare(input: {
-		documentId?: string;
-		folderId?: string;
-		password?: string;
-		expiresIn?: "1h" | "1d" | "7d" | "30d" | "never";
-		role?: DocsShareRole;
-	}, context?: DocsRequestContext): Promise<DocsShareLink> {
-		return this.request<DocsShareLink>("POST", "/api/share", { json: input }, context);
+	async createShare(
+		input: {
+			documentId?: string;
+			folderId?: string;
+			password?: string;
+			expiresIn?: "1h" | "1d" | "7d" | "30d" | "never";
+			role?: DocsShareRole;
+		},
+		context?: DocsRequestContext,
+	): Promise<DocsShareLink> {
+		return this.request<DocsShareLink>(
+			"POST",
+			"/api/share",
+			{ json: input },
+			context,
+		);
 	}
 
-	async listShares(context?: DocsRequestContext): Promise<DocsShareListResponse> {
-		return this.request<DocsShareListResponse>("GET", "/api/share", undefined, context);
+	async listShares(
+		context?: DocsRequestContext,
+	): Promise<DocsShareListResponse> {
+		return this.request<DocsShareListResponse>(
+			"GET",
+			"/api/share",
+			undefined,
+			context,
+		);
 	}
 
 	async deleteShare(id: string, context?: DocsRequestContext): Promise<void> {
-		await this.request<unknown>("DELETE", `/api/share/${encodeURIComponent(id)}`, undefined, context);
+		await this.request<unknown>(
+			"DELETE",
+			`/api/share/${encodeURIComponent(id)}`,
+			undefined,
+			context,
+		);
 	}
 
 	async updateShare(
 		id: string,
-		updates: { role?: DocsShareRole; expiresIn?: "1h" | "1d" | "7d" | "30d" | "never" },
+		updates: {
+			role?: DocsShareRole;
+			expiresIn?: "1h" | "1d" | "7d" | "30d" | "never";
+		},
 		context?: DocsRequestContext,
 	): Promise<DocsShareLink> {
 		return this.request<DocsShareLink>(
@@ -815,13 +967,21 @@ export class DocsClient {
 	private async request<T>(
 		method: string,
 		path: string,
-		options?: { json?: unknown; query?: Record<string, string | number | boolean | undefined> },
+		options?: {
+			json?: unknown;
+			query?: Record<string, string | number | boolean | undefined>;
+		},
 		context?: DocsRequestContext,
 	): Promise<T> {
-		const res = await this.fetchRaw(method, path, {
-			json: options?.json,
-			query: options?.query,
-		}, context);
+		const res = await this.fetchRaw(
+			method,
+			path,
+			{
+				json: options?.json,
+				query: options?.query,
+			},
+			context,
+		);
 		if (!res.ok) {
 			throw await this.toApiError(res);
 		}
@@ -862,7 +1022,10 @@ export class DocsClient {
 		if (requestContext?.requestId)
 			headers.set("X-Request-Id", requestContext.requestId);
 		if (requestContext?.workspaceAssertion) {
-			headers.set("X-Docsmint-Workspace-Context", requestContext.workspaceAssertion);
+			headers.set(
+				"X-Docsmint-Workspace-Context",
+				requestContext.workspaceAssertion,
+			);
 		}
 
 		let body: BodyInit | undefined;

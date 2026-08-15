@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
-    "version": "0.5.10",
+    "version": "0.6.0",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -601,6 +601,37 @@
     "/api/documents/cursor": {
       "get": {
         "operationId": "getApiDocumentsCursor",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "categoryId",
+            "schema": { "format": "uuid", "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": { "type": "string" }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": { "default": 50, "maximum": 100, "minimum": 1, "type": "integer" }
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "default": "updated",
+              "enum": ["title", "category", "folder", "updated"],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "schema": { "default": "desc", "enum": ["asc", "desc"], "type": "string" }
+          }
+        ],
         "responses": {
           "200": {}
         }

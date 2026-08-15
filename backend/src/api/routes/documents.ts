@@ -1,6 +1,7 @@
 import { CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import {
 	attachments,
+	categories,
 	documentCreateOperations,
 	documentPipelineRuns,
 	documents,
@@ -11,9 +12,11 @@ import {
 } from "@hiai-docs/db/schema";
 import {
 	and,
+	asc,
 	count,
 	desc,
 	eq,
+	gt,
 	inArray,
 	isNotNull,
 	isNull,
@@ -97,11 +100,15 @@ const cursorListQuerySchema = z.object({
 	categoryId: z.string().uuid().optional(),
 	cursor: z.string().min(1).optional(),
 	limit: z.coerce.number().int().min(1).max(100).default(50),
+	sortBy: z.enum(["title", "category", "folder", "updated"]).default("updated"),
+	sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
-type DocumentCursorV1 = Readonly<{
-	v: 1;
-	updatedAt: string;
+type DocumentCursorV2 = Readonly<{
+	v: 2;
+	sortBy: "title" | "category" | "folder" | "updated";
+	sortOrder: "asc" | "desc";
+	value: string | null;
 	id: string;
 	scopeHash: string;
 }>;
@@ -116,7 +123,7 @@ function cursorScopeHash(input: string): string {
 function decodeDocumentCursor(
 	value: string,
 	expectedScopeHash: string,
-): DocumentCursorV1 {
+): DocumentCursorV2 {
 	let cursor: unknown;
 	try {
 		cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
@@ -127,19 +134,22 @@ function decodeDocumentCursor(
 		throw new Error("Malformed cursor");
 	const candidate = cursor as Record<string, unknown>;
 	if (
-		candidate.v !== 1 ||
-		typeof candidate.updatedAt !== "string" ||
-		Number.isNaN(Date.parse(candidate.updatedAt)) ||
+		candidate.v !== 2 ||
+		!["title", "category", "folder", "updated"].includes(
+			String(candidate.sortBy),
+		) ||
+		!["asc", "desc"].includes(String(candidate.sortOrder)) ||
+		(candidate.value !== null && typeof candidate.value !== "string") ||
 		typeof candidate.id !== "string" ||
 		typeof candidate.scopeHash !== "string" ||
 		candidate.scopeHash !== expectedScopeHash
 	) {
 		throw new Error("Cursor does not match this listing scope");
 	}
-	return candidate as DocumentCursorV1;
+	return candidate as DocumentCursorV2;
 }
 
-function encodeDocumentCursor(cursor: DocumentCursorV1): string {
+function encodeDocumentCursor(cursor: DocumentCursorV2): string {
 	return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
 
@@ -477,7 +487,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 400;
 			return { error: "Invalid query", details: parsed.error.flatten() };
 		}
-		const { categoryId, cursor: encodedCursor, limit } = parsed.data;
+		const {
+			categoryId,
+			cursor: encodedCursor,
+			limit,
+			sortBy,
+			sortOrder,
+		} = parsed.data;
 		const effectiveCategoryId = access.restricted
 			? (access.categoryId ?? categoryId)
 			: categoryId;
@@ -486,9 +502,11 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				workspaceId: ctx.workspaceId ?? null,
 				actorUserId: access.userId,
 				categoryId: effectiveCategoryId ?? null,
+				sortBy,
+				sortOrder,
 			}),
 		);
-		let cursor: DocumentCursorV1 | undefined;
+		let cursor: DocumentCursorV2 | undefined;
 		if (encodedCursor) {
 			try {
 				cursor = decodeDocumentCursor(encodedCursor, scopeHash);
@@ -499,24 +517,53 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				};
 			}
 		}
+		const sortValue =
+			sortBy === "title"
+				? sql<string>`lower(${documents.title})`
+				: sortBy === "category"
+					? sql<string | null>`lower(${categories.name})`
+					: sortBy === "folder"
+						? sql<string | null>`lower(${folders.name})`
+						: sql<Date>`${documents.updatedAt}`;
 		const conditions = [
 			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 			isNull(documents.deletedAt),
 			...(effectiveCategoryId
 				? [eq(documents.categoryId, effectiveCategoryId)]
 				: []),
-			...(cursor
-				? [
-						or(
-							lt(documents.updatedAt, new Date(cursor.updatedAt)),
-							and(
-								eq(documents.updatedAt, new Date(cursor.updatedAt)),
-								lt(documents.id, cursor.id),
-							),
-						),
-					]
-				: []),
 		];
+		if (cursor) {
+			const idAfter =
+				sortOrder === "asc"
+					? gt(documents.id, cursor.id)
+					: lt(documents.id, cursor.id);
+			if (sortBy === "updated" && cursor.value) {
+				const cursorDate = new Date(cursor.value);
+				const valueAfter =
+					sortOrder === "asc"
+						? gt(documents.updatedAt, cursorDate)
+						: lt(documents.updatedAt, cursorDate);
+				const cursorCondition = or(
+					valueAfter,
+					and(eq(documents.updatedAt, cursorDate), idAfter),
+				);
+				if (cursorCondition) conditions.push(cursorCondition);
+			} else if (cursor.value === null) {
+				const cursorCondition = and(isNull(sortValue), idAfter);
+				if (cursorCondition) conditions.push(cursorCondition);
+			} else {
+				const valueAfter =
+					sortOrder === "asc"
+						? gt(sortValue, cursor.value)
+						: lt(sortValue, cursor.value);
+				const cursorCondition = or(
+					valueAfter,
+					and(eq(sortValue, cursor.value), idAfter),
+					isNull(sortValue),
+				);
+				if (cursorCondition) conditions.push(cursorCondition);
+			}
+		}
 		try {
 			const rows = await withTenant(ctx, (tx) =>
 				tx
@@ -525,24 +572,45 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						title: documents.title,
 						content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
 						folderId: documents.folderId,
+						folderName: folders.name,
+						categoryId: documents.categoryId,
+						categoryName: categories.name,
 						createdAt: documents.createdAt,
 						updatedAt: documents.updatedAt,
 					})
 					.from(documents)
+					.leftJoin(folders, eq(folders.id, documents.folderId))
+					.leftJoin(categories, eq(categories.id, documents.categoryId))
 					.where(and(...conditions))
-					.orderBy(desc(documents.updatedAt), desc(documents.id))
+					.orderBy(
+						sortOrder === "asc"
+							? sql`${sortValue} asc nulls last`
+							: sql`${sortValue} desc nulls last`,
+						sortOrder === "asc" ? asc(documents.id) : desc(documents.id),
+					)
 					.limit(limit + 1),
 			);
 			const hasMore = rows.length > limit;
 			const page = rows.slice(0, limit);
 			const last = page.at(-1);
+			const lastValue = last
+				? sortBy === "title"
+					? last.title.toLocaleLowerCase()
+					: sortBy === "category"
+						? (last.categoryName?.toLocaleLowerCase() ?? null)
+						: sortBy === "folder"
+							? (last.folderName?.toLocaleLowerCase() ?? null)
+							: new Date(last.updatedAt).toISOString()
+				: null;
 			return {
 				items: await withTags(ctx, page),
 				nextCursor:
 					hasMore && last
 						? encodeDocumentCursor({
-								v: 1,
-								updatedAt: new Date(last.updatedAt).toISOString(),
+								v: 2,
+								sortBy,
+								sortOrder,
+								value: lastValue,
 								id: last.id,
 								scopeHash,
 							})

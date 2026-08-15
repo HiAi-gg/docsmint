@@ -1,6 +1,7 @@
 # DocsMint
 
-**A self-hosted, AI-native knowledge workspace for people, applications, and agents.**
+**A self-hosted AI-native knowledge workspace and installable PWA for people,
+applications, and AI agents.**
 
 DocsMint stores documents in a structured JSON editor model first. Markdown is
 the convenient second format for editing, importing, and exporting content.
@@ -38,24 +39,36 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What is new in the 0.3.0 release line?
+## What's new in DocsMint 0.6.0?
 
-- **Installable Progressive Web App (PWA)** with a manifest, service worker,
-  responsive mobile shell, install prompt, update safety, and an offline
-  fallback shell.
-- **Offline document access** through identity-partitioned IndexedDB/Dexie
-  snapshots. Offline mode is cached read plus explicit local drafts; reconnect
-  never silently replays mutations.
-- **Explicit local drafts** with local autosave, review/apply, optimistic
-  concurrency (`expectedUpdatedAt`), and actionable conflict handling.
-- **Composable self-hosted UI** with typed dashboard/search hosts and extension
-  slots.
-- **Mobile-first editor polish** including a single responsive sidebar, safe
-  PWA updates, raw Markdown auto-height, and accessible narrow-screen controls.
+- **Installable, update-safe PWA.** A versioned service worker, responsive app
+  shell, install prompt, and deterministic offline fallback make DocsMint feel
+  at home on desktop and mobile browsers.
+- **Private offline reading and explicit drafts.** Identity-partitioned local
+  snapshots keep selected documents readable offline. Drafts autosave locally,
+  then return through a deliberate review-and-apply flow after reconnecting;
+  DocsMint never silently replays offline mutations.
+- **Touch-safe mobile navigation.** Sidebar document actions, Copy controls, and
+  overflow menus remain reachable on touch devices without depending on hover,
+  with accessible targets and narrow-screen layouts.
+- **A flexible editor contract.** Reactive visual/Markdown mode preferences,
+  Minimal toolbar support, and a reusable compact TipTap editor let hosts match
+  the writing surface to the task without forking editor internals.
+- **Stable document discovery.** The public API and TypeScript SDK provide
+  deterministic cursor pagination and global sorting by title, category,
+  folder, or update time, with canonical category and folder metadata.
+- **Clear public and restricted sharing.** Share creation exposes the resulting
+  URL for both public links and restricted invitation workflows, with an
+  explicit Copy action that works on narrow screens.
+- **Knowledge built for agents.** REST, the typed SDK, CLI, and MCP server expose
+  scoped document operations, while multilingual hybrid search and GraphRAG
+  help people and AI agents retrieve connected knowledge instead of isolated
+  keyword matches.
 
-Search terms: installable self-hosted PWA knowledge base, offline document
-reading, local drafts, semantic multilingual search, GraphRAG, MCP, TypeScript
-SDK, CLI, and frontend extension hosts.
+DocsMint combines an installable self-hosted PWA knowledge base, mobile document
+workspace, offline reading, local drafts, multilingual semantic search,
+GraphRAG, MCP, a TypeScript SDK, CLI, and composable frontend hosts in one
+open-source system.
 
 For self-hosted customization, see [PWA hosting](docs/PWA_HOSTING.md) and
 [extension points](docs/EXTENDING.md).
@@ -96,6 +109,7 @@ git clone https://github.com/HiAi-gg/docsmint.git
 cd docsmint
 bash scripts/quickstart.sh
 ```
+
 On its first run, the script creates an ignored root `.env`, generates the
 database, authentication, and storage secrets, builds the PostgreSQL image,
 applies migrations, and starts the complete application.
@@ -105,12 +119,14 @@ For OpenRouter, add one value to `.env` and run the script again:
 ```dotenv
 OPENROUTER_API_KEY=sk-or-your-key
 ```
+
 For Ollama, select the local provider instead:
 
 ```dotenv
 AI_PROVIDER=ollama
 OLLAMA_PORT=11434
 ```
+
 Then make sure the configured local models are available:
 
 ```bash
@@ -118,6 +134,7 @@ ollama pull bge-m3
 ollama pull qwen3:8b
 bash scripts/quickstart.sh
 ```
+
 Open **http://localhost:50701**. The API health endpoint is
 **http://localhost:50700/api/health**.
 
@@ -133,14 +150,14 @@ Open **http://localhost:50701**. The API health endpoint is
 
 The canonical local ports are:
 
-| Service | Port |
-|---|---:|
-| Web application | `50701` |
-| REST API | `50700` |
-| PostgreSQL | `5437` |
-| Redis | `6384` |
+| Service              |    Port |
+| -------------------- | ------: |
+| Web application      | `50701` |
+| REST API             | `50700` |
+| PostgreSQL           |  `5437` |
+| Redis                |  `6384` |
 | SeaweedFS S3 gateway | `50702` |
-| SeaweedFS filer UI | `50703` |
+| SeaweedFS filer UI   | `50703` |
 
 See [Deployment](docs/DEPLOYMENT.md) for domains, TLS, provider tuning,
 backups, and production operation.
@@ -165,6 +182,7 @@ bunx --package @hiai-gg/docsmint docsmint read <document-id>
 bunx --package @hiai-gg/docsmint docsmint create \
   --title "Release notes" --content "# Version 0.2.9"
 ```
+
 Credentials can also be supplied through `HIAI_DOCS_URL` and
 `HIAI_DOCS_API_KEY`. See the [CLI guide](packages/cli/README.md) for every
 command and configuration precedence.
@@ -188,11 +206,13 @@ snapshots, history, and export as MCP tools.
   }
 }
 ```
+
 Run the server directly to verify the installation:
 
 ```bash
 bunx --package @hiai-gg/docsmint docsmint-mcp
 ```
+
 The server uses stdio and works with MCP-capable clients such as Claude
 Desktop, Cursor, and coding agents that accept standard MCP configuration. See
 the [MCP guide](packages/mcp-server/README.md) for its ten tools and routes.
@@ -211,22 +231,24 @@ the CLI, SDK, or REST API.
 ```bash
 bun add @hiai-gg/docsmint
 ```
+
 ```ts
-import { DocsClient } from "@hiai-gg/docsmint";
+import { DocsClient } from '@hiai-gg/docsmint';
 
 const docs = new DocsClient({
-  baseUrl: "http://localhost:50700",
+  baseUrl: 'http://localhost:50700',
   apiKey: process.env.HIAI_DOCS_API_KEY,
 });
 
 const created = await docs.createDoc({
-  title: "Meeting notes",
-  content: "# Agenda",
+  title: 'Meeting notes',
+  content: '# Agenda',
 });
 
-const results = await docs.search("what did we decide?");
+const results = await docs.search('what did we decide?');
 console.log(created.id, results.items);
 ```
+
 The SDK is a typed `fetch` client with retries for transient failures. See the
 [SDK reference](packages/sdk/README.md) and [REST API](docs/API.md).
 
@@ -234,11 +256,11 @@ The SDK is a typed `fetch` client with retries for transient failures. See the
 
 Create and revoke integration keys from **Settings → API**.
 
-| Credential | Intended use | Access |
-|---|---|---|
-| Global API key | Trusted owner-wide CLI, MCP, SDK, or service | All owner content |
-| Category key | Least-privilege agent or product integration | One category with selected permissions |
-| Operator key | Administration and reindex operations | `/api/admin/*` only |
+| Credential     | Intended use                                 | Access                                 |
+| -------------- | -------------------------------------------- | -------------------------------------- |
+| Global API key | Trusted owner-wide CLI, MCP, SDK, or service | All owner content                      |
+| Category key   | Least-privilege agent or product integration | One category with selected permissions |
+| Operator key   | Administration and reindex operations        | `/api/admin/*` only                    |
 
 Category permissions are explicit and non-hierarchical:
 
@@ -263,6 +285,7 @@ packages/cli/      Terminal client
 packages/mcp-server/  MCP stdio server
 postgres/          PostgreSQL image with vector and graph extensions
 ```
+
 The Docker deployment runs:
 
 - **Web** — document editor, folders, categories, sharing, settings, and search;
@@ -307,13 +330,13 @@ For pipeline internals and tuning, see [Architecture](docs/ARCHITECTURE.md) and
 DocsMint overlaps with several excellent open-source knowledge tools, but its
 focus is a compact knowledge runtime shared equally by humans and agents.
 
-| Project | Primary strength | Difference from DocsMint |
-|---|---|---|
-| [Outline](https://github.com/outline/outline) | Polished team wiki and collaboration | DocsMint emphasizes built-in retrieval, GraphRAG, scoped agent access, CLI, and MCP |
-| [Docmost](https://github.com/docmost/docmost) | Collaborative wiki and real-time editing | DocsMint centers automatic embeddings and agent-facing integration surfaces |
-| [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy) | Broad local-first productivity workspace | DocsMint is narrower: a self-hosted document and retrieval service |
-| [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | Chat-oriented RAG over imported sources | DocsMint starts with the editable knowledge base and exposes it to many clients |
-| [Danswer](https://github.com/danswer-ai/danswer) / Onyx | Enterprise search across external connectors | DocsMint owns and edits its native corpus rather than primarily indexing other systems |
+| Project                                                      | Primary strength                             | Difference from DocsMint                                                               |
+| ------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [Outline](https://github.com/outline/outline)                | Polished team wiki and collaboration         | DocsMint emphasizes built-in retrieval, GraphRAG, scoped agent access, CLI, and MCP    |
+| [Docmost](https://github.com/docmost/docmost)                | Collaborative wiki and real-time editing     | DocsMint centers automatic embeddings and agent-facing integration surfaces            |
+| [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy)          | Broad local-first productivity workspace     | DocsMint is narrower: a self-hosted document and retrieval service                     |
+| [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | Chat-oriented RAG over imported sources      | DocsMint starts with the editable knowledge base and exposes it to many clients        |
+| [Danswer](https://github.com/danswer-ai/danswer) / Onyx      | Enterprise search across external connectors | DocsMint owns and edits its native corpus rather than primarily indexing other systems |
 
 This is a product-positioning summary, not a claim that every listed project
 lacks a feature. Check each project's current documentation when choosing a
@@ -340,6 +363,7 @@ bun run typecheck
 bun run test
 bun run build
 ```
+
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Please
 report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
 

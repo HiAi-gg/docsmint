@@ -56,22 +56,38 @@ describe("DocsClient public contract", () => {
 		});
 
 		expect(seen?.url).toBe("https://docs.example.test/api/categories");
-		expect(new Headers(seen?.init.headers).get("authorization")).toBe("Bearer session-token");
-		expect(new Headers(seen?.init.headers).get("cookie")).toBe("better-auth.session_token=session");
+		expect(new Headers(seen?.init.headers).get("authorization")).toBe(
+			"Bearer session-token",
+		);
+		expect(new Headers(seen?.init.headers).get("cookie")).toBe(
+			"better-auth.session_token=session",
+		);
 		expect(new Headers(seen?.init.headers).get("x-request-id")).toBe("req-123");
 		expect(new Headers(seen?.init.headers).get("x-tenant-id")).toBe("tenant-a");
 	});
 
 	it("merges default request context with per-call context", async () => {
 		let seenHeaders: Headers | undefined;
-		const docs = client(async (_input, init) => {
-			seenHeaders = new Headers(init?.headers);
-			return jsonResponse({ status: "ok", service: "hiai-docs", timestamp: new Date().toISOString() });
-		}, {
-			requestContext: { cookie: "base-cookie", headers: { "x-base": "yes" } },
-		});
+		const docs = client(
+			async (_input, init) => {
+				seenHeaders = new Headers(init?.headers);
+				return jsonResponse({
+					status: "ok",
+					service: "hiai-docs",
+					timestamp: new Date().toISOString(),
+				});
+			},
+			{
+				requestContext: { cookie: "base-cookie", headers: { "x-base": "yes" } },
+			},
+		);
 
-		await docs.withRequestContext({ requestId: "req-456", headers: { "x-call": "yes" } }).health();
+		await docs
+			.withRequestContext({
+				requestId: "req-456",
+				headers: { "x-call": "yes" },
+			})
+			.health();
 		expect(seenHeaders?.get("cookie")).toBe("base-cookie");
 		expect(seenHeaders?.get("x-base")).toBe("yes");
 		expect(seenHeaders?.get("x-call")).toBe("yes");
@@ -81,10 +97,17 @@ describe("DocsClient public contract", () => {
 	it("snapshots default request context before callers can mutate it", async () => {
 		let seenHeaders: Headers | undefined;
 		const context = { headers: { "x-tenant": "before" } };
-		const docs = client(async (_input, init) => {
-			seenHeaders = new Headers(init?.headers);
-			return jsonResponse({ status: "ok", service: "hiai-docs", timestamp: "now" });
-		}, { requestContext: context });
+		const docs = client(
+			async (_input, init) => {
+				seenHeaders = new Headers(init?.headers);
+				return jsonResponse({
+					status: "ok",
+					service: "hiai-docs",
+					timestamp: "now",
+				});
+			},
+			{ requestContext: context },
+		);
 
 		context.headers["x-tenant"] = "after";
 		await docs.health();
@@ -98,9 +121,18 @@ describe("DocsClient public contract", () => {
 		const parent = client(
 			async (_input, init) => {
 				seen.push(new Headers(init?.headers));
-				return jsonResponse({ status: "ok", service: "hiai-docs", timestamp: "now" });
+				return jsonResponse({
+					status: "ok",
+					service: "hiai-docs",
+					timestamp: "now",
+				});
 			},
-			{ requestContext: { headers: originalHeaders, requestId: "parent-request" } },
+			{
+				requestContext: {
+					headers: originalHeaders,
+					requestId: "parent-request",
+				},
+			},
 		);
 		const childInput = {
 			requestId: "child-request",
@@ -146,11 +178,17 @@ describe("DocsClient public contract", () => {
 		let seenHeaders: Headers | undefined;
 		const docs = client(async (_input, init) => {
 			seenHeaders = new Headers(init?.headers);
-			return jsonResponse({ status: "ok", service: "hiai-docs", timestamp: "now" });
+			return jsonResponse({
+				status: "ok",
+				service: "hiai-docs",
+				timestamp: "now",
+			});
 		});
 
 		await docs.health({ workspaceAssertion: "signed.assertion" });
-		expect(seenHeaders?.get("x-docsmint-workspace-context")).toBe("signed.assertion");
+		expect(seenHeaders?.get("x-docsmint-workspace-context")).toBe(
+			"signed.assertion",
+		);
 	});
 
 	it("encodes search filters and returns the response contract", async () => {
@@ -182,11 +220,17 @@ describe("DocsClient public contract", () => {
 			return jsonResponse({ items: [], total: 0, page: 1, limit: 20 });
 		});
 
-		await docs.searchDocuments({ query: "project brief", retrievalMode: "rag" });
+		await docs.searchDocuments({
+			query: "project brief",
+			retrievalMode: "rag",
+		});
 		expect(seenUrl).toContain("q=project+brief");
 		expect(seenUrl).toContain("graph=false");
 
-		await docs.searchDocuments({ query: "project brief", retrievalMode: "graph" });
+		await docs.searchDocuments({
+			query: "project brief",
+			retrievalMode: "graph",
+		});
 		expect(seenUrl).toContain("graph=true");
 	});
 
@@ -201,12 +245,16 @@ describe("DocsClient public contract", () => {
 			categoryId: "category-1",
 			cursor: "cursor-v1",
 			limit: 50,
+			sortBy: "folder",
+			sortOrder: "asc",
 		});
 
 		expect(seenUrl).toContain("/api/documents/cursor?");
 		expect(seenUrl).toContain("categoryId=category-1");
 		expect(seenUrl).toContain("cursor=cursor-v1");
 		expect(seenUrl).toContain("limit=50");
+		expect(seenUrl).toContain("sortBy=folder");
+		expect(seenUrl).toContain("sortOrder=asc");
 	});
 
 	it("supports commenter share links and graph metadata endpoints", async () => {
@@ -421,22 +469,38 @@ describe("DocsClient public contract", () => {
 
 	it("retries transient responses and then returns the success payload", async () => {
 		let attempts = 0;
-		const docs = client(async () => {
-			attempts += 1;
-			return attempts === 1 ? jsonResponse({ error: "busy" }, 503) : jsonResponse({ status: "ok", service: "hiai-docs", timestamp: "now" });
-		}, { retries: 2, retryBackoffMs: 0 });
+		const docs = client(
+			async () => {
+				attempts += 1;
+				return attempts === 1
+					? jsonResponse({ error: "busy" }, 503)
+					: jsonResponse({
+							status: "ok",
+							service: "hiai-docs",
+							timestamp: "now",
+						});
+			},
+			{ retries: 2, retryBackoffMs: 0 },
+		);
 
 		await expect(docs.health()).resolves.toMatchObject({ status: "ok" });
 		expect(attempts).toBe(2);
 	});
 
 	it("exposes a timeout-specific error contract", async () => {
-		const docs = client(async (_input, init) => {
-			await new Promise((_resolve, reject) => {
-				init?.signal?.addEventListener("abort", () => reject(new DOMException("timed out", "TimeoutError")), { once: true });
-			});
-			return jsonResponse({});
-		}, { timeout: 1 });
+		const docs = client(
+			async (_input, init) => {
+				await new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("timed out", "TimeoutError")),
+						{ once: true },
+					);
+				});
+				return jsonResponse({});
+			},
+			{ timeout: 1 },
+		);
 
 		await expect(docs.health()).rejects.toBeInstanceOf(DocsTimeoutError);
 	});
@@ -445,14 +509,21 @@ describe("DocsClient public contract", () => {
 		const controller = new AbortController();
 		let attempts = 0;
 		const abortError = new DOMException("cancelled", "AbortError");
-		const docs = client(async (_input, init) => {
-			attempts += 1;
-			controller.abort(abortError);
-			// A real fetch may reject with a runtime-created AbortError rather
-			// than the caller's reason. The client must preserve the reason.
-			void init;
-			throw new DOMException("transport aborted", "AbortError");
-		}, { requestContext: { signal: controller.signal }, retries: 3, retryBackoffMs: 0 });
+		const docs = client(
+			async (_input, init) => {
+				attempts += 1;
+				controller.abort(abortError);
+				// A real fetch may reject with a runtime-created AbortError rather
+				// than the caller's reason. The client must preserve the reason.
+				void init;
+				throw new DOMException("transport aborted", "AbortError");
+			},
+			{
+				requestContext: { signal: controller.signal },
+				retries: 3,
+				retryBackoffMs: 0,
+			},
+		);
 
 		await expect(docs.health()).rejects.toBe(abortError);
 		expect(attempts).toBe(1);

@@ -36,6 +36,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
+### Added
+
+- Stable document cursor sorting by title, category, folder, or updated time
+  with canonical category and folder names.
+- Public reactive editor preferences and compact TipTap editor entrypoints for
+  reusable host writing surfaces.
+- Additive `ShareDialog.onCreated` callback and a visible restricted invitation
+  URL with an explicit Copy action.
+
+### Fixed
+
+- Keep sidebar Copy and overflow actions visible on touch and coarse-pointer
+  devices without changing desktop hover behavior.
+- Version standalone PWA caches per deployment and verify the install manifest,
+  service worker, offline fallback, and mobile compatibility contract.
+- Align README, npm package metadata, GitHub discovery topics, and the complete
+  canonical Apache-2.0 license with the 0.6.0 release.
+
 ## [0.5.10] - 2026-08-12
 
 ### Fixed

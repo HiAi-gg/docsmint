@@ -77,8 +77,12 @@ test("the complete 0.5.0 exports, extensions, workspace assertion, and routes ma
 	).text();
 
 	expect(snapshot.version).toBe("0.5.0");
-	expect(manifest.version).toMatch(/^0\.5\.\d+$/);
-	expect(snapshot.packageExports).toEqual(manifest.exports);
+	expect(manifest.version).toMatch(/^0\.(?:5\.\d+|6\.0)$/);
+	for (const [exportPath, exportContract] of Object.entries(
+		snapshot.packageExports,
+	)) {
+		expect(manifest.exports[exportPath], exportPath).toEqual(exportContract);
+	}
 	expect(snapshot.httpRoutes).toEqual(routeInventory);
 	for (const key of snapshot.extensionManifestKeys) {
 		expect(extensionTypes, key).toContain(`${key}: readonly `);

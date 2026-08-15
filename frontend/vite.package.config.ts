@@ -54,6 +54,9 @@ const entries = {
 	"api/share": "../packages/sdk/frontend-entries/api/share.ts",
 	"components/editor/document-editor":
 		"../packages/sdk/frontend-entries/components/editor/document-editor.ts",
+	"components/editor/compact-editor":
+		"../packages/sdk/frontend-entries/components/editor/compact-editor.ts",
+	"editor-preferences": "../packages/sdk/frontend-entries/editor-preferences.ts",
 	"components/folder-tree-selector":
 		"../packages/sdk/frontend-entries/components/folder-tree-selector.ts",
 	"components/save-as-dialog":
