@@ -115,7 +115,7 @@ export async function enqueueReembed(
 			// Keep the legacy list bridge for metadata-triggered re-embeds until
 			// the reconciliation worker owns this path. The bridge accepts the
 			// document id and preserves existing dedup/retry behavior.
-			enqueueEmbedding(id);
+			void enqueueEmbedding(id, "interactive", workspaceId);
 			pushed += 1;
 		}
 	}

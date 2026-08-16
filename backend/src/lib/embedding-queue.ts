@@ -17,46 +17,52 @@ export const LEGACY_EMBEDDING_QUEUE_KEY = "hiai-docs:embedding-queue";
 export async function enqueueEmbedding(
 	documentId: string,
 	source: PipelineSource = "interactive",
+	workspaceId?: string,
 ): Promise<boolean> {
-	let pipelineInput: { ownerId: string; revision: string } | undefined;
+	let pipelineInput:
+		| { ownerId: string; revision: string; workspaceId?: string }
+		| undefined;
 	try {
-		await withTenant(adminTenantContext(ZERO_UUID), async (tx) => {
-			const rows = await tx
-				.select({
-					active: documents.activeEmbeddingGeneration,
-					ownerId: documents.ownerId,
-					title: documents.title,
-					content: documents.content,
-				})
-				.from(documents)
-				.where(eq(documents.id, documentId))
-				.limit(1);
-			const document = rows[0];
-			if (!document) return;
-			const revision = contentHash(document.title, document.content ?? "");
-			pipelineInput = { ownerId: document.ownerId, revision };
-			const activeGeneration = document.active;
-			if (activeGeneration) {
-				await tx
-					.update(documents)
-					.set({
-						embeddingStatus: "stale",
-						embeddingErrorCode: null,
-						contentHash: revision,
+		await withTenant(
+			{ ...adminTenantContext(ZERO_UUID), workspaceId },
+			async (tx) => {
+				const rows = await tx
+					.select({
+						active: documents.activeEmbeddingGeneration,
+						ownerId: documents.ownerId,
+						title: documents.title,
+						content: documents.content,
 					})
-					.where(
-						and(
-							eq(documents.id, documentId),
-							eq(documents.activeEmbeddingGeneration, activeGeneration),
-						),
-					);
-			} else {
-				await tx
-					.update(documents)
-					.set({ contentHash: revision })
-					.where(eq(documents.id, documentId));
-			}
-		});
+					.from(documents)
+					.where(eq(documents.id, documentId))
+					.limit(1);
+				const document = rows[0];
+				if (!document) return;
+				const revision = contentHash(document.title, document.content ?? "");
+				pipelineInput = { ownerId: document.ownerId, revision, workspaceId };
+				const activeGeneration = document.active;
+				if (activeGeneration) {
+					await tx
+						.update(documents)
+						.set({
+							embeddingStatus: "stale",
+							embeddingErrorCode: null,
+							contentHash: revision,
+						})
+						.where(
+							and(
+								eq(documents.id, documentId),
+								eq(documents.activeEmbeddingGeneration, activeGeneration),
+							),
+						);
+				} else {
+					await tx
+						.update(documents)
+						.set({ contentHash: revision })
+						.where(eq(documents.id, documentId));
+				}
+			},
+		);
 	} catch (err) {
 		logger.warn(
 			{ err, documentId },
@@ -71,6 +77,7 @@ export async function enqueueEmbedding(
 		await enqueueDocumentPipeline({
 			documentId,
 			ownerId: pipelineInput.ownerId,
+			workspaceId: pipelineInput.workspaceId,
 			revision: pipelineInput.revision,
 			source,
 		});

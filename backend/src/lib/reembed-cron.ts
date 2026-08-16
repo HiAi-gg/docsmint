@@ -45,6 +45,7 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { config } from "./config";
+import { createCronTimerRegistry } from "./cron-timer-registry";
 import { logger } from "./logger";
 import { enqueueReembed } from "./reembed";
 
@@ -80,7 +81,12 @@ const CRON_TENANT = adminTenantContext(ZERO_UUID);
  * tick are logged and swallowed so a transient DB blip cannot kill the
  * loop.
  */
-export function startReembedCron(): void {
+export interface ReembedCronRuntime {
+	close(): void;
+}
+
+export function startReembedCron(): ReembedCronRuntime {
+	const timers = createCronTimerRegistry();
 	const metadataIntervalMs =
 		config.METADATA_REEMBED_CRON_INTERVAL_MINUTES * 60 * 1000;
 
@@ -94,11 +100,13 @@ export function startReembedCron(): void {
 		void processStaleMetadataChanges().catch((err: unknown) => {
 			logger.error({ err }, "Reembed metadata-stale cron initial run failed");
 		});
-		setInterval(() => {
-			void processStaleMetadataChanges().catch((err: unknown) => {
-				logger.error({ err }, "Reembed metadata-stale cron tick failed");
-			});
-		}, metadataIntervalMs);
+		timers.register(
+			setInterval(() => {
+				void processStaleMetadataChanges().catch((err: unknown) => {
+					logger.error({ err }, "Reembed metadata-stale cron tick failed");
+				});
+			}, metadataIntervalMs),
+		);
 	} else {
 		logger.warn(
 			"METADATA_REEMBED_CRON_INTERVAL_MINUTES=0 — metadata-stale cron is DISABLED. " +
@@ -116,17 +124,20 @@ export function startReembedCron(): void {
 		void processIdlePendingChanges().catch((err: unknown) => {
 			logger.error({ err }, "Reembed idle-pending cron initial run failed");
 		});
-		setInterval(() => {
-			void processIdlePendingChanges().catch((err: unknown) => {
-				logger.error({ err }, "Reembed idle-pending cron tick failed");
-			});
-		}, idleIntervalMs);
+		timers.register(
+			setInterval(() => {
+				void processIdlePendingChanges().catch((err: unknown) => {
+					logger.error({ err }, "Reembed idle-pending cron tick failed");
+				});
+			}, idleIntervalMs),
+		);
 	} else {
 		logger.warn(
 			"REEMBED_CRON_INTERVAL_MINUTES=0 — idle-pending cron is DISABLED. " +
 				"Sub-threshold edits will NOT trigger catch-up embeds until the cron is re-enabled.",
 		);
 	}
+	return { close: () => timers.close() };
 }
 
 /**
@@ -145,6 +156,7 @@ async function processStaleMetadataChanges(): Promise<void> {
 		tx
 			.select({
 				id: documents.id,
+				workspaceId: documents.workspaceId,
 				metadataChangedAt: documents.metadataChangedAt,
 			})
 			.from(documents)
@@ -190,7 +202,7 @@ async function processStaleMetadataChanges(): Promise<void> {
 			`),
 		);
 		if (Array.isArray(cleared) && cleared.length > 0) {
-			await enqueueReembed([row.id]);
+			await enqueueReembed([row.id], row.workspaceId ?? undefined);
 			enqueued += 1;
 		}
 	}
@@ -238,7 +250,7 @@ async function processIdlePendingChanges(): Promise<void> {
 
 	const idle = await withTenant(CRON_TENANT, (tx) =>
 		tx
-			.select({ id: documents.id })
+			.select({ id: documents.id, workspaceId: documents.workspaceId })
 			.from(documents)
 			.where(
 				and(
@@ -259,7 +271,7 @@ async function processIdlePendingChanges(): Promise<void> {
 
 	let enqueued = 0;
 	for (const row of idle) {
-		await enqueueReembed([row.id]);
+		await enqueueReembed([row.id], row.workspaceId ?? undefined);
 		enqueued += 1;
 	}
 

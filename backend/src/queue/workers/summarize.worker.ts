@@ -9,7 +9,9 @@ export interface SummarizeWorkerDependencies {
 		job: ReturnType<typeof summarizeJobSchema.parse>,
 	): Promise<GraphPipelineState | null>;
 	enabled(): boolean;
-	summarize(job: ReturnType<typeof summarizeJobSchema.parse>): Promise<void>;
+	summarize(
+		job: ReturnType<typeof summarizeJobSchema.parse>,
+	): Promise<"ready" | "skipped">;
 	setSummaryStatus(
 		generationId: string,
 		status: PipelineStageStatus,
@@ -52,9 +54,9 @@ export function createSummarizeWorker(deps: SummarizeWorkerDependencies) {
 		await deps.setSummaryStatus(job.generationId, "processing");
 		try {
 			if (await deps.isCancelled?.(job)) return;
-			await deps.summarize(job);
+			const status = await deps.summarize(job);
 			if (await deps.isCancelled?.(job)) return;
-			await deps.setSummaryStatus(job.generationId, "ready");
+			await deps.setSummaryStatus(job.generationId, status);
 		} catch (error) {
 			if (await deps.isCancelled?.(job)) return;
 			await deps.setSummaryStatus(
@@ -62,6 +64,7 @@ export function createSummarizeWorker(deps: SummarizeWorkerDependencies) {
 				"failed",
 				error instanceof Error ? error.name : "summary_failed",
 			);
+			if (!(await deps.isCancelled?.(job))) await deps.enqueueFinalize(job);
 			throw error;
 		}
 		if (!(await deps.isCancelled?.(job))) await deps.enqueueFinalize(job);

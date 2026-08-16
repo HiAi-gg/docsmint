@@ -30,6 +30,7 @@ import { config } from "./lib/config";
 import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { DocsmintWorkspaceContextError } from "./lib/external-tenant-context";
 import { logger } from "./lib/logger";
+import { startReembedCron } from "./lib/reembed-cron";
 import { configureDocsMintRuntime } from "./lib/runtime-options";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
 import { createPipelineStageDependencies } from "./queue/adapters";
@@ -88,6 +89,7 @@ const pipelineRuntime = await startRegisteredPipelineWorkers({
 		logger.info({ legacy, recovery }, "Pipeline recovery completed");
 	},
 });
+const reembedCronRuntime = startReembedCron();
 
 ensureBucket(storage, BUCKET).catch((err) => {
 	logger.error({ err }, "Failed to ensure storage bucket");
@@ -289,6 +291,7 @@ logger.info({ port: config.API_PORT }, "hiai-docs API started");
 // Graceful shutdown
 export const stopDocsMintApi = async () => {
 	logger.info("Shutting down...");
+	reembedCronRuntime.close();
 	await pipelineRuntime.close();
 	await app.stop();
 };

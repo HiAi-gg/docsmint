@@ -28,6 +28,7 @@ import {
 	resolveChatProviderKey,
 } from "../openai-compatible-chat";
 import { redis } from "../redis";
+import { graphReplacementPreludeCypher } from "./generation-state";
 import { type GraphSqlClient, getGraphDb } from "./init";
 
 const ENTITY_TYPES = [
@@ -63,6 +64,10 @@ export interface ExtractedEntity {
 }
 
 export interface ExtractEntitiesOptions {
+	/** Pipeline generation that owns the replacement graph projection. */
+	generationId?: string;
+	/** Source revision paired with `generationId`. */
+	revision?: string;
 	/** Maximum LLM tokens to spend on the response. */
 	maxTokens?: number;
 	/** Sampling temperature. 0 keeps extractions deterministic. */
@@ -257,10 +262,11 @@ export async function extractEntities(
 		return [];
 	}
 
-	if (entities.length === 0) return [];
-
 	try {
-		await persistEntities(sql, documentId, entities);
+		await persistEntities(sql, documentId, entities, {
+			generationId: options.generationId ?? "legacy",
+			revision: options.revision ?? "legacy",
+		});
 	} catch (err) {
 		logger.warn(
 			{ err, documentId, count: entities.length },
@@ -539,6 +545,7 @@ async function persistEntities(
 	sql: GraphSqlClient,
 	documentId: string,
 	entities: ExtractedEntity[],
+	identity: { generationId: string; revision: string },
 ): Promise<void> {
 	// Wrap all cypher writes in a transaction so a failure mid-way rolls
 	// back partial graph state (some entities persisted, some edges missing).
@@ -551,17 +558,16 @@ async function persistEntities(
 		await tx`SELECT pg_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
 
 		const nowIso = new Date().toISOString();
-		const docIdLiteral = JSON.stringify(documentId);
-		const nowLiteral = JSON.stringify(nowIso);
 
-		// 1. Upsert the source Document vertex. Values are inlined as JSON
-		//    literals (safe — documentId is a UUID from the DB).
+		// 1. Replace every edge previously projected by this document and stamp
+		//    the document vertex in the same AGE transaction.
 		await tx.unsafe(
-			`SELECT * FROM cypher('docs_graph', $$
-				MERGE (d:Document {id: ${docIdLiteral}})
-				SET d.created_at = ${nowLiteral}, d.entity_extracted_at = ${nowLiteral}
-				RETURN d.id
-			$$) AS (result agtype)`,
+			`SELECT * FROM cypher('docs_graph', $$ ${graphReplacementPreludeCypher({
+				documentId,
+				generationId: identity.generationId,
+				revision: identity.revision,
+				timestamp: nowIso,
+			})} $$) AS (result agtype)`,
 		);
 
 		// 2. Upsert each entity vertex and create a MENTIONS edge to the
@@ -576,7 +582,7 @@ async function persistEntities(
 				`SELECT * FROM cypher('docs_graph', $$ ${entityUpsertCypher(documentId, label, name, nowIso, conf)} $$) AS (result agtype)`,
 			);
 			await tx.unsafe(
-				`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, label, name, conf)} $$) AS (result agtype)`,
+				`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, identity.generationId, label, name, conf)} $$) AS (result agtype)`,
 			);
 		}
 
@@ -585,6 +591,8 @@ async function persistEntities(
 		for (const ent of entities) {
 			for (const rel of ent.relationships) {
 				const cypher = entityRelationCypher(
+					documentId,
+					identity.generationId,
 					ent.type,
 					ent.name,
 					rel.targetName,
@@ -638,6 +646,7 @@ function entityUpsertCypher(
  */
 function documentEntityEdgeCypher(
 	docId: string,
+	generationId: string,
 	label: string,
 	name: string,
 	confidence: number | undefined,
@@ -647,13 +656,14 @@ function documentEntityEdgeCypher(
 	return `
 		MATCH (d:Document {id: $docId})
 		MATCH (e:\`${label}\` {name: $name})
-		MERGE (d)-[r:MENTIONS]->(e)
-		SET r.created_at = $now, r.confidence = $conf
+		MERGE (d)-[r:MENTIONS {document_id: $docId}]->(e)
+		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
 		.replace("$docId", JSON.stringify(docId))
 		.replace("$name", JSON.stringify(name))
 		.replace("$now", JSON.stringify(new Date().toISOString()))
+		.replace("$generationId", JSON.stringify(generationId))
 		.replace("$conf", confLiteral);
 }
 
@@ -668,6 +678,8 @@ function documentEntityEdgeCypher(
  * using GREATEST on re-sightings so the edge keeps the strongest signal.
  */
 function entityRelationCypher(
+	documentId: string,
+	generationId: string,
 	sourceLabel: string,
 	sourceName: string,
 	targetName: string,
@@ -679,12 +691,14 @@ function entityRelationCypher(
 	return `
 		MATCH (a:\`${sourceLabel}\` {name: $source})
 		MATCH (b {name: $target})
-		MERGE (a)-[r:\`${relationType}\`]->(b)
-		SET r.created_at = $now, r.confidence = $conf
+		MERGE (a)-[r:\`${relationType}\` {document_id: $documentId}]->(b)
+		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
 		.replace("$source", JSON.stringify(sourceName))
 		.replace("$target", JSON.stringify(targetName))
+		.replace("$documentId", JSON.stringify(documentId))
+		.replace("$generationId", JSON.stringify(generationId))
 		.replace("$now", JSON.stringify(new Date().toISOString()))
 		.replace("$conf", confLiteral);
 }

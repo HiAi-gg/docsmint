@@ -509,7 +509,6 @@ async function hydrateResults(
 						sql`, `,
 					)})
 						AND ${tenantOwnerSql("d", ctx)}
-						AND d.embedding_status = 'ready'
 						AND d.active_embedding_generation IS NOT NULL
 						AND de.generation_id = d.active_embedding_generation
 						AND de.is_valid = true

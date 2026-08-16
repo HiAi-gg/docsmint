@@ -448,6 +448,35 @@ export interface DocsDocumentPipeline {
 	updatedAt: string;
 }
 
+export interface DocsDocumentKnowledgeSummary {
+	documentId: string;
+	generationId: string;
+	revision: string;
+	language: string;
+	description: string;
+	keywords: string[];
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface DocsDocumentIndexStatus {
+	documentId: string;
+	embeddingStatus: "pending" | "processing" | "ready" | "failed" | "stale";
+	activeGenerationId: string | null;
+	pendingGenerationId: string | null;
+	embeddingProfile: string | null;
+	embeddingErrorCode: string | null;
+	embeddingUpdatedAt: string | null;
+	searchable: boolean;
+	pipeline: DocsDocumentPipeline | null;
+}
+
+export interface DocsDocumentIndexRefresh {
+	documentId: string;
+	generationId: string;
+	deduplicated: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Versions
 // ---------------------------------------------------------------------------

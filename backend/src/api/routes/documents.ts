@@ -3,6 +3,8 @@ import {
 	attachments,
 	categories,
 	documentCreateOperations,
+	documentEmbeddings,
+	documentKnowledgeSummaries,
 	documentPipelineRuns,
 	documents,
 	documentTags,
@@ -895,6 +897,221 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 500;
 			return { error: "Failed to load pipeline progress" };
 		}
+	})
+	.get("/documents/:id/knowledge-summary", async ({ params, set, request }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const [summary] = await withTenant(ctx, (tx) =>
+			tx
+				.select({
+					documentId: documentKnowledgeSummaries.documentId,
+					generationId: documentKnowledgeSummaries.generationId,
+					revision: documentKnowledgeSummaries.revision,
+					language: documentKnowledgeSummaries.language,
+					description: documentKnowledgeSummaries.description,
+					keywords: documentKnowledgeSummaries.keywords,
+					createdAt: documentKnowledgeSummaries.createdAt,
+					updatedAt: documentKnowledgeSummaries.updatedAt,
+				})
+				.from(documentKnowledgeSummaries)
+				.innerJoin(
+					documents,
+					eq(documents.id, documentKnowledgeSummaries.documentId),
+				)
+				.where(
+					and(
+						eq(documentKnowledgeSummaries.documentId, params.id),
+						eq(
+							documentKnowledgeSummaries.generationId,
+							documents.activeEmbeddingGeneration,
+						),
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.limit(1),
+		);
+		if (!summary) {
+			set.status = 404;
+			return { error: "Knowledge summary not found" };
+		}
+		return summary;
+	})
+	.get("/documents/:id/index-status", async ({ params, set, request }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const result = await withTenant(ctx, async (tx) => {
+			const [document] = await tx
+				.select({
+					id: documents.id,
+					embeddingStatus: documents.embeddingStatus,
+					activeGenerationId: documents.activeEmbeddingGeneration,
+					pendingGenerationId: documents.pendingEmbeddingGeneration,
+					embeddingProfile: documents.embeddingProfile,
+					embeddingErrorCode: documents.embeddingErrorCode,
+					embeddingUpdatedAt: documents.embeddingUpdatedAt,
+				})
+				.from(documents)
+				.where(
+					and(
+						eq(documents.id, params.id),
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.limit(1);
+			if (!document) return null;
+			const active = document.activeGenerationId
+				? await tx
+						.select({ id: documentEmbeddings.id })
+						.from(documentEmbeddings)
+						.where(
+							and(
+								eq(documentEmbeddings.documentId, document.id),
+								eq(
+									documentEmbeddings.generationId,
+									document.activeGenerationId,
+								),
+								eq(documentEmbeddings.isValid, true),
+								eq(documentEmbeddings.embeddingDimensions, 1024),
+								eq(
+									documentEmbeddings.embeddingProfile,
+									document.embeddingProfile ?? "",
+								),
+							),
+						)
+						.limit(1)
+				: [];
+			const [run] = await tx
+				.select({
+					documentId: documentPipelineRuns.documentId,
+					generationId: documentPipelineRuns.generationId,
+					revision: documentPipelineRuns.revision,
+					status: documentPipelineRuns.status,
+					prepareStatus: documentPipelineRuns.prepareStatus,
+					embedStatus: documentPipelineRuns.embedStatus,
+					graphStatus: documentPipelineRuns.graphStatus,
+					summarizeStatus: documentPipelineRuns.summarizeStatus,
+					finalizeStatus: documentPipelineRuns.finalizeStatus,
+					totalBatches: documentPipelineRuns.totalBatches,
+					completedBatches: documentPipelineRuns.completedBatches,
+					failedBatches: documentPipelineRuns.failedBatches,
+					updatedAt: documentPipelineRuns.updatedAt,
+				})
+				.from(documentPipelineRuns)
+				.where(eq(documentPipelineRuns.documentId, document.id))
+				.orderBy(desc(documentPipelineRuns.updatedAt))
+				.limit(1);
+			return {
+				document,
+				searchable: active.length > 0,
+				run,
+			};
+		});
+		if (!result) {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+		const run = result.run;
+		return {
+			documentId: result.document.id,
+			embeddingStatus: result.document.embeddingStatus,
+			activeGenerationId: result.document.activeGenerationId,
+			pendingGenerationId: result.document.pendingGenerationId,
+			embeddingProfile: result.document.embeddingProfile,
+			embeddingErrorCode: result.document.embeddingErrorCode,
+			embeddingUpdatedAt: result.document.embeddingUpdatedAt,
+			searchable: result.searchable,
+			pipeline: run
+				? {
+						documentId: run.documentId,
+						generationId: run.generationId,
+						status: run.status,
+						revision: run.revision,
+						stages: {
+							prepare: run.prepareStatus,
+							embed: run.embedStatus,
+							graph: run.graphStatus,
+							summarize: run.summarizeStatus,
+							finalize: run.finalizeStatus,
+						},
+						batches: {
+							total: run.totalBatches,
+							completed: run.completedBatches,
+							failed: run.failedBatches,
+						},
+						updatedAt: run.updatedAt,
+					}
+				: null,
+		};
+	})
+	.post("/documents/:id/index/refresh", async ({ params, set, request }) => {
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
+		if (ctx.role === "none") {
+			set.status = 401;
+			return { error: "Unauthorized" };
+		}
+		if (!canAccessContent(access, "edit")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
+		const [document] = await withTenant(ctx, (tx) =>
+			tx
+				.select({
+					id: documents.id,
+					ownerId: documents.ownerId,
+					title: documents.title,
+					content: documents.content,
+				})
+				.from(documents)
+				.where(
+					and(
+						eq(documents.id, params.id),
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNull(documents.deletedAt),
+						...(access.restricted && access.categoryId
+							? [eq(documents.categoryId, access.categoryId)]
+							: []),
+					),
+				)
+				.limit(1),
+		);
+		if (!document) {
+			set.status = 404;
+			return { error: "Document not found" };
+		}
+		const queued = await enqueueDocumentPipeline({
+			documentId: document.id,
+			ownerId: document.ownerId,
+			workspaceId: ctx.workspaceId,
+			revision: contentHash(document.title, document.content ?? ""),
+			source: "api",
+		});
+		set.status = 202;
+		return { documentId: document.id, ...queued };
 	})
 	.get("/documents/:id", async ({ params, set, request }) => {
 		const ip =

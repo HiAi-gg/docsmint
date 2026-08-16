@@ -355,6 +355,40 @@ export const documentPipelineBatches = pgTable(
 );
 
 // ============================================
+// document_knowledge_summaries — generation-scoped retrieval metadata
+// ============================================
+export const documentKnowledgeSummaries = pgTable(
+	"document_knowledge_summaries",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		documentId: uuid("document_id")
+			.notNull()
+			.references(() => documents.id, { onDelete: "cascade" }),
+		ownerId: uuid("owner_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		workspaceId: text("workspace_id"),
+		generationId: uuid("generation_id").notNull(),
+		revision: text("revision").notNull(),
+		language: text("language").notNull(),
+		description: text("description").notNull(),
+		keywords: text("keywords").array().notNull().default(sql`ARRAY[]::text[]`),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		updatedAt: timestamp("updated_at").defaultNow().notNull(),
+	},
+	(table) => [
+		uniqueIndex("document_knowledge_summaries_document_generation_idx").on(
+			table.documentId,
+			table.generationId,
+		),
+		index("document_knowledge_summaries_owner_document_idx").on(
+			table.ownerId,
+			table.documentId,
+		),
+	],
+);
+
+// ============================================
 // tags — document tags
 // ============================================
 export const tags = pgTable(

@@ -451,6 +451,33 @@ describe("DocsClient public contract", () => {
 		);
 	});
 
+	it("exposes knowledge summary, index status, and user refresh contracts", async () => {
+		const calls: Array<{ url: string; method: string }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({ url: String(input), method: init?.method ?? "GET" });
+			return jsonResponse({});
+		});
+
+		await docs.getDocumentKnowledgeSummary("doc/one");
+		await docs.getDocumentIndexStatus("doc/one");
+		await docs.refreshDocumentIndex("doc/one");
+
+		expect(calls).toEqual([
+			{
+				url: "https://docs.example.test/api/documents/doc%2Fone/knowledge-summary",
+				method: "GET",
+			},
+			{
+				url: "https://docs.example.test/api/documents/doc%2Fone/index-status",
+				method: "GET",
+			},
+			{
+				url: "https://docs.example.test/api/documents/doc%2Fone/index/refresh",
+				method: "POST",
+			},
+		]);
+	});
+
 	it("throws DocsApiError with status and parsed body", async () => {
 		const docs = client(async () =>
 			jsonResponse({ error: "Forbidden" }, 403, { "x-request-id": "req-403" }),

@@ -1,5 +1,6 @@
 import {
 	documentEmbeddings,
+	documentKnowledgeSummaries,
 	documentPipelineBatches,
 	documentPipelineRuns,
 	documents,
@@ -15,8 +16,10 @@ import { getEmbedding } from "../embedding/index";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { tenantOwnerCondition } from "../lib/content-access";
-import { deleteDocumentGraphState } from "../lib/graph/delete-document-state";
+import { deleteDocumentGraphGeneration } from "../lib/graph/delete-document-state";
 import { extractEntities } from "../lib/graph/extract-entities";
+import { buildKnowledgeSummary } from "../lib/knowledge-summary";
+import { requestKnowledgeSummary } from "../lib/knowledge-summary-provider";
 import type {
 	EmbedBatchJob,
 	PipelineJob,
@@ -612,7 +615,11 @@ export function createPipelineStageDependencies(
 				await withProviderPermit(
 					providerProfile(`graph:${config.GRAPH_EXTRACT_MODEL ?? "default"}`),
 					"graph",
-					() => extractEntities(doc.content ?? "", job.documentId),
+					() =>
+						extractEntities(doc.content ?? "", job.documentId, {
+							generationId: job.generationId,
+							revision: job.revision,
+						}),
 				);
 			},
 			async compensateExtract(job) {
@@ -634,7 +641,8 @@ export function createPipelineStageDependencies(
 							)
 							.limit(1),
 				);
-				if (owned.length === 1) await deleteDocumentGraphState(job.documentId);
+				if (owned.length === 1)
+					await deleteDocumentGraphGeneration(job.documentId, job.generationId);
 			},
 			setGraphStatus: (generationId, status, errorCode) =>
 				setStageStatus(generationId, "graph", status, errorCode),
@@ -662,8 +670,85 @@ export function createPipelineStageDependencies(
 						}
 					: null;
 			},
-			enabled: () => false,
-			async summarize() {},
+			enabled: () =>
+				config.GRAPH_EXTRACT_ENABLED &&
+				Boolean(config.GRAPH_EXTRACT_BASE_URL && config.GRAPH_EXTRACT_MODEL),
+			async summarize(job) {
+				return withTenant(
+					{ ...admin, workspaceId: job.workspaceId },
+					async (tx) => {
+						const [document] = await tx
+							.select({
+								title: documents.title,
+								content: documents.content,
+								contentHash: documents.contentHash,
+								activeGeneration: documents.activeEmbeddingGeneration,
+							})
+							.from(documents)
+							.where(
+								and(
+									eq(documents.id, job.documentId),
+									tenantOwnerCondition(
+										documents.ownerId,
+										documents.workspaceId,
+										jobTenant(job),
+									),
+								),
+							)
+							.limit(1);
+						if (!document) throw new Error("summary_document_missing");
+						const revision = resolveDocumentRevision(
+							document.contentHash,
+							document.title,
+							document.content ?? "",
+						);
+						if (
+							revision !== job.revision ||
+							document.activeGeneration !== job.generationId
+						) {
+							const error = new Error("summary generation is stale");
+							error.name = "stale_revision";
+							throw error;
+						}
+						const summary = await buildKnowledgeSummary(
+							{
+								title: document.title,
+								content: document.content ?? "",
+								revision,
+							},
+							requestKnowledgeSummary,
+						);
+						if (summary.status === "skipped") return "skipped";
+						await tx
+							.insert(documentKnowledgeSummaries)
+							.values({
+								documentId: job.documentId,
+								ownerId: job.ownerId,
+								workspaceId: job.workspaceId,
+								generationId: job.generationId,
+								revision: job.revision,
+								language: summary.language,
+								description: summary.description,
+								keywords: summary.keywords,
+								updatedAt: new Date(),
+							})
+							.onConflictDoUpdate({
+								target: [
+									documentKnowledgeSummaries.documentId,
+									documentKnowledgeSummaries.generationId,
+								],
+								set: {
+									revision: job.revision,
+									language: summary.language,
+									description: summary.description,
+									keywords: summary.keywords,
+									updatedAt: new Date(),
+								},
+							});
+						return "ready";
+					},
+				);
+			},
 			setSummaryStatus: (generationId, status, errorCode) =>
 				setStageStatus(generationId, "summarize", status, errorCode),
 			async enqueueFinalize(job) {

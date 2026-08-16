@@ -282,7 +282,6 @@ async function retrieveVector(
 			JOIN documents d ON d.id = de.document_id
 			WHERE d.owner_id = ${ctx.userId}
 				${scope}
-				AND d.embedding_status = 'ready'
 				AND d.active_embedding_generation IS NOT NULL
 				AND de.generation_id = d.active_embedding_generation
 				AND de.is_valid = true

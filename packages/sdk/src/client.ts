@@ -22,6 +22,9 @@ import type {
 	DocsDocument,
 	DocsDocumentCreateInput,
 	DocsDocumentCursorPage,
+	DocsDocumentIndexRefresh,
+	DocsDocumentIndexStatus,
+	DocsDocumentKnowledgeSummary,
 	DocsDocumentListResponse,
 	DocsDocumentPipeline,
 	DocsDocumentUpdateInput,
@@ -300,6 +303,42 @@ export class DocsClient {
 		return this.request<DocsDocumentPipeline>(
 			"GET",
 			`/api/documents/${encodeURIComponent(id)}/pipeline`,
+			undefined,
+			context,
+		);
+	}
+
+	async getDocumentKnowledgeSummary(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsDocumentKnowledgeSummary> {
+		return this.request<DocsDocumentKnowledgeSummary>(
+			"GET",
+			`/api/documents/${encodeURIComponent(id)}/knowledge-summary`,
+			undefined,
+			context,
+		);
+	}
+
+	async getDocumentIndexStatus(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsDocumentIndexStatus> {
+		return this.request<DocsDocumentIndexStatus>(
+			"GET",
+			`/api/documents/${encodeURIComponent(id)}/index-status`,
+			undefined,
+			context,
+		);
+	}
+
+	async refreshDocumentIndex(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsDocumentIndexRefresh> {
+		return this.request<DocsDocumentIndexRefresh>(
+			"POST",
+			`/api/documents/${encodeURIComponent(id)}/index/refresh`,
 			undefined,
 			context,
 		);

@@ -295,6 +295,13 @@
 			"when": 1785102000000,
 			"tag": "0041_restricted_sharing",
 			"breakpoints": true
+		},
+		{
+			"idx": 42,
+			"version": "7",
+			"when": 1786892400000,
+			"tag": "0042_document_knowledge_summaries",
+			"breakpoints": true
 		}
   ]
 }

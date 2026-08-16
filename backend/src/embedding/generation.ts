@@ -200,7 +200,7 @@ export async function failEmbeddingGeneration(
 		await tx
 			.update(documents)
 			.set({
-				embeddingStatus: "failed",
+				embeddingStatus: state[0]?.active ? "ready" : "failed",
 				embeddingErrorCode: safeCode || "unknown",
 				pendingEmbeddingGeneration: null,
 			})

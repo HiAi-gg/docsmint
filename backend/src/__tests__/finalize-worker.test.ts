@@ -44,7 +44,7 @@ describe("finalize worker semantics", () => {
 		const worker = createSummarizeWorker({
 			getRun: async () => ({ ...baseRun }),
 			enabled: () => false,
-			summarize: async () => {},
+			summarize: async () => "ready",
 			setSummaryStatus: async (_id, status) => {
 				statuses.push(status);
 			},
@@ -66,6 +66,7 @@ describe("finalize worker semantics", () => {
 			enabled: () => true,
 			summarize: async () => {
 				effects.push("summarize");
+				return "ready";
 			},
 			setSummaryStatus: async (_id, status) => {
 				effects.push(status);
@@ -76,5 +77,27 @@ describe("finalize worker semantics", () => {
 		});
 		await worker({ ...job, stage: "summarize" });
 		expect(effects).toEqual(["processing", "summarize"]);
+	});
+
+	it("finalizes with a warning when summary generation fails", async () => {
+		const effects: string[] = [];
+		const worker = createSummarizeWorker({
+			getRun: async () => ({ ...baseRun }),
+			enabled: () => true,
+			summarize: async () => {
+				throw new Error("summary_provider_failed");
+			},
+			setSummaryStatus: async (_id, status) => {
+				effects.push(status);
+			},
+			enqueueFinalize: async () => {
+				effects.push("enqueue");
+			},
+		});
+
+		await expect(worker({ ...job, stage: "summarize" })).rejects.toThrow(
+			"summary_provider_failed",
+		);
+		expect(effects).toEqual(["processing", "failed", "enqueue"]);
 	});
 });
