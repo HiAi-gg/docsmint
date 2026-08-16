@@ -71,13 +71,17 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 	job: TJob,
 	dependencies: SummaryStageDependencies<TJob>,
 ): Promise<void> {
-	const isCurrent = async () =>
-		!(await dependencies.isCancelled?.(job)) &&
+	const isExplicitlyCancelled = async () =>
+		(await dependencies.isCancelled?.(job)) === true;
+	const hasCurrentGeneration = async () =>
 		(await dependencies.isCurrent?.(job)) !== false;
-	if (!(await isCurrent())) {
+	const continueIfCurrent = async () => {
+		if (await isExplicitlyCancelled()) return false;
+		if (await hasCurrentGeneration()) return true;
 		await dependencies.cancelStaleRun?.(job);
-		return;
-	}
+		return false;
+	};
+	if (!(await continueIfCurrent())) return;
 	const run = await dependencies.getRun(job);
 	if (!run) throw new Error("Pipeline run not found");
 	if (run.ownerId !== job.ownerId || run.documentId !== job.documentId) {
@@ -93,26 +97,36 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 		return;
 	}
 	if (!dependencies.enabled()) {
-		if (!(await isCurrent())) {
-			await dependencies.cancelStaleRun?.(job);
-			return;
-		}
+		if (!(await continueIfCurrent())) return;
 		await dependencies.setSummaryStatus(job.generationId, "skipped");
-		if (await isCurrent()) await dependencies.enqueueFinalize(job);
+		if (!(await continueIfCurrent())) return;
+		await dependencies.enqueueFinalize(job);
 		return;
 	}
-	if (!(await isCurrent())) {
-		await dependencies.cancelStaleRun?.(job);
-		return;
-	}
+	if (!(await continueIfCurrent())) return;
 	await dependencies.setSummaryStatus(job.generationId, "processing");
 	try {
-		if (!(await isCurrent())) {
+		if (!(await continueIfCurrent())) return;
+		const status = await dependencies.summarize(job);
+		if (status === "cancelled") {
+			if (await isExplicitlyCancelled()) {
+				await dependencies.setSummaryStatus(job.generationId, "cancelled");
+				return;
+			}
+			await dependencies.setSummaryStatus(
+				job.generationId,
+				"cancelled",
+				"stale_revision",
+			);
 			await dependencies.cancelStaleRun?.(job);
 			return;
 		}
-		const status = await dependencies.summarize(job);
-		if (status === "cancelled" || !(await isCurrent())) {
+		if (await isExplicitlyCancelled()) {
+			await dependencies.setSummaryStatus(job.generationId, "cancelled");
+			return;
+		}
+		if (!(await hasCurrentGeneration())) {
+			if (await isExplicitlyCancelled()) return;
 			await dependencies.setSummaryStatus(
 				job.generationId,
 				"cancelled",
@@ -123,19 +137,18 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 		}
 		await dependencies.setSummaryStatus(job.generationId, status);
 	} catch (error) {
-		if (!(await isCurrent())) {
-			await dependencies.cancelStaleRun?.(job);
-			return;
-		}
+		if (!(await continueIfCurrent())) return;
 		await dependencies.setSummaryStatus(
 			job.generationId,
 			"failed",
 			error instanceof Error ? error.name : "summary_failed",
 		);
-		if (await isCurrent()) await dependencies.enqueueFinalize(job);
+		if (!(await continueIfCurrent())) return;
+		await dependencies.enqueueFinalize(job);
 		return;
 	}
-	if (await isCurrent()) await dependencies.enqueueFinalize(job);
+	if (!(await continueIfCurrent())) return;
+	await dependencies.enqueueFinalize(job);
 }
 
 export interface GraphStageFailureDependencies<

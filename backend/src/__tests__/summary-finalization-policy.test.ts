@@ -89,6 +89,52 @@ describe("summary retry and finalization policy", () => {
 		expect(effects).toEqual(["cancel-run"]);
 	});
 
+	test("terminally cancels when the generation fence is lost after status publication", async () => {
+		const effects: string[] = [];
+		let currentChecks = 0;
+		await Policy.processSummaryStage?.(job, {
+			isCancelled: async () => false,
+			isCurrent: async () => ++currentChecks < 5,
+			getRun: async () => run,
+			enabled: () => true,
+			summarize: async () => "ready",
+			setSummaryStatus: async (_id: string, status: string) => {
+				effects.push(status);
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+			enqueueFinalize: async () => {
+				effects.push("finalize");
+			},
+		});
+		expect(effects).toEqual(["processing", "ready", "cancel-run"]);
+	});
+
+	test("preserves an explicit cancellation reason instead of classifying it as stale", async () => {
+		const effects: string[] = [];
+		await Policy.processSummaryStage?.(job, {
+			isCancelled: async () => true,
+			isCurrent: async () => {
+				effects.push("current-check");
+				return false;
+			},
+			getRun: async () => run,
+			enabled: () => true,
+			summarize: async () => "ready",
+			setSummaryStatus: async () => {
+				effects.push("summary-status");
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+			enqueueFinalize: async () => {
+				effects.push("finalize");
+			},
+		});
+		expect(effects).toEqual([]);
+	});
+
 	test("terminally cancels stale graph persistence without retrying", async () => {
 		expect(typeof Policy.processGraphStageFailure).toBe("function");
 		const effects: string[] = [];

@@ -144,7 +144,12 @@ async function cancelStalePipelineRun(job: {
 				completedAt: new Date(),
 				updatedAt: new Date(),
 			})
-			.where(eq(documentPipelineRuns.generationId, job.generationId)),
+			.where(
+				and(
+					eq(documentPipelineRuns.generationId, job.generationId),
+					ne(documentPipelineRuns.status, "cancelled"),
+				),
+			),
 	);
 }
 
