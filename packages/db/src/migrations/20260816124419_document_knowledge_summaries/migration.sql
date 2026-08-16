@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS public.document_knowledge_summaries (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  document_id uuid NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
-  owner_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  document_id uuid NOT NULL,
+  owner_id uuid NOT NULL,
   workspace_id text DEFAULT NULLIF(current_setting('app.current_workspace_id', true), ''),
   generation_id uuid NOT NULL,
   revision text NOT NULL,
@@ -9,10 +9,31 @@ CREATE TABLE IF NOT EXISTS public.document_knowledge_summaries (
   description text NOT NULL,
   keywords text[] DEFAULT ARRAY[]::text[] NOT NULL,
   created_at timestamp DEFAULT now() NOT NULL,
-  updated_at timestamp DEFAULT now() NOT NULL,
-  CONSTRAINT document_knowledge_summaries_document_generation_unique
-    UNIQUE (document_id, generation_id)
+  updated_at timestamp DEFAULT now() NOT NULL
 );--> statement-breakpoint
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'document_knowledge_summaries_document_id_documents_id_fk'
+  ) THEN
+    ALTER TABLE public.document_knowledge_summaries
+      ADD CONSTRAINT document_knowledge_summaries_document_id_documents_id_fk
+      FOREIGN KEY (document_id) REFERENCES public.documents(id) ON DELETE CASCADE;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'document_knowledge_summaries_owner_id_users_id_fk'
+  ) THEN
+    ALTER TABLE public.document_knowledge_summaries
+      ADD CONSTRAINT document_knowledge_summaries_owner_id_users_id_fk
+      FOREIGN KEY (owner_id) REFERENCES public.users(id) ON DELETE CASCADE;
+  END IF;
+END $$;--> statement-breakpoint
+
+CREATE UNIQUE INDEX IF NOT EXISTS document_knowledge_summaries_document_generation_idx
+  ON public.document_knowledge_summaries (document_id, generation_id);--> statement-breakpoint
 
 CREATE INDEX IF NOT EXISTS document_knowledge_summaries_owner_document_idx
   ON public.document_knowledge_summaries (owner_id, document_id);--> statement-breakpoint

@@ -26,6 +26,7 @@ function deps(
 		setGraphStatus: async (_id: string, status: PipelineStageStatus) => {
 			statuses.push(status);
 		},
+		cancelStaleRun: async () => undefined,
 		enqueueSummarize: async () => undefined,
 		...overrides,
 	};
@@ -53,6 +54,7 @@ describe("graph worker isolation", () => {
 			setGraphStatus: async (_id, status) => {
 				effects.push(status);
 			},
+			cancelStaleRun: async () => undefined,
 			enqueueSummarize: async () => {
 				effects.push("enqueue");
 			},
@@ -71,6 +73,7 @@ describe("graph worker isolation", () => {
 				throw new Error("graph cleanup failed");
 			},
 			setGraphStatus: async () => {},
+			cancelStaleRun: async () => undefined,
 			enqueueSummarize: async () => {},
 		});
 		await expect(worker(job)).rejects.toThrow("graph cleanup failed");
@@ -92,6 +95,28 @@ describe("graph worker isolation", () => {
 		// The state lookup still reports embedStatus=ready: graph failure never
 		// mutates document embedding readiness.
 		expect((await state.getRun(job))?.embedStatus).toBe("ready");
+	});
+
+	it("terminally cancels a generation that loses the persistence fence", async () => {
+		const effects: string[] = [];
+		const stale = new Error("graph generation is stale");
+		stale.name = "stale_revision";
+		const state = deps({
+			extract: async () => {
+				throw stale;
+			},
+			setGraphStatus: async (_id, status) => {
+				effects.push(status);
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+			enqueueSummarize: async () => {
+				effects.push("summarize");
+			},
+		});
+		await createGraphWorker(state)(job);
+		expect(effects).toEqual(["processing", "cancelled", "cancel-run"]);
 	});
 
 	it("enqueues summarize again safely when a retry sees the same graph error", async () => {

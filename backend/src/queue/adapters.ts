@@ -129,6 +129,25 @@ async function isCurrentPipelineGeneration(job: {
 	});
 }
 
+async function cancelStalePipelineRun(job: {
+	generationId: string;
+}): Promise<void> {
+	await withTenant(admin, (tx) =>
+		tx
+			.update(documentPipelineRuns)
+			.set({
+				status: "cancelled",
+				graphStatus: "cancelled",
+				summarizeStatus: "cancelled",
+				finalizeStatus: "cancelled",
+				errorCode: "stale_revision",
+				completedAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.where(eq(documentPipelineRuns.generationId, job.generationId)),
+	);
+}
+
 async function setStageStatus(
 	generationId: string,
 	stage: PipelineStage,
@@ -686,6 +705,7 @@ export function createPipelineStageDependencies(
 				if (owned.length === 1)
 					await deleteDocumentGraphGeneration(job.documentId, job.generationId);
 			},
+			cancelStaleRun: cancelStalePipelineRun,
 			setGraphStatus: (generationId, status, errorCode) =>
 				setStageStatus(generationId, "graph", status, errorCode),
 			async enqueueSummarize(job) {
@@ -701,6 +721,7 @@ export function createPipelineStageDependencies(
 			isCancelled: async (job) =>
 				(await getRun(job.generationId))?.status === "cancelled",
 			isCurrent: isCurrentPipelineGeneration,
+			cancelStaleRun: cancelStalePipelineRun,
 			async getRun(job) {
 				const run = await getRun(job.generationId);
 				return run
@@ -794,27 +815,27 @@ export function createPipelineStageDependencies(
 								await tx
 									.insert(documentKnowledgeSummaries)
 									.values({
-										documentId: job.documentId,
-										ownerId: job.ownerId,
-										workspaceId: job.workspaceId,
-										generationId: job.generationId,
+										document_id: job.documentId,
+										owner_id: job.ownerId,
+										workspace_id: job.workspaceId,
+										generation_id: job.generationId,
 										revision: job.revision,
 										language: summary.language,
 										description: summary.description,
 										keywords: summary.keywords,
-										updatedAt: new Date(),
+										updated_at: new Date(),
 									})
 									.onConflictDoUpdate({
 										target: [
-											documentKnowledgeSummaries.documentId,
-											documentKnowledgeSummaries.generationId,
+											documentKnowledgeSummaries.document_id,
+											documentKnowledgeSummaries.generation_id,
 										],
 										set: {
 											revision: job.revision,
 											language: summary.language,
 											description: summary.description,
 											keywords: summary.keywords,
-											updatedAt: new Date(),
+											updated_at: new Date(),
 										},
 									});
 								return true;

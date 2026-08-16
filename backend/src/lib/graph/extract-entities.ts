@@ -30,6 +30,7 @@ import {
 import { redis } from "../redis";
 import {
 	graphReplacementPreludeCypher,
+	isStaleRevisionError,
 	runGenerationFencedGraphWrite,
 } from "./generation-state";
 import { type GraphSqlClient, getGraphDb } from "./init";
@@ -271,6 +272,7 @@ export async function extractEntities(
 			revision: options.revision ?? "legacy",
 		});
 	} catch (err) {
+		if (isStaleRevisionError(err)) throw err;
 		logger.warn(
 			{ err, documentId, count: entities.length },
 			"Failed to persist extracted entities to AGE — discarding",

@@ -299,8 +299,8 @@
 		{
 			"idx": 42,
 			"version": "7",
-			"when": 1786892400000,
-			"tag": "0042_document_knowledge_summaries",
+			"when": 1786884259605,
+			"tag": "20260816124419_document_knowledge_summaries/migration",
 			"breakpoints": true
 		}
   ]

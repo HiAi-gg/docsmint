@@ -930,25 +930,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		const [summary] = await withTenant(ctx, (tx) =>
 			tx
 				.select({
-					documentId: documentKnowledgeSummaries.documentId,
-					generationId: documentKnowledgeSummaries.generationId,
+					documentId: documentKnowledgeSummaries.document_id,
+					generationId: documentKnowledgeSummaries.generation_id,
 					revision: documentKnowledgeSummaries.revision,
 					language: documentKnowledgeSummaries.language,
 					description: documentKnowledgeSummaries.description,
 					keywords: documentKnowledgeSummaries.keywords,
-					createdAt: documentKnowledgeSummaries.createdAt,
-					updatedAt: documentKnowledgeSummaries.updatedAt,
+					createdAt: documentKnowledgeSummaries.created_at,
+					updatedAt: documentKnowledgeSummaries.updated_at,
 				})
 				.from(documentKnowledgeSummaries)
 				.innerJoin(
 					documents,
-					eq(documents.id, documentKnowledgeSummaries.documentId),
+					eq(documents.id, documentKnowledgeSummaries.document_id),
 				)
 				.where(
 					and(
-						eq(documentKnowledgeSummaries.documentId, parsedParams.data.id),
+						eq(documentKnowledgeSummaries.document_id, parsedParams.data.id),
 						eq(
-							documentKnowledgeSummaries.generationId,
+							documentKnowledgeSummaries.generation_id,
 							documents.activeEmbeddingGeneration,
 						),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),

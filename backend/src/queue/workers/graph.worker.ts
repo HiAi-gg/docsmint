@@ -1,4 +1,5 @@
 import { graphJobSchema, type PipelineJob } from "../contracts";
+import { processGraphStageFailure } from "../stage-policies";
 
 export type PipelineStageStatus =
 	| "pending"
@@ -26,6 +27,7 @@ export interface GraphWorkerDependencies {
 	compensateExtract?(
 		job: ReturnType<typeof graphJobSchema.parse>,
 	): Promise<void>;
+	cancelStaleRun(job: ReturnType<typeof graphJobSchema.parse>): Promise<void>;
 	setGraphStatus(
 		generationId: string,
 		status: PipelineStageStatus,
@@ -56,6 +58,7 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 				"cancelled",
 				"stale_revision",
 			);
+			await deps.cancelStaleRun(job);
 			return;
 		}
 		if (run.embedStatus !== "ready") {
@@ -81,18 +84,7 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 			await deps.setGraphStatus(job.generationId, "ready");
 			if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
 		} catch (error) {
-			if (await deps.isCancelled?.(job)) throw error;
-			await deps.setGraphStatus(
-				job.generationId,
-				"failed",
-				error instanceof Error ? error.name : "graph_failed",
-			);
-			// GraphRAG is optional. Always advance the pipeline after an
-			// extraction failure so embeddings remain usable and finalize can
-			// publish ready_with_warnings. The deterministic summarize job id
-			// makes retries idempotent in BullMQ.
-			if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
-			throw error;
+			await processGraphStageFailure(job, error, deps);
 		}
 	};
 }

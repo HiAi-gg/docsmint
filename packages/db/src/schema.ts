@@ -360,30 +360,30 @@ export const documentPipelineBatches = pgTable(
 export const documentKnowledgeSummaries = pgTable(
 	"document_knowledge_summaries",
 	{
-		id: uuid("id").primaryKey().defaultRandom(),
-		documentId: uuid("document_id")
+		id: uuid().primaryKey().defaultRandom(),
+		document_id: uuid()
 			.notNull()
 			.references(() => documents.id, { onDelete: "cascade" }),
-		ownerId: uuid("owner_id")
+		owner_id: uuid()
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
-		workspaceId: text("workspace_id"),
-		generationId: uuid("generation_id").notNull(),
-		revision: text("revision").notNull(),
-		language: text("language").notNull(),
-		description: text("description").notNull(),
-		keywords: text("keywords").array().notNull().default(sql`ARRAY[]::text[]`),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-		updatedAt: timestamp("updated_at").defaultNow().notNull(),
+		workspace_id: text(),
+		generation_id: uuid().notNull(),
+		revision: text().notNull(),
+		language: text().notNull(),
+		description: text().notNull(),
+		keywords: text().array().notNull().default(sql`ARRAY[]::text[]`),
+		created_at: timestamp().defaultNow().notNull(),
+		updated_at: timestamp().defaultNow().notNull(),
 	},
 	(table) => [
 		uniqueIndex("document_knowledge_summaries_document_generation_idx").on(
-			table.documentId,
-			table.generationId,
+			table.document_id,
+			table.generation_id,
 		),
 		index("document_knowledge_summaries_owner_document_idx").on(
-			table.ownerId,
-			table.documentId,
+			table.owner_id,
+			table.document_id,
 		),
 	],
 );

@@ -9,6 +9,10 @@ function literal(value: string): string {
 	return JSON.stringify(value);
 }
 
+export function isStaleRevisionError(error: unknown): boolean {
+	return error instanceof Error && error.name === "stale_revision";
+}
+
 export async function runGenerationFencedGraphWrite(dependencies: {
 	lockCurrentGeneration(): Promise<boolean>;
 	persist(): Promise<void>;

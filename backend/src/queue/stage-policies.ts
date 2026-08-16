@@ -1,3 +1,5 @@
+import { isStaleRevisionError } from "../lib/graph/generation-state";
+
 export type PipelineStageStatus =
 	| "pending"
 	| "processing"
@@ -61,6 +63,7 @@ export interface SummaryStageDependencies<TJob extends PipelineJobIdentity> {
 		errorCode?: string,
 	): Promise<void>;
 	enqueueFinalize(job: TJob): Promise<void>;
+	cancelStaleRun?(job: TJob): Promise<void>;
 }
 
 /** Optional summary failures are terminal so BullMQ cannot race finalization. */
@@ -71,7 +74,10 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 	const isCurrent = async () =>
 		!(await dependencies.isCancelled?.(job)) &&
 		(await dependencies.isCurrent?.(job)) !== false;
-	if (!(await isCurrent())) return;
+	if (!(await isCurrent())) {
+		await dependencies.cancelStaleRun?.(job);
+		return;
+	}
 	const run = await dependencies.getRun(job);
 	if (!run) throw new Error("Pipeline run not found");
 	if (run.ownerId !== job.ownerId || run.documentId !== job.documentId) {
@@ -83,18 +89,28 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 			"cancelled",
 			"stale_revision",
 		);
+		await dependencies.cancelStaleRun?.(job);
 		return;
 	}
 	if (!dependencies.enabled()) {
-		if (!(await isCurrent())) return;
+		if (!(await isCurrent())) {
+			await dependencies.cancelStaleRun?.(job);
+			return;
+		}
 		await dependencies.setSummaryStatus(job.generationId, "skipped");
 		if (await isCurrent()) await dependencies.enqueueFinalize(job);
 		return;
 	}
-	if (!(await isCurrent())) return;
+	if (!(await isCurrent())) {
+		await dependencies.cancelStaleRun?.(job);
+		return;
+	}
 	await dependencies.setSummaryStatus(job.generationId, "processing");
 	try {
-		if (!(await isCurrent())) return;
+		if (!(await isCurrent())) {
+			await dependencies.cancelStaleRun?.(job);
+			return;
+		}
 		const status = await dependencies.summarize(job);
 		if (status === "cancelled" || !(await isCurrent())) {
 			await dependencies.setSummaryStatus(
@@ -102,11 +118,15 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 				"cancelled",
 				"stale_revision",
 			);
+			await dependencies.cancelStaleRun?.(job);
 			return;
 		}
 		await dependencies.setSummaryStatus(job.generationId, status);
 	} catch (error) {
-		if (!(await isCurrent())) return;
+		if (!(await isCurrent())) {
+			await dependencies.cancelStaleRun?.(job);
+			return;
+		}
 		await dependencies.setSummaryStatus(
 			job.generationId,
 			"failed",
@@ -116,4 +136,45 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 		return;
 	}
 	if (await isCurrent()) await dependencies.enqueueFinalize(job);
+}
+
+export interface GraphStageFailureDependencies<
+	TJob extends PipelineJobIdentity,
+> {
+	isCancelled?(job: TJob): Promise<boolean>;
+	setGraphStatus(
+		generationId: string,
+		status: PipelineStageStatus,
+		errorCode?: string,
+	): Promise<void>;
+	cancelStaleRun(job: TJob): Promise<void>;
+	enqueueSummarize(job: TJob): Promise<void>;
+}
+
+export async function processGraphStageFailure<
+	TJob extends PipelineJobIdentity,
+>(
+	job: TJob,
+	error: unknown,
+	dependencies: GraphStageFailureDependencies<TJob>,
+): Promise<void> {
+	if (isStaleRevisionError(error)) {
+		await dependencies.setGraphStatus(
+			job.generationId,
+			"cancelled",
+			"stale_revision",
+		);
+		await dependencies.cancelStaleRun(job);
+		return;
+	}
+	if (await dependencies.isCancelled?.(job)) throw error;
+	await dependencies.setGraphStatus(
+		job.generationId,
+		"failed",
+		error instanceof Error ? error.name : "graph_failed",
+	);
+	if (!(await dependencies.isCancelled?.(job))) {
+		await dependencies.enqueueSummarize(job);
+	}
+	throw error;
 }
