@@ -106,6 +106,8 @@ const cursorListQuerySchema = z.object({
 	sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
 
+const documentIdParamsSchema = z.object({ id: z.string().uuid() });
+
 type DocumentCursorV2 = Readonly<{
 	v: 2;
 	sortBy: "title" | "category" | "folder" | "updated";
@@ -899,6 +901,22 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 	})
 	.get("/documents/:id/knowledge-summary", async ({ params, set, request }) => {
+		const parsedParams = documentIdParamsSchema.safeParse(params);
+		if (!parsedParams.success) {
+			set.status = 400;
+			return { error: "Invalid document id" };
+		}
+		const ip =
+			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+			request.headers.get("x-real-ip") ??
+			"unknown";
+		const rl = await documentRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
 		const access = await resolveContentAccess(request);
 		const ctx = access.ctx;
 		if (ctx.role === "none") {
@@ -928,7 +946,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				)
 				.where(
 					and(
-						eq(documentKnowledgeSummaries.documentId, params.id),
+						eq(documentKnowledgeSummaries.documentId, parsedParams.data.id),
 						eq(
 							documentKnowledgeSummaries.generationId,
 							documents.activeEmbeddingGeneration,
@@ -949,6 +967,22 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		return summary;
 	})
 	.get("/documents/:id/index-status", async ({ params, set, request }) => {
+		const parsedParams = documentIdParamsSchema.safeParse(params);
+		if (!parsedParams.success) {
+			set.status = 400;
+			return { error: "Invalid document id" };
+		}
+		const ip =
+			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+			request.headers.get("x-real-ip") ??
+			"unknown";
+		const rl = await documentRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
 		const access = await resolveContentAccess(request);
 		const ctx = access.ctx;
 		if (ctx.role === "none") {
@@ -973,7 +1007,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				.from(documents)
 				.where(
 					and(
-						eq(documents.id, params.id),
+						eq(documents.id, parsedParams.data.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNull(documents.deletedAt),
 						...(access.restricted && access.categoryId
@@ -1068,6 +1102,22 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		};
 	})
 	.post("/documents/:id/index/refresh", async ({ params, set, request }) => {
+		const parsedParams = documentIdParamsSchema.safeParse(params);
+		if (!parsedParams.success) {
+			set.status = 400;
+			return { error: "Invalid document id" };
+		}
+		const ip =
+			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+			request.headers.get("x-real-ip") ??
+			"unknown";
+		const rl = await writeRateLimiter(ip, request);
+		if (!rl.allowed) {
+			set.status = 429;
+			set.headers = rateLimitHeaders(0, rl.retryAfter);
+			return { error: "Too many requests" };
+		}
+		set.headers = rateLimitHeaders(rl.remaining);
 		const access = await resolveContentAccess(request);
 		const ctx = access.ctx;
 		if (ctx.role === "none") {
@@ -1089,7 +1139,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				.from(documents)
 				.where(
 					and(
-						eq(documents.id, params.id),
+						eq(documents.id, parsedParams.data.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNull(documents.deletedAt),
 						...(access.restricted && access.categoryId

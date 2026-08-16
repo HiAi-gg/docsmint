@@ -18,7 +18,10 @@ import { config } from "../lib/config";
 import { tenantOwnerCondition } from "../lib/content-access";
 import { deleteDocumentGraphGeneration } from "../lib/graph/delete-document-state";
 import { extractEntities } from "../lib/graph/extract-entities";
-import { buildKnowledgeSummary } from "../lib/knowledge-summary";
+import {
+	buildKnowledgeSummary,
+	runKnowledgeSummaryStage,
+} from "../lib/knowledge-summary";
 import { requestKnowledgeSummary } from "../lib/knowledge-summary-provider";
 import type {
 	EmbedBatchJob,
@@ -86,6 +89,43 @@ async function getRun(generationId: string) {
 			.where(eq(documentPipelineRuns.generationId, generationId))
 			.limit(1);
 		return run ?? null;
+	});
+}
+
+async function isCurrentPipelineGeneration(job: {
+	documentId: string;
+	ownerId: string;
+	workspaceId?: string;
+	generationId: string;
+	revision: string;
+}): Promise<boolean> {
+	return withTenant({ ...admin, workspaceId: job.workspaceId }, async (tx) => {
+		const [current] = await tx
+			.select({ id: documents.id })
+			.from(documents)
+			.innerJoin(
+				documentPipelineRuns,
+				and(
+					eq(documentPipelineRuns.documentId, documents.id),
+					eq(documentPipelineRuns.generationId, job.generationId),
+				),
+			)
+			.where(
+				and(
+					eq(documents.id, job.documentId),
+					eq(documents.activeEmbeddingGeneration, job.generationId),
+					eq(documentPipelineRuns.revision, job.revision),
+					ne(documentPipelineRuns.status, "cancelled"),
+					ne(documentPipelineRuns.status, "failed"),
+					tenantOwnerCondition(
+						documents.ownerId,
+						documents.workspaceId,
+						jobTenant(job),
+					),
+				),
+			)
+			.limit(1);
+		return Boolean(current);
 	});
 }
 
@@ -601,6 +641,8 @@ export function createPipelineStageDependencies(
 						.where(
 							and(
 								eq(documents.id, job.documentId),
+								eq(documents.activeEmbeddingGeneration, job.generationId),
+								eq(documents.contentHash, job.revision),
 								tenantOwnerCondition(
 									documents.ownerId,
 									documents.workspaceId,
@@ -658,6 +700,7 @@ export function createPipelineStageDependencies(
 		summarize: {
 			isCancelled: async (job) =>
 				(await getRun(job.generationId))?.status === "cancelled",
+			isCurrent: isCurrentPipelineGeneration,
 			async getRun(job) {
 				const run = await getRun(job.generationId);
 				return run
@@ -674,80 +717,110 @@ export function createPipelineStageDependencies(
 				config.GRAPH_EXTRACT_ENABLED &&
 				Boolean(config.GRAPH_EXTRACT_BASE_URL && config.GRAPH_EXTRACT_MODEL),
 			async summarize(job) {
-				return withTenant(
-					{ ...admin, workspaceId: job.workspaceId },
-					async (tx) => {
-						const [document] = await tx
-							.select({
-								title: documents.title,
-								content: documents.content,
-								contentHash: documents.contentHash,
-								activeGeneration: documents.activeEmbeddingGeneration,
-							})
-							.from(documents)
-							.where(
-								and(
-									eq(documents.id, job.documentId),
-									tenantOwnerCondition(
-										documents.ownerId,
-										documents.workspaceId,
-										jobTenant(job),
-									),
-								),
-							)
-							.limit(1);
-						if (!document) throw new Error("summary_document_missing");
-						const revision = resolveDocumentRevision(
-							document.contentHash,
-							document.title,
-							document.content ?? "",
-						);
-						if (
-							revision !== job.revision ||
-							document.activeGeneration !== job.generationId
-						) {
-							const error = new Error("summary generation is stale");
-							error.name = "stale_revision";
-							throw error;
-						}
-						const summary = await buildKnowledgeSummary(
-							{
-								title: document.title,
-								content: document.content ?? "",
-								revision,
+				return runKnowledgeSummaryStage({
+					readCurrent: () =>
+						withTenant(
+							{ ...admin, workspaceId: job.workspaceId },
+							async (tx) => {
+								const [document] = await tx
+									.select({
+										title: documents.title,
+										content: documents.content,
+										contentHash: documents.contentHash,
+										activeGeneration: documents.activeEmbeddingGeneration,
+									})
+									.from(documents)
+									.where(
+										and(
+											eq(documents.id, job.documentId),
+											eq(documents.activeEmbeddingGeneration, job.generationId),
+											tenantOwnerCondition(
+												documents.ownerId,
+												documents.workspaceId,
+												jobTenant(job),
+											),
+										),
+									)
+									.limit(1);
+								if (!document) return null;
+								const revision = resolveDocumentRevision(
+									document.contentHash,
+									document.title,
+									document.content ?? "",
+								);
+								if (revision !== job.revision) return null;
+								return {
+									title: document.title,
+									content: document.content ?? "",
+									revision,
+								};
 							},
-							requestKnowledgeSummary,
-						);
-						if (summary.status === "skipped") return "skipped";
-						await tx
-							.insert(documentKnowledgeSummaries)
-							.values({
-								documentId: job.documentId,
-								ownerId: job.ownerId,
-								workspaceId: job.workspaceId,
-								generationId: job.generationId,
-								revision: job.revision,
-								language: summary.language,
-								description: summary.description,
-								keywords: summary.keywords,
-								updatedAt: new Date(),
-							})
-							.onConflictDoUpdate({
-								target: [
-									documentKnowledgeSummaries.documentId,
-									documentKnowledgeSummaries.generationId,
-								],
-								set: {
-									revision: job.revision,
-									language: summary.language,
-									description: summary.description,
-									keywords: summary.keywords,
-									updatedAt: new Date(),
-								},
-							});
-						return "ready";
-					},
-				);
+						),
+					generate: (document) =>
+						buildKnowledgeSummary(document, requestKnowledgeSummary),
+					persistIfCurrent: (summary) =>
+						withTenant(
+							{ ...admin, workspaceId: job.workspaceId },
+							async (tx) => {
+								const [current] = await tx
+									.select({ id: documents.id })
+									.from(documents)
+									.innerJoin(
+										documentPipelineRuns,
+										and(
+											eq(documentPipelineRuns.documentId, documents.id),
+											eq(documentPipelineRuns.generationId, job.generationId),
+										),
+									)
+									.where(
+										and(
+											eq(documents.id, job.documentId),
+											eq(documents.activeEmbeddingGeneration, job.generationId),
+											eq(documents.contentHash, job.revision),
+											eq(documentPipelineRuns.revision, job.revision),
+											eq(documentPipelineRuns.summarizeStatus, "processing"),
+											ne(documentPipelineRuns.status, "cancelled"),
+											ne(documentPipelineRuns.status, "failed"),
+											tenantOwnerCondition(
+												documents.ownerId,
+												documents.workspaceId,
+												jobTenant(job),
+											),
+										),
+									)
+									.limit(1)
+									.for("update");
+								if (!current) return false;
+								await tx
+									.insert(documentKnowledgeSummaries)
+									.values({
+										documentId: job.documentId,
+										ownerId: job.ownerId,
+										workspaceId: job.workspaceId,
+										generationId: job.generationId,
+										revision: job.revision,
+										language: summary.language,
+										description: summary.description,
+										keywords: summary.keywords,
+										updatedAt: new Date(),
+									})
+									.onConflictDoUpdate({
+										target: [
+											documentKnowledgeSummaries.documentId,
+											documentKnowledgeSummaries.generationId,
+										],
+										set: {
+											revision: job.revision,
+											language: summary.language,
+											description: summary.description,
+											keywords: summary.keywords,
+											updatedAt: new Date(),
+										},
+									});
+								return true;
+							},
+						),
+				});
 			},
 			setSummaryStatus: (generationId, status, errorCode) =>
 				setStageStatus(generationId, "summarize", status, errorCode),

@@ -663,6 +663,72 @@
         ]
       }
     },
+    "/api/documents/{id}/knowledge-summary": {
+      "get": {
+        "operationId": "getApiDocumentsByIdKnowledgeSummary",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {},
+          "400": {},
+          "401": {},
+          "403": {},
+          "404": {},
+          "429": {}
+        },
+        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+      }
+    },
+    "/api/documents/{id}/index-status": {
+      "get": {
+        "operationId": "getApiDocumentsByIdIndexStatus",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {},
+          "400": {},
+          "401": {},
+          "403": {},
+          "404": {},
+          "429": {}
+        },
+        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+      }
+    },
+    "/api/documents/{id}/index/refresh": {
+      "post": {
+        "operationId": "postApiDocumentsByIdIndexRefresh",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "202": {},
+          "400": {},
+          "401": {},
+          "403": {},
+          "404": {},
+          "429": {}
+        },
+        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+      }
+    },
     "/api/documents/{id}": {
       "get": {
         "operationId": "getApiDocumentsById",

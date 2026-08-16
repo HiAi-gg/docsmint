@@ -1,16 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { deriveFinalStatus } from "../queue/workers/finalize.worker";
-import { createSummarizeWorker } from "../queue/workers/summarize.worker";
+import {
+	deriveFinalStatus,
+	processSummaryStage,
+} from "../queue/stage-policies";
 
 const job = {
-	schemaVersion: 1 as const,
-	stage: "finalize" as const,
 	documentId: "00000000-0000-4000-8000-000000000001",
 	ownerId: "00000000-0000-4000-8000-000000000002",
 	generationId: "00000000-0000-4000-8000-000000000003",
 	revision: "rev-1",
-	requestedAt: "2026-07-12T00:00:00.000Z",
-	source: "interactive" as const,
 };
 
 const baseRun = {
@@ -41,7 +39,7 @@ describe("finalize worker semantics", () => {
 	it("skips optional summary and enqueues finalize", async () => {
 		const statuses: string[] = [];
 		let enqueued = false;
-		const worker = createSummarizeWorker({
+		await processSummaryStage(job, {
 			getRun: async () => ({ ...baseRun }),
 			enabled: () => false,
 			summarize: async () => "ready",
@@ -52,15 +50,14 @@ describe("finalize worker semantics", () => {
 				enqueued = true;
 			},
 		});
-		await worker({ ...job, stage: "summarize" });
 		expect(statuses).toEqual(["skipped"]);
 		expect(enqueued).toBe(true);
 	});
 
-	it("does not persist or enqueue when cancellation wins after summarize", async () => {
+	it("does not persist or finalize when cancellation wins after summarize", async () => {
 		const effects: string[] = [];
 		let checks = 0;
-		const worker = createSummarizeWorker({
+		await processSummaryStage(job, {
 			isCancelled: async () => ++checks >= 4,
 			getRun: async () => ({ ...baseRun }),
 			enabled: () => true,
@@ -72,32 +69,29 @@ describe("finalize worker semantics", () => {
 				effects.push(status);
 			},
 			enqueueFinalize: async () => {
-				effects.push("enqueue");
+				effects.push("finalize");
 			},
 		});
-		await worker({ ...job, stage: "summarize" });
-		expect(effects).toEqual(["processing", "summarize"]);
+		expect(effects).toEqual(["processing", "summarize", "cancelled"]);
 	});
 
-	it("finalizes with a warning when summary generation fails", async () => {
+	it("swallows terminal summary failure before warning finalization", async () => {
 		const effects: string[] = [];
-		const worker = createSummarizeWorker({
-			getRun: async () => ({ ...baseRun }),
-			enabled: () => true,
-			summarize: async () => {
-				throw new Error("summary_provider_failed");
-			},
-			setSummaryStatus: async (_id, status) => {
-				effects.push(status);
-			},
-			enqueueFinalize: async () => {
-				effects.push("enqueue");
-			},
-		});
-
-		await expect(worker({ ...job, stage: "summarize" })).rejects.toThrow(
-			"summary_provider_failed",
-		);
-		expect(effects).toEqual(["processing", "failed", "enqueue"]);
+		await expect(
+			processSummaryStage(job, {
+				getRun: async () => ({ ...baseRun }),
+				enabled: () => true,
+				summarize: async () => {
+					throw new Error("summary_provider_failed");
+				},
+				setSummaryStatus: async (_id, status) => {
+					effects.push(status);
+				},
+				enqueueFinalize: async () => {
+					effects.push("finalize");
+				},
+			}),
+		).resolves.toBeUndefined();
+		expect(effects).toEqual(["processing", "failed", "finalize"]);
 	});
 });

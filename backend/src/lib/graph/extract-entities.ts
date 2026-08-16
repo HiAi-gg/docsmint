@@ -28,7 +28,10 @@ import {
 	resolveChatProviderKey,
 } from "../openai-compatible-chat";
 import { redis } from "../redis";
-import { graphReplacementPreludeCypher } from "./generation-state";
+import {
+	graphReplacementPreludeCypher,
+	runGenerationFencedGraphWrite,
+} from "./generation-state";
 import { type GraphSqlClient, getGraphDb } from "./init";
 
 const ENTITY_TYPES = [
@@ -556,54 +559,77 @@ async function persistEntities(
 	await sql.begin(async (tx) => {
 		// Ensure the search_path includes ag_catalog for cypher() calls.
 		await tx`SELECT pg_catalog.set_config('search_path', 'ag_catalog, "$user", public', false)`;
+		await tx`SELECT pg_catalog.set_config('app.current_user_id', '00000000-0000-0000-0000-000000000000', true)`;
+		await tx`SELECT pg_catalog.set_config('app.current_user_role', 'admin', true)`;
+		await tx`SELECT pg_catalog.set_config('app.current_workspace_id', '', true)`;
 
 		const nowIso = new Date().toISOString();
-
-		// 1. Replace every edge previously projected by this document and stamp
-		//    the document vertex in the same AGE transaction.
-		await tx.unsafe(
-			`SELECT * FROM cypher('docs_graph', $$ ${graphReplacementPreludeCypher({
-				documentId,
-				generationId: identity.generationId,
-				revision: identity.revision,
-				timestamp: nowIso,
-			})} $$) AS (result agtype)`,
-		);
-
-		// 2. Upsert each entity vertex and create a MENTIONS edge to the
-		//    source Document. Per-type Cypher because AGE doesn't allow
-		//    parameterized labels. Helper functions return literal Cypher
-		//    with values already inlined.
-		for (const ent of entities) {
-			const label = ent.type;
-			const name = ent.name;
-			const conf = ent.confidence;
-			await tx.unsafe(
-				`SELECT * FROM cypher('docs_graph', $$ ${entityUpsertCypher(documentId, label, name, nowIso, conf)} $$) AS (result agtype)`,
-			);
-			await tx.unsafe(
-				`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, identity.generationId, label, name, conf)} $$) AS (result agtype)`,
-			);
-		}
-
-		// 3. Create entity-to-entity edges where the target can be found by
-		//    name across any entity label.
-		for (const ent of entities) {
-			for (const rel of ent.relationships) {
-				const cypher = entityRelationCypher(
-					documentId,
-					identity.generationId,
-					ent.type,
-					ent.name,
-					rel.targetName,
-					rel.relationType,
-					rel.confidence,
-				);
+		await runGenerationFencedGraphWrite({
+			async lockCurrentGeneration() {
+				const rows = await tx`
+					SELECT d.id
+					FROM public.documents d
+					JOIN public.document_pipeline_runs r
+					  ON r.document_id = d.id
+					 AND r.generation_id = ${identity.generationId}::uuid
+					WHERE d.id = ${documentId}::uuid
+					  AND d.active_embedding_generation = ${identity.generationId}::uuid
+					  AND d.content_hash = ${identity.revision}
+					  AND r.revision = ${identity.revision}
+					  AND r.status NOT IN ('cancelled', 'failed')
+					  AND r.graph_status = 'processing'
+					FOR UPDATE OF d, r
+				`;
+				return rows.length === 1;
+			},
+			async persist() {
+				// 1. Replace every edge previously projected by this document and stamp
+				//    the document vertex in the same relational/AGE transaction.
 				await tx.unsafe(
-					`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
+					`SELECT * FROM cypher('docs_graph', $$ ${graphReplacementPreludeCypher(
+						{
+							documentId,
+							generationId: identity.generationId,
+							revision: identity.revision,
+							timestamp: nowIso,
+						},
+					)} $$) AS (result agtype)`,
 				);
-			}
-		}
+
+				// 2. Upsert each entity vertex and create a MENTIONS edge to the
+				//    source Document.
+				for (const ent of entities) {
+					const label = ent.type;
+					const name = ent.name;
+					const conf = ent.confidence;
+					await tx.unsafe(
+						`SELECT * FROM cypher('docs_graph', $$ ${entityUpsertCypher(documentId, label, name, nowIso, conf)} $$) AS (result agtype)`,
+					);
+					await tx.unsafe(
+						`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, identity.generationId, label, name, conf)} $$) AS (result agtype)`,
+					);
+				}
+
+				// 3. Create entity-to-entity edges where the target can be found by
+				//    name across any entity label.
+				for (const ent of entities) {
+					for (const rel of ent.relationships) {
+						const cypher = entityRelationCypher(
+							documentId,
+							identity.generationId,
+							ent.type,
+							ent.name,
+							rel.targetName,
+							rel.relationType,
+							rel.confidence,
+						);
+						await tx.unsafe(
+							`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
+						);
+					}
+				}
+			},
+		});
 	});
 }
 

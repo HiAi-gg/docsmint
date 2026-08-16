@@ -137,6 +137,13 @@ Documents also support delete, duplicate, Markdown export, import, category and
 folder placement, tags, visibility, and pipeline status. Folders support nested
 create, list, rename, move, and delete. See [`openapi.json`](openapi.json) for
 their request schemas.
+
+Knowledge-pipeline clients can read the active generation's summary with
+`GET /api/documents/:id/knowledge-summary`, inspect embedding and pipeline
+readiness with `GET /api/documents/:id/index-status`, and request an idempotent
+reindex with `POST /api/documents/:id/index/refresh`. The read endpoints require
+document read access; refresh requires edit access. All three validate UUID
+parameters and are rate limited.
 ### Search
 ```bash
 curl -G "$HIAI_DOCS_URL/api/search" \

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { runResumableReindexScan } from "../scripts/reindex-scan";
+import * as ReindexScan from "../scripts/reindex-scan";
+
+const { runResumableReindexScan } = ReindexScan;
 
 describe("full reindex resumption", () => {
 	test("continues after the supplied cursor and queues every remaining active document", async () => {
@@ -42,5 +44,39 @@ describe("full reindex resumption", () => {
 			skipped: 0,
 			lastDocumentId: "doc-103",
 		});
+	});
+});
+
+describe("tenant-scoped reindex page loading", () => {
+	test("runs the production page loader inside the supplied RLS transaction", async () => {
+		const loadTenantScopedReindexPage = (
+			ReindexScan as typeof ReindexScan & {
+				loadTenantScopedReindexPage?: <T>(
+					input: { after?: string; limit: number; all: boolean },
+					dependencies: {
+						withTenant: (operation: (tx: object) => Promise<T>) => Promise<T>;
+						loadPage: (
+							tx: object,
+							input: { after?: string; limit: number; all: boolean },
+						) => Promise<T>;
+					},
+				) => Promise<T>;
+			}
+		).loadTenantScopedReindexPage;
+		expect(typeof loadTenantScopedReindexPage).toBe("function");
+		const tenantTx = { name: "rls-transaction" };
+		const seen: object[] = [];
+		const rows = await loadTenantScopedReindexPage?.(
+			{ after: "doc-1", limit: 10, all: true },
+			{
+				withTenant: async (operation) => operation(tenantTx),
+				loadPage: async (tx) => {
+					seen.push(tx);
+					return [{ id: "doc-2" }];
+				},
+			},
+		);
+		expect(seen).toEqual([tenantTx]);
+		expect(rows).toEqual([{ id: "doc-2" }]);
 	});
 });

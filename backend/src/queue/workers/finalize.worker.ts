@@ -1,11 +1,8 @@
 import { finalizeJobSchema, type PipelineJob } from "../contracts";
+import { deriveFinalStatus, type FinalRunStatus } from "../stage-policies";
 import type { GraphPipelineState, PipelineStageStatus } from "./graph.worker";
 
-export type FinalRunStatus =
-	| "ready"
-	| "ready_with_warnings"
-	| "failed"
-	| "cancelled";
+export type { FinalRunStatus } from "../stage-policies";
 
 export interface FinalizeWorkerDependencies {
 	getRun(job: ReturnType<typeof finalizeJobSchema.parse>): Promise<
@@ -21,26 +18,6 @@ export interface FinalizeWorkerDependencies {
 		status: FinalRunStatus,
 		errorCode?: string,
 	): Promise<void>;
-}
-
-function deriveFinalStatus(
-	run: Awaited<ReturnType<FinalizeWorkerDependencies["getRun"]>>,
-): FinalRunStatus {
-	if (!run) throw new Error("Pipeline run not found");
-	if (run.status === "cancelled") return "cancelled";
-	if (run.embedStatus === "failed" || run.embedStatus === "cancelled")
-		return "failed";
-	if (run.embedStatus !== "ready") return "failed";
-	if (run.graphStatus === "failed" || run.summarizeStatus === "failed") {
-		return "ready_with_warnings";
-	}
-	if (
-		(run.graphStatus === "ready" || run.graphStatus === "skipped") &&
-		(run.summarizeStatus === "ready" || run.summarizeStatus === "skipped")
-	) {
-		return "ready";
-	}
-	return "failed";
 }
 
 export function createFinalizeWorker(deps: FinalizeWorkerDependencies) {

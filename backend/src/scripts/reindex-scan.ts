@@ -22,6 +22,23 @@ export interface ReindexScanDependencies {
 	onProgress?(progress: ReindexProgress): void;
 }
 
+export async function loadTenantScopedReindexPage<TTransaction, TResult>(
+	input: { after?: string; limit: number; all: boolean },
+	dependencies: {
+		withTenant(
+			operation: (transaction: TTransaction) => Promise<TResult>,
+		): Promise<TResult>;
+		loadPage(
+			transaction: TTransaction,
+			input: { after?: string; limit: number; all: boolean },
+		): Promise<TResult>;
+	},
+): Promise<TResult> {
+	return dependencies.withTenant((transaction) =>
+		dependencies.loadPage(transaction, input),
+	);
+}
+
 export async function runResumableReindexScan(
 	options: ReindexOptions,
 	dependencies: ReindexScanDependencies,

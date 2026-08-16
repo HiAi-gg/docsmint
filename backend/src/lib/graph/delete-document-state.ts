@@ -1,5 +1,6 @@
 import {
 	graphCompensationCypher,
+	graphLegacyEdgeCleanupCypher,
 	graphOrphanCleanupCypher,
 } from "./generation-state";
 import { getGraphDb } from "./init";
@@ -15,6 +16,18 @@ export async function deleteDocumentGraphState(
 		await tx.unsafe("SET LOCAL search_path = ag_catalog, public");
 		await tx.unsafe(
 			`SELECT * FROM cypher('docs_graph', $$ MATCH (d:Document {id: ${literal}}) DETACH DELETE d RETURN 1 $$) AS (deleted agtype)`,
+		);
+	});
+}
+
+/** Remove pre-generational edges before a completed full rebuild is promoted. */
+export async function cleanupLegacyGraphEdges(): Promise<void> {
+	const sql = await getGraphDb();
+	if (!sql) return;
+	await sql.begin(async (tx) => {
+		await tx.unsafe("SET LOCAL search_path = ag_catalog, public");
+		await tx.unsafe(
+			`SELECT * FROM cypher('docs_graph', $$ ${graphLegacyEdgeCleanupCypher()} $$) AS (deleted agtype)`,
 		);
 	});
 }

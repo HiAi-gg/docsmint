@@ -15,6 +15,18 @@ export type KnowledgeSummaryResult =
 	| { status: "skipped"; reason: "empty_document" }
 	| ({ status: "ready" } & KnowledgeSummaryProviderResult);
 
+export async function runKnowledgeSummaryStage(dependencies: {
+	readCurrent(): Promise<KnowledgeSummaryDocument | null>;
+	generate(document: KnowledgeSummaryDocument): Promise<KnowledgeSummaryResult>;
+	persistIfCurrent(summary: KnowledgeSummaryProviderResult): Promise<boolean>;
+}): Promise<"ready" | "skipped" | "cancelled"> {
+	const document = await dependencies.readCurrent();
+	if (!document) return "cancelled";
+	const summary = await dependencies.generate(document);
+	if (summary.status === "skipped") return "skipped";
+	return (await dependencies.persistIfCurrent(summary)) ? "ready" : "cancelled";
+}
+
 export async function buildKnowledgeSummary(
 	document: KnowledgeSummaryDocument,
 	provider: (
