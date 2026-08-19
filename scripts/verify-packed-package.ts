@@ -163,6 +163,10 @@ const ssrComponentSubpaths = [
 ] as const;
 
 const requiredTarEntries = [
+	"package/packages/mcp-server/src/index.ts",
+	"package/packages/mcp-server/src/server.ts",
+	"package/packages/mcp-server/src/capabilities.ts",
+	"package/skills/docsmint-document-manager/SKILL.md",
 	"package/dist/index.js",
 	"package/dist/index.d.ts",
 	"package/dist/lifecycle.js",
@@ -185,9 +189,7 @@ const requiredTarEntries = [
 		`package/dist/frontend/${path}.js`,
 		`package/dist/frontend/${path}.d.ts`,
 	]),
-	...ssrComponentSubpaths.map(
-		(path) => `package/dist/frontend-ssr/${path}.js`,
-	),
+	...ssrComponentSubpaths.map((path) => `package/dist/frontend-ssr/${path}.js`),
 ];
 for (const entry of requiredTarEntries) {
 	if (!listing.includes(entry))
@@ -209,11 +211,16 @@ if (
 		"Packed backend must keep Pino external and must not embed thread-stream build paths",
 	);
 }
-for (const layer of ["--layer-chrome", "--layer-panel", "--layer-popover", "--layer-modal"]) {
+for (const layer of [
+	"--layer-chrome",
+	"--layer-panel",
+	"--layer-popover",
+	"--layer-modal",
+]) {
 	if (!packagedFrontendStyles.includes(layer)) {
-	throw new Error(
-		`Packed frontend stylesheet is missing DocsMint layer contract: ${layer}`,
-	);
+		throw new Error(
+			`Packed frontend stylesheet is missing DocsMint layer contract: ${layer}`,
+		);
 	}
 }
 for (const [subpath, conditionMap] of Object.entries(manifest.exports)) {
@@ -292,9 +299,7 @@ const packageLocalSvelteRuntimeChunks = packagedFrontendFiles
 			/\/client-[^/]+\.js$/.test(file) && source.includes("svelte/internal/"),
 	)
 	.map(({ file }) => file);
-if (
-	packageLocalSvelteRuntimeChunks.length > 0
-) {
+if (packageLocalSvelteRuntimeChunks.length > 0) {
 	throw new Error(
 		"Packed frontend facade bundles a package-local client runtime chunk",
 	);
@@ -383,7 +388,10 @@ for (const dependency of [
 // own installed framework graph.
 const frontendPackage = JSON.parse(
 	await readFile(join(root, "frontend/package.json"), "utf8"),
-) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+) as {
+	dependencies?: Record<string, string>;
+	devDependencies?: Record<string, string>;
+};
 for (const dependency of new Set([
 	...Object.keys(frontendPackage.dependencies ?? {}),
 	...Object.keys(frontendPackage.devDependencies ?? {}),

@@ -221,6 +221,7 @@
     "packages/db/src",
     "packages/cli/src",
     "packages/mcp-server/src",
+    "skills",
     "backend/src",
     "frontend/src/lib/index.ts",
     "frontend/src/lib/extensions",

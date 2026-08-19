@@ -23,6 +23,7 @@ server.
 [![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint?style=plastic)](https://lobehub.com/mcp/hiai-gg-docsmint)
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
@@ -189,8 +190,10 @@ command and configuration precedence.
 
 ## Connect an MCP client
 
-DocsMint exposes document search, reading, creation, updates, folders,
-snapshots, history, and export as MCP tools.
+DocsMint exposes document search, reading, creation, updates, categories,
+folders, tags, GraphRAG traversal, index status and refresh, snapshots,
+history, and export as MCP tools. It also publishes reusable prompts,
+context resources, and a document-manager skill for agent clients.
 
 ```json
 {
@@ -215,7 +218,8 @@ bunx --package @hiai-gg/docsmint docsmint-mcp
 
 The server uses stdio and works with MCP-capable clients such as Claude
 Desktop, Cursor, and coding agents that accept standard MCP configuration. See
-the [MCP guide](packages/mcp-server/README.md) for its ten tools and routes.
+the [MCP guide](packages/mcp-server/README.md) for its 17 tools, prompts,
+resources, skill, and API routes.
 
 ## Agent skills after installation
 

@@ -71,4 +71,49 @@ describe("hiai-docs MCP REST client contract", () => {
 			markdown: "# Exported document\n",
 		});
 	});
+
+	test("routes manager, graph, and index operations through the public API", async () => {
+		const calls: Array<{
+			url: string;
+			method: string;
+			body?: BodyInit | null;
+		}> = [];
+		globalThis.fetch = mock(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				calls.push({
+					url: String(input),
+					method: init?.method ?? "GET",
+					body: init?.body,
+				});
+				return Response.json({ items: [] });
+			},
+		) as unknown as typeof fetch;
+
+		await client.listCategories();
+		await client.createCategory({ name: "Research" });
+		await client.createFolder({ name: "Notes", categoryId: "category-1" });
+		await client.createDocument({ title: "Plan", categoryId: "category-1" });
+		await client.updateDocument("doc-1", { folderId: "folder-1" });
+		await client.listTags();
+		await client.getRelatedDocuments("doc/one", 8);
+		await client.searchGraph({ query: "architecture", docIds: ["doc-1"] });
+		await client.getDocumentIndexStatus("doc/one");
+		await client.refreshDocumentIndex("doc/one");
+
+		expect(calls.map(({ url, method }) => [url, method])).toEqual([
+			["https://docs.example.test/api/categories", "GET"],
+			["https://docs.example.test/api/categories", "POST"],
+			["https://docs.example.test/api/folders", "POST"],
+			["https://docs.example.test/api/documents", "POST"],
+			["https://docs.example.test/api/documents/doc-1", "PATCH"],
+			["https://docs.example.test/api/tags", "GET"],
+			["https://docs.example.test/api/graph/related/doc%2Fone?limit=8", "GET"],
+			["https://docs.example.test/api/graph/search", "POST"],
+			["https://docs.example.test/api/documents/doc%2Fone/index-status", "GET"],
+			[
+				"https://docs.example.test/api/documents/doc%2Fone/index/refresh",
+				"POST",
+			],
+		]);
+	});
 });
