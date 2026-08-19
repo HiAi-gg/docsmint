@@ -84,6 +84,17 @@ describe("content API authorization matrix", () => {
 		expect(viewer.restricted).toBe(false);
 		expect(viewer.categoryId).toBeNull();
 		expect(isAuthorizedCategory(viewer, otherCategoryId)).toBe(true);
+
+		const editor = contentAccessForExternalContext({
+			userId: ownerId,
+			workspaceId: "workspace-a",
+			source: "external",
+			role: "user",
+			actorRole: "editor",
+		});
+		expect(canAccessContent(editor, "read")).toBe(true);
+		expect(canAccessContent(editor, "edit")).toBe(true);
+		expect(canAccessContent(editor, "write")).toBe(true);
 	});
 
 	test("document category prefers its explicit category and falls back to folder ancestry", () => {

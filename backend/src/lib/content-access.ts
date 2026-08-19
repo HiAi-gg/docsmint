@@ -100,6 +100,7 @@ export function contentAccessForExternalContext(
 		permissions.add("write");
 	} else if (ctx.actorRole === "editor") {
 		permissions.add("edit");
+		permissions.add("write");
 	}
 	return {
 		principal: { kind: "session", userId: ctx.userId },
