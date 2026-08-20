@@ -8,12 +8,12 @@
     "source": "github",
     "id": "1249550690"
   },
-  "version": "0.6.3",
+  "version": "0.6.4",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.6.3",
+      "version": "0.6.4",
       "transport": {
         "type": "stdio"
       },
