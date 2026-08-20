@@ -81,7 +81,7 @@ export interface CreateDocsmintMcpServerOptions {
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'docsmint', version: '0.6.2' });
+  const server = new McpServer({ name: 'docsmint', version: '0.6.3' });
   registerDocsmintMcpCapabilities(server, options.client ?? defaultClient);
   return server;
 }

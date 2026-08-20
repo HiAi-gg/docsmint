@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
-    "version": "0.6.2",
+    "version": "0.6.3",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -1046,9 +1046,7 @@
     "/api/graph/entities": {
       "get": {
         "operationId": "getApiGraphEntities",
-        "tags": [
-          "Graph"
-        ],
+        "tags": ["Graph"],
         "summary": "List entities linked to a document",
         "responses": {
           "200": {}
@@ -1058,9 +1056,7 @@
     "/api/graph/related/{docId}": {
       "get": {
         "operationId": "getApiGraphRelatedByDocId",
-        "tags": [
-          "Graph"
-        ],
+        "tags": ["Graph"],
         "summary": "List related documents via graph traversal",
         "parameters": [
           {
@@ -1080,9 +1076,7 @@
     "/api/graph/search": {
       "post": {
         "operationId": "postApiGraphSearch",
-        "tags": [
-          "Graph"
-        ],
+        "tags": ["Graph"],
         "summary": "Graph-aware RAG retrieval for agents",
         "responses": {
           "200": {}
@@ -1441,9 +1435,7 @@
     "/api/admin/metrics": {
       "get": {
         "operationId": "getApiAdminMetrics",
-        "tags": [
-          "Admin"
-        ],
+        "tags": ["Admin"],
         "summary": "Process-local embedding metrics snapshot",
         "description": "Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
         "responses": {

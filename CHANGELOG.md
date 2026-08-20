@@ -36,6 +36,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-08-20
+
+### Fixed
+
+- Match the case-sensitive GitHub organization namespace in npm `mcpName` and
+  the official MCP Registry manifest so OIDC ownership validation succeeds.
+
 ## [0.6.2] - 2026-08-20
 
 ### Added
