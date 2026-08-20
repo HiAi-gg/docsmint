@@ -1,6 +1,8 @@
-# hiai-docs — AGENTS.md
+# DocsMint — AGENTS.md
 
-> **Role:** Document module, mountable into hosts (first consumer: `hiai-amigo`); **design-token source** for the ecosystem. Standalone open-source AI-native knowledge base (Markdown-first, auto-embeddings, self-hostable).
+> **Role:** Standalone, self-hosted AI-native knowledge workspace with public
+> REST, SDK, CLI, MCP, PWA, and host-extension contracts. Structured TipTap JSON
+> is canonical; Markdown is the import, export, and source-editing format.
 > **Status:** ready
 > Project documentation lives in README.md, docs/, and AGENTS.md.
 
@@ -9,14 +11,14 @@
 - **Runtime:** Bun 1.3.14+ (no Node, no npm, no yarn)
 - **Backend:** Elysia 1.4.28+ (ESM-only, TypeScript strict)
 - **Frontend:** SvelteKit 2.60+ + Svelte 5.55+ (`runes: true`)
-- **UI:** `@hiai/ui` + shadcn-svelte 1.2.7+ (new-york style) + Tailwind CSS v4
+- **UI:** `@hiai-gg/hiai-ui` + shadcn-svelte 1.2.7+ (new-york style) + Tailwind CSS v4
 - **Editor:** svelte-tiptap + TipTap v3 (WYSIWYG + raw MD toggle)
 - **ORM:** Drizzle ORM 0.45.2+
 - **Auth:** Better Auth
 - **Validation:** Zod (every route validated)
-- **DB:** PostgreSQL 18.4 + pgvector (user-scoped via `owner_id`, `tenant_id` reserved)
+- **DB:** PostgreSQL 18.1 + pgvector (personal `owner_id` plus optional external `workspace_id`)
 - **Vector index (optional):** pgvectorscale StreamingDiskANN with SbqCompression, loaded in the unified PostgreSQL image (see `postgres/Dockerfile`)
-- **Cache:** Redis 8.6+
+- **Cache:** Redis 8 (the reference image tracks `redis:8-alpine`)
 - **Storage:** SeaweedFS (S3-compatible)
 - **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; every provider result must be a finite, non-zero 1024-dimensional vector
 - **Search:** exact/title, multilingual lexical, fuzzy, vector, adaptive expansion, and GraphRAG channels fused with reciprocal rank fusion (RRF)
@@ -28,7 +30,7 @@
 - **Structure:** `backend/src/` (`api/`, `embedding/`, `lib/`) + `frontend/` (SvelteKit) + `packages/db/` (Drizzle)
 - **Module boundaries:** `api/` MUST NOT export internal functions · `embedding/` MUST NOT import from `api/` · `lib/` MUST NOT import from `api/` or `embedding/`
 - **Env access:** ONLY via `src/lib/config.ts` (Zod); every `CORS_ORIGINS`, `EMBEDDING_*`, `GRAPH_*`, `SEARCH_*`, `HYBRID_*`, `CHUNK_*`, `*_REEMBED_BATCH_SIZE` through `.env`
-- **Token import:** `@hiai/ui/styles/tokens.css` (hiai-docs is the token source for the ecosystem)
+- **Token import:** `@hiai-gg/hiai-ui/styles/tokens.css`
 - **Ports:** API `50700` · frontend dev `50701` · Postgres `5437` · Redis `6384` · SeaweedFS `50702/50703` · Caddy `80/443`
 - **No Playwright** — use `agent-browser` for E2E
 - **English only** in code, comments, docs, README, AGENTS.md (zero Cyrillic)
@@ -67,8 +69,8 @@
 | **UI** | shadcn-svelte 1.2.7+ (new-york style) + Tailwind CSS v4 |
 | **Editor** | svelte-tiptap + TipTap v3 |
 | **ORM** | Drizzle ORM 0.45.2+ |
-| **Database** | PostgreSQL 18.4 + pgvector |
-| **Cache** | Redis 8.6+ |
+| **Database** | PostgreSQL 18.1 + pgvector |
+| **Cache** | Redis 8 |
 | **Auth** | Better Auth |
 | **Storage** | SeaweedFS (S3-compatible) |
 | **Embeddings** | External embedding API (configurable, optional self-hosted Ollama) |
@@ -95,7 +97,7 @@
 | **DB migrate** | `bun run db:migrate` | `packages/db/` |
 | **Docker up** | `docker compose up -d` | root |
 | **Docker down** | `docker compose down` | root |
-| **Backup** | `scripts/prework_backup.sh hiai-docs` | root |
+| **Backup** | `DOCSMINT_BACKUP_ROOT=/operator/path scripts/prework_backup.sh docsmint` | root |
 
 ## Health Checks
 
@@ -110,10 +112,11 @@ curl -fsS http://localhost:50702/
 
 ### Data isolation
 
-- **Current:** user-scoped (`owner_id` on every table)
-- **Future:** `tenant_id` nullable column reserved for multi-tenancy
-- Every query MUST include `WHERE owner_id = $1`
-- No cross-user data access except via share_links
+- **Personal mode:** records are scoped by `owner_id`.
+- **Host mode:** the public workspace assertion sets `workspace_id` and RLS context.
+- Tenant-scoped queries MUST run through `withTenant`; explicit owner/workspace
+  predicates remain defense in depth.
+- Public/share access remains limited to the documented visibility contracts.
 
 ### Module boundaries
 
@@ -156,7 +159,7 @@ The single entry point for metadata-triggered re-embed is `backend/src/lib/reemb
 
 | Trigger | Helper used |
 |---------|-------------|
-| Folder rename / delete | `reembedDocsInFolder(folderId, ownerId)` |
+| Folder rename / move / delete | `reembedDocsInFolder(folderId, ownerId)` |
 | Category rename / delete | `reembedDocsInCategory(categoryId, ownerId)` |
 | Tag rename / delete | `reembedDocsByTag(tagId)` |
 | Tag add / remove from document | `enqueueReembed([docId])` |
@@ -310,7 +313,8 @@ Full list with defaults: see `.env.example`.
 
 These are non-obvious project decisions pinned in `package.json` / Dockerfiles. Do not "clean up" without first understanding the constraint.
 
-- **`@sinclair/typebox` (pinned in root devDependencies)** — forces a single Typebox version across the workspace to resolve a peer-dep conflict with Elysia 1.4.28. Required for `bun install` to succeed; do not remove.
+- **TypeBox dependency resolution** is owned by the frozen Bun lockfile. Do not
+  add or remove a root override without reproducing the Elysia dependency graph.
 - **`bun test --path-ignore-patterns="*node_modules*"`** — Bun 1.3's smart test discovery walks into hoisted `node_modules` and tries to run upstream library tests, which fail on missing fixtures. The path-ignore flag scopes test discovery to our own `src/` and `tests/` directories. Keep this flag on every `test` script.
 - **Paraglide v2 SvelteKit integration** — i18n is driven by `@inlang/paraglide-js@2.x` directly. The deprecated `@inlang/paraglide-sveltekit` adapter is NOT used. Setup:
   - `frontend/vite.config.ts` registers `paraglideVitePlugin({ project, outdir, strategy })`.

@@ -178,6 +178,7 @@ export const envSchema = z
 			),
 		BETTER_AUTH_URL: z.string().default("http://localhost:50700"),
 		CORS_ORIGINS: z.string().optional(),
+		TRUSTED_ORIGINS: z.string().optional(),
 		WEB_PORT: z.coerce.number().default(50701),
 		EMBEDDING_BASE_URL: z.string().optional(),
 		EMBEDDING_API_KEY: z.string().optional(),
@@ -293,9 +294,7 @@ export const envSchema = z
 			.optional()
 			.default("true")
 			.transform((v) => v === "true"),
-		// LLM used by entity extraction. Defaults to `EMBEDDING_MODEL` so the
-		// GraphRAG extractor reuses the configured embedding provider's model
-		// name where possible; falls back to `gpt-4o-mini` if neither is set.
+		// LLM used by entity extraction. It never inherits the embedding model.
 		GRAPH_EXTRACT_MODEL: z.string().optional(),
 		// Optional OpenAI-compatible reasoning control. Ollama Qwen3 models need
 		// `none` here so the response token budget is spent on the JSON payload
@@ -313,9 +312,7 @@ export const envSchema = z
 			.default(30_000),
 		// Base URL for the LLM that performs entity extraction. This endpoint
 		// MUST accept OpenAI-compatible chat completion requests
-		// (POST {url}/chat/completions). When absent, falls back to
-		// EMBEDDING_BASE_URL — which is usually WRONG (embedding endpoint !=
-		// chat endpoint). Set this explicitly for production.
+		// (POST {url}/chat/completions). When absent, extraction is disabled.
 		GRAPH_EXTRACT_BASE_URL: z.string().optional(),
 		// API key for the entity extraction LLM. Optional for the preconfigured
 		// OpenRouter profile (which may use OPENROUTER_API_KEY); custom/local

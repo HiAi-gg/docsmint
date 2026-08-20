@@ -1,6 +1,6 @@
 import { documents } from "@hiai-docs/db/schema";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { config } from "../lib/config";
 import {
 	expandFromQueryPlan,
@@ -145,6 +145,7 @@ async function resolveVisibleIds(
 			.where(
 				and(
 					inArray(documents.id, ids),
+					isNull(documents.deletedAt),
 					scope.kind === "admin"
 						? undefined
 						: scope.kind === "public"

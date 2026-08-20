@@ -107,7 +107,9 @@ services:
       - sh
       - -c
       - "cd /mnt/ai_data/projects/hiai-docs/packages/db && DATABASE_URL=postgresql://${DB_USER:-aiuser}:${DB_PASSWORD:-changeme}@postgres:5432/${DB_NAME:-hiai_docs} bun run db:migrate && cd /mnt/ai_data/projects/hiai-docs/backend && bun run --watch src/index.ts"
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://hiai_app:${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}@postgres:5432/${DB_NAME:-hiai_docs}
       HIAI_APP_PASSWORD: ${HIAI_APP_PASSWORD:?HIAI_APP_PASSWORD must be set}

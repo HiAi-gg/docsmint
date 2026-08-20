@@ -370,28 +370,17 @@ async function callEntityExtractionLLM(
 	text: string,
 	options: ExtractEntitiesOptions,
 ): Promise<ExtractedEntity[]> {
-	const primaryBase =
-		options.llmBaseUrl ??
-		config.GRAPH_EXTRACT_BASE_URL ??
-		config.EMBEDDING_BASE_URL;
+	const primaryBase = options.llmBaseUrl ?? config.GRAPH_EXTRACT_BASE_URL;
 	const primaryExplicitKey = options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY;
 	const primaryModel =
-		options.llmModel ??
-		config.GRAPH_EXTRACT_MODEL ??
-		config.EMBEDDING_MODEL ??
-		"gpt-4o-mini";
+		options.llmModel ?? config.GRAPH_EXTRACT_MODEL ?? "gpt-4o-mini";
 	const primaryKey = primaryBase
 		? resolveGraphProviderKey(primaryBase, primaryExplicitKey)
 		: "";
 
-	const fallbackBase =
-		config.GRAPH_EXTRACT_FALLBACK_BASE_URL ??
-		config.EMBEDDING_FALLBACK_BASE_URL;
+	const fallbackBase = config.GRAPH_EXTRACT_FALLBACK_BASE_URL;
 	const fallbackExplicitKey = config.GRAPH_EXTRACT_FALLBACK_API_KEY;
-	const fallbackModel =
-		config.GRAPH_EXTRACT_FALLBACK_MODEL ??
-		config.EMBEDDING_FALLBACK_MODEL ??
-		primaryModel;
+	const fallbackModel = config.GRAPH_EXTRACT_FALLBACK_MODEL ?? primaryModel;
 	const fallbackKey = fallbackBase
 		? resolveGraphProviderKey(fallbackBase, fallbackExplicitKey)
 		: "";

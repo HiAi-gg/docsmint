@@ -14,7 +14,7 @@ Requests and responses use JSON unless an endpoint transfers a file. Protected
 requests send either a Better Auth session cookie or a Bearer key:
 
 ```bash
-curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+curl -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   http://localhost:50700/api/documents
 ```
 
@@ -114,21 +114,21 @@ All protected examples below assume:
 
 ```bash
 export HIAI_DOCS_URL=http://localhost:50700
-export HIAI_DOCS_API_KEY='…'
+export DOCSMINT_USER_API_KEY='…'
 ```
 ### Documents and folders
 ```bash
 # List
-curl -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+curl -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   "$HIAI_DOCS_URL/api/documents?page=1&limit=20"
 # Create
 curl -X POST "$HIAI_DOCS_URL/api/documents" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Agent note","content":"Important finding"}'
 # Update
 curl -X PATCH "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"title":"Updated note","content":"Revised finding"}'
 ```
@@ -147,7 +147,7 @@ parameters and are rate limited.
 ### Search
 ```bash
 curl -G "$HIAI_DOCS_URL/api/search" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   --data-urlencode 'q=how to deploy docker' \
   --data 'page=1' --data 'limit=20' --data 'includeChunks=true'
 ```
@@ -164,7 +164,7 @@ Small image uploads can use the authenticated multipart endpoint:
 
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID/attachments" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   -F 'file=@screenshot.png'
 ```
 
@@ -180,7 +180,7 @@ is rejected.
 ### Shares
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/share" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"documentId":"'$DOCUMENT_ID'","expiresIn":"7d","role":"viewer"}'
 # Public access; add x-share-password when the link is password protected.
@@ -193,7 +193,7 @@ and expire after `1h`, `1d`, `7d`, `30d`, or `never`.
 ### Versions and snapshots
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID/versions" \
-  -H "Authorization: Bearer $HIAI_DOCS_API_KEY" \
+  -H "Authorization: Bearer $DOCSMINT_USER_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"label":"v1.0","description":"Release snapshot"}'
 ```

@@ -5,6 +5,14 @@ set -eu
 # contract. Compose must keep api:50700 and web:50701 internally.
 # Use non-canonical host ports only to prove host remapping does not alter
 # the fixed container contract. These are test values, never launch defaults.
+DB_PASSWORD=compose-contract-owner-password \
+HIAI_APP_PASSWORD=compose-contract-runtime-password \
+BETTER_AUTH_SECRET=compose-contract-better-auth-secret \
+CSRF_SECRET=compose-contract-csrf-secret \
+WEBHOOK_SECRET=compose-contract-webhook-secret \
+API_KEY_ENCRYPTION_SECRET=compose-contract-key-encryption-secret \
+STORAGE_SECRET_KEY=compose-contract-storage-secret \
+HIAI_DOCS_API_KEY=compose-contract-admin-key \
 API_PORT=50800 WEB_PORT=50801 docker compose config --format json | bun -e '
 const compose = await Bun.stdin.json();
 const api = compose.services.api;
@@ -24,11 +32,19 @@ assert(web.environment.API_URL === "http://api:50700", "Web must reach api:50700
 assert(web.environment.PORT === "50701", "Web process must listen on 50701");
 assert(web.healthcheck.test.join(" ").includes("127.0.0.1:50701"), "Web healthcheck must use 50701");
 assert(storage.ports.some((port) => port.published === "50702" && port.target === 8333), "Storage S3 mapping must be 50702:8333");
-assert(storage.ports.some((port) => port.published === "50703" && port.target === 8888), "Storage UI mapping must be 50703:8888");
+assert(storage.ports.some((port) => port.published === "50703" && port.target === 8888 && port.host_ip === "127.0.0.1"), "Storage UI mapping must be loopback-only 127.0.0.1:50703:8888");
 
 console.log("Compose port contract passed: host overrides -> api:50700, web:50701");
 '
 
+DB_PASSWORD=compose-contract-owner-password \
+HIAI_APP_PASSWORD=compose-contract-runtime-password \
+BETTER_AUTH_SECRET=compose-contract-better-auth-secret \
+CSRF_SECRET=compose-contract-csrf-secret \
+WEBHOOK_SECRET=compose-contract-webhook-secret \
+API_KEY_ENCRYPTION_SECRET=compose-contract-key-encryption-secret \
+STORAGE_SECRET_KEY=compose-contract-storage-secret \
+HIAI_DOCS_API_KEY=compose-contract-admin-key \
 API_PORT=50800 WEB_PORT=50801 docker compose -f docker-compose.dev.yml.example config --format json | bun -e '
 const compose = await Bun.stdin.json();
 const api = compose.services.api;

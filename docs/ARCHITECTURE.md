@@ -56,7 +56,7 @@ to DocsMint's `.env` validation:
 | File | Purpose | For external use? |
 |------|---------|-----------------|
 | `redis-factory.ts` | Pure `createRedis(cfg: RedisConfig)` — no `config.ts` import | ✅ Yes — `@hiai-gg/docsmint/backend/lib/redis` |
-| `storage-factory.ts` | Pure `createStorage(cfg: StorageConfig)` + `ensureBucket()` | ✅ Yes — `@hiai-gg/docsmint/backend/lib/storage` |
+| `storage-factory.ts` | Pure `createObjectStorageClient(cfg)` + `ensureBucket()` | ✅ Yes — `@hiai-gg/docsmint/backend/lib/storage` |
 | `redis.ts` | Backwards-compatible singleton (calls factory with `config.REDIS_URL`) | Internal only |
 | `storage.ts` | Backwards-compatible singletons (`storage`, `storagePublic`) | Internal only |
 | `with-tenant.ts` | Thin re-export shim → `packages/db/src/with-tenant` | ✅ Yes — `@hiai-gg/docsmint/db/with-tenant` |
@@ -70,7 +70,7 @@ import { withTenant, adminTenantContext } from "@hiai-gg/docsmint/db/with-tenant
 
 // Pure factories — no DocsMint config dependency
 import { createRedis } from "@hiai-gg/docsmint/backend/lib/redis";
-import { createStorage } from "@hiai-gg/docsmint/backend/lib/storage";
+import { createObjectStorageClient } from "@hiai-gg/docsmint/backend/lib/storage";
 
 // Schema access
 import { documents, folders } from "@hiai-gg/docsmint/schema";
@@ -87,7 +87,7 @@ documented database subpath exports use the same transaction boundary.
 | Backend | Elysia 1.4.28+ |
 | ORM | Drizzle 0.45.2+ |
 | Database | PostgreSQL 18 + pgvector |
-| Cache | Redis 8.6+ |
+| Cache | Redis 8 (`redis:8-alpine` reference image) |
 | Auth | Better Auth |
 | Frontend | SvelteKit 2.60+ / Svelte 5.55+ |
 | UI | shadcn-svelte (new-york) + Tailwind v4 |
@@ -177,7 +177,8 @@ Search queries run exact/title, language-neutral lexical, fuzzy, and active-gene
   use the verified opaque `workspaceId` boundary and PostgreSQL RLS
 - **Auth**: Better Auth session cookies (7-day expiry)
 - **Sharing**: token-based links with optional password + expiry
-- **Rate limiting**: 10 req/min per IP on public share endpoints
+- **Rate limiting**: public share resolution allows 60 req/min per IP; share
+  mutations use the shared 5 req/min limiter.
 - **Validation**: Zod schemas on all API inputs
 - **No secrets in code**: all config via environment variables
 

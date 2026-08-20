@@ -7,6 +7,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-08-20
+
+### Fixed
+
+- Accept secure Better Auth cookies consistently across protected frontend routes.
+- Exclude trashed documents before retrieval and graph visibility ranking.
+- Require an explicit chat-completion provider for GraphRAG entity extraction.
+- Re-embed folder documents after placement changes as well as renames.
+- Validate trusted origins through the canonical environment schema and ignore
+  empty CORS entries.
+- Bind the SeaweedFS operator UI to loopback and keep `.env` out of filesystem
+  backup snapshots.
+
+### Documentation
+
+- Align the agent, security, deployment, API, architecture, and self-host
+  configuration contracts with the JSON-first 0.6.x product.
+
 ## [0.6.6] - 2026-08-20
 
 ### Fixed

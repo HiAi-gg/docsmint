@@ -24,7 +24,7 @@ import { registerSearch } from './commands/search.js';
 import { registerSnapshot } from './commands/snapshot.js';
 import { registerUpdate } from './commands/update.js';
 
-const VERSION = '0.6.6';
+const VERSION = '0.6.7';
 
 const program = new Command();
 program.name('hiai-docs').description('CLI for the hiai-docs knowledge base').version(VERSION);

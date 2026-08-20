@@ -593,17 +593,20 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				return { error: "Folder not found" };
 			}
 
-			// When the folder name changes, every embedding that prepended
-			// "Folder: <old-name>" to its chunk text becomes stale. Re-embed
+			// Folder name and placement both affect the metadata preamble. Re-embed
 			// the first batch of documents in this folder (max 100 per call)
-			// to bound the cost spike from a rename. Subsequent batches can
+			// to bound the cost spike from a rename or move. Subsequent batches can
 			// be flushed by an explicit reindex job or a follow-up edit.
-			if (parsed.data.name !== undefined) {
+			if (
+				parsed.data.name !== undefined ||
+				parsed.data.parentId !== undefined ||
+				parsed.data.categoryId !== undefined
+			) {
 				reembedDocsInFolder(params.id, userId, ctx.workspaceId).catch(
 					(err: unknown) =>
 						logger.warn(
 							{ err, folderId: params.id },
-							"Failed to enqueue re-embedding for folder rename",
+							"Failed to enqueue re-embedding for folder metadata change",
 						),
 				);
 				invalidateDocListCache(userId);

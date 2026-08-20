@@ -40,7 +40,19 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.6?
+## What's new in DocsMint 0.6.7?
+
+- **Reliable HTTPS sessions.** Every protected SvelteKit route accepts Better
+  Auth's secure production cookie as well as the local-development cookie.
+- **Cleaner retrieval.** Deleted documents are excluded before exact, lexical,
+  fuzzy, vector, chunk, and graph ranking.
+- **Explicit GraphRAG providers.** Entity extraction requires its own
+  chat-completion URL and never sends chat requests to an embedding endpoint.
+- **Safer self-host defaults.** Auth origins are validated configuration, the
+  SeaweedFS Filer UI binds to loopback, folder moves refresh knowledge
+  metadata, and backups exclude `.env`.
+
+DocsMint 0.6.7 includes the safe index recovery introduced in 0.6.6:
 
 - **Safe explicit index recovery.** Admin document reindexing keeps the active
   generation searchable until a new generation has passed embedding, graph,

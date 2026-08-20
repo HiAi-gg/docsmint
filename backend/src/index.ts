@@ -167,7 +167,7 @@ const swaggerConfig = {
 		},
 		info: {
 			title: "DocsMint API",
-			version: "0.6.6",
+			version: "0.6.7",
 			description:
 				"Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
 			contact: { name: "HiAi-gg", url: "https://github.com/HiAi-gg/docsmint" },
@@ -217,7 +217,11 @@ const app = new Elysia()
 	})
 	.use(
 		cors({
-			origin: config.CORS_ORIGINS?.split(",") ?? [config.BETTER_AUTH_URL],
+			origin: config.CORS_ORIGINS
+				? config.CORS_ORIGINS.split(",")
+						.map((origin) => origin.trim())
+						.filter(Boolean)
+				: [config.BETTER_AUTH_URL],
 			credentials: true,
 			maxAge: 86400,
 		}),

@@ -73,6 +73,9 @@ docsmint/
 ├── backend/          # Elysia API (Bun)
 ├── frontend/         # SvelteKit (Svelte 5 + Tailwind v4)
 ├── packages/db/      # Drizzle ORM schema + migrations
+├── packages/sdk/     # Published TypeScript client and frontend contracts
+├── packages/cli/     # Bun CLI
+├── packages/mcp-server/ # MCP stdio/HTTP server, prompts, resources, and Skill
 ├── docker-compose.yml
 └── .env.example
 ```

@@ -1,9 +1,9 @@
 import type { ServerLoadEvent } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
+import { hasSessionCookie } from "$lib/server/session-cookie";
 
 export async function load({ cookies }: ServerLoadEvent) {
-	const sessionCookie = cookies.get("better-auth.session_token");
-	if (!sessionCookie) {
+	if (!hasSessionCookie(cookies)) {
 		throw redirect(302, "/login");
 	}
 	return {};

@@ -28,7 +28,8 @@ permission model.
 
 ## Create and edit documents
 
-The visual editor stores both Markdown and structured editor content. It
+The visual editor stores structured TipTap JSON as the canonical content. It
+derives Markdown for source editing, import, and export. The editor
 supports headings, links, tables, lists, task lists, alignment, attachments,
 and resizable images. Changes are saved automatically, including formatting,
 image insertion, image resizing, and folder or category changes.

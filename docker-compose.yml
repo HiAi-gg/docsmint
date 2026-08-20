@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
     ports:
       - "${STORAGE_PORT:-50702}:8333"      # S3 Gateway
-      - "${STORAGE_UI_PORT:-50703}:8888"   # SeaweedFS Web UI (Filer)
+      - "${STORAGE_UI_BIND_ADDRESS:-127.0.0.1}:${STORAGE_UI_PORT:-50703}:8888"   # operator-only SeaweedFS Filer UI
     volumes:
       - seaweedfs_data:/data
     entrypoint: ["/bin/sh", "-ec"]

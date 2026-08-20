@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
 const repositoryRoot = new URL('../../../', import.meta.url);
-const releaseVersion = '0.6.6';
+const releaseVersion = '0.6.7';
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), 'utf8'));
 }
 
-test('all published and workspace release metadata reports 0.6.6', async () => {
+test('all published and workspace release metadata reports 0.6.7', async () => {
   for (const path of [
     'package.public.json',
     'backend/package.json',
@@ -86,7 +86,7 @@ test('all published and workspace release metadata reports 0.6.6', async () => {
   }
 });
 
-test('workspace and public package metadata share the 0.6.6 product identity', async () => {
+test('workspace and public package metadata share the 0.6.7 product identity', async () => {
   const workspaceManifest = await json('package.json');
   const publicManifest = await json('package.public.json');
   const description =

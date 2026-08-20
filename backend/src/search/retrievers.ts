@@ -159,6 +159,7 @@ async function retrieveExact(
 			1.0::double precision AS score
 		FROM documents d
 		WHERE d.owner_id = ${ctx.userId}
+			AND d.deleted_at IS NULL
 			${scope}
 			AND (
 				lower(trim(d.title)) = lower(trim(${plan.normalized}))
@@ -198,6 +199,7 @@ async function retrieveFts(
 				ts_rank(d.search_vector, websearch_to_tsquery('english', ${plan.normalized})) AS score
 			FROM documents d
 			WHERE d.owner_id = ${ctx.userId}
+				AND d.deleted_at IS NULL
 				${scope}
 				AND d.search_vector @@ websearch_to_tsquery('english', ${plan.normalized})
 			UNION ALL
@@ -205,6 +207,7 @@ async function retrieveFts(
 				ts_rank(d.search_vector_simple, websearch_to_tsquery('simple', ${plan.normalized})) AS score
 			FROM documents d
 			WHERE d.owner_id = ${ctx.userId}
+				AND d.deleted_at IS NULL
 				${scope}
 				AND d.search_vector_simple @@ websearch_to_tsquery('simple', ${plan.normalized})
 		)
@@ -236,6 +239,7 @@ async function retrieveFuzzy(
 			similarity(d.title, ${plan.normalized})::double precision AS score
 		FROM documents d
 		WHERE d.owner_id = ${ctx.userId}
+			AND d.deleted_at IS NULL
 			${scope}
 			AND d.title % ${plan.normalized}
 			AND similarity(d.title, ${plan.normalized}) >= ${minimum}
@@ -281,6 +285,7 @@ async function retrieveVector(
 			FROM document_embeddings de
 			JOIN documents d ON d.id = de.document_id
 			WHERE d.owner_id = ${ctx.userId}
+				AND d.deleted_at IS NULL
 				${scope}
 				AND d.active_embedding_generation IS NOT NULL
 				AND de.generation_id = d.active_embedding_generation

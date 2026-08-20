@@ -61,11 +61,11 @@ concurrency values in `.env.example` instead of disabling the pipeline.
 | Service | Host port | Purpose |
 |---|---:|---|
 | Web | `50701` | Product UI |
-| API | `50700` | REST API and `/api/docs` |
+| API | `50700` | REST API; Swagger `/api/docs` is development-only |
 | PostgreSQL | `5437` | Application database |
 | Redis | `6384` | Cache and BullMQ transport |
 | SeaweedFS S3 | `50702` | Attachment storage |
-| SeaweedFS console | `50703` | Storage administration |
+| SeaweedFS console | `127.0.0.1:50703` | Local operator storage administration |
 | Caddy | `80`, `443` | Optional reverse proxy and TLS |
 
 Docker host-port overrides change only published bindings. Containers continue
@@ -79,8 +79,9 @@ curl -fsS http://localhost:50700/api/health
 docker compose ps
 ```
 
-Open the UI at <http://localhost:50701> and API documentation at
-<http://localhost:50700/api/docs>.
+Open the UI at <http://localhost:50701>. API documentation is available at
+<http://localhost:50700/api/docs> only when `NODE_ENV` is not `production`;
+production integrations use `docs/openapi.json`.
 
 ## PostgreSQL requirement
 
@@ -202,6 +203,7 @@ For source development:
 
 ```bash
 bun install
+cp docker-compose.dev.yml.example docker-compose.dev.yml
 docker compose -f docker-compose.dev.yml up -d
 cd packages/db && bun run db:migrate && cd ../..
 ```
@@ -245,7 +247,7 @@ docker compose ps
 ### Attachments fail to upload or render
 
 - Check API and SeaweedFS health and credentials.
-- Ensure `STORAGE_PUBLIC_ENDPOINT` is reachable from the browser.
+- Ensure `STORAGE_PUBLIC_ENDPOINT_URL` is reachable from the browser.
 - Confirm reverse-proxy upload limits exceed `ATTACHMENT_MAX_SIZE_MB`.
 - Do not expose an internal Docker hostname in a presigned URL.
 
