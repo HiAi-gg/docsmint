@@ -40,7 +40,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Publish the verified `io.github.hiai-gg/docsmint` identity through
+- Publish the verified `io.github.HiAi-gg/docsmint` identity through
   `server.json`, npm `mcpName`, the public `@hiai-gg/docsmint/mcp` seam, and
   matching stdio and Streamable HTTP registry transports.
 - Allow hosts to inject a scoped DocsMint API client into the complete MCP

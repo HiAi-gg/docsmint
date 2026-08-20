@@ -43,7 +43,7 @@ server.
 ## What's new in DocsMint 0.6.2?
 
 - **Official MCP identity.** DocsMint now publishes the verified
-  `io.github.hiai-gg/docsmint` registry identity for both the npm stdio server
+  `io.github.HiAi-gg/docsmint` registry identity for both the npm stdio server
   and the hosted Streamable HTTP endpoint.
 - **One capability implementation.** The public `@hiai-gg/docsmint/mcp`
   contract lets hosts provide a scoped API client while reusing the same 17

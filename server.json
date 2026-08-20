@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.hiai-gg/docsmint",
+  "name": "io.github.HiAi-gg/docsmint",
   "title": "DocsMint",
   "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
   "repository": {

@@ -92,11 +92,11 @@ Publishing is a separate, explicitly authorized operation.
 6. Create the GitHub Release from the tag using the changelog summary.
 7. Confirm the expected npm package and Docker images exist and report the
    released version.
-8. Confirm `io.github.hiai-gg/docsmint` resolves in the official MCP Registry.
+8. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
 
 The tag workflow publishes `server.json` only after the exact npm version is
 available. It authenticates `mcp-publisher` with GitHub Actions OIDC, so the
-registry can verify the `io.github.hiai-gg` namespace without a long-lived
+registry can verify the case-sensitive `io.github.HiAi-gg` namespace without a long-lived
 secret. Keep the `mcp-publisher` version pinned in `.github/workflows/ci.yml` and
 validate the manifest locally before tagging:
 

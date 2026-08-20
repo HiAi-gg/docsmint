@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "mcpName": "io.github.hiai-gg/docsmint",
+  "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
   "browser": {
