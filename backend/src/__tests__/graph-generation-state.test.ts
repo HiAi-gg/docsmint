@@ -34,7 +34,7 @@ describe("generation-safe graph state", () => {
 			}
 		).runGenerationFencedGraphWrite;
 		expect(typeof runGenerationFencedGraphWrite).toBe("function");
-		const activeGeneration = "generation-2";
+		const activeGeneration: string = "generation-2";
 		const persisted: string[] = [];
 		await expect(
 			runGenerationFencedGraphWrite?.({

@@ -17,7 +17,6 @@ export interface PipelineRunStore {
 		ownerId: string;
 		generationId: string;
 		workspaceId?: string;
-		forceNewGeneration?: boolean;
 	}): Promise<boolean>;
 	findOrCreate(input: {
 		documentId: string;
@@ -27,6 +26,7 @@ export interface PipelineRunStore {
 		requestedAt: Date;
 		generationId: string;
 		workspaceId?: string;
+		forceNewGeneration?: boolean;
 	}): Promise<{ run: ActiveRun; created: boolean }>;
 }
 

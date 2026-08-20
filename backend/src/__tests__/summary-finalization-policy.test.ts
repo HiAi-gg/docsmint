@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import {
+	deriveFinalStatus,
+	processGraphStageFailure,
+	processSummaryStage,
+} from "../queue/stage-policies";
 
-const Policy = await import("../queue/stage-policies").catch(() => ({}));
+const Policy = {
+	deriveFinalStatus,
+	processGraphStageFailure,
+	processSummaryStage,
+};
 
 const job = {
 	documentId: "doc-1",

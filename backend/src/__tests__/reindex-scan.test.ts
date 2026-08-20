@@ -69,7 +69,8 @@ describe("tenant-scoped reindex page loading", () => {
 		const rows = await loadTenantScopedReindexPage?.(
 			{ after: "doc-1", limit: 10, all: true },
 			{
-				withTenant: async (operation) => operation(tenantTx),
+				withTenant: async (operation: (tx: object) => Promise<unknown>) =>
+					operation(tenantTx),
 				loadPage: async (tx) => {
 					seen.push(tx);
 					return [{ id: "doc-2" }];

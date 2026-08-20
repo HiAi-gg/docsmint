@@ -4,6 +4,8 @@
  * The script only marks/queues work. Embedding workers own staging and
  * atomic activation, so an interrupted scan never destroys the active index.
  */
+
+import type { Database } from "@hiai-docs/db/client";
 import { documents } from "@hiai-docs/db/schema";
 import {
 	adminTenantContext,
@@ -20,6 +22,7 @@ import {
 import { parseReindexOptions, type ReindexOptions } from "./reindex-options";
 import {
 	loadTenantScopedReindexPage,
+	type ReindexDocumentRow,
 	runResumableReindexScan,
 } from "./reindex-scan";
 
@@ -35,7 +38,7 @@ export async function runReindex(options: ReindexOptions): Promise<void> {
 
 	await runResumableReindexScan(options, {
 		loadPage: (input) =>
-			loadTenantScopedReindexPage(input, {
+			loadTenantScopedReindexPage<Database, ReindexDocumentRow[]>(input, {
 				withTenant: (operation) => withTenant(reindexAdmin, operation),
 				async loadPage(tx, { after, limit, all }) {
 					const profileMismatch =
