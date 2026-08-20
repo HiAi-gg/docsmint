@@ -57,7 +57,11 @@ export const finalizeJobSchema = basePipelineJobSchema.extend({
 });
 
 export type PipelineStage =
-	"prepare" | "embed" | "graph" | "summarize" | "finalize";
+	| "prepare"
+	| "embed"
+	| "graph"
+	| "summarize"
+	| "finalize";
 
 export const pipelineJobSchema = z.discriminatedUnion("stage", [
 	prepareJobSchema,

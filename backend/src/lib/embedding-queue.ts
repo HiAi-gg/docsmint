@@ -21,7 +21,8 @@ export async function enqueueEmbedding(
 	options: { forceNewGeneration?: boolean } = {},
 ): Promise<boolean> {
 	let pipelineInput:
-		{ ownerId: string; revision: string; workspaceId?: string } | undefined;
+		| { ownerId: string; revision: string; workspaceId?: string }
+		| undefined;
 	try {
 		await withTenant(
 			{ ...adminTenantContext(ZERO_UUID), workspaceId },

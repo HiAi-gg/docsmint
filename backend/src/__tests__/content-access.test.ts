@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { AuthPrincipal } from "../lib/auth-principal";
 import {
-	canManageCategories,
 	canAccessContent,
+	canManageCategories,
 	contentAccessForExternalContext,
 	contentAccessForPrincipal,
 	effectiveDocumentCategory,
