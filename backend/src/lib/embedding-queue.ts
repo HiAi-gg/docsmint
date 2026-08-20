@@ -18,10 +18,10 @@ export async function enqueueEmbedding(
 	documentId: string,
 	source: PipelineSource = "interactive",
 	workspaceId?: string,
+	options: { forceNewGeneration?: boolean } = {},
 ): Promise<boolean> {
 	let pipelineInput:
-		| { ownerId: string; revision: string; workspaceId?: string }
-		| undefined;
+		{ ownerId: string; revision: string; workspaceId?: string } | undefined;
 	try {
 		await withTenant(
 			{ ...adminTenantContext(ZERO_UUID), workspaceId },
@@ -80,6 +80,7 @@ export async function enqueueEmbedding(
 			workspaceId: pipelineInput.workspaceId,
 			revision: pipelineInput.revision,
 			source,
+			forceNewGeneration: options.forceNewGeneration,
 		});
 		return true;
 	} catch (err) {

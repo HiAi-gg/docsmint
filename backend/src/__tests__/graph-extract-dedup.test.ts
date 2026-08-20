@@ -23,6 +23,7 @@ const redisSetCalls: Array<{
 }> = [];
 let redisSetNextResult: string | null = "OK";
 let redisSetShouldThrow = false;
+const redisDelCalls: string[] = [];
 
 const redisSetMock = mock(
 	async (
@@ -37,6 +38,10 @@ const redisSetMock = mock(
 		return redisSetNextResult;
 	},
 );
+const redisDelMock = mock(async (key: string): Promise<number> => {
+	redisDelCalls.push(key);
+	return 1;
+});
 
 let getGraphDbCallCount = 0;
 const getGraphDbMock = mock(async (): Promise<null> => {
@@ -70,7 +75,9 @@ function applyMocks(): void {
 		},
 	}));
 	// Intercept redis import so extractEntities gets our fake set()
-	mock.module("../lib/redis", () => ({ redis: { set: redisSetMock } }));
+	mock.module("../lib/redis", () => ({
+		redis: { set: redisSetMock, del: redisDelMock },
+	}));
 	// Intercept graph/init so getGraphDb is controllable
 	mock.module("../lib/graph/init", () => fakeGraphInit);
 }
@@ -79,10 +86,12 @@ beforeAll(applyMocks);
 beforeEach(() => {
 	applyMocks();
 	redisSetCalls.length = 0;
+	redisDelCalls.length = 0;
 	redisSetNextResult = "OK";
 	redisSetShouldThrow = false;
 	getGraphDbCallCount = 0;
 	redisSetMock.mockClear();
+	redisDelMock.mockClear();
 	getGraphDbMock.mockClear();
 });
 
@@ -91,7 +100,7 @@ beforeEach(() => {
 // -----------------------------------------------------------------------
 
 describe("Phase 5.3 — extractEntities Redis dedup", () => {
-	test("same chunkHash/chunkIndex: second call short-circuits via Redis", async () => {
+	test("a failed extraction releases its claimed slot so reindex can retry", async () => {
 		const { extractEntities } = await import("../lib/graph/extract-entities");
 
 		// First call: Redis returns "OK" (slot claimed), proceeds to AGE gate
@@ -102,16 +111,17 @@ describe("Phase 5.3 — extractEntities Redis dedup", () => {
 		expect(redisSetCalls.length).toBe(1);
 		expect(redisSetCalls[0]?.key).toBe("hiai-docs:extract:done:doc-1:0:hash-X");
 
-		// Second call: Redis returns null (key exists) -> short-circuits
-		redisSetNextResult = null;
+		expect(redisDelCalls).toEqual(["hiai-docs:extract:done:doc-1:0:hash-X"]);
+
+		// The released slot can be claimed by the next recovery generation.
 		const r2 = await extractEntities("same text", "doc-1", {
 			chunkHash: "hash-X",
 			chunkIndex: 0,
 		});
 		expect(r2).toEqual([]);
 		expect(redisSetCalls.length).toBe(2);
-		// Second call did NOT reach getGraphDb (short-circuited before AGE gate)
-		expect(getGraphDbCallCount).toBe(1);
+		expect(getGraphDbCallCount).toBe(2);
+		expect(redisDelCalls).toHaveLength(2);
 	});
 
 	test("different hash at same chunkIndex = independent slot", async () => {
@@ -129,6 +139,19 @@ describe("Phase 5.3 — extractEntities Redis dedup", () => {
 		expect(redisSetCalls.length).toBe(2);
 		expect(redisSetCalls[1]?.key).toBe("hiai-docs:extract:done:doc-1:0:hash-B");
 		expect(getGraphDbCallCount).toBe(2);
+	});
+
+	test("new generations do not inherit a failed generation's dedup slot", async () => {
+		const { extractEntities } = await import("../lib/graph/extract-entities");
+		await extractEntities("same text", "doc-1", {
+			chunkHash: "hash-X",
+			chunkIndex: 0,
+			generationId: "generation-2",
+		});
+
+		expect(redisSetCalls[0]?.key).toBe(
+			"hiai-docs:extract:done:doc-1:generation-2:0:hash-X",
+		);
 	});
 
 	test("same hash at different chunkIndices = independent slots", async () => {

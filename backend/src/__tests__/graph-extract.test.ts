@@ -17,9 +17,8 @@ describe("graph extract-entities module", () => {
 	const originalFetch = globalThis.fetch;
 
 	beforeEach(async () => {
-		const { _resetDedupCacheForTests } = await import(
-			"../lib/graph/extract-entities"
-		);
+		const { _resetDedupCacheForTests } =
+			await import("../lib/graph/extract-entities");
 		_resetDedupCacheForTests();
 	});
 
@@ -138,9 +137,8 @@ describe("graph extract-entities module", () => {
 	});
 
 	test("GraphRAG provider keys stay scoped to their endpoint", async () => {
-		const { _resolveGraphProviderKeyForTests } = await import(
-			"../lib/graph/extract-entities"
-		);
+		const { _resolveGraphProviderKeyForTests } =
+			await import("../lib/graph/extract-entities");
 		expect(
 			_resolveGraphProviderKeyForTests(
 				"https://openrouter.ai/api/v1",
@@ -177,9 +175,8 @@ describe("graph extract-entities module", () => {
 	});
 
 	test("parseExtractionResponse clamps and preserves confidence scores", async () => {
-		const { _parseExtractionResponseForTests } = await import(
-			"../lib/graph/extract-entities"
-		);
+		const { _parseExtractionResponseForTests } =
+			await import("../lib/graph/extract-entities");
 		const out = _parseExtractionResponseForTests(
 			JSON.stringify({
 				entities: [
@@ -353,10 +350,15 @@ describe("graph extract-entities module", () => {
 		expect(source).not.toContain("ON MATCH SET");
 	});
 
+	test("AGE edge Cypher has no undeclared parameter placeholders", async () => {
+		const { _documentEntityEdgeCypherForTests } =
+			await import("../lib/graph/extract-entities");
+		expect(_documentEntityEdgeCypherForTests()).not.toMatch(/\$[A-Za-z]/);
+	});
+
 	test("parseExtractionResponse drops unknown entity/relation types", async () => {
-		const { _parseExtractionResponseForTests } = await import(
-			"../lib/graph/extract-entities"
-		);
+		const { _parseExtractionResponseForTests } =
+			await import("../lib/graph/extract-entities");
 		const out = _parseExtractionResponseForTests(
 			JSON.stringify({
 				entities: [
@@ -393,9 +395,8 @@ describe("graph extract-entities module", () => {
 	});
 
 	test("parseExtractionResponse handles markdown-fenced JSON", async () => {
-		const { _parseExtractionResponseForTests } = await import(
-			"../lib/graph/extract-entities"
-		);
+		const { _parseExtractionResponseForTests } =
+			await import("../lib/graph/extract-entities");
 		const out = _parseExtractionResponseForTests(
 			"```json\n" +
 				JSON.stringify({

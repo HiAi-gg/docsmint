@@ -1,5 +1,5 @@
 import {
-	graphCompensationCypher,
+	graphCompensationCyphers,
 	graphLegacyEdgeCleanupCypher,
 	graphOrphanCleanupCypher,
 } from "./generation-state";
@@ -41,9 +41,11 @@ export async function deleteDocumentGraphGeneration(
 	if (!sql) return;
 	await sql.begin(async (tx) => {
 		await tx.unsafe("SET LOCAL search_path = ag_catalog, public");
-		await tx.unsafe(
-			`SELECT * FROM cypher('docs_graph', $$ ${graphCompensationCypher(documentId, generationId)} $$) AS (deleted agtype)`,
-		);
+		for (const cypher of graphCompensationCyphers(documentId, generationId)) {
+			await tx.unsafe(
+				`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (deleted agtype)`,
+			);
+		}
 	});
 }
 

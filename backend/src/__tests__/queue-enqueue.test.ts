@@ -27,7 +27,8 @@ function harness(): {
 		async findOrCreate(input) {
 			const key = `${input.ownerId}:${input.documentId}:${input.revision}`;
 			const existing = active.get(key);
-			if (existing) return { run: { generationId: existing }, created: false };
+			if (existing && !input.forceNewGeneration)
+				return { run: { generationId: existing }, created: false };
 			active.set(key, input.generationId);
 			return { run: { generationId: input.generationId }, created: true };
 		},
@@ -83,6 +84,25 @@ describe("document pipeline enqueue", () => {
 		expect(first.generationId).not.toBe(second.generationId);
 		expect(jobs.map((job) => job.data.ownerId)).toEqual([ownerA, ownerB]);
 		expect(new Set(jobs.map((job) => job.jobId)).size).toBe(2);
+	});
+
+	test("forceNewGeneration supersedes an active run for explicit reindex recovery", async () => {
+		const { deps, jobs } = harness();
+		const input = {
+			documentId,
+			ownerId: ownerA,
+			revision: "revision-1",
+			source: "reindex" as const,
+		};
+		const first = await enqueueDocumentPipeline(input, deps);
+		const replacement = await enqueueDocumentPipeline(
+			{ ...input, forceNewGeneration: true },
+			deps,
+		);
+
+		expect(replacement.deduplicated).toBe(false);
+		expect(replacement.generationId).not.toBe(first.generationId);
+		expect(jobs).toHaveLength(2);
 	});
 
 	test("leaves a created run recoverable when BullMQ enqueue fails", async () => {

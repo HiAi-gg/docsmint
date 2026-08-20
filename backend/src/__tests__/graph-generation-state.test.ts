@@ -2,23 +2,26 @@ import { describe, expect, test } from "bun:test";
 import * as GenerationState from "../lib/graph/generation-state";
 
 const {
-	graphCompensationCypher,
+	graphCompensationCyphers,
 	graphOrphanCleanupCypher,
-	graphReplacementPreludeCypher,
+	graphReplacementCyphers,
 } = GenerationState;
 
 describe("generation-safe graph state", () => {
 	test("replaces only one document's prior edges before stamping the new generation", () => {
-		const cypher = graphReplacementPreludeCypher({
+		const statements = graphReplacementCyphers({
 			documentId: "doc-1",
 			generationId: "generation-2",
 			revision: "revision-2",
 			timestamp: "2026-08-16T00:00:00.000Z",
 		});
+		const cypher = statements.join("\n");
+		expect(statements).toHaveLength(3);
+		expect(cypher).not.toContain("OPTIONAL MATCH");
 		expect(cypher).toContain('r.document_id = "doc-1"');
 		expect(cypher).toContain('d.generation_id = "generation-2"');
 		expect(cypher).toContain('d.revision = "revision-2"');
-		expect(cypher).toContain("(d)-[legacy:MENTIONS]");
+		expect(cypher).toContain("[legacy:MENTIONS]");
 	});
 
 	test("rejects a late writer after a newer generation becomes active", async () => {
@@ -52,7 +55,10 @@ describe("generation-safe graph state", () => {
 	});
 
 	test("cancellation compensates only the matching document generation", () => {
-		const cypher = graphCompensationCypher("doc-1", "generation-2");
+		const statements = graphCompensationCyphers("doc-1", "generation-2");
+		const cypher = statements.join("\n");
+		expect(statements).toHaveLength(2);
+		expect(cypher).not.toContain("OPTIONAL MATCH");
 		expect(cypher).toContain('r.document_id = "doc-1"');
 		expect(cypher).toContain('r.generation_id = "generation-2"');
 		expect(cypher).toContain('d.generation_id = "generation-2"');

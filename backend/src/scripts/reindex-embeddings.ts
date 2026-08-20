@@ -82,7 +82,9 @@ export async function runReindex(options: ReindexOptions): Promise<void> {
 				},
 			}),
 		queue: (row) =>
-			enqueueEmbedding(row.id, "reindex", row.workspaceId ?? undefined),
+			enqueueEmbedding(row.id, "reindex", row.workspaceId ?? undefined, {
+				forceNewGeneration: options.all,
+			}),
 		onProgress: (progress) => console.log(JSON.stringify(progress)),
 	});
 }

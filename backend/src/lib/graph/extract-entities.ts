@@ -29,7 +29,7 @@ import {
 } from "../openai-compatible-chat";
 import { redis } from "../redis";
 import {
-	graphReplacementPreludeCypher,
+	graphReplacementCyphers,
 	isStaleRevisionError,
 	runGenerationFencedGraphWrite,
 } from "./generation-state";
@@ -116,8 +116,10 @@ function extractDedupKey(
 	documentId: string,
 	chunkIndex: number,
 	chunkHash: string,
+	generationId?: string,
 ): string {
-	return `hiai-docs:extract:done:${documentId}:${chunkIndex}:${chunkHash}`;
+	const generation = generationId ? `${generationId}:` : "";
+	return `hiai-docs:extract:done:${documentId}:${generation}${chunkIndex}:${chunkHash}`;
 }
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -194,6 +196,17 @@ export function _resolveGraphProviderKeyForTests(
 	return resolveGraphProviderKey(baseUrl, explicitKey);
 }
 
+/** Test-only: ensure AGE receives fully inlined Cypher without undeclared parameters. */
+export function _documentEntityEdgeCypherForTests(): string {
+	return documentEntityEdgeCypher(
+		"document-id",
+		"generation-id",
+		"Concept",
+		"Architecture",
+		0.9,
+	);
+}
+
 /**
  * Extract entities from a single document chunk and persist them to AGE.
  *
@@ -220,6 +233,18 @@ export async function extractEntities(
 	options: ExtractEntitiesOptions = {},
 ): Promise<ExtractedEntity[]> {
 	if (!config.GRAPH_EXTRACT_ENABLED) return [];
+	let claimedDedupKey: string | undefined;
+	const releaseDedupClaim = async () => {
+		if (!claimedDedupKey) return;
+		try {
+			await redis.del(claimedDedupKey);
+		} catch (err) {
+			logger.warn(
+				{ err, documentId, claimedDedupKey },
+				"Failed to release extract-dedup slot",
+			);
+		}
+	};
 
 	// Redis dedup gate. Only fires when BOTH chunkHash and chunkIndex are
 	// supplied — see the ExtractEntitiesOptions docstring for the rationale.
@@ -228,6 +253,7 @@ export async function extractEntities(
 			documentId,
 			options.chunkIndex,
 			options.chunkHash,
+			options.generationId,
 		);
 		let acquired = false;
 		try {
@@ -239,6 +265,7 @@ export async function extractEntities(
 				"NX",
 			);
 			acquired = result === "OK";
+			if (acquired) claimedDedupKey = key;
 		} catch (err) {
 			// Best-effort: Redis being down should NOT drop extraction work.
 			logger.warn(
@@ -251,14 +278,21 @@ export async function extractEntities(
 	}
 
 	const sql = await getGraphDb();
-	if (!sql) return [];
+	if (!sql) {
+		await releaseDedupClaim();
+		return [];
+	}
 
-	if (!chunkText) return [];
+	if (!chunkText) {
+		await releaseDedupClaim();
+		return [];
+	}
 
 	let entities: ExtractedEntity[];
 	try {
 		entities = await callEntityExtractionLLM(chunkText, options);
 	} catch (err) {
+		await releaseDedupClaim();
 		logger.warn(
 			{ err, documentId },
 			"Entity extraction LLM call failed — skipping",
@@ -272,6 +306,7 @@ export async function extractEntities(
 			revision: options.revision ?? "legacy",
 		});
 	} catch (err) {
+		await releaseDedupClaim();
 		if (isStaleRevisionError(err)) throw err;
 		logger.warn(
 			{ err, documentId, count: entities.length },
@@ -587,16 +622,16 @@ async function persistEntities(
 			async persist() {
 				// 1. Replace every edge previously projected by this document and stamp
 				//    the document vertex in the same relational/AGE transaction.
-				await tx.unsafe(
-					`SELECT * FROM cypher('docs_graph', $$ ${graphReplacementPreludeCypher(
-						{
-							documentId,
-							generationId: identity.generationId,
-							revision: identity.revision,
-							timestamp: nowIso,
-						},
-					)} $$) AS (result agtype)`,
-				);
+				for (const cypher of graphReplacementCyphers({
+					documentId,
+					generationId: identity.generationId,
+					revision: identity.revision,
+					timestamp: nowIso,
+				})) {
+					await tx.unsafe(
+						`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
+					);
+				}
 
 				// 2. Upsert each entity vertex and create a MENTIONS edge to the
 				//    source Document.
@@ -661,10 +696,10 @@ function entityUpsertCypher(
 		SET e.created_at = $now, e.last_seen_doc = $docId, e.confidence = $conf
 		RETURN e.name
 	`
-		.replace("$name", JSON.stringify(name))
-		.replace("$now", JSON.stringify(nowIso))
-		.replace("$docId", JSON.stringify(docId))
-		.replace("$conf", confLiteral);
+		.replaceAll("$name", JSON.stringify(name))
+		.replaceAll("$now", JSON.stringify(nowIso))
+		.replaceAll("$docId", JSON.stringify(docId))
+		.replaceAll("$conf", confLiteral);
 }
 
 /**
@@ -688,11 +723,11 @@ function documentEntityEdgeCypher(
 		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
-		.replace("$docId", JSON.stringify(docId))
-		.replace("$name", JSON.stringify(name))
-		.replace("$now", JSON.stringify(new Date().toISOString()))
-		.replace("$generationId", JSON.stringify(generationId))
-		.replace("$conf", confLiteral);
+		.replaceAll("$docId", JSON.stringify(docId))
+		.replaceAll("$name", JSON.stringify(name))
+		.replaceAll("$now", JSON.stringify(new Date().toISOString()))
+		.replaceAll("$generationId", JSON.stringify(generationId))
+		.replaceAll("$conf", confLiteral);
 }
 
 /**
@@ -723,10 +758,10 @@ function entityRelationCypher(
 		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
-		.replace("$source", JSON.stringify(sourceName))
-		.replace("$target", JSON.stringify(targetName))
-		.replace("$documentId", JSON.stringify(documentId))
-		.replace("$generationId", JSON.stringify(generationId))
-		.replace("$now", JSON.stringify(new Date().toISOString()))
-		.replace("$conf", confLiteral);
+		.replaceAll("$source", JSON.stringify(sourceName))
+		.replaceAll("$target", JSON.stringify(targetName))
+		.replaceAll("$documentId", JSON.stringify(documentId))
+		.replaceAll("$generationId", JSON.stringify(generationId))
+		.replaceAll("$now", JSON.stringify(new Date().toISOString()))
+		.replaceAll("$conf", confLiteral);
 }

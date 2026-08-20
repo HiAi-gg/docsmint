@@ -26,27 +26,24 @@ export async function runGenerationFencedGraphWrite(dependencies: {
 }
 
 /** Atomically remove one document's prior graph projection and stamp its replacement. */
-export function graphReplacementPreludeCypher(
+export function graphReplacementCyphers(
 	identity: GraphGenerationIdentity,
-): string {
+): string[] {
 	const documentId = literal(identity.documentId);
 	const generationId = literal(identity.generationId);
 	const revision = literal(identity.revision);
 	const timestamp = literal(identity.timestamp);
-	return `
-		MERGE (d:Document {id: ${documentId}})
-		OPTIONAL MATCH (d)-[legacy:MENTIONS]->()
-		DELETE legacy
-		WITH d
-		OPTIONAL MATCH ()-[r]->()
-		WHERE r.document_id = ${documentId}
-		DELETE r
-		WITH d
-		SET d.generation_id = ${generationId}, d.revision = ${revision},
-			d.created_at = coalesce(d.created_at, ${timestamp}),
-			d.entity_extracted_at = ${timestamp}
-		RETURN d.id
-	`;
+	return [
+		`MATCH (d:Document {id: ${documentId}})-[legacy:MENTIONS]->()
+		 DELETE legacy RETURN count(legacy)`,
+		`MATCH ()-[r]->() WHERE r.document_id = ${documentId}
+		 DELETE r RETURN count(r)`,
+		`MERGE (d:Document {id: ${documentId}})
+		 SET d.generation_id = ${generationId}, d.revision = ${revision},
+		     d.created_at = coalesce(d.created_at, ${timestamp}),
+		     d.entity_extracted_at = ${timestamp}
+		 RETURN d.id`,
+	];
 }
 
 /** Remove propertyless edges once before a full post-upgrade graph rebuild. */
@@ -60,23 +57,21 @@ export function graphLegacyEdgeCleanupCypher(): string {
 }
 
 /** Remove only graph state written by the cancelled generation. */
-export function graphCompensationCypher(
+export function graphCompensationCyphers(
 	documentIdValue: string,
 	generationIdValue: string,
-): string {
+): string[] {
 	const documentId = literal(documentIdValue);
 	const generationId = literal(generationIdValue);
-	return `
-		MATCH (d:Document {id: ${documentId}})
-		OPTIONAL MATCH ()-[r]->()
-		WHERE r.document_id = ${documentId}
-		  AND r.generation_id = ${generationId}
-		DELETE r
-		WITH d
-		WHERE d.generation_id = ${generationId}
-		DETACH DELETE d
-		RETURN 1
-	`;
+	return [
+		`MATCH ()-[r]->()
+		 WHERE r.document_id = ${documentId}
+		   AND r.generation_id = ${generationId}
+		 DELETE r RETURN count(r)`,
+		`MATCH (d:Document {id: ${documentId}})
+		 WHERE d.generation_id = ${generationId}
+		 DETACH DELETE d RETURN count(d)`,
+	];
 }
 
 /** Delete entity vertices left disconnected after a completed full rebuild. */

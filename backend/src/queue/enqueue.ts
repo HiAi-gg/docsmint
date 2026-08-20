@@ -17,6 +17,7 @@ export interface PipelineRunStore {
 		ownerId: string;
 		generationId: string;
 		workspaceId?: string;
+		forceNewGeneration?: boolean;
 	}): Promise<boolean>;
 	findOrCreate(input: {
 		documentId: string;
@@ -101,19 +102,37 @@ const postgresRunStore: PipelineRunStore = {
 					.where(and(eq(documents.id, input.documentId), ownerBoundary))
 					.limit(1);
 				if (!document) throw new Error("Document not found for pipeline owner");
+				if (input.forceNewGeneration) {
+					await tx
+						.update(documentPipelineRuns)
+						.set({
+							status: "cancelled",
+							errorCode: "superseded_by_reindex",
+							updatedAt: new Date(),
+						})
+						.where(
+							and(
+								eq(documentPipelineRuns.documentId, input.documentId),
+								runBoundary,
+								inArray(documentPipelineRuns.status, [...ACTIVE_STATUSES]),
+							),
+						);
+				}
 
-				const [existing] = await tx
-					.select({ generationId: documentPipelineRuns.generationId })
-					.from(documentPipelineRuns)
-					.where(
-						and(
-							eq(documentPipelineRuns.documentId, input.documentId),
-							runBoundary,
-							eq(documentPipelineRuns.revision, input.revision),
-							inArray(documentPipelineRuns.status, [...ACTIVE_STATUSES]),
-						),
-					)
-					.limit(1);
+				const [existing] = input.forceNewGeneration
+					? []
+					: await tx
+							.select({ generationId: documentPipelineRuns.generationId })
+							.from(documentPipelineRuns)
+							.where(
+								and(
+									eq(documentPipelineRuns.documentId, input.documentId),
+									runBoundary,
+									eq(documentPipelineRuns.revision, input.revision),
+									inArray(documentPipelineRuns.status, [...ACTIVE_STATUSES]),
+								),
+							)
+							.limit(1);
 				if (existing) return { run: existing, created: false };
 
 				const [created] = await tx
@@ -158,6 +177,7 @@ export async function enqueueDocumentPipeline(
 		...parsed,
 		requestedAt,
 		generationId: proposedGenerationId,
+		forceNewGeneration: parsed.forceNewGeneration,
 	});
 	if (created) {
 		const job: PrepareJob = {
