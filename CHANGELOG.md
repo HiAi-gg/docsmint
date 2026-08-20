@@ -36,6 +36,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-20
+
+### Added
+
+- Publish the complete MCP document-manager catalog with 17 tools, two prompts,
+  three resources, a bundled Skill, and three documented installation methods.
+- Expose transactional document writing and generation-aware reindex controls
+  through public OSS contracts.
+
+### Fixed
+
+- Keep global and category API-key permissions consistent across documents,
+  categories, folders, tags, GraphRAG, and index operations.
+- Supersede failed pipeline generations during full reindexing, release failed
+  extraction claims for retry, and prevent stale generations from replacing
+  current summaries or graph projections.
+- Generate Apache AGE-compatible replacement queries and substitute every
+  repeated graph parameter.
+- Resolve published frontend imports through canonical hiai-ui exports.
+
 ## [0.6.0] - 2026-08-15
 
 ### Added

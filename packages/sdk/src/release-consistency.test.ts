@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
 const repositoryRoot = new URL('../../../', import.meta.url);
-const releaseVersion = '0.6.0';
+const releaseVersion = '0.6.1';
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), 'utf8'));
 }
 
-test('all published and workspace release metadata reports 0.6.0', async () => {
+test('all published and workspace release metadata reports 0.6.1', async () => {
   for (const path of [
     'package.public.json',
     'backend/package.json',
@@ -24,7 +24,7 @@ test('all published and workspace release metadata reports 0.6.0', async () => {
   const lockfile = await readFile(new URL('bun.lock', repositoryRoot), 'utf8');
   const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
   expect(workspaceBlock).not.toContain('"version": "0.3.0"');
-  expect(workspaceBlock.match(/"version": "0\.6\.0"/g)).toHaveLength(6);
+  expect(workspaceBlock.match(/"version": "0\.6\.1"/g)).toHaveLength(6);
 
   const frontendManifest = await json('frontend/package.json');
   expect((frontendManifest.dependencies as Record<string, string>)['lucide-svelte']).toBe(
@@ -80,13 +80,13 @@ test('all published and workspace release metadata reports 0.6.0', async () => {
   for (const path of [
     'backend/src/index.ts',
     'packages/cli/src/index.ts',
-    'packages/mcp-server/src/index.ts',
+    'packages/mcp-server/src/server.ts',
   ]) {
     expect(await readFile(new URL(path, repositoryRoot), 'utf8'), path).toContain(releaseVersion);
   }
 });
 
-test('workspace and public package metadata share the 0.6.0 product identity', async () => {
+test('workspace and public package metadata share the 0.6.1 product identity', async () => {
   const workspaceManifest = await json('package.json');
   const publicManifest = await json('package.public.json');
   const description =

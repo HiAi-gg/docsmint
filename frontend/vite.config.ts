@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const appId = env.PUBLIC_APP_ID ?? env.VITE_APP_ID ?? "hiai-docs";
 	const deploymentId =
-		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-0.6.0";
+		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-0.6.1";
 
 	return {
   plugins: [

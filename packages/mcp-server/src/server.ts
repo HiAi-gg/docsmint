@@ -42,7 +42,7 @@ function wrapHandler(
 }
 
 export function createDocsmintMcpServer(): McpServer {
-	const server = new McpServer({ name: "docsmint", version: "0.6.0" });
+	const server = new McpServer({ name: "docsmint", version: "0.6.1" });
 	const register = <Args>(
 		name: string,
 		description: string,

@@ -40,7 +40,23 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.0?
+## What's new in DocsMint 0.6.1?
+
+- **Reliable knowledge refreshes.** Explicit full reindexing now supersedes
+  failed or stuck generations, retries release stale extraction claims, and
+  publishes embeddings, summaries, and graph projections only for the current
+  document generation.
+- **Safer scoped automation.** Global keys can manage the complete document
+  domain, while category keys stay confined to their category, folders,
+  documents, tags, graph traversal, and index operations according to explicit
+  `read`, `edit`, and `write` permissions.
+- **Portable agent integration.** The MCP package exposes 17 document-manager
+  tools, two reusable prompts, three context resources, and a bundled Skill,
+  with Bunx, NPX, and local-checkout installation paths.
+- **Compatible frontend packaging.** Published frontend entrypoints resolve the
+  canonical hiai-ui exports used by the source build and packed consumers.
+
+DocsMint 0.6.1 includes the mobile and PWA foundation introduced in 0.6.0:
 
 - **Installable, update-safe PWA.** A versioned service worker, responsive app
   shell, install prompt, and deterministic offline fallback make DocsMint feel

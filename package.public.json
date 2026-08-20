@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
