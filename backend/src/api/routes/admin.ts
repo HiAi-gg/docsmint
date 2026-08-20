@@ -51,10 +51,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 	/**
 	 * POST /api/admin/reindex/:docId
 	 *
-	 * Force re-embed a single document. Clears existing chunks and pushes
-	 * the id onto the embedding queue so the worker picks it up on the
-	 * next tick. Returns 404 when the document does not exist so callers
-	 * can detect typos / stale ids.
+	 * Force re-embed a single document through a new durable generation.
+	 * The active generation remains searchable until finalize atomically
+	 * publishes the replacement. Returns 404 when the document does not
+	 * exist and 503 when the queue admission itself fails.
 	 */
 	.post("/reindex/:docId", async ({ params, set, request }) => {
 		const ip = clientIp(request);
@@ -85,25 +85,21 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 				return { error: "Document not found" };
 			}
 
-			// Drop existing chunks so the worker writes a clean set rather
-			// than upserting on the (document_id, chunk_index) unique
-			// index. The worker wraps the same delete+insert in a
-			// transaction, but doing the delete here lets us report an
-			// accurate "previous chunks removed" count in the response if
-			// we ever need it, and avoids a brief window where the
-			// document has 2x chunks visible to search.
-			await withTenant(adminTenantContext(), async (tx) => {
-				await tx
-					.delete(documentEmbeddings)
-					.where(eq(documentEmbeddings.documentId, params.docId));
+			const enqueued = await enqueueReembed([params.docId], undefined, {
+				bypassDedup: true,
+				forceNewGeneration: true,
+				source: "reindex",
 			});
-
-			void enqueueReembed([params.docId]);
+			if (enqueued !== 1) {
+				set.status = 503;
+				return { error: "Failed to queue document reindex" };
+			}
 
 			return {
 				success: true,
 				documentId: params.docId,
-				message: "Existing embeddings cleared and document re-queued",
+				enqueued,
+				message: "Document reindex queued with a new generation",
 			};
 		} catch (err) {
 			logger.error({ err, docId: params.docId }, "Admin reindex failed");

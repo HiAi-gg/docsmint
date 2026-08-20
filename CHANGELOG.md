@@ -1,40 +1,23 @@
 # Changelog
 
-## 0.4.6
-
-- Complete the canonical OSS account lifecycle by exporting actor-owned profile, folder, tag, and category data.
-- Purge OSS-owned folders, tags, categories, sessions, and authentication accounts before applying a deterministic non-identifying user tombstone.
-- Preserve durable step ordering and idempotent retry while keeping provider credentials out of account exports.
-
-## 0.4.5
-
-- Add the server-only `@hiai-gg/docsmint/backend/account-runtime-cleanup` adapter so lifecycle hosts can clear OSS collaboration, cache, and dedup state without duplicating Redis namespaces or querying OSS tables.
-- Snapshot exact actor-owned document and workspace identifiers before deletion, then remove only namespace-scoped Redis state with abort fencing and one-shot snapshot consumption.
-
-## 0.4.4
-
-- Add the server-only `@hiai-gg/docsmint/pipeline/cancellation` API for exact-owner BullMQ cancellation without Redis namespace deletion.
-- Durably fence active pipeline runs before removing waiting, delayed, paused, or prioritized jobs; repeated cancellation is safe and cross-account jobs are preserved.
-- Make prepare and embed workers observe the cancelled run immediately before document, batch, activation, status, and downstream queue writes, with compensation support for raced external creation.
-
-## 0.4.3
-
-- Ship the concrete server-only durable PostgreSQL lifecycle saga as `@hiai-gg/docsmint/lifecycle/runtime`.
-- Require explicit real adapters for object storage, queues, Redis, collaboration, graph state, and the final-owner fence.
-- Verify the runtime and browser server-only guard from a packed consumer.
-
-## 0.4.2
-
-- Publish the server-only persistent lifecycle facade and packed lifecycle contract.
-- Preserve non-root Docker runtime ownership with `COPY --chown` and make Caddy ports configurable.
-- Route public object-storage TLS through the dedicated storage host.
-
 All notable changes to DocsMint are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.6.6] - 2026-08-20
+
+### Fixed
+
+- Keep the active embedding generation searchable while an explicit document
+  reindex creates and prepares its replacement.
+- Force admin reindex recovery into a new durable generation, bypass the
+  interactive debounce slot, await queue admission, and return `503` instead
+  of a false-positive success when admission fails.
+- Align the README release summary with the current MCP Registry and knowledge
+  pipeline release line.
 
 ## [0.6.5] - 2026-08-20
 

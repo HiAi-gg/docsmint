@@ -40,7 +40,20 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.2?
+## What's new in DocsMint 0.6.6?
+
+- **Safe explicit index recovery.** Admin document reindexing keeps the active
+  generation searchable until a new generation has passed embedding, graph,
+  summary, and finalize stages.
+- **Truthful queue admission.** Maintenance requests force a replacement
+  generation and report an error when durable enqueue fails instead of
+  returning a false-positive success.
+- **Verified MCP distribution.** The official MCP Registry manifest, npm stdio
+  package, hosted Streamable HTTP endpoint, bundled Skill, prompts, resources,
+  and 17-tool catalog remain one versioned contract.
+
+DocsMint 0.6.6 includes the registry metadata fixes released in 0.6.3-0.6.5
+and the complete MCP foundation introduced in 0.6.2:
 
 - **Official MCP identity.** DocsMint now publishes the verified
   `io.github.HiAi-gg/docsmint` registry identity for both the npm stdio server

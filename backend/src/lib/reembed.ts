@@ -102,6 +102,11 @@ async function claimEnqueueSlot(
 export async function enqueueReembed(
 	docIds: Iterable<string | null | undefined>,
 	workspaceId?: string,
+	options: {
+		bypassDedup?: boolean;
+		forceNewGeneration?: boolean;
+		source?: "interactive" | "reindex";
+	} = {},
 ): Promise<number> {
 	const unique = new Set<string>();
 	for (const id of docIds) {
@@ -111,12 +116,17 @@ export async function enqueueReembed(
 
 	let pushed = 0;
 	for (const id of unique) {
-		if (await claimEnqueueSlot(id, workspaceId)) {
+		if (options.bypassDedup || (await claimEnqueueSlot(id, workspaceId))) {
 			// Keep the legacy list bridge for metadata-triggered re-embeds until
 			// the reconciliation worker owns this path. The bridge accepts the
 			// document id and preserves existing dedup/retry behavior.
-			void enqueueEmbedding(id, "interactive", workspaceId);
-			pushed += 1;
+			const queued = await enqueueEmbedding(
+				id,
+				options.source ?? "interactive",
+				workspaceId,
+				{ forceNewGeneration: options.forceNewGeneration },
+			);
+			if (queued) pushed += 1;
 		}
 	}
 	return pushed;

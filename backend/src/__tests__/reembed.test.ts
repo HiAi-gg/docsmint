@@ -59,9 +59,7 @@ const fakeRedis = {
 	}),
 };
 
-const fakeEnqueue = mock((_id: string) => {
-	// no-op - we count via mock.calls.length
-});
+const fakeEnqueue = mock(async (_id: string) => true);
 
 const adminMockRows: Array<{ id: string }> = [
 	{ id: "admin-doc-1" },
@@ -119,6 +117,25 @@ describe("enqueueReembed pure-logic dedup", () => {
 });
 
 describe("enqueueReembed Redis SET-NX dedup", () => {
+	test("explicit recovery bypasses debounce and forces a new generation", async () => {
+		const pushed = await enqueueReembed(["doc-1"], undefined, {
+			bypassDedup: true,
+			forceNewGeneration: true,
+			source: "reindex",
+		});
+
+		expect(pushed).toBe(1);
+		expect(fakeRedis.setCalls).toHaveLength(0);
+		expect(fakeEnqueue).toHaveBeenCalledWith("doc-1", "reindex", undefined, {
+			forceNewGeneration: true,
+		});
+	});
+
+	test("does not report a push when the durable enqueue fails", async () => {
+		fakeEnqueue.mockResolvedValueOnce(false);
+		expect(await enqueueReembed(["doc-1"])).toBe(0);
+	});
+
 	test("uses SET key value EX <ttl> NX", async () => {
 		await enqueueReembed(["doc-1"]);
 		expect(fakeRedis.setCalls.length).toBe(1);
