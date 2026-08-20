@@ -36,6 +36,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-20
+
+### Added
+
+- Publish the verified `io.github.hiai-gg/docsmint` identity through
+  `server.json`, npm `mcpName`, the public `@hiai-gg/docsmint/mcp` seam, and
+  matching stdio and Streamable HTTP registry transports.
+- Allow hosts to inject a scoped DocsMint API client into the complete MCP
+  capability catalog without importing private server implementation code.
+
+### Changed
+
+- Move the MCP server to the stable Model Context Protocol v2 server package
+  while preserving modern and legacy-compatible stdio negotiation.
+- Extend packed-package verification to include the MCP registry manifest,
+  public capability factory, bundled Skill, prompts, resources, and tools.
+
 ## [0.6.1] - 2026-08-20
 
 ### Added
@@ -374,6 +391,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.2.9] - 2026-07-12
 
 ### Added
+
 - Public SvelteKit host components for the dashboard and search surfaces, with
   request-scoped extension providers for DocsMint and other product builds.
 - Additive frontend extension slots for dashboard widgets, search widgets,
@@ -382,6 +400,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   predicates that cannot take down the base application.
 
 ### Changed
+
 - Existing HiAi-Docs routes remain thin wrappers around the same page bodies;
   an empty extension manifest preserves the standalone UI and behavior.
 - Release creation is idempotent when a GitHub Release already exists for a tag.
@@ -389,6 +408,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.2.8] - 2026-07-12
 
 ### Added
+
 - Global owner-wide and category-bound API keys with an explicit, non-hierarchical `read` / `edit` / `write` authorization matrix across documents, folders, search, graph, versions, attachments, tags, sharing, and visibility.
 - SDK coverage for category/folder placement, document pipeline status, publish/unpublish, attachment presign/confirm, and session-backed API-key lifecycle operations.
 - BullMQ document-processing pipeline with independent prepare, embed, graph,
@@ -399,6 +419,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   prepare-job migration checks.
 
 ### Changed
+
 - API-key lifecycle routes now require a real Better Auth browser session. Global raw secrets remain one-time; category secrets are encrypted at rest and recoverable only by the owning session.
 - CLI configuration enforces `0700` directory and `0600` file permissions on POSIX systems; CLI and MCP route contracts and public `bunx` invocation are aligned with the published package.
 - Admin and metrics authentication accepts both `x-api-key` and Bearer forms and fails closed when the operator key is unset.
@@ -411,6 +432,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   quickstart, release verification, and browser acceptance instructions.
 
 ### Fixed
+
 - TipTap image insertion and resizing now trigger autosave, persist dimensions, and preserve them in shared/PDF and Markdown rendering; rich Markdown export retains images, tables, and legacy table content.
 - Editor image resizing uses responsive bounds and persisted width/height attributes, while share rendering and document export keep the selected dimensions.
 - The deprecated storage webhook is documented as an inbound signed no-op; false outbound lifecycle-webhook and storage-synchronization claims were removed.
@@ -424,6 +446,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   terminal states without blocking usable embeddings.
 
 ### Migration Notes
+
 - Apply the complete Drizzle journal (`0000–0030`) before starting the API.
   Migration `0030` safely repairs pipeline objects created under the AGE schema
   by an earlier unreleased candidate.
@@ -435,6 +458,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.2.7] - 2026-07-11
 
 ### Added
+
 - **Adaptive multilingual search**: exact/title, multilingual lexical, fuzzy,
   vector, one-pass query expansion, and automatic GraphRAG retrieval are
   combined with reciprocal rank fusion (RRF).
@@ -449,6 +473,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   search metrics without credentials in process arguments.
 
 ### Fixed
+
 - **GraphRAG safety**: graph seeds are visibility-authorized before traversal,
   Cypher inputs use safe dollar-quoted values, and graph failures degrade to
   direct search results without leaking tenant data.
@@ -458,6 +483,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   integration mocks, keeping the full suite deterministic.
 
 ### Migration Notes
+
 - Apply the complete Drizzle journal (`0000–0026`) before enabling search
   generations or reindexing embeddings. The reference PostgreSQL image includes
   AGE and vector extensions required by the migrations.
@@ -467,6 +493,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.2.6] - 2026-07-10
 
 ### Fixed
+
 - **Public share attachments**: protected document images are fetched with the share token and rendered through revocable blob URLs instead of anonymous raw URLs that returned `401`.
 - **Public rich-text rendering**: paragraph/heading alignment, bullet lists, ordered-list start values, and task lists now share one tested ProseMirror renderer. Invalid block nodes from older imports are flattened inside headings instead of producing browser-rewritten HTML.
 - **Public share hardening**: Markdown fallback and export HTML now pass through the same escaped renderer, and unsafe link protocols are rejected.
@@ -476,36 +503,43 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **Release stability**: the metrics route test no longer binds an ephemeral host port, category API-access validation matches the current contract, and the session schema includes the already-migrated revocation fields.
 
 ### Changed
+
 - Version synchronized to `0.2.6` across all workspace packages, the public package manifest, Swagger, OpenAPI, and release metadata.
 
 ### Migration Notes
+
 - Run `bun run db:migrate` after upgrade to apply migration `0020_fix_audit_log_rls.sql`.
 
 ## [0.2.5] - 2026-07-09
 
 ### Fixed
+
 - **Attachments raw streaming**: the `GET /api/attachments/:id/raw` route now reads SeaweedFS/S3 bodies through a runtime-agnostic body reader, so it handles both WHATWG streams and async-iterable S3 bodies during raw attachment downloads and integrity probes.
 - **Editor toolbar list/alignment**: list toggles now fall back cleanly when the current TipTap command surface differs, and left alignment clears text alignment through `unsetTextAlign()` when available.
 - **DOCX serializer**: paragraph/heading alignment handling is tightened and the serializer no longer relies on loose `any` typing for the local node/mark helpers.
 - **Sidebar share actions**: folder and document menus now open the share dialog from the sidebar, with share state wired through the tree component.
 
 ### Changed
+
 - Version bumped from `0.2.4` to `0.2.5` across workspace manifests, `package.public.json`, Swagger/OpenAPI, and production status metadata.
 
 ## [0.2.4] - 2026-07-08
 
 ### Fixed
+
 - **package.public.json — broken export paths**: Three new v0.2.3 exports (`./backend/lib/rate-limit`, `./backend/lib/api-keys`, `./backend/lib/audit`) used `backend/...` paths missing the `./` prefix. Published package would fail to resolve these imports. Paths corrected to `./backend/...` to match all other exports.
 - **docs/API.md — API keys mismatch**: Documented `expiresIn` duration field, but code uses `expiresAt` ISO 8601 datetime. Docs updated to match actual code behaviour.
 - **docs/API.md — plugins response shape mismatch**: Documented `displayName`/`enabled` fields that do not exist in the `PluginManifest` type. Actual shape is `name`/`version`/`description`. Docs updated to match code.
 - **docs/PRODUCTION_STATUS.md — route count**: Stale count of 14 route files. Actual count is 17 (added keys, plugins, visibility in v0.2.3). Corrected.
 
 ### Changed
+
 - Version bumped from `0.2.3` to `0.2.4` across all workspace manifests: root `package.json`, `package.public.json`, `backend/package.json`, `frontend/package.json`, `packages/{sdk,cli,mcp-server,db}/package.json`, `backend/src/index.ts` (Swagger), `docs/openapi.json`, `docs/PRODUCTION_STATUS.md`.
 
 ## [0.2.3] - 2026-07-08
 
 ### Added
+
 - **Chunk offsets** (HIAI-1): charStart/charEnd tracking through the embedding pipeline
 - **Search chunks** (HIAI-2): `includeChunks` parameter in search to get top-3 chunk snippets per result
 - **API keys** (HIAI-3): create, list, revoke, and Bearer-auth user API keys with scopes and expiry
@@ -516,6 +550,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **Audit log** (HIAI-8): append-only audit trail with admin query endpoints and fire-and-forget integration
 
 ### Changed
+
 - ChunkResult extended with charStart/charEnd positional tracking
 - Search response extended with optional `chunks` array per document
 - Rate-limit middleware now re-exports from reusable lib factory
@@ -523,11 +558,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - API key auth integrated into auth pipeline (admin key → user API key → Better Auth)
 
 ### Security
+
 - API key Bearer auth for user-scoped API access
 - Document visibility RLS: public documents readable by all authenticated users
 - Audit trail records document/share/API-key lifecycle events
 
 ### Migration Notes
+
 - New migrations: 0014 (chunk offsets), 0015 (api_keys table), 0016 (document visibility enum), 0017 (share roles), 0018 (audit_log table)
 - Run `bun run db:migrate` after upgrade
 
@@ -551,7 +588,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- **GraphRAG N1 — graph route (`graph.ts`) cypher bind parameter**: `fetchDocumentEntities` in `backend/src/api/routes/graph.ts` used the postgres-js tagged-template form `sql\`...${...}\`` which passes the cypher string as a bind parameter (`$1`). AGE's `cypher()` rejects bind parameters — it requires a literal dollar-quoted string constant. Replaced with `sql.unsafe()` using `$$ ... $$` dollar-quoting, matching the pattern used in `search-expansion.ts` (G7 fix), `extract-entities.ts`, and `admin.ts`.
+- **GraphRAG N1 — graph route (`graph.ts`) cypher bind parameter**: `fetchDocumentEntities` in `backend/src/api/routes/graph.ts` used the postgres-js tagged-template form `sql\`...${...}\`` which passes the cypher string as a bind parameter (`$1`). AGE's `cypher()`rejects bind parameters — it requires a literal dollar-quoted string constant. Replaced with`sql.unsafe()`using`$$ ... $$`dollar-quoting, matching the pattern used in`search-expansion.ts`(G7 fix),`extract-entities.ts`, and `admin.ts`.
 - **docs/GRAPHRAG_AUDIT.md**: Post-Audit Resolution table updated with N1 fix documentation; remaining risks section cleaned to remove false claims of unresolved CRITICAL/HIGH items.
 - **docs/PRODUCTION_STATUS.md**: Updated to v0.2.1 verified status, removing stale v0.1.8 references.
 - **docs/openapi.json**: Stale version `0.1.9` corrected to `0.2.1`.
@@ -568,6 +605,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.2.0] - 2026-07-07
 
 ### Breaking Changes
+
 - **MinIO → SeaweedFS migration**: MinIO completely removed as the object storage backend. SeaweedFS (chrislusf/seaweedfs:3.85) is now the only supported storage backend.
 - **Config rename**: All `MINIO_*` environment variables renamed to `STORAGE_*` (e.g., `MINIO_ENDPOINT` → `STORAGE_ENDPOINT`, `MINIO_SECRET_KEY` → `STORAGE_SECRET_KEY`). See `.env.example` for the full list.
 - **DB schema rename**: `attachments.minio_key` column renamed to `attachments.storage_key` (migration `0013_rename_minio_key_to_storage_key.sql`).
@@ -579,6 +617,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.1.9] - 2026-07-03
 
 ### Documentation
+
 - Updated all docs to reflect v0.1.8 architecture (B.1/B.4/B.3 refactors)
 - Fixed DATABASE_URL default port (5433 → 5437) in config-schema.ts
 - Added subpath import examples to README
@@ -590,6 +629,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.1.8] - 2026-07-03
 
 ### Fixed
+
 - **Pure DI factories** — `createRedis` and `createMinio` (+`ensureBucket`) extracted into `backend/src/lib/redis-factory.ts` and `minio-factory.ts`. These new modules import only `ioredis`/`minio`/`pino`-logger — **no `./config` import**, so no `envSchema.parse` + `process.exit(1)` runs when an external consumer (e.g. docsmint) imports them. The npm subpath exports `./backend/lib/redis` and `./backend/lib/minio` now resolve to these factory files. The original `redis.ts`/`minio.ts` keep their hiai-env-gated singletons for the internal runtime and re-export the factories for backwards compatibility.
 - **peerDependencies** — `ioredis`, `minio`, `pino`, `zod` added to `package.public.json` (all optional). Previously a docsmint `import { createRedis } from '@hiai-gg/hiai-docs/backend/lib/redis'` failed to resolve `ioredis` because it was undeclared.
 - **bin/files mismatch** — `packages/cli/src` and `packages/mcp-server/src` were removed from `files[]` in v0.1.6 but the `bin` field still pointed at them. Re-added so `npx hiai-docs` / `npx hiai-docs-mcp` work again.
@@ -598,6 +638,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ## [0.1.7] - 2026-07-03
 
 ### Features
+
 - **B.1**: RLS client (withTenant, TenantContext, adminTenantContext, shareGuestTenantContext) moved to packages/db for shared use
 - **B.4**: redis and minio refactored to factory functions (createRedis, createMinio) with backwards-compatible singletons
 - **B.3**: package.public.json updated with subpath exports for db/client, db/with-tenant, backend/lib/redis, backend/lib/minio, backend/lib/logger
@@ -628,7 +669,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 ### Fixed
 
 - **npm `files` whitelist** in `package.public.json` now lists explicit per-package source directories (`packages/db/src`, `packages/cli/src`, `packages/mcp-server/src`, `backend/src`, `frontend/src`) instead of the non-recursive glob `packages/*/src`. The glob was silently omitting `packages/db/src`, which broke the `./db` and `./schema` subpaths in the published tarball.
-- **Added `./auth` export** pointing to `backend/src/lib/auth.ts` so consumers can import the configured Better Auth instance directly. *(Reverted in 0.1.6 — the export was non-functional due to an unresolvable `@hiai-docs/db` workspace reference.)*
+- **Added `./auth` export** pointing to `backend/src/lib/auth.ts` so consumers can import the configured Better Auth instance directly. _(Reverted in 0.1.6 — the export was non-functional due to an unresolvable `@hiai-docs/db` workspace reference.)_
 
 ### Changed
 

@@ -36,6 +36,7 @@ and the GitHub Release, not in this file.
    - `packages/sdk/package.json`
    - `packages/cli/package.json`
    - `packages/mcp-server/package.json`
+   - `server.json`
    - backend Swagger metadata
    - `docs/openapi.json`
 4. Update `.env.example`, documentation, migrations, and OpenAPI whenever their
@@ -91,6 +92,25 @@ Publishing is a separate, explicitly authorized operation.
 6. Create the GitHub Release from the tag using the changelog summary.
 7. Confirm the expected npm package and Docker images exist and report the
    released version.
+8. Confirm `io.github.hiai-gg/docsmint` resolves in the official MCP Registry.
+
+The tag workflow publishes `server.json` only after the exact npm version is
+available. It authenticates `mcp-publisher` with GitHub Actions OIDC, so the
+registry can verify the `io.github.hiai-gg` namespace without a long-lived
+secret. Keep the `mcp-publisher` version pinned in `.github/workflows/ci.yml` and
+validate the manifest locally before tagging:
+
+```bash
+mcp-publisher validate server.json
+```
+
+The [LobeHub listing](https://lobehub.com/mcp/hiai-gg-docsmint) is a secondary
+catalog entry. The README badge links to the canonical listing. Organization
+ownership claims require an interactive maintainer login; complete that step in
+LobeHub after the release if its organization claim flow is available. The
+repository license is Apache-2.0; catalog UIs that show `Other` must be corrected
+from the detected `LICENSE` and package metadata rather than changing the
+project license.
 
 Never push, tag, publish npm, publish containers, or create a GitHub Release
 without explicit authorization for that release.
@@ -100,5 +120,8 @@ without explicit authorization for that release.
 - Install from the public artifacts, not the local worktree.
 - Smoke login, document creation, import, search, share, images, and export.
 - Verify SDK, CLI, and MCP against the released API.
+- Verify all three documented MCP installation methods, the hosted
+  `https://docsmint.com/mcp` transport, prompts, resources, and the bundled
+  document-manager skill.
 - Record discovered regressions as new work; do not rewrite historical release
   evidence in this guide.

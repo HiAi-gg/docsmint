@@ -1,0 +1,55 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.hiai-gg/docsmint",
+  "title": "DocsMint",
+  "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
+  "repository": {
+    "url": "https://github.com/HiAi-gg/docsmint",
+    "source": "github",
+    "id": "1249550690"
+  },
+  "version": "0.6.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@hiai-gg/docsmint",
+      "version": "0.6.2",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "HIAI_DOCS_URL",
+          "description": "Base URL of the DocsMint API.",
+          "default": "http://localhost:50700"
+        },
+        {
+          "name": "HIAI_DOCS_API_KEY",
+          "description": "Workspace or category scoped DocsMint API key.",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://docsmint.com/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer DocsMint API key.",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "X-Docsmint-Workspace",
+          "description": "Optional workspace override for a workspace scoped key.",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

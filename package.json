@@ -1,5 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
+  "mcpName": "io.github.hiai-gg/docsmint",
   "private": true,
   "type": "module",
   "browser": {
@@ -61,6 +62,10 @@
     "./sdk": {
       "import": "./packages/sdk/dist/index.js",
       "types": "./packages/sdk/dist/index.d.ts"
+    },
+    "./mcp": {
+      "import": "./packages/mcp-server/src/server.ts",
+      "types": "./packages/mcp-server/src/server.ts"
     },
     "./lifecycle": {
       "browser": "./packages/sdk/dist/server-only-browser-entry.js",
@@ -228,6 +233,7 @@
     "frontend/src/lib/hosts",
     "frontend/src/lib/stores/doc-tab-registry.svelte.ts",
     "frontend/src/lib/components/editor/shared-document.ts",
+    "server.json",
     "README.md",
     "LICENSE"
   ],
@@ -249,7 +255,7 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/server": "2.0.0",
     "bullmq": "^5.80.2",
     "commander": "^13.1.0",
     "ioredis": "^5.11.1",

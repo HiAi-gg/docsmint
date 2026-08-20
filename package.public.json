@@ -1,6 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
-  "version": "0.6.1",
+  "mcpName": "io.github.hiai-gg/docsmint",
+  "version": "0.6.2",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -56,6 +57,10 @@
     "./sdk": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./mcp": {
+      "import": "./packages/mcp-server/src/server.ts",
+      "types": "./packages/mcp-server/src/server.ts"
     },
     "./lifecycle": {
       "browser": "./dist/server-only-browser-entry.js",
@@ -362,6 +367,7 @@
     "backend/src/lib/api-keys.ts",
     "backend/src/lib/api-key-encryption.ts",
     "backend/src/lib/lifecycle-service.ts",
+    "server.json",
     "README.md",
     "LICENSE"
   ],
@@ -380,7 +386,7 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/server": "2.0.0",
     "bullmq": "^5.80.2",
     "commander": "^13.1.0",
     "ioredis": "^5.11.1",

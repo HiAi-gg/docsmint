@@ -40,7 +40,19 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.1?
+## What's new in DocsMint 0.6.2?
+
+- **Official MCP identity.** DocsMint now publishes the verified
+  `io.github.hiai-gg/docsmint` registry identity for both the npm stdio server
+  and the hosted Streamable HTTP endpoint.
+- **One capability implementation.** The public `@hiai-gg/docsmint/mcp`
+  contract lets hosts provide a scoped API client while reusing the same 17
+  tools, two prompts, three resources, and bundled document-manager Skill.
+- **Current protocol runtime.** The MCP server uses the stable v2 server
+  package and retains compatible stdio negotiation for existing clients.
+
+DocsMint 0.6.2 includes the reliable knowledge refresh and scoped automation
+foundation introduced in 0.6.1:
 
 - **Reliable knowledge refreshes.** Explicit full reindexing now supersedes
   failed or stuck generations, retries release stale extraction claims, and
