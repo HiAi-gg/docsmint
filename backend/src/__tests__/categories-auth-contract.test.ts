@@ -32,11 +32,7 @@ describe("category route authorization contract", () => {
 
 	test("keeps create, update, and delete in management scope", async () => {
 		const source = await Bun.file(ROUTE_PATH).text();
-		expect(
-			source.match(/!isCategoryManager\(access\.principal\)/g),
-		).toHaveLength(3);
-		expect(
-			source.match(/Browser session or operator credential required/g),
-		).toHaveLength(3);
+		expect(source.match(/!canManageCategories\(access\)/g)).toHaveLength(3);
+		expect(source.match(/Full workspace write access required/g)).toHaveLength(3);
 	});
 });

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AuthPrincipal } from "../lib/auth-principal";
 import {
+	canManageCategories,
 	canAccessContent,
 	contentAccessForExternalContext,
 	contentAccessForPrincipal,
@@ -35,6 +36,24 @@ describe("content API authorization matrix", () => {
 		expect(canAccessContent(access, "edit")).toBe(true);
 		expect(canAccessContent(access, "write")).toBe(true);
 		expect(isAuthorizedCategory(access, otherCategoryId)).toBe(true);
+	});
+
+	test("only full-scope writers can manage the category collection", () => {
+		const globalKey = contentAccessForPrincipal({
+			kind: "api-key",
+			userId: ownerId,
+			keyId: "global-key",
+			scopes: ["global"],
+		});
+		const categoryKey = contentAccessForPrincipal({
+			kind: "api-key",
+			userId: ownerId,
+			keyId: "category-key",
+			scopes: [`category:${categoryId}:write`],
+		});
+
+		expect(canManageCategories(globalKey)).toBe(true);
+		expect(canManageCategories(categoryKey)).toBe(false);
 	});
 
 	test.each([

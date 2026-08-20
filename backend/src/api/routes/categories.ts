@@ -4,6 +4,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	canAccessContent,
+	canManageCategories,
 	resolveContentAccess,
 	tenantOwnerCondition,
 	tenantOwnerSql,
@@ -12,12 +13,6 @@ import { logger } from "../../lib/logger";
 import { reembedDocsInCategory } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
-
-function isCategoryManager(
-	principal: Awaited<ReturnType<typeof resolveContentAccess>>["principal"],
-): boolean {
-	return principal?.kind === "session" || principal?.kind === "operator";
-}
 
 /**
  * Zod schemas for categories.
@@ -222,9 +217,9 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (!isCategoryManager(access.principal)) {
+		if (!canManageCategories(access)) {
 			set.status = 403;
-			return { error: "Browser session or operator credential required" };
+			return { error: "Full workspace write access required" };
 		}
 		const userId = ctx.userId;
 		const parsed = createCategorySchema.safeParse(await request.json());
@@ -294,9 +289,9 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (!isCategoryManager(access.principal)) {
+		if (!canManageCategories(access)) {
 			set.status = 403;
-			return { error: "Browser session or operator credential required" };
+			return { error: "Full workspace write access required" };
 		}
 		const userId = ctx.userId;
 		const parsed = updateCategorySchema.safeParse(await request.json());
@@ -421,9 +416,9 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (!isCategoryManager(access.principal)) {
+		if (!canManageCategories(access)) {
 			set.status = 403;
-			return { error: "Browser session or operator credential required" };
+			return { error: "Full workspace write access required" };
 		}
 		const userId = ctx.userId;
 		try {

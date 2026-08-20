@@ -106,15 +106,15 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 				return { error: "Invalid query", details: parsed.error.flatten() };
 			}
 
-			if (!config.GRAPH_SEARCH_ENABLED) {
-				return { entities: [] };
-			}
-
 			try {
 				const allowedIds = await allowedGraphDocumentIds(access, [
 					parsed.data.docId,
 				]);
-				if (!allowedIds.has(parsed.data.docId)) return { entities: [] };
+				if (!allowedIds.has(parsed.data.docId)) {
+					set.status = 404;
+					return { error: "Document not found" };
+				}
+				if (!config.GRAPH_SEARCH_ENABLED) return { entities: [] };
 				const entities = await fetchDocumentEntities(parsed.data.docId);
 				return { entities };
 			} catch (err) {
@@ -154,15 +154,15 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 				return { error: "Invalid params", details: parsed.error.flatten() };
 			}
 
-			if (!config.GRAPH_SEARCH_ENABLED) {
-				return { related: [] };
-			}
-
 			try {
 				const seedIds = await allowedGraphDocumentIds(access, [
 					parsed.data.docId,
 				]);
-				if (!seedIds.has(parsed.data.docId)) return { related: [] };
+				if (!seedIds.has(parsed.data.docId)) {
+					set.status = 404;
+					return { error: "Document not found" };
+				}
+				if (!config.GRAPH_SEARCH_ENABLED) return { related: [] };
 				const related = await fetchRelatedDocuments(
 					ctx,
 					parsed.data.docId,
@@ -208,18 +208,16 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 
 			const { query, docIds, maxResults } = parsed.data;
 
-			if (!config.GRAPH_SEARCH_ENABLED) {
-				return { query, entities: [], relatedDocs: [] };
-			}
-
 			try {
 				const authorizedSeeds = await allowedGraphDocumentIds(access, docIds);
-				const result = await graphRagLookup(
-					ctx,
-					docIds.filter((id) => authorizedSeeds.has(id)),
-					maxResults,
-					access,
-				);
+				if (docIds.some((id) => !authorizedSeeds.has(id))) {
+					set.status = 404;
+					return { error: "One or more documents were not found" };
+				}
+				if (!config.GRAPH_SEARCH_ENABLED) {
+					return { query, entities: [], relatedDocs: [] };
+				}
+				const result = await graphRagLookup(ctx, docIds, maxResults, access);
 				return { query, ...result };
 			} catch (err) {
 				logger.warn(

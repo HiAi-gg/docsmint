@@ -163,6 +163,11 @@ export function canAccessContent(
 	return !access.restricted || access.permissions.has(action);
 }
 
+/** Category collection mutations require a full tenant writer, never a category key. */
+export function canManageCategories(access: ContentAccess): boolean {
+	return !access.restricted && canAccessContent(access, "write");
+}
+
 export function effectiveDocumentCategory(row: {
 	categoryId: string | null;
 	folderCategoryId?: string | null;
