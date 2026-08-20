@@ -1,13 +1,13 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
 import { Loader2 } from "lucide-svelte";
 import { type Category, listCategories } from "$lib/api/categories";
 import { listFolders } from "$lib/api/folders";

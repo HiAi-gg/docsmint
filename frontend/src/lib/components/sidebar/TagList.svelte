@@ -1,12 +1,12 @@
 <!-- TagList.svelte — Sidebar list of tags with filter toggle, create, edit, delete. -->
 <script lang="ts">
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog";
+import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { Loader2, MoreVertical, Plus } from "lucide-svelte";
 import { onMount } from "svelte";
 import { deleteTag, listTags, type Tag } from "$lib/api/tags";

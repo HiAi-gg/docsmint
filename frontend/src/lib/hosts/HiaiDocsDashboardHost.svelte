@@ -1,13 +1,13 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge";
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge/index";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
 import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
 import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
@@ -48,7 +48,7 @@ const Select = {
 	Value: SelectValue,
 };
 
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog";
+import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
 import { invalidateAll } from "$app/navigation";
 import { page } from "$app/state";
 import type { Category } from "$lib/api/categories";

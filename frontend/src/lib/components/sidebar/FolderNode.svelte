@@ -26,7 +26,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";

@@ -1,13 +1,13 @@
 <!-- LinkDialog.svelte — Modal dialog to set/edit a link on the active Tiptap selection -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
 import type { Editor } from "@tiptap/core";
 import * as m from "$lib/paraglide/messages.js";
 

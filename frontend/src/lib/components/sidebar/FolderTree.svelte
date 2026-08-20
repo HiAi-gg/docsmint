@@ -16,22 +16,22 @@
      top of the Uncategorized group so users can drag documents out of a
      folder to detach them. -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
 import {
 	Check,
 	ChevronDown,

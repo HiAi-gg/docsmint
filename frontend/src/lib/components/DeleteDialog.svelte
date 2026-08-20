@@ -2,14 +2,14 @@
      branded completion state. The target remains visible after deletion so
      the user can verify exactly what was removed before dismissing. -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import { CheckCircle2, Loader2 } from "lucide-svelte";
 
 let {

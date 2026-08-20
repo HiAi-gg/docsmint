@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
 import { onMount } from "svelte";
 import {
 	type ApiKeySummary,

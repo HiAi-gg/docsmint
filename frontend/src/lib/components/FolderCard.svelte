@@ -1,12 +1,12 @@
 <script lang="ts">
-import { Card, CardContent } from "@hiai-gg/hiai-ui/components/ui/card";
+import { Card, CardContent } from "@hiai-gg/hiai-ui/components/ui/card/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import {
 	Folder,
 	FolderInput,

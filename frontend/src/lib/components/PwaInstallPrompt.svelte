@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import { Card, CardContent } from "@hiai-gg/hiai-ui/components/ui/card";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
+import { Card, CardContent } from "@hiai-gg/hiai-ui/components/ui/card/index";
 import { Download, X } from "lucide-svelte";
 import { onMount } from "svelte";
 

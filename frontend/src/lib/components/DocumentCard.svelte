@@ -1,17 +1,17 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge";
+import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge/index";
 import {
 	Card,
 	CardContent,
 	CardHeader,
-} from "@hiai-gg/hiai-ui/components/ui/card";
+} from "@hiai-gg/hiai-ui/components/ui/card/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import {
 	ArrowUpRight,
 	Check,

@@ -1,15 +1,15 @@
 <!-- TagCreateDialog.svelte — Create or edit a tag (name + color). -->
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
 import { Loader2 } from "lucide-svelte";
 import {
 	createTag,

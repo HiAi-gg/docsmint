@@ -4,7 +4,7 @@ import {
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { getSchema } from "@tiptap/core";
 import { Node } from "@tiptap/pm/model";
 import { Packer } from "docx";

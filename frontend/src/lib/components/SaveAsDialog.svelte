@@ -1,13 +1,13 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
-} from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
+} from "@hiai-gg/hiai-ui/components/ui/dialog/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
 import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
 import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";

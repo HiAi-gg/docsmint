@@ -1,13 +1,13 @@
 <!-- Document editor page -->
 <script lang="ts">
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog";
+import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
-} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu";
+} from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import {
 	Bookmark,
 	Check,

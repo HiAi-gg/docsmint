@@ -1,9 +1,9 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button";
-import * as Dialog from "@hiai-gg/hiai-ui/components/ui/dialog";
-import { Input } from "@hiai-gg/hiai-ui/components/ui/input";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label";
-import * as Tabs from "@hiai-gg/hiai-ui/components/ui/tabs";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
+import * as Dialog from "@hiai-gg/hiai-ui/components/ui/dialog/index";
+import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
+import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import * as Tabs from "@hiai-gg/hiai-ui/components/ui/tabs/index";
 import { Loader2, LogOut, Save } from "lucide-svelte";
 import { onMount } from "svelte";
 import { page } from "$app/state";
