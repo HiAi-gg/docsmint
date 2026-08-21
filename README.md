@@ -40,7 +40,14 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.7?
+## What's new in DocsMint 0.6.8?
+
+- **Workspace-safe recovery.** Explicit operator reindexing carries the
+  document's workspace into every durable pipeline stage, including RLS reads.
+- **Consistent operator authentication.** Both documented admin key headers
+  bypass interactive rate limits during maintenance operations.
+
+DocsMint 0.6.8 includes the self-host reliability fixes introduced in 0.6.7:
 
 - **Reliable HTTPS sessions.** Every protected SvelteKit route accepts Better
   Auth's secure production cookie as well as the local-development cookie.

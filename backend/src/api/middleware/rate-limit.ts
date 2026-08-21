@@ -12,10 +12,17 @@ function _getClientIp(request: Request): string {
 	);
 }
 
-function isInternalRequest(request?: Request): boolean {
+export function isInternalRequest(
+	request?: Request,
+	expected = config.HIAI_DOCS_API_KEY,
+): boolean {
 	if (!request) return false;
-	const apiKey = request.headers.get("x-api-key");
-	return apiKey === config.HIAI_DOCS_API_KEY;
+	if (!expected) return false;
+	const headerKey = request.headers.get("x-api-key")?.trim();
+	const bearer = /^Bearer\s+(.+)$/i
+		.exec(request.headers.get("authorization")?.trim() ?? "")?.[1]
+		?.trim();
+	return headerKey === expected || bearer === expected;
 }
 
 export type { RateLimitConfig } from "../../lib/rate-limit-factory";

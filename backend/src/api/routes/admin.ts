@@ -28,6 +28,7 @@ import {
 	reembedDocsByTag,
 	reembedDocsInFolder,
 	reembedDocsInFolderAdmin,
+	reembedDocumentAdmin,
 } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
@@ -72,25 +73,12 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 		}
 
 		try {
-			const existing = await withTenant(adminTenantContext(), async (tx) => {
-				const rows = await tx
-					.select({ id: documents.id })
-					.from(documents)
-					.where(eq(documents.id, params.docId))
-					.limit(1);
-				return rows.length > 0;
-			});
-			if (!existing) {
+			const result = await reembedDocumentAdmin(params.docId);
+			if (!result.found) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-
-			const enqueued = await enqueueReembed([params.docId], undefined, {
-				bypassDedup: true,
-				forceNewGeneration: true,
-				source: "reindex",
-			});
-			if (enqueued !== 1) {
+			if (result.enqueued !== 1) {
 				set.status = 503;
 				return { error: "Failed to queue document reindex" };
 			}
@@ -98,7 +86,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			return {
 				success: true,
 				documentId: params.docId,
-				enqueued,
+				enqueued: result.enqueued,
 				message: "Document reindex queued with a new generation",
 			};
 		} catch (err) {

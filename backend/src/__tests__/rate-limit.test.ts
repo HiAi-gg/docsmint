@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { rateLimitHeaders } from "../api/middleware/rate-limit";
+import {
+	isInternalRequest,
+	rateLimitHeaders,
+} from "../api/middleware/rate-limit";
 
 describe("rateLimitHeaders", () => {
 	it("returns remaining header", () => {
@@ -24,6 +27,26 @@ describe("rateLimitHeaders", () => {
 });
 
 describe("rate limiter configurations", () => {
+	it("bypasses operator limits for both documented admin key headers", () => {
+		const key = "test-operator-key";
+		expect(
+			isInternalRequest(
+				new Request("http://localhost/api/admin/reindex/doc", {
+					headers: { authorization: `Bearer ${key}` },
+				}),
+				key,
+			),
+		).toBe(true);
+		expect(
+			isInternalRequest(
+				new Request("http://localhost/api/admin/reindex/doc", {
+					headers: { "x-api-key": key },
+				}),
+				key,
+			),
+		).toBe(true);
+	});
+
 	it("search limiter allows 20 requests per minute", () => {
 		expect(20).toBeGreaterThan(0);
 	});

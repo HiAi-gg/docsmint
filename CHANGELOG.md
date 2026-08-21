@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-08-21
+
+### Fixed
+
+- Preserve each document's workspace context when an operator queues an
+  explicit reindex, so workspace documents can enter the durable knowledge
+  pipeline instead of failing its RLS lookup.
+- Treat both documented admin authentication forms (`Authorization: Bearer`
+  and `x-api-key`) as internal maintenance requests for rate limiting.
+
 ## [0.6.7] - 2026-08-20
 
 ### Fixed

@@ -71,9 +71,11 @@ mock.module("../lib/embedding-queue", () => ({
 	enqueueEmbedding: fakeEnqueue,
 }));
 // Now safe to import the module under test.
-const { enqueueReembed, reembedDocsInFolderAdminWith } = await import(
-	"../lib/reembed"
-);
+const {
+	enqueueReembed,
+	reembedDocumentAdminWith,
+	reembedDocsInFolderAdminWith,
+} = await import("../lib/reembed");
 
 afterEach(() => {
 	fakeRedis.setCalls.length = 0;
@@ -180,6 +182,22 @@ describe("enqueueReembed best-effort on Redis failure", () => {
 });
 
 describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
+	test("preserves workspace placement for a single admin reindex", async () => {
+		const loadTarget = mock(async () => ({
+			id: "workspace-doc",
+			workspaceId: "workspace-1",
+		}));
+		const result = await reembedDocumentAdminWith("workspace-doc", loadTarget);
+
+		expect(result).toEqual({ found: true, enqueued: 1 });
+		expect(fakeEnqueue).toHaveBeenCalledWith(
+			"workspace-doc",
+			"reindex",
+			"workspace-1",
+			{ forceNewGeneration: true },
+		);
+	});
+
 	test("returns the docs the db layer hands back, bypassing owner_id", async () => {
 		// Smoke test: the helper takes only a folderId (no ownerId argument),
 		// reads from the db, and pushes the returned ids through the dedup

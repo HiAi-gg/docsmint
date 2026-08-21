@@ -202,6 +202,11 @@ type AdminFolderDocumentLoader = (
 	limit: number,
 ) => Promise<Array<{ id: string }>>;
 
+type AdminDocumentTarget = { id: string; workspaceId?: string };
+type AdminDocumentLoader = (
+	documentId: string,
+) => Promise<AdminDocumentTarget | undefined>;
+
 async function loadAdminFolderDocumentIds(
 	folderId: string,
 	limit: number,
@@ -213,6 +218,43 @@ async function loadAdminFolderDocumentIds(
 			.where(eq(documents.folderId, folderId));
 		return limit > 0 ? query.limit(limit) : query;
 	});
+}
+
+async function loadAdminDocumentTarget(
+	documentId: string,
+): Promise<AdminDocumentTarget | undefined> {
+	const rows = await withTenant(REEMBED_ADMIN_TENANT, (tx) =>
+		tx
+			.select({ id: documents.id, workspaceId: documents.workspaceId })
+			.from(documents)
+			.where(eq(documents.id, documentId))
+			.limit(1),
+	);
+	const row = rows[0];
+	return row
+		? { id: row.id, workspaceId: row.workspaceId ?? undefined }
+		: undefined;
+}
+
+/** @internal Test seam for single-document operator reindex orchestration. */
+export async function reembedDocumentAdminWith(
+	documentId: string,
+	loadTarget: AdminDocumentLoader,
+): Promise<{ found: boolean; enqueued: number }> {
+	const target = await loadTarget(documentId);
+	if (!target) return { found: false, enqueued: 0 };
+	const enqueued = await enqueueReembed([target.id], target.workspaceId, {
+		bypassDedup: true,
+		forceNewGeneration: true,
+		source: "reindex",
+	});
+	return { found: true, enqueued };
+}
+
+export function reembedDocumentAdmin(
+	documentId: string,
+): Promise<{ found: boolean; enqueued: number }> {
+	return reembedDocumentAdminWith(documentId, loadAdminDocumentTarget);
 }
 
 /** @internal Test seam for the operator reindex orchestration. */
