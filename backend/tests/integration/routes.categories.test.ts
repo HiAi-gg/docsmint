@@ -314,6 +314,49 @@ describe("DELETE /api/categories/:id", () => {
     ]);
   });
 
+  it("locks the tenant category before snapshotting and deleting", async () => {
+    const state = getState();
+    seedCategory("cat-delete-lock", OWNER_ID, "Lock Me");
+    state.folders.set("category-lock-folder", {
+      id: "category-lock-folder",
+      ownerId: OWNER_ID,
+      name: "Attached folder",
+      categoryId: "cat-delete-lock",
+      parentId: null,
+    });
+    state.documents.set("category-lock-doc", {
+      id: "category-lock-doc",
+      ownerId: OWNER_ID,
+      title: "Attached document",
+      content: "body",
+      folderId: "category-lock-folder",
+      categoryId: null,
+    });
+
+    const res = await authedDelete("/api/categories/cat-delete-lock");
+
+    expect(res.status).toBe(200);
+    const lockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:update" && call.table === "categories",
+    );
+    const folderSnapshotIndex = state.calls.findIndex(
+      (call, index) =>
+        index > lockIndex && call.kind === "select" && call.table === "folders",
+    );
+    const documentSnapshotIndex = state.calls.findIndex(
+      (call, index) =>
+        index > lockIndex && call.kind === "select" && call.table === "documents",
+    );
+    const deleteIndex = state.calls.findIndex(
+      (call, index) =>
+        index > lockIndex && call.kind === "delete" && call.table === "categories",
+    );
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(folderSnapshotIndex).toBeGreaterThan(lockIndex);
+    expect(documentSnapshotIndex).toBeGreaterThan(folderSnapshotIndex);
+    expect(deleteIndex).toBeGreaterThan(documentSnapshotIndex);
+  });
+
   it("returns 404 when the id is unknown", async () => {
     const res = await authedDelete("/api/categories/missing");
     expect(res.status).toBe(404);

@@ -651,6 +651,9 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
 					return "forbidden" as const;
 				}
+				// Hold the parent row through the child snapshot and delete. PostgreSQL
+				// FK attach checks take a conflicting key-share lock, so a concurrent
+				// document cannot attach after the snapshot and be silently detached.
 				const existing = await tx
 					.select({ id: folders.id })
 					.from(folders)
@@ -660,6 +663,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 						),
 					)
+					.for("update")
 					.limit(1);
 				if (existing.length === 0) {
 					return { deleted: false as const, affectedDocs: [] };

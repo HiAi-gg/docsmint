@@ -423,6 +423,27 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const deletion = await withTenant(ctx, async (tx) => {
+				// Serialize FK attach checks with the folder/document snapshot. Without
+				// this lock, READ COMMITTED permits a child to attach after the snapshot
+				// and then be detached by ON DELETE SET NULL without a re-embed enqueue.
+				const lockedCategory = await tx
+					.select({ id: categories.id })
+					.from(categories)
+					.where(
+						and(
+							eq(categories.id, params.id),
+							tenantOwnerCondition(
+								categories.ownerId,
+								categories.workspaceId,
+								ctx,
+							),
+						),
+					)
+					.for("update")
+					.limit(1);
+				if (lockedCategory.length === 0) {
+					return { deleted: null, affectedDocs: [] };
+				}
 				const folderRows = await tx
 					.select({ id: folders.id })
 					.from(folders)

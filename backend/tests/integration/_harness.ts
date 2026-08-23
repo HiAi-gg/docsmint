@@ -360,7 +360,13 @@ function buildSelectProxy(ctx: SelectCtx): any {
       // Drizzle's row-locking clause is a no-op for the in-memory harness;
       // production uses FOR UPDATE on the same transaction connection.
       if (prop === "for")
-        return (_lock: string) => buildSelectProxy(ctx);
+        return (lock: string) => {
+          state.calls.push({
+            kind: `lock:${lock}`,
+            table: getTableName(ctx.from),
+          });
+          return buildSelectProxy(ctx);
+        };
       if (prop === "limit")
         return (n: number) => {
           ctx.limit = n;

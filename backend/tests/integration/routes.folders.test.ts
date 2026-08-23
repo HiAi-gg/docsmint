@@ -522,6 +522,44 @@ describe("DELETE /api/folders/:id", () => {
     ).toBe(true);
   });
 
+  it("locks the tenant folder before snapshotting and deleting", async () => {
+    const state = getState();
+    const id = "folder-delete-lock";
+    state.folders.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "Lock Me",
+      parentId: null,
+      categoryId: null,
+    });
+    state.documents.set("folder-lock-doc", {
+      id: "folder-lock-doc",
+      ownerId: OWNER_ID,
+      title: "Attached",
+      content: "body",
+      folderId: id,
+      categoryId: null,
+    });
+
+    const res = await authedDelete(`/api/folders/${id}`);
+
+    expect(res.status).toBe(200);
+    const lockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:update" && call.table === "folders",
+    );
+    const snapshotIndex = state.calls.findIndex(
+      (call, index) =>
+        index > lockIndex && call.kind === "select" && call.table === "documents",
+    );
+    const deleteIndex = state.calls.findIndex(
+      (call, index) =>
+        index > lockIndex && call.kind === "delete" && call.table === "folders",
+    );
+    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(snapshotIndex).toBeGreaterThan(lockIndex);
+    expect(deleteIndex).toBeGreaterThan(snapshotIndex);
+  });
+
   it("does not delete a folder owned by another user", async () => {
     const state = getState();
     const id = "77777777-7777-4777-8777-777777777777";
