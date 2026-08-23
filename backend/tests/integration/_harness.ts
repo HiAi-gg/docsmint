@@ -33,6 +33,12 @@ export interface TestState {
   attachments: Map<string, any>;
   documentEmbeddings: any[];
   enqueuedEmbeddings: string[];
+  enqueuedEmbeddingRequests: Array<{
+    id: string;
+    source: string | undefined;
+    workspaceId: string | undefined;
+    options: unknown;
+  }>;
   calls: Array<{ kind: string; table: string }>;
   insertFailures: Set<string>;
 }
@@ -60,6 +66,7 @@ function createState(): TestState {
     attachments: new Map(),
     documentEmbeddings: [],
     enqueuedEmbeddings: [],
+    enqueuedEmbeddingRequests: [],
     calls: [],
     insertFailures: new Set(),
   };
@@ -535,6 +542,29 @@ interface DeleteCtx {
   where: any;
 }
 
+function applyDeleteReferentialActions(
+  tableName: string,
+  deletedRows: readonly any[],
+): void {
+  const deletedIds = new Set(deletedRows.map((row) => row.id));
+  if (tableName === "folders") {
+    for (const document of state.documents.values()) {
+      if (deletedIds.has(document.folderId)) document.folderId = null;
+    }
+    for (const folder of state.folders.values()) {
+      if (deletedIds.has(folder.parentId)) folder.parentId = null;
+    }
+  }
+  if (tableName === "categories") {
+    for (const document of state.documents.values()) {
+      if (deletedIds.has(document.categoryId)) document.categoryId = null;
+    }
+    for (const folder of state.folders.values()) {
+      if (deletedIds.has(folder.categoryId)) folder.categoryId = null;
+    }
+  }
+}
+
 function buildDeleteProxy(ctx: DeleteCtx): any {
   const handler: ProxyHandler<any> = {
     get(_target, prop) {
@@ -567,6 +597,7 @@ function buildDeleteProxy(ctx: DeleteCtx): any {
             (collection as any[]).length = 0;
             (collection as any[]).push(...kept);
           }
+          applyDeleteReferentialActions(tableName, returned);
           return Promise.resolve(returned);
         };
       if (prop === "then")
@@ -594,6 +625,10 @@ function buildDeleteProxy(ctx: DeleteCtx): any {
               (collection as any[]).length = 0;
               (collection as any[]).push(...kept);
             }
+            const deletedRows = (items as Array<[any, any]>)
+              .map(([, row]) => row)
+              .filter((row) => !kept.includes(row));
+            applyDeleteReferentialActions(tableName, deletedRows);
             return Promise.resolve(undefined).then(resolve, reject);
           } catch (err) {
             return Promise.reject(err).then(reject, reject);
@@ -608,6 +643,20 @@ function buildDeleteProxy(ctx: DeleteCtx): any {
 function buildMockDb() {
   return {
     select(fields?: any) {
+      const ctx: SelectCtx = {
+        type: "select",
+        fields,
+        from: null,
+        joins: [],
+        where: null,
+        limit: null,
+        offset: null,
+        orderBy: [],
+        groupBy: null,
+      };
+      return buildSelectProxy(ctx);
+    },
+    selectDistinct(fields?: any) {
       const ctx: SelectCtx = {
         type: "select",
         fields,
@@ -694,9 +743,9 @@ mock.module("../../src/lib/config.js", () => ({
     ADMIN_CROSS_TENANT: true,
     HYBRID_TEXT_WEIGHT: 0.4,
     HYBRID_SEMANTIC_WEIGHT: 0.6,
-    FOLDER_REEMBED_BATCH_SIZE: 100,
-    CATEGORY_REEMBED_BATCH_SIZE: 100,
-    TAG_REEMBED_BATCH_SIZE: 500,
+    FOLDER_REEMBED_BATCH_SIZE: 2,
+    CATEGORY_REEMBED_BATCH_SIZE: 2,
+    TAG_REEMBED_BATCH_SIZE: 2,
     // Smart re-embed thresholds + cron intervals (mirrors the real
     // config-schema.ts defaults). Required so any code path that reads
     // `config.REEMBED_*` or `config.METADATA_REEMBED_CRON_INTERVAL_MINUTES`
@@ -972,8 +1021,15 @@ mock.module("@aws-sdk/s3-request-presigner", () => ({
 }));
 
 mock.module("../../src/lib/embedding-queue.js", () => ({
-  enqueueEmbedding: (id: string) => {
+  enqueueEmbedding: (
+    id: string,
+    source?: string,
+    workspaceId?: string,
+    options?: unknown,
+  ) => {
     state.enqueuedEmbeddings.push(id);
+    state.enqueuedEmbeddingRequests.push({ id, source, workspaceId, options });
+    return true;
   },
   startEmbeddingWorker: () => {},
 }));

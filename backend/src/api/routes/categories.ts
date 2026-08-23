@@ -1,5 +1,5 @@
 import { categories, documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -9,8 +9,9 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import { contentHash } from "../../lib/content-hash";
 import { logger } from "../../lib/logger";
-import { reembedDocsInCategory } from "../../lib/reembed";
+import { enqueueReembed, reembedDocsInCategory } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -420,9 +421,42 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Full workspace write access required" };
 		}
-		const userId = ctx.userId;
 		try {
-			const deleted = await withTenant(ctx, async (tx) => {
+			const deletion = await withTenant(ctx, async (tx) => {
+				const folderRows = await tx
+					.select({ id: folders.id })
+					.from(folders)
+					.where(
+						and(
+							eq(folders.categoryId, params.id),
+							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+						),
+					);
+				const folderIds = folderRows.map((folder) => folder.id);
+				const categoryMatch =
+					folderIds.length > 0
+						? or(
+								eq(documents.categoryId, params.id),
+								inArray(documents.folderId, folderIds),
+							)
+						: eq(documents.categoryId, params.id);
+				const affectedDocs = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(
+						and(
+							categoryMatch,
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+						),
+					);
 				const [row] = await tx
 					.delete(categories)
 					.where(
@@ -436,9 +470,9 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						),
 					)
 					.returning({ id: categories.id });
-				return row ?? null;
+				return { deleted: row ?? null, affectedDocs };
 			});
-			if (!deleted) {
+			if (!deletion.deleted) {
 				set.status = 404;
 				return { error: "Category not found" };
 			}
@@ -446,12 +480,13 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// automatically detaches the category from any owned folders/docs.
 			// We re-embed those docs/folders so their preamble no longer mentions
 			// the (now-gone) category name.
-			reembedDocsInCategory(params.id, userId, ctx.workspaceId).catch(
-				(err: unknown) =>
-					logger.warn(
-						{ err, categoryId: params.id },
-						"Failed to re-embed documents after category delete",
-					),
+			await enqueueReembed(
+				deletion.affectedDocs.map((document) => ({
+					id: document.id,
+					revision: contentHash(document.title, document.content ?? ""),
+				})),
+				ctx.workspaceId,
+				{ reason: "metadata", refreshMode: "full" },
 			);
 			return { success: true };
 		} catch (err) {

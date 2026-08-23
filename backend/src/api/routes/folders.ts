@@ -10,10 +10,11 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import { contentHash } from "../../lib/content-hash";
 import { invalidateDocListCache } from "../../lib/doc-cache";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
-import { reembedDocsInFolder } from "../../lib/reembed";
+import { enqueueReembed, reembedDocsInFolder } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -641,7 +642,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		const userId = ctx.userId;
 		try {
-			const deleted = await withTenant(ctx, async (tx) => {
+			const deletion = await withTenant(ctx, async (tx) => {
 				const effectiveCategory = await resolveFolderEffectiveCategory(
 					tx,
 					userId,
@@ -661,8 +662,25 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					)
 					.limit(1);
 				if (existing.length === 0) {
-					return false;
+					return { deleted: false as const, affectedDocs: [] };
 				}
+				const affectedDocs = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(
+						and(
+							eq(documents.folderId, params.id),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+						),
+					);
 				await tx
 					.delete(folders)
 					.where(
@@ -671,13 +689,13 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 						),
 					);
-				return true;
+				return { deleted: true as const, affectedDocs };
 			});
-			if (deleted === "forbidden") {
+			if (deletion === "forbidden") {
 				set.status = 403;
 				return { error: "Forbidden" };
 			}
-			if (!deleted) {
+			if (!deletion.deleted) {
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
@@ -685,12 +703,13 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble
 			// stops appearing in their embedding context.
-			reembedDocsInFolder(params.id, userId, ctx.workspaceId).catch(
-				(err: unknown) =>
-					logger.warn(
-						{ err, folderId: params.id },
-						"Failed to re-embed documents after folder delete",
-					),
+			await enqueueReembed(
+				deletion.affectedDocs.map((document) => ({
+					id: document.id,
+					revision: contentHash(document.title, document.content ?? ""),
+				})),
+				ctx.workspaceId,
+				{ reason: "metadata", refreshMode: "full" },
 			);
 			return { success: true };
 		} catch (err) {

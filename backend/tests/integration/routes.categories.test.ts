@@ -277,6 +277,43 @@ describe("DELETE /api/categories/:id", () => {
     expect(getState().categories.has("cat-1")).toBe(false);
   });
 
+  it("snapshots direct and folder-derived documents before category FKs clear", async () => {
+    const state = getState();
+    seedCategory("cat-snapshot", OWNER_ID, "Snapshot");
+    state.folders.set("cat-folder", {
+      id: "cat-folder",
+      ownerId: OWNER_ID,
+      name: "Folder",
+      categoryId: "cat-snapshot",
+      parentId: null,
+    });
+    state.documents.set("direct-category-doc", {
+      id: "direct-category-doc",
+      ownerId: OWNER_ID,
+      title: "Direct",
+      content: "body",
+      folderId: null,
+      categoryId: "cat-snapshot",
+    });
+    state.documents.set("folder-category-doc", {
+      id: "folder-category-doc",
+      ownerId: OWNER_ID,
+      title: "Via folder",
+      content: "body",
+      folderId: "cat-folder",
+      categoryId: null,
+    });
+
+    const res = await authedDelete("/api/categories/cat-snapshot");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(res.status).toBe(200);
+    expect(state.enqueuedEmbeddings.sort()).toEqual([
+      "direct-category-doc",
+      "folder-category-doc",
+    ]);
+  });
+
   it("returns 404 when the id is unknown", async () => {
     const res = await authedDelete("/api/categories/missing");
     expect(res.status).toBe(404);
@@ -289,5 +326,34 @@ describe("DELETE /api/categories/:id", () => {
     expect(res.status).toBe(404);
     // The other user's category must remain intact.
     expect(getState().categories.has("cat-other")).toBe(true);
+  });
+});
+
+describe("category metadata re-embed pagination", () => {
+  it("continues past the configured batch cap", async () => {
+    const state = getState();
+    seedCategory("cat-pagination", OWNER_ID, "Before");
+    for (const docId of ["cat-page-1", "cat-page-2", "cat-page-3"]) {
+      state.documents.set(docId, {
+        id: docId,
+        ownerId: OWNER_ID,
+        title: docId,
+        content: "body",
+        folderId: null,
+        categoryId: "cat-pagination",
+      });
+    }
+
+    const res = await authedPatch("/api/categories/cat-pagination", {
+      name: "After",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(res.status).toBe(200);
+    expect(state.enqueuedEmbeddings.sort()).toEqual([
+      "cat-page-1",
+      "cat-page-2",
+      "cat-page-3",
+    ]);
   });
 });

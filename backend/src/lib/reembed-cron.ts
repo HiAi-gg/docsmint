@@ -45,6 +45,7 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, isNotNull, lt, sql } from "drizzle-orm";
 import { config } from "./config";
+import { contentHash } from "./content-hash";
 import { createCronTimerRegistry } from "./cron-timer-registry";
 import { logger } from "./logger";
 import { enqueueReembed } from "./reembed";
@@ -156,6 +157,8 @@ async function processStaleMetadataChanges(): Promise<void> {
 		tx
 			.select({
 				id: documents.id,
+				title: documents.title,
+				content: documents.content,
 				workspaceId: documents.workspaceId,
 				metadataChangedAt: documents.metadataChangedAt,
 			})
@@ -202,7 +205,19 @@ async function processStaleMetadataChanges(): Promise<void> {
 			`),
 		);
 		if (Array.isArray(cleared) && cleared.length > 0) {
-			await enqueueReembed([row.id], row.workspaceId ?? undefined);
+			await enqueueReembed(
+				[
+					{
+						id: row.id,
+						revision: contentHash(row.title, row.content ?? ""),
+					},
+				],
+				row.workspaceId ?? undefined,
+				{
+					reason: "metadata",
+					refreshMode: "full",
+				},
+			);
 			enqueued += 1;
 		}
 	}
@@ -250,7 +265,12 @@ async function processIdlePendingChanges(): Promise<void> {
 
 	const idle = await withTenant(CRON_TENANT, (tx) =>
 		tx
-			.select({ id: documents.id, workspaceId: documents.workspaceId })
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+				workspaceId: documents.workspaceId,
+			})
 			.from(documents)
 			.where(
 				and(
@@ -271,7 +291,16 @@ async function processIdlePendingChanges(): Promise<void> {
 
 	let enqueued = 0;
 	for (const row of idle) {
-		await enqueueReembed([row.id], row.workspaceId ?? undefined);
+		await enqueueReembed(
+			[
+				{
+					id: row.id,
+					revision: contentHash(row.title, row.content ?? ""),
+				},
+			],
+			row.workspaceId ?? undefined,
+			{ reason: "content", refreshMode: "incremental" },
+		);
 		enqueued += 1;
 	}
 

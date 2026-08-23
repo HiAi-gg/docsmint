@@ -12,6 +12,8 @@ export const pipelineSourceSchema = z.enum([
 	"backfill",
 ]);
 export type PipelineSource = z.infer<typeof pipelineSourceSchema>;
+export const pipelineRefreshModeSchema = z.enum(["incremental", "full"]);
+export type PipelineRefreshMode = z.infer<typeof pipelineRefreshModeSchema>;
 
 const basePipelineJobSchema = z.object({
 	schemaVersion: z.literal(PIPELINE_SCHEMA_VERSION),
@@ -22,6 +24,7 @@ const basePipelineJobSchema = z.object({
 	revision: z.string().min(1),
 	requestedAt: z.iso.datetime(),
 	source: pipelineSourceSchema,
+	refreshMode: pipelineRefreshModeSchema.optional(),
 });
 
 export const prepareJobSchema = basePipelineJobSchema.extend({
@@ -80,6 +83,7 @@ export const enqueueDocumentPipelineSchema = z.object({
 	source: pipelineSourceSchema,
 	requestedAt: z.iso.datetime().optional(),
 	forceNewGeneration: z.boolean().optional(),
+	refreshMode: pipelineRefreshModeSchema.optional(),
 });
 export type EnqueueDocumentPipelineInput = z.infer<
 	typeof enqueueDocumentPipelineSchema

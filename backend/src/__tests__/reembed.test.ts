@@ -59,11 +59,20 @@ const fakeRedis = {
 	}),
 };
 
-const fakeEnqueue = mock(async (_id: string) => true);
+const defaultRedisSet = fakeRedis.set;
 
-const adminMockRows: Array<{ id: string }> = [
-	{ id: "admin-doc-1" },
-	{ id: "admin-doc-2" },
+const fakeEnqueue = mock(
+	async (
+		_id: string,
+		_source?: string,
+		_workspaceId?: string,
+		_options?: unknown,
+	) => true,
+);
+
+const adminMockRows = [
+	{ id: "admin-doc-1", title: "One", content: "body" },
+	{ id: "admin-doc-2", title: "Two", content: "body" },
 ];
 
 mock.module("../lib/redis", () => ({ redis: fakeRedis }));
@@ -80,6 +89,7 @@ const {
 afterEach(() => {
 	fakeRedis.setCalls.length = 0;
 	fakeRedis.nextResult = "OK";
+	fakeRedis.set = defaultRedisSet;
 	fakeEnqueue.mockClear();
 });
 
@@ -119,17 +129,77 @@ describe("enqueueReembed pure-logic dedup", () => {
 });
 
 describe("enqueueReembed Redis SET-NX dedup", () => {
+	test("does not drop a newer content revision inside the debounce window", async () => {
+		const claimed = new Set<string>();
+		fakeRedis.set = mock(async (key: string) => {
+			if (claimed.has(key)) return null;
+			claimed.add(key);
+			return "OK";
+		});
+
+		const first = await enqueueReembed(
+			[{ id: "doc-1", revision: "revision-a" }],
+			undefined,
+			{ reason: "content", refreshMode: "incremental" },
+		);
+		const second = await enqueueReembed(
+			[{ id: "doc-1", revision: "revision-b" }],
+			undefined,
+			{ reason: "content", refreshMode: "incremental" },
+		);
+
+		expect([first, second]).toEqual([1, 1]);
+		expect(fakeEnqueue.mock.calls.map((call) => call[0])).toEqual([
+			"doc-1",
+			"doc-1",
+		]);
+	});
+
+	test("does not collapse a full metadata refresh into content-only work", async () => {
+		const claimed = new Set<string>();
+		fakeRedis.set = mock(async (key: string) => {
+			if (claimed.has(key)) return null;
+			claimed.add(key);
+			return "OK";
+		});
+
+		await enqueueReembed(
+			[{ id: "doc-1", revision: "same-revision" }],
+			undefined,
+			{ reason: "content", refreshMode: "incremental" },
+		);
+		await enqueueReembed(
+			[{ id: "doc-1", revision: "same-revision" }],
+			undefined,
+			{ reason: "metadata", refreshMode: "full" },
+		);
+
+		expect(fakeEnqueue).toHaveBeenCalledTimes(2);
+		expect(fakeEnqueue.mock.calls[1]).toEqual([
+			"doc-1",
+			"interactive",
+			undefined,
+			{
+				forceNewGeneration: true,
+				refreshMode: "full",
+			},
+		]);
+	});
+
 	test("explicit recovery bypasses debounce and forces a new generation", async () => {
 		const pushed = await enqueueReembed(["doc-1"], undefined, {
 			bypassDedup: true,
 			forceNewGeneration: true,
 			source: "reindex",
+			reason: "reindex",
+			refreshMode: "full",
 		});
 
 		expect(pushed).toBe(1);
 		expect(fakeRedis.setCalls).toHaveLength(0);
 		expect(fakeEnqueue).toHaveBeenCalledWith("doc-1", "reindex", undefined, {
 			forceNewGeneration: true,
+			refreshMode: "full",
 		});
 	});
 
@@ -194,7 +264,7 @@ describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
 			"workspace-doc",
 			"reindex",
 			"workspace-1",
-			{ forceNewGeneration: true },
+			{ forceNewGeneration: true, refreshMode: "full" },
 		);
 	});
 
@@ -203,8 +273,9 @@ describe("reembedDocsInFolderAdmin (operator-scope reindex)", () => {
 		// reads from the db, and pushes the returned ids through the dedup
 		// path. The pre-fix code path (admin route passing "" as ownerId to
 		// the user-scoped helper) would have returned 0 instead of 2 here.
-		const loadRows = mock((_folderId: string, _limit: number) =>
-			Promise.resolve(adminMockRows),
+		const loadRows = mock(
+			(_folderId: string, cursor: string | undefined, _limit: number) =>
+				Promise.resolve(cursor ? [] : adminMockRows),
 		);
 		const pushed = await reembedDocsInFolderAdminWith("folder-x", loadRows);
 

@@ -287,6 +287,20 @@ export function createAccountRuntimeCleanupWithDependencies(
 						],
 						signal,
 					);
+					for (const dedupScope of [
+						`${REEMBED_DEDUP_PREFIX}${escapedDocumentId}`,
+						...(document.workspaceId
+							? [
+									`${REEMBED_DEDUP_PREFIX}${escapeRedisGlob(encodeURIComponent(document.workspaceId))}:${escapedDocumentId}`,
+								]
+							: []),
+					]) {
+						deleted += await deleteNamespacePattern(
+							dependencies.redis,
+							`${dedupScope}:*`,
+							signal,
+						);
+					}
 					deleted += await deleteNamespacePattern(
 						dependencies.redis,
 						`${EXTRACT_DONE_PREFIX}${escapedDocumentId}:*`,

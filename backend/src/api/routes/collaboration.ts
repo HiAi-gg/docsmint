@@ -268,7 +268,16 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 					invalidateDocCache(documentId),
 					invalidateDocListCache(access.userId),
 				]);
-				enqueueReembed([documentId], access.ctx.workspaceId);
+				enqueueReembed(
+					[
+						{
+							id: documentId,
+							revision: contentHash(document.title, materialized.content),
+						},
+					],
+					access.ctx.workspaceId,
+					{ reason: "content", refreshMode: "incremental" },
+				);
 			};
 			const room = await acquireYjsRoom({
 				key: roomKey,

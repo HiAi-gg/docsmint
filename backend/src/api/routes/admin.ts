@@ -368,7 +368,13 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 				};
 			}
 
-			const enqueued = await enqueueReembed(docIds);
+			const enqueued = await enqueueReembed(docIds, undefined, {
+				bypassDedup: true,
+				forceNewGeneration: true,
+				reason: "reindex",
+				refreshMode: "full",
+				source: "reindex",
+			});
 			logger.info(
 				{ currentModel, affectedDocs: docIds.length, enqueued },
 				"Targeted reindex by embedding model mismatch",
@@ -608,7 +614,13 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 						ownerId,
 					};
 				}
-				const affected = await enqueueReembed(docIds);
+				const affected = await enqueueReembed(docIds, undefined, {
+					bypassDedup: true,
+					forceNewGeneration: true,
+					reason: "reindex",
+					refreshMode: "full",
+					source: "reindex",
+				});
 				logger.info(
 					{ tagId: params.tagId, ownerId, affected },
 					"Admin reindex by tag (owner-scoped)",

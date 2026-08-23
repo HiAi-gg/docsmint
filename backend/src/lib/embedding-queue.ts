@@ -5,7 +5,7 @@ import {
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, isNotNull, isNull, notInArray, or } from "drizzle-orm";
-import type { PipelineSource } from "../queue/contracts";
+import type { PipelineRefreshMode, PipelineSource } from "../queue/contracts";
 import { enqueueDocumentPipeline } from "../queue/enqueue";
 import { migrateLegacyEmbeddingEntries } from "../queue/legacy-bridge";
 import { contentHash } from "./content-hash";
@@ -18,7 +18,10 @@ export async function enqueueEmbedding(
 	documentId: string,
 	source: PipelineSource = "interactive",
 	workspaceId?: string,
-	options: { forceNewGeneration?: boolean } = {},
+	options: {
+		forceNewGeneration?: boolean;
+		refreshMode?: PipelineRefreshMode;
+	} = {},
 ): Promise<boolean> {
 	let pipelineInput:
 		| { ownerId: string; revision: string; workspaceId?: string }
@@ -82,6 +85,7 @@ export async function enqueueEmbedding(
 			revision: pipelineInput.revision,
 			source,
 			forceNewGeneration: options.forceNewGeneration,
+			refreshMode: options.refreshMode ?? "incremental",
 		});
 		return true;
 	} catch (err) {

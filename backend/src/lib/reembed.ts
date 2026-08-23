@@ -40,9 +40,10 @@ import {
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, or } from "drizzle-orm";
 import { config } from "./config";
 import { tenantOwnerCondition } from "./content-access";
+import { contentHash } from "./content-hash";
 import { enqueueEmbedding } from "./embedding-queue";
 import { logger } from "./logger";
 import { redis } from "./redis";
@@ -56,6 +57,68 @@ import { redis } from "./redis";
 const DEDUP_KEY_PREFIX = "hiai-docs:reembed:dedup:";
 const DEDUP_TTL_SECONDS = 5;
 const REEMBED_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
+
+export type ReembedRefreshReason = "content" | "metadata" | "reindex";
+export type ReembedRefreshMode = "incremental" | "full";
+
+export type ReembedTarget = Readonly<{
+	id: string;
+	revision: string;
+}>;
+
+type ReembedTargetInput = string | ReembedTarget | null | undefined;
+
+type ReembedDocumentRow = Readonly<{
+	id: string;
+	title: string;
+	content: string | null;
+}>;
+
+type ReembedPageLoader = (
+	cursor: string | undefined,
+	limit: number,
+) => Promise<readonly ReembedDocumentRow[]>;
+
+function toReembedTarget(row: ReembedDocumentRow): ReembedTarget {
+	return {
+		id: row.id,
+		revision: contentHash(row.title, row.content ?? ""),
+	};
+}
+
+async function enqueueReembedPages(
+	loadPage: ReembedPageLoader,
+	limit: number,
+	workspaceId?: string,
+	options: {
+		refreshMode: ReembedRefreshMode;
+		reason: ReembedRefreshReason;
+		source?: "interactive" | "reindex";
+		bypassDedup?: boolean;
+		forceNewGeneration?: boolean;
+	} = { refreshMode: "full", reason: "metadata" },
+): Promise<number> {
+	let cursor: string | undefined;
+	let enqueued = 0;
+	let hasNextPage = true;
+	while (hasNextPage) {
+		const rows = await loadPage(cursor, limit);
+		if (rows.length === 0) return enqueued;
+		enqueued += await enqueueReembed(
+			rows.map(toReembedTarget),
+			workspaceId,
+			options,
+		);
+		const nextCursor = rows.at(-1)?.id;
+		hasNextPage =
+			limit > 0 &&
+			rows.length >= limit &&
+			typeof nextCursor === "string" &&
+			nextCursor !== cursor;
+		cursor = nextCursor;
+	}
+	return enqueued;
+}
 
 /**
  * Try to claim a one-shot enqueue slot for `docId`. Returns `true` if the
@@ -72,8 +135,17 @@ const REEMBED_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 async function claimEnqueueSlot(
 	docId: string,
 	workspaceId?: string,
+	identity?: Readonly<{
+		revision: string;
+		refreshMode: ReembedRefreshMode;
+		reason: ReembedRefreshReason;
+	}>,
 ): Promise<boolean> {
-	const key = `${DEDUP_KEY_PREFIX}${workspaceId ? `${workspaceId}:` : ""}${docId}`;
+	const scope = workspaceId ? `${encodeURIComponent(workspaceId)}:` : "";
+	const suffix = identity
+		? `:${encodeURIComponent(identity.revision)}:${identity.refreshMode}:${identity.reason}`
+		: "";
+	const key = `${DEDUP_KEY_PREFIX}${scope}${encodeURIComponent(docId)}${suffix}`;
 	try {
 		const result = await redis.set(key, "1", "EX", DEDUP_TTL_SECONDS, "NX");
 		return result === "OK";
@@ -100,23 +172,40 @@ async function claimEnqueueSlot(
  * @internal
  */
 export async function enqueueReembed(
-	docIds: Iterable<string | null | undefined>,
+	docIds: Iterable<ReembedTargetInput>,
 	workspaceId?: string,
 	options: {
 		bypassDedup?: boolean;
 		forceNewGeneration?: boolean;
 		source?: "interactive" | "reindex";
+		refreshMode?: ReembedRefreshMode;
+		reason?: ReembedRefreshReason;
 	} = {},
 ): Promise<number> {
-	const unique = new Set<string>();
-	for (const id of docIds) {
+	const refreshMode = options.refreshMode ?? "incremental";
+	const reason = options.reason ?? "content";
+	const unique = new Map<string, { id: string; revision?: string }>();
+	for (const target of docIds) {
+		const id = typeof target === "string" ? target : target?.id;
 		if (typeof id !== "string" || id.trim().length === 0) continue;
-		unique.add(id);
+		const revision = typeof target === "string" ? undefined : target?.revision;
+		if (revision !== undefined && revision.trim().length === 0) continue;
+		const identity = revision
+			? `${id}\u0000${revision}\u0000${refreshMode}\u0000${reason}`
+			: id;
+		unique.set(identity, { id, revision });
 	}
 
 	let pushed = 0;
-	for (const id of unique) {
-		if (options.bypassDedup || (await claimEnqueueSlot(id, workspaceId))) {
+	for (const { id, revision } of unique.values()) {
+		if (
+			options.bypassDedup ||
+			(await claimEnqueueSlot(
+				id,
+				workspaceId,
+				revision ? { revision, refreshMode, reason } : undefined,
+			))
+		) {
 			// Keep the legacy list bridge for metadata-triggered re-embeds until
 			// the reconciliation worker owns this path. The bridge accepts the
 			// document id and preserves existing dedup/retry behavior.
@@ -124,7 +213,11 @@ export async function enqueueReembed(
 				id,
 				options.source ?? "interactive",
 				workspaceId,
-				{ forceNewGeneration: options.forceNewGeneration },
+				{
+					forceNewGeneration:
+						options.forceNewGeneration ?? refreshMode === "full",
+					refreshMode,
+				},
 			);
 			if (queued) pushed += 1;
 		}
@@ -134,10 +227,9 @@ export async function enqueueReembed(
 
 /**
  * Look up all documents attached to a folder and enqueue them for
- * re-embedding. The query is bounded by `FOLDER_REEMBED_BATCH_SIZE` so
- * a rename of a mega-folder cannot spike embedding costs in a single
- * tick - the remaining documents get refreshed on their next edit. Set
- * the env var to `0` to disable the cap.
+ * re-embedding. `FOLDER_REEMBED_BATCH_SIZE` bounds each keyset page; the
+ * helper continues until every matching document has been enqueued. Set the
+ * env var to `0` to load the complete result in one page.
  *
  * Used by `PATCH /api/folders/:id` (rename) and `DELETE /api/folders/:id`.
  *
@@ -150,25 +242,33 @@ export async function reembedDocsInFolder(
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
 	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
-	const rows = await withTenant(tenant, (tx) => {
-		const query = tx
-			.select({ id: documents.id })
-			.from(documents)
-			.where(
-				and(
-					eq(documents.folderId, folderId),
-					tenantOwnerCondition(
-						documents.ownerId,
-						documents.workspaceId,
-						tenant,
-					),
-				),
-			);
-		return limit > 0 ? query.limit(limit) : query;
-	});
-	const enqueued = await enqueueReembed(
-		rows.map((r) => r.id),
+	const enqueued = await enqueueReembedPages(
+		(cursor, pageLimit) =>
+			withTenant(tenant, (tx) => {
+				const query = tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(
+						and(
+							eq(documents.folderId, folderId),
+							...(cursor ? [gt(documents.id, cursor)] : []),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								tenant,
+							),
+						),
+					)
+					.orderBy(asc(documents.id));
+				return pageLimit > 0 ? query.limit(pageLimit) : query;
+			}),
+		limit,
 		workspaceId,
+		{ reason: "metadata", refreshMode: "full" },
 	);
 	if (enqueued > 0) {
 		logger.info(
@@ -199,8 +299,9 @@ export async function reembedDocsInFolderAdmin(
 
 type AdminFolderDocumentLoader = (
 	folderId: string,
+	cursor: string | undefined,
 	limit: number,
-) => Promise<Array<{ id: string }>>;
+) => Promise<Array<ReembedDocumentRow>>;
 
 type AdminDocumentTarget = { id: string; workspaceId?: string };
 type AdminDocumentLoader = (
@@ -209,13 +310,24 @@ type AdminDocumentLoader = (
 
 async function loadAdminFolderDocumentIds(
 	folderId: string,
+	cursor: string | undefined,
 	limit: number,
-): Promise<Array<{ id: string }>> {
+): Promise<Array<ReembedDocumentRow>> {
 	return withTenant(REEMBED_ADMIN_TENANT, (tx) => {
 		const query = tx
-			.select({ id: documents.id })
+			.select({
+				id: documents.id,
+				title: documents.title,
+				content: documents.content,
+			})
 			.from(documents)
-			.where(eq(documents.folderId, folderId));
+			.where(
+				and(
+					eq(documents.folderId, folderId),
+					...(cursor ? [gt(documents.id, cursor)] : []),
+				),
+			)
+			.orderBy(asc(documents.id));
 		return limit > 0 ? query.limit(limit) : query;
 	});
 }
@@ -247,6 +359,8 @@ export async function reembedDocumentAdminWith(
 		bypassDedup: true,
 		forceNewGeneration: true,
 		source: "reindex",
+		reason: "reindex",
+		refreshMode: "full",
 	});
 	return { found: true, enqueued };
 }
@@ -263,8 +377,18 @@ export async function reembedDocsInFolderAdminWith(
 	loadRows: AdminFolderDocumentLoader,
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
-	const rows = await loadRows(folderId, limit);
-	const enqueued = await enqueueReembed(rows.map((r) => r.id));
+	const enqueued = await enqueueReembedPages(
+		(cursor, pageLimit) => loadRows(folderId, cursor, pageLimit),
+		limit,
+		undefined,
+		{
+			bypassDedup: true,
+			forceNewGeneration: true,
+			reason: "reindex",
+			refreshMode: "full",
+			source: "reindex",
+		},
+	);
 	if (enqueued > 0) {
 		logger.info(
 			{ folderId, enqueued, limit, scope: "admin" },
@@ -279,13 +403,10 @@ export async function reembedDocsInFolderAdminWith(
  * re-embedding. Same batch-cap semantics as `reembedDocsInFolder`. Used
  * by `PATCH /api/categories/:id` (rename) and `DELETE /api/categories/:id`.
  *
- * Category delete cascades to `documents.category_id` via `ON DELETE SET
- * NULL`, so by the time this helper runs most affected docs have already
- * lost their `category_id`. We therefore union two lookups:
- *   - docs whose `category_id` is still set to `categoryId` (rename path)
- *   - docs whose `category_id` WAS `categoryId` but is now NULL
- *     (post-cascade delete path)
- * Deduplication is handled by `enqueueReembed` via `Set` + Redis slot.
+ * Delete routes snapshot affected documents before the foreign keys clear;
+ * this helper serves rename and explicit reindex paths where category links
+ * still exist. Direct assignments and folder-derived assignments share one
+ * stable keyset pagination stream.
  *
  * @internal
  */
@@ -296,62 +417,58 @@ export async function reembedDocsInCategory(
 ): Promise<number> {
 	const limit = config.CATEGORY_REEMBED_BATCH_SIZE;
 
-	const [directRows, folderDocRows] = await withTenant(
-		{ userId: ownerId, role: "user", workspaceId },
-		async (tx) => {
-			const directRows = await tx
-				.select({ id: documents.id })
-				.from(documents)
-				.where(
-					and(
-						eq(documents.categoryId, categoryId),
-						tenantOwnerCondition(documents.ownerId, documents.workspaceId, {
-							userId: ownerId,
-							role: "user",
-							workspaceId,
-						}),
-					),
-				);
-			const folderRows = await tx
-				.select({ id: folders.id })
-				.from(folders)
-				.where(
-					and(
-						eq(folders.categoryId, categoryId),
-						tenantOwnerCondition(folders.ownerId, folders.workspaceId, {
-							userId: ownerId,
-							role: "user",
-							workspaceId,
-						}),
-					),
-				);
-			const folderIds = folderRows.map((row) => row.id);
-			if (folderIds.length === 0) return [directRows, []] as const;
-			const query = tx
-				.select({ id: documents.id })
-				.from(documents)
-				.where(
-					and(
-						tenantOwnerCondition(documents.ownerId, documents.workspaceId, {
-							userId: ownerId,
-							role: "user",
-							workspaceId,
-						}),
-						inArray(documents.folderId, folderIds),
-					),
-				);
-			const folderDocs = limit > 0 ? await query.limit(limit) : await query;
-			return [directRows, folderDocs] as const;
-		},
+	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
+	const folderIds = await withTenant(tenant, async (tx) => {
+		const folderRows = await tx
+			.select({ id: folders.id })
+			.from(folders)
+			.where(
+				and(
+					eq(folders.categoryId, categoryId),
+					tenantOwnerCondition(folders.ownerId, folders.workspaceId, {
+						userId: ownerId,
+						role: "user",
+						workspaceId,
+					}),
+				),
+			);
+		return folderRows.map((row) => row.id);
+	});
+	const enqueued = await enqueueReembedPages(
+		(cursor, pageLimit) =>
+			withTenant(tenant, (tx) => {
+				const categoryMatch =
+					folderIds.length > 0
+						? or(
+								eq(documents.categoryId, categoryId),
+								inArray(documents.folderId, folderIds),
+							)
+						: eq(documents.categoryId, categoryId);
+				const query = tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(
+						and(
+							categoryMatch,
+							...(cursor ? [gt(documents.id, cursor)] : []),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								tenant,
+							),
+						),
+					)
+					.orderBy(asc(documents.id));
+				return pageLimit > 0 ? query.limit(pageLimit) : query;
+			}),
+		limit,
+		workspaceId,
+		{ reason: "metadata", refreshMode: "full" },
 	);
-
-	const allIds = new Set<string>();
-	for (const r of directRows) allIds.add(r.id);
-	for (const r of folderDocRows) allIds.add(r.id);
-
-	const idArray = Array.from(allIds);
-	const bounded = limit > 0 ? idArray.slice(0, limit) : idArray;
-	const enqueued = await enqueueReembed(bounded, workspaceId);
 
 	if (enqueued > 0) {
 		logger.info(
@@ -359,8 +476,7 @@ export async function reembedDocsInCategory(
 				categoryId,
 				enqueued,
 				limit,
-				directCount: directRows.length,
-				viaFolders: folderDocRows.length,
+				folderCount: folderIds.length,
 			},
 			"Re-embedding documents after category change",
 		);
@@ -388,16 +504,40 @@ export async function reembedDocsByTag(
 	const tenant = ownerId
 		? { userId: ownerId, role: "user" as const, workspaceId }
 		: REEMBED_ADMIN_TENANT;
-	const rows = await withTenant(tenant, (tx) => {
-		const query = tx
-			.selectDistinct({ documentId: documentTags.documentId })
-			.from(documentTags)
-			.where(eq(documentTags.tagId, tagId));
-		return limit > 0 ? query.limit(limit) : query;
-	});
-	const enqueued = await enqueueReembed(
-		rows.map((r) => r.documentId),
+	const enqueued = await enqueueReembedPages(
+		(cursor, pageLimit) =>
+			withTenant(tenant, async (tx) => {
+				const linkQuery = tx
+					.selectDistinct({ documentId: documentTags.documentId })
+					.from(documentTags)
+					.where(
+						and(
+							eq(documentTags.tagId, tagId),
+							...(cursor ? [gt(documentTags.documentId, cursor)] : []),
+						),
+					)
+					.orderBy(asc(documentTags.documentId));
+				const links =
+					pageLimit > 0 ? await linkQuery.limit(pageLimit) : await linkQuery;
+				if (links.length === 0) return [];
+				const ids = links.map((row) => row.documentId);
+				const rows = await tx
+					.select({
+						id: documents.id,
+						title: documents.title,
+						content: documents.content,
+					})
+					.from(documents)
+					.where(inArray(documents.id, ids));
+				const byId = new Map(rows.map((row) => [row.id, row]));
+				return ids.flatMap((id) => {
+					const row = byId.get(id);
+					return row ? [row] : [];
+				});
+			}),
+		limit,
 		workspaceId,
+		{ reason: "metadata", refreshMode: "full" },
 	);
 	if (enqueued > 0) {
 		logger.info(

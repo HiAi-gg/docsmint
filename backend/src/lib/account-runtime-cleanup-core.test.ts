@@ -114,8 +114,10 @@ describe("account runtime cleanup core", () => {
 			`yjs:doc:${personalDoc}`,
 			`yjs:doc:${sharedDoc}`,
 			`hiai-docs:reembed:dedup:${personalDoc}`,
+			`hiai-docs:reembed:dedup:${personalDoc}:rev-a:incremental:content`,
 			`hiai-docs:reembed:dedup:${sharedDoc}`,
 			`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}`,
+			`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}:rev-b:full:metadata`,
 		);
 		redis.setPages(`hiai-docs:cache:docs:list:${actor}:*`, [
 			[
@@ -147,6 +149,20 @@ describe("account runtime cleanup core", () => {
 		redis.setPages(`hiai-docs:extract:done:${personalDoc}:*`, [
 			["0", [`hiai-docs:extract:done:${personalDoc}:0:hash-a`]],
 		]);
+		redis.setPages(`hiai-docs:reembed:dedup:${personalDoc}:*`, [
+			[
+				"0",
+				[`hiai-docs:reembed:dedup:${personalDoc}:rev-a:incremental:content`],
+			],
+		]);
+		redis.setPages(`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}:*`, [
+			[
+				"0",
+				[
+					`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}:rev-b:full:metadata`,
+				],
+			],
+		]);
 		redis.setPages(`hiai-docs:extract:done:${sharedDoc}:*`, [
 			["0", [`hiai-docs:extract:done:${sharedDoc}:3:hash-b`]],
 		]);
@@ -171,7 +187,7 @@ describe("account runtime cleanup core", () => {
 			`yjs:doc:${sharedDoc}`,
 		]);
 
-		expect(await cleanup.clearAccountRedisState(actor)).toBe(12);
+		expect(await cleanup.clearAccountRedisState(actor)).toBe(14);
 		const deleted = flatten(redis);
 		expect(deleted).toContain(`hiai-docs:cache:docs:list:${actor}:p:1:l:20`);
 		expect(deleted).toContain(
@@ -187,17 +203,26 @@ describe("account runtime cleanup core", () => {
 			`hiai-docs:cache:docs:single:${other}:w:${workspace}:${sharedDoc}`,
 		);
 		expect(deleted).toContain(`hiai-docs:reembed:dedup:${personalDoc}`);
+		expect(deleted).toContain(
+			`hiai-docs:reembed:dedup:${personalDoc}:rev-a:incremental:content`,
+		);
 		expect(deleted).toContain(`hiai-docs:reembed:dedup:${sharedDoc}`);
 		expect(deleted).toContain(
 			`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}`,
+		);
+		expect(deleted).toContain(
+			`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}:rev-b:full:metadata`,
 		);
 		expect(deleted).toContain(`hiai-docs:extract:done:${personalDoc}:0:hash-a`);
 		expect(deleted).toContain(`hiai-docs:extract:done:${sharedDoc}:3:hash-b`);
 		expect(redis.scans).toEqual([
 			`hiai-docs:cache:docs:list:${actor}:*`,
 			`hiai-docs:cache:docs:single:*:${personalDoc}`,
+			`hiai-docs:reembed:dedup:${personalDoc}:*`,
 			`hiai-docs:extract:done:${personalDoc}:*`,
 			`hiai-docs:cache:docs:single:*:${sharedDoc}`,
+			`hiai-docs:reembed:dedup:${sharedDoc}:*`,
+			`hiai-docs:reembed:dedup:${workspace}:${sharedDoc}:*`,
 			`hiai-docs:extract:done:${sharedDoc}:*`,
 		]);
 

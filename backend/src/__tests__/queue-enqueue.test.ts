@@ -17,7 +17,10 @@ const ownerB = "33333333-3333-4333-8333-333333333333";
 
 function harness(): {
 	deps: EnqueueDependencies;
-	jobs: Array<{ data: { ownerId: string }; jobId: string }>;
+	jobs: Array<{
+		data: { ownerId: string; refreshMode?: "incremental" | "full" };
+		jobId: string;
+	}>;
 } {
 	const active = new Map<string, string>();
 	const runs: PipelineRunStore = {
@@ -33,7 +36,10 @@ function harness(): {
 			return { run: { generationId: input.generationId }, created: true };
 		},
 	};
-	const jobs: Array<{ data: { ownerId: string }; jobId: string }> = [];
+	const jobs: Array<{
+		data: { ownerId: string; refreshMode?: "incremental" | "full" };
+		jobId: string;
+	}> = [];
 	const prepareQueue: PrepareQueueWriter = {
 		async add(_name, data, options) {
 			jobs.push({ data, jobId: options.jobId });
@@ -64,6 +70,31 @@ describe("document pipeline enqueue", () => {
 		});
 		expect(jobs).toHaveLength(1);
 		expect(jobs[0]?.jobId).toBe(`prepare-${documentId}-${first.generationId}`);
+		expect(jobs[0]?.data.refreshMode).toBe("incremental");
+	});
+
+	test("carries full refresh mode into a forced replacement prepare job", async () => {
+		const { deps, jobs } = harness();
+		const input = {
+			documentId,
+			ownerId: ownerA,
+			revision: "same-revision",
+			source: "interactive" as const,
+		};
+		await enqueueDocumentPipeline(input, deps);
+		await enqueueDocumentPipeline(
+			{
+				...input,
+				forceNewGeneration: true,
+				refreshMode: "full",
+			},
+			deps,
+		);
+
+		expect(jobs.map((job) => job.data.refreshMode)).toEqual([
+			"incremental",
+			"full",
+		]);
 	});
 
 	test("never shares runs or jobs across owners", async () => {

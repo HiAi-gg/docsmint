@@ -1528,7 +1528,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				// Use enqueueReembed for Redis SET-NX dedup so rapid PATCHes on the same doc
 				// (auto-save) coalesce into a single worker tick. Direct enqueueEmbedding
 				// would queue the same doc id once per PATCH.
-				enqueueReembed([params.id], ctx.workspaceId);
+				const revision = contentHash(
+					updated?.title ?? existing?.title ?? "",
+					updated?.content ?? existing?.content ?? "",
+				);
+				enqueueReembed(
+					[{ id: params.id, revision }],
+					ctx.workspaceId,
+					folderChanged || categoryChanged
+						? { reason: "metadata", refreshMode: "full" }
+						: { reason: "content", refreshMode: "incremental" },
+				);
 			}
 			// Preserve read-after-write consistency for placement changes. A
 			// fire-and-forget invalidation allowed the sidebar's immediate list

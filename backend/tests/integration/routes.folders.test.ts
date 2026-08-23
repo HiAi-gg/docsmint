@@ -483,6 +483,45 @@ describe("DELETE /api/folders/:id", () => {
     expect(state.folders.has(id)).toBe(false);
   });
 
+  it("snapshots every affected document before the folder FK is cleared", async () => {
+    const state = getState();
+    const id = "folder-delete-snapshot";
+    state.folders.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "Snapshot Me",
+      parentId: null,
+      categoryId: null,
+    });
+    for (const docId of ["folder-doc-1", "folder-doc-2", "folder-doc-3"]) {
+      state.documents.set(docId, {
+        id: docId,
+        ownerId: OWNER_ID,
+        title: docId,
+        content: "body",
+        folderId: id,
+        categoryId: null,
+      });
+    }
+
+    const res = await authedDelete(`/api/folders/${id}`);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(res.status).toBe(200);
+    expect(state.enqueuedEmbeddings.sort()).toEqual([
+      "folder-doc-1",
+      "folder-doc-2",
+      "folder-doc-3",
+    ]);
+    expect(
+      state.enqueuedEmbeddingRequests.every(
+        (request) =>
+          (request.options as any)?.refreshMode === "full" &&
+          (request.options as any)?.forceNewGeneration === true,
+      ),
+    ).toBe(true);
+  });
+
   it("does not delete a folder owned by another user", async () => {
     const state = getState();
     const id = "77777777-7777-4777-8777-777777777777";
@@ -496,6 +535,40 @@ describe("DELETE /api/folders/:id", () => {
     const res = await authedDelete(`/api/folders/${id}`);
     expect(res.status).toBe(404);
     expect(state.folders.has(id)).toBe(true);
+  });
+});
+
+describe("folder metadata re-embed pagination", () => {
+  it("continues past the configured batch cap", async () => {
+    const state = getState();
+    const id = "folder-pagination";
+    state.folders.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "Before",
+      parentId: null,
+      categoryId: null,
+    });
+    for (const docId of ["page-doc-1", "page-doc-2", "page-doc-3"]) {
+      state.documents.set(docId, {
+        id: docId,
+        ownerId: OWNER_ID,
+        title: docId,
+        content: "body",
+        folderId: id,
+        categoryId: null,
+      });
+    }
+
+    const res = await authedPatch(`/api/folders/${id}`, { name: "After" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(res.status).toBe(200);
+    expect(state.enqueuedEmbeddings.sort()).toEqual([
+      "page-doc-1",
+      "page-doc-2",
+      "page-doc-3",
+    ]);
   });
 });
 

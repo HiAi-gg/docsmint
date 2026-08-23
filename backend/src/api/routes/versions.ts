@@ -9,6 +9,7 @@ import {
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
+import { contentHash } from "../../lib/content-hash";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
@@ -604,7 +605,16 @@ export const versionRoutes = new Elysia({
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			void enqueueReembed([params.id], ctx.workspaceId).catch((err) =>
+			void enqueueReembed(
+				[
+					{
+						id: params.id,
+						revision: contentHash(updated.title, updated.content ?? ""),
+					},
+				],
+				ctx.workspaceId,
+				{ reason: "content", refreshMode: "incremental" },
+			).catch((err) =>
 				logger.warn({ err, documentId: params.id }, "Pipeline enqueue failed"),
 			);
 			return updated;

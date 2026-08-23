@@ -45,12 +45,29 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 // just hands doc ids to `enqueueReembed`; this test asserts WHICH ids
 // are handed in, not how `enqueueReembed` dedups them.
 const fakeEnqueueReembed = mock(
-	async (_docIds: ReadonlyArray<string>) => _docIds.length,
+	async (
+		_docIds: ReadonlyArray<string | { id: string; revision: string }>,
+		_workspaceId?: string,
+		_options?: unknown,
+	) => _docIds.length,
 );
 
 // Rows returned by the final `.limit()` in the drizzle chain. Tests
 // mutate this array (or replace it) before invoking the scan.
-let selectRows: Array<{ id: string; metadataChangedAt?: Date }> = [];
+let selectRows: Array<{
+	id: string;
+	title: string;
+	content: string;
+	metadataChangedAt?: Date;
+}> = [];
+
+function documentRow(id: string, metadataChangedAt?: Date) {
+	return { id, title: id, content: "body", metadataChangedAt };
+}
+
+function targetId(target: string | { id: string }): string {
+	return typeof target === "string" ? target : target.id;
+}
 
 // Rows returned by `db.execute(...)`. The cron's metadata-stale scan
 // uses `RETURNING id` semantics — the mock returns `{ id: "..." }` for
@@ -197,10 +214,7 @@ describe("reembed-cron metadata-stale scan", () => {
 	test("enqueues each stale doc whose atomic UPDATE matches", async () => {
 		const ts1 = new Date("2026-01-01T00:00:00Z");
 		const ts2 = new Date("2026-01-01T00:01:00Z");
-		selectRows = [
-			{ id: "doc-1", metadataChangedAt: ts1 },
-			{ id: "doc-2", metadataChangedAt: ts2 },
-		];
+		selectRows = [documentRow("doc-1", ts1), documentRow("doc-2", ts2)];
 		// Both rows succeed the atomic clear.
 		executeRows = [{ id: "doc-1" }];
 
@@ -210,8 +224,16 @@ describe("reembed-cron metadata-stale scan", () => {
 		// receives the doc id as a single-element array (per the
 		// `enqueueReembed` contract).
 		expect(fakeEnqueueReembed.mock.calls.length).toBe(2);
-		expect(fakeEnqueueReembed.mock.calls[0]?.[0]).toEqual(["doc-1"]);
-		expect(fakeEnqueueReembed.mock.calls[1]?.[0]).toEqual(["doc-2"]);
+		expect(fakeEnqueueReembed.mock.calls[0]?.[0]?.[0]).toMatchObject({
+			id: "doc-1",
+		});
+		expect(fakeEnqueueReembed.mock.calls[1]?.[0]?.[0]).toMatchObject({
+			id: "doc-2",
+		});
+		expect(fakeEnqueueReembed.mock.calls[0]?.[2]).toEqual({
+			reason: "metadata",
+			refreshMode: "full",
+		});
 		// One UPDATE per stale row.
 		expect(executeCalls.length).toBe(2);
 	});
@@ -219,10 +241,7 @@ describe("reembed-cron metadata-stale scan", () => {
 	test("only enqueues rows whose atomic UPDATE matched (concurrent PATCH guard)", async () => {
 		const ts1 = new Date("2026-01-01T00:00:00Z");
 		const ts2 = new Date("2026-01-01T00:01:00Z");
-		selectRows = [
-			{ id: "doc-1", metadataChangedAt: ts1 },
-			{ id: "doc-2", metadataChangedAt: ts2 },
-		];
+		selectRows = [documentRow("doc-1", ts1), documentRow("doc-2", ts2)];
 
 		// Per-call `db.execute` impl: doc-1 succeeds (concurrent PATCH
 		// did NOT bump its timestamp between SELECT and UPDATE), doc-2
@@ -236,7 +255,9 @@ describe("reembed-cron metadata-stale scan", () => {
 
 		// Only doc-1 should be enqueued — doc-2's UPDATE matched zero rows.
 		expect(fakeEnqueueReembed.mock.calls.length).toBe(1);
-		expect(fakeEnqueueReembed.mock.calls[0]?.[0]).toEqual(["doc-1"]);
+		expect(fakeEnqueueReembed.mock.calls[0]?.[0]?.[0]).toMatchObject({
+			id: "doc-1",
+		});
 		// Both rows were probed via UPDATE — the per-row atomic guard is
 		// exercised even on the "lost the race" path.
 		expect(executeCalls.length).toBe(2);
@@ -255,7 +276,7 @@ describe("reembed-cron metadata-stale scan", () => {
 		// a real database, which is the only place a SQL text assertion
 		// is meaningful).
 		const ts = new Date("2026-01-01T00:00:00Z");
-		selectRows = [{ id: "doc-1", metadataChangedAt: ts }];
+		selectRows = [documentRow("doc-1", ts)];
 		executeRows = [{ id: "doc-1" }];
 
 		await cron._processStaleMetadataChangesForTests();
@@ -281,7 +302,7 @@ describe("reembed-cron metadata-stale scan", () => {
 		// enqueued row (the metadata-stale scan's own UPDATE) and did
 		// NOT touch any "significant" columns.
 		const ts = new Date("2026-01-01T00:00:00Z");
-		selectRows = [{ id: "doc-1", metadataChangedAt: ts }];
+		selectRows = [documentRow("doc-1", ts)];
 		executeRows = [{ id: "doc-1" }];
 
 		await cron._processStaleMetadataChangesForTests();
@@ -297,28 +318,38 @@ describe("reembed-cron metadata-stale scan", () => {
 
 describe("reembed-cron idle-pending scan", () => {
 	test("enqueues each idle doc returned by the db", async () => {
-		selectRows = [{ id: "idle-1" }];
+		selectRows = [documentRow("idle-1")];
 
 		await cron._processIdlePendingChangesForTests();
 
 		// Single doc -> single enqueue.
 		expect(fakeEnqueueReembed.mock.calls.length).toBe(1);
-		expect(fakeEnqueueReembed.mock.calls[0]?.[0]).toEqual(["idle-1"]);
+		expect(fakeEnqueueReembed.mock.calls[0]?.[0]?.[0]).toMatchObject({
+			id: "idle-1",
+		});
+		expect(fakeEnqueueReembed.mock.calls[0]?.[2]).toEqual({
+			reason: "content",
+			refreshMode: "incremental",
+		});
 		// Idle scan is SELECT-only — no atomic UPDATE, no execute calls.
 		expect(executeCalls.length).toBe(0);
 	});
 
 	test("enqueues multiple idle docs in the order they came back", async () => {
-		selectRows = [{ id: "idle-1" }, { id: "idle-2" }, { id: "idle-3" }];
+		selectRows = [
+			documentRow("idle-1"),
+			documentRow("idle-2"),
+			documentRow("idle-3"),
+		];
 
 		await cron._processIdlePendingChangesForTests();
 
 		expect(fakeEnqueueReembed.mock.calls.length).toBe(3);
-		expect(fakeEnqueueReembed.mock.calls.map((c) => c[0])).toEqual([
-			["idle-1"],
-			["idle-2"],
-			["idle-3"],
-		]);
+		expect(
+			fakeEnqueueReembed.mock.calls.map((call) =>
+				call[0]?.[0] ? targetId(call[0][0]) : undefined,
+			),
+		).toEqual(["idle-1", "idle-2", "idle-3"]);
 		// Order preservation is the `enqueueReembed` input contract —
 		// since the source loop is sequential, we get FIFO behavior.
 	});
@@ -338,7 +369,7 @@ describe("reembed-cron idle-pending scan", () => {
 		// each row. Asserting no `db.execute` call catches a future
 		// refactor that accidentally duplicates the metadata-stale
 		// scan's UPDATE step.
-		selectRows = [{ id: "idle-1" }, { id: "idle-2" }];
+		selectRows = [documentRow("idle-1"), documentRow("idle-2")];
 
 		await cron._processIdlePendingChangesForTests();
 

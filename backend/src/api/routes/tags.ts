@@ -1,5 +1,5 @@
 import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
-import { and, count, eq, isNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -9,6 +9,7 @@ import {
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
+import { contentHash } from "../../lib/content-hash";
 import { invalidateDocCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import { enqueueReembed, reembedDocsByTag } from "../../lib/reembed";
@@ -202,10 +203,25 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				// Resolve affected doc ids BEFORE the tag is deleted. We re-embed
 				// after a successful delete so the removed tag stops appearing in
 				// the embedding preamble of every document it was on.
-				const affectedDocs = await tx
+				const affectedLinks = await tx
 					.select({ documentId: documentTags.documentId })
 					.from(documentTags)
 					.where(eq(documentTags.tagId, params.id));
+
+				const affectedIds = Array.from(
+					new Set(affectedLinks.map((row) => row.documentId)),
+				);
+				const affectedDocs =
+					affectedIds.length > 0
+						? await tx
+								.select({
+									id: documents.id,
+									title: documents.title,
+									content: documents.content,
+								})
+								.from(documents)
+								.where(inArray(documents.id, affectedIds))
+						: [];
 
 				await tx
 					.delete(tags)
@@ -220,10 +236,14 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			});
 
 			{
-				const ids = Array.from(
-					new Set(result.affectedDocs.map((r) => r.documentId)),
+				const enqueued = await enqueueReembed(
+					result.affectedDocs.map((document) => ({
+						id: document.id,
+						revision: contentHash(document.title, document.content ?? ""),
+					})),
+					ctx.workspaceId,
+					{ reason: "metadata", refreshMode: "full" },
 				);
-				const enqueued = await enqueueReembed(ids, ctx.workspaceId);
 				if (enqueued > 0) {
 					logger.info(
 						{ tagId: params.id, enqueued },
@@ -270,6 +290,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				const [doc] = await tx
 					.select({
 						id: documents.id,
+						title: documents.title,
+						content: documents.content,
 						categoryId: documents.categoryId,
 						folderCategoryId: folders.categoryId,
 					})
@@ -298,7 +320,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 					documentId: params.id,
 					tagId: body.data.tagId,
 				});
-				return true;
+				return doc;
 			});
 			if (!ok) {
 				set.status = 404;
@@ -307,7 +329,16 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			// Re-embed so the new tag name appears in the embedding preamble.
 			// enqueueReembed gives us per-doc Redis SET-NX dedup shared
 			// with the rest of the metadata-driven re-embed triggers.
-			enqueueReembed([params.id], ctx.workspaceId);
+			enqueueReembed(
+				[
+					{
+						id: params.id,
+						revision: contentHash(ok.title, ok.content ?? ""),
+					},
+				],
+				ctx.workspaceId,
+				{ reason: "metadata", refreshMode: "full" },
+			);
 			invalidateDocCache(params.id);
 			set.status = 201;
 			return { success: true };
@@ -343,6 +374,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				const [doc] = await tx
 					.select({
 						id: documents.id,
+						title: documents.title,
+						content: documents.content,
 						categoryId: documents.categoryId,
 						folderCategoryId: folders.categoryId,
 					})
@@ -375,7 +408,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 							eq(documentTags.tagId, params.tagId),
 						),
 					);
-				return true;
+				return doc;
 			});
 			if (!ok) {
 				set.status = 404;
@@ -383,7 +416,16 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			}
 			// Re-embed so the removed tag is no longer in the preamble.
 			// enqueueReembed gives us per-doc Redis SET-NX dedup.
-			enqueueReembed([params.id], ctx.workspaceId);
+			enqueueReembed(
+				[
+					{
+						id: params.id,
+						revision: contentHash(ok.title, ok.content ?? ""),
+					},
+				],
+				ctx.workspaceId,
+				{ reason: "metadata", refreshMode: "full" },
+			);
 			invalidateDocCache(params.id);
 			return { success: true };
 		} catch (err) {

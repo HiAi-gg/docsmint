@@ -221,6 +221,44 @@ describe("PATCH /api/tags/:id", () => {
     expect((getState().tags.get(id) as any).name).toBe("new");
   });
 
+  it("paginates every affected document past the tag batch cap", async () => {
+    const state = getState();
+    const id = "tag-pagination";
+    state.tags.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "before",
+      color: null,
+      createdAt: new Date(),
+    });
+    for (const docId of ["tag-page-1", "tag-page-2", "tag-page-3"]) {
+      state.documents.set(docId, {
+        id: docId,
+        ownerId: OWNER_ID,
+        title: docId,
+        content: "body",
+        folderId: null,
+        categoryId: null,
+      });
+      state.documentTags.push({ documentId: docId, tagId: id });
+    }
+
+    const res = await authedPatch(`/api/tags/${id}`, { name: "after" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(res.status).toBe(200);
+    expect(state.enqueuedEmbeddings.sort()).toEqual([
+      "tag-page-1",
+      "tag-page-2",
+      "tag-page-3",
+    ]);
+    expect(
+      state.enqueuedEmbeddingRequests.every(
+        (request) => (request.options as any)?.refreshMode === "full",
+      ),
+    ).toBe(true);
+  });
+
   it("updates color", async () => {
     const id = "22222222-2222-4222-8222-222222222222";
     getState().tags.set(id, {

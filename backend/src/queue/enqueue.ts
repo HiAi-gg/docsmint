@@ -190,6 +190,7 @@ export async function enqueueDocumentPipeline(
 			revision: parsed.revision,
 			requestedAt: requestedAt.toISOString(),
 			source: parsed.source,
+			refreshMode: parsed.refreshMode ?? "incremental",
 		};
 		const queued = await deps.prepareQueue.add("prepare", job, {
 			...DEFAULT_JOB_OPTIONS,
