@@ -187,9 +187,10 @@ curl -X POST "$HIAI_DOCS_URL/api/share" \
 curl "$HIAI_DOCS_URL/api/share/$SHARE_TOKEN"
 ```
 
-Owners can list, update, and revoke links and manage guest email access. Links
-may target documents or folders, use `viewer`, `commenter`, or `editor` roles,
-and expire after `1h`, `1d`, `7d`, `30d`, or `never`.
+Owners can list, update, and revoke links. Standalone OSS uses public or
+password-protected links, which may target documents or folders and expire
+after `1h`, `1d`, `7d`, `30d`, or `never`. Host-managed consumers retain their
+existing guest email and role workflows.
 ### Versions and snapshots
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID/versions" \

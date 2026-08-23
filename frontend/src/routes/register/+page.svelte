@@ -15,18 +15,22 @@ async function handleSubmit(e: SubmitEvent) {
 	loading = true;
 	error = "";
 
-	const result = await signUp.email({
-		name,
-		email,
-		password,
-		callbackURL: "/",
-	});
-
-	if (result.error) {
-		error = result.error.message ?? m.auth_signup_error();
+	try {
+		const result = await signUp.email({
+			name,
+			email,
+			password,
+			callbackURL: "/",
+		});
+		if (result.error) {
+			error = result.error.message ?? m.auth_signup_error();
+			return;
+		}
+		await goto("/");
+	} catch {
+		error = m.error_network();
+	} finally {
 		loading = false;
-	} else {
-		goto("/");
 	}
 }
 </script>
@@ -44,7 +48,7 @@ async function handleSubmit(e: SubmitEvent) {
 	    </div>
 
 	    {#if error}
-	      <p class="text-sm text-destructive">{error}</p>
+	      <p class="text-sm text-destructive" role="alert" aria-live="assertive">{error}</p>
 	    {/if}
 
 	    <div class="space-y-2">

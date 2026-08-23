@@ -19,9 +19,8 @@ test("ShareDialog exposes the created restricted link to hosts", () => {
 		"utf8",
 	);
 	expect(source).toContain("onCreated?: (result: ShareCreatedResult) => void");
-	expect(source).toContain(
-		"onCreated?.({ token: result.token, url: shareUrl, accessMode })",
-	);
+	expect(source).toContain("onCreated?.({");
+	expect(source).toContain('accessMode: displayMode === "standalone" ? "public" : accessMode');
 	expect(source).toContain("data-share-created-url");
 	expect(source).toContain("data-share-copy-action");
 	expect(source).toContain("flex-col gap-2 sm:flex-row");
@@ -29,4 +28,12 @@ test("ShareDialog exposes the created restricted link to hosts", () => {
 	expect(source).not.toContain(
 		'{#if accessMode === "public"}<div class="flex items-center gap-2">',
 	);
+});
+
+test("ShareDialog publishes an additive standalone display mode", () => {
+	const declarations = readFileSync(
+		new URL("../scripts/write-frontend-declarations.ts", import.meta.url),
+		"utf8",
+	);
+	expect(declarations).toContain('displayMode?: "host-managed" | "standalone"');
 });

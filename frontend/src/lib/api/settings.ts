@@ -54,27 +54,13 @@ export async function updateProfile(data: {
 	});
 }
 
-// --- Embedding Config (stored in localStorage for OSS simplicity) ---
+// --- Embedding Config ---
 
-const EMBEDDING_KEY = "hiai-docs:embedding-config";
+// Browser-managed provider credentials are intentionally unsupported. Keep
+// these legacy exports inert so existing SDK consumers remain source-compatible
+// while operators configure providers through the deployment environment.
 
 export function getEmbeddingConfig(): EmbeddingConfig {
-	if (typeof window === "undefined") {
-		return {
-			baseUrl: "",
-			apiKey: "",
-			model: "",
-			fallbackBaseUrl: null,
-			fallbackApiKey: null,
-			fallbackModel: null,
-		};
-	}
-	try {
-		const stored = localStorage.getItem(EMBEDDING_KEY);
-		if (stored) return JSON.parse(stored);
-	} catch {
-		/* ignore */
-	}
 	return {
 		baseUrl: "",
 		apiKey: "",
@@ -86,12 +72,9 @@ export function getEmbeddingConfig(): EmbeddingConfig {
 }
 
 export function updateEmbeddingConfig(
-	data: Partial<EmbeddingConfig>,
+	_data: Partial<EmbeddingConfig>,
 ): EmbeddingConfig {
-	const current = getEmbeddingConfig();
-	const updated = { ...current, ...data };
-	localStorage.setItem(EMBEDDING_KEY, JSON.stringify(updated));
-	return updated;
+	return getEmbeddingConfig();
 }
 
 // --- Delete Account ---

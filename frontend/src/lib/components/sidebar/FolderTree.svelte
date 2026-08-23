@@ -2055,6 +2055,7 @@ const buckets = $derived.by(() => {
 
 <ShareDialog
   bind:open={showShareDialog}
+	 displayMode="standalone"
   documentId={shareDocumentId}
   documentTitle={shareDocumentTitle}
   folderId={shareFolderId}

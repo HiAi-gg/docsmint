@@ -106,7 +106,7 @@ const CSP_POLICY = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
 	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: blob: http://localhost:50702 http://seaweedfs:8333",
+	"img-src 'self' data: blob: https: http://localhost:50702 http://seaweedfs:8333",
 	"connect-src 'self' http://localhost:50700 ws://localhost:50700 http://localhost:50702",
 	"font-src 'self' data:",
 	"frame-ancestors 'none'",

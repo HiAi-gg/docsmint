@@ -71,7 +71,7 @@ async function handleSubmit(e: SubmitEvent) {
 			</div>
 
 			{#if error}
-				<p class="text-sm text-destructive">{error}</p>
+				<p class="text-sm text-destructive" role="alert" aria-live="assertive">{error}</p>
 			{/if}
 
 			<div class="space-y-2">

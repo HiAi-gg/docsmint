@@ -124,6 +124,7 @@ const preview = $derived(
       <DropdownMenuTrigger
         class="inline-flex size-8 items-center justify-center rounded-md opacity-100 transition-opacity hover:bg-accent sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
         onclick={(e: MouseEvent) => e.stopPropagation()}
+		onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
       >
         <MoreVertical class="size-4" />
         <span class="sr-only">{m.doc_open_menu()}</span>

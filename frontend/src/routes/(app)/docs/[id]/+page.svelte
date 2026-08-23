@@ -46,7 +46,11 @@ import {
 import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
 import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
 import { createPlacementMutationQueue } from "$lib/components/editor/placement-mutation-queue";
-import { markMarkdownTaskItems } from "$lib/components/editor/shared-document";
+import { createPrintableDocumentHtml } from "$lib/components/editor/printable-document";
+import {
+	hydrateSharedAttachmentImages,
+	waitForSharedDocumentImages,
+} from "$lib/components/editor/shared-document";
 import FolderDialog from "$lib/components/FolderDialog.svelte";
 import SaveAsDialog from "$lib/components/SaveAsDialog.svelte";
 import ShareDialog from "$lib/components/ShareDialog.svelte";
@@ -542,23 +546,11 @@ async function handleExportDocx() {
 	}
 
 	async function fallbackHtmlDocx() {
-		const { marked } = await import("marked");
-		const htmlContent = marked.parse(content || "", { async: false }) as string;
-		const docHtml = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head><title>${title || "Document"}</title>
-<style>
-body { font-family: Arial, sans-serif; line-height: 1.6; }
-h1 { font-size: 24pt; font-weight: bold; margin-top: 12pt; margin-bottom: 6pt; }
-p { margin-bottom: 6pt; }
-</style>
-</head>
-<body>
-<h1>${title || "Untitled Document"}</h1>
-${htmlContent}
-</body>
-</html>
-		`;
+		const docHtml = createPrintableDocumentHtml({
+			title: title || "Document",
+			contentJson,
+			markdown: content,
+		});
 		const blob = new Blob([docHtml], {
 			type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 		});
@@ -573,10 +565,6 @@ ${htmlContent}
 
 async function handleExportPdf() {
 	showMenu = false;
-	const { marked } = await import("marked");
-	const htmlContent = markMarkdownTaskItems(
-		marked.parse(content || "", { async: false }) as string,
-	);
 
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
@@ -587,83 +575,33 @@ async function handleExportPdf() {
 	iframe.style.border = "0";
 	document.body.appendChild(iframe);
 
-	const doc = iframe.contentWindow?.document;
-	if (!doc) return;
-
-	doc.open();
-	doc.write(`
-<html>
-<head>
-<title>${title || "Untitled Document"}</title>
-<style>
-body {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-	line-height: 1.6;
-	color: #000;
-	padding: 2cm;
-}
-h1 { font-size: 28px; font-weight: bold; margin-bottom: 20px; }
-h2 { font-size: 22px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
-h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-p { margin: 0 0 12px; }
-ul, ol { padding-left: 20px; margin-bottom: 12px; }
-li { margin-bottom: 4px; }
-li.task-list-item {
-	list-style: none;
-	display: flex;
-	align-items: flex-start;
-	gap: 8px;
-	margin-left: -20px;
-}
-li.task-list-item > input[type="checkbox"] {
-	flex: 0 0 auto;
-	margin: 0.35em 0 0;
-}
-blockquote {
-	border-left: 3px solid #ccc;
-	padding-left: 12px;
-	margin: 12px 0;
-	color: #666;
-	font-style: italic;
-}
-pre {
-	background: #f4f4f4;
-	border: 1px solid #ddd;
-	padding: 12px;
-	border-radius: 4px;
-	overflow-x: auto;
-	font-family: monospace;
-}
-code {
-	background: #f4f4f4;
-	padding: 2px 4px;
-	border-radius: 3px;
-	font-family: monospace;
-}
-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-th { background-color: #f4f4f4; }
-img { max-width: 100%; height: auto; }
-@media print {
-	body { padding: 0; }
-}
-</style>
-</head>
-<body>
-<h1>${title || "Untitled Document"}</h1>
-${htmlContent}
-\x3Cscript>
-window.onload = function() {
-	window.print();
-	setTimeout(function() {
-		window.frameElement.remove();
-	}, 100);
-};
-\x3C/script>
-</body>
-</html>
-	`);
-	doc.close();
+	const iframeDoc = iframe.contentWindow?.document;
+	if (!iframeDoc) {
+		iframe.remove();
+		return;
+	}
+	iframeDoc.open();
+	iframeDoc.write(
+		createPrintableDocumentHtml({
+			title: title || "Untitled Document",
+			contentJson,
+			markdown: content,
+		}),
+	);
+	iframeDoc.close();
+	const objectUrls = await hydrateSharedAttachmentImages(iframeDoc, "");
+	await waitForSharedDocumentImages(iframeDoc);
+	let cleanedUp = false;
+	const cleanup = () => {
+		if (cleanedUp) return;
+		cleanedUp = true;
+		iframe.remove();
+		for (const url of objectUrls) URL.revokeObjectURL(url);
+	};
+	iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+	iframe.contentWindow?.focus();
+	iframe.contentWindow?.print();
+	setTimeout(cleanup, 60_000);
 }
 
 function handleShare() {
@@ -1363,7 +1301,7 @@ $effect(() => {
     {/if}
     </div>
 
-    <ShareDialog bind:open={showShareDialog} documentId={data.document.id} documentTitle={title} />
+    <ShareDialog bind:open={showShareDialog} displayMode="standalone" documentId={data.document.id} documentTitle={title} />
     <FolderDialog
       bind:open={showCreateFolderDialog}
       mode="create"

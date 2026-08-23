@@ -118,9 +118,9 @@ DocsMint 0.6.1 includes the mobile and PWA foundation introduced in 0.6.0:
 - **Stable document discovery.** The public API and TypeScript SDK provide
   deterministic cursor pagination and global sorting by title, category,
   folder, or update time, with canonical category and folder metadata.
-- **Clear public and restricted sharing.** Share creation exposes the resulting
-  URL for both public links and restricted invitation workflows, with an
-  explicit Copy action that works on narrow screens.
+- **Safe standalone sharing.** Standalone DocsMint exposes public links with
+  expiry, optional passwords, Copy, and revoke controls. Host-managed consumers
+  retain their existing restricted invitation workflow.
 - **Knowledge built for agents.** REST, the typed SDK, CLI, and MCP server expose
   scoped document operations, while multilingual hybrid search and GraphRAG
   help people and AI agents retrieve connected knowledge instead of isolated
@@ -222,6 +222,9 @@ The canonical local ports are:
 
 See [Deployment](docs/DEPLOYMENT.md) for domains, TLS, provider tuning,
 backups, and production operation.
+
+Embedding provider URLs, models, and credentials are deployment configuration.
+They are never stored in browser settings or local storage.
 
 ## Use DocsMint from the terminal
 

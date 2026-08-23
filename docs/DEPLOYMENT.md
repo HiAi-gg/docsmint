@@ -111,10 +111,13 @@ Before exposing the service:
    service account.
 2. Set public `BETTER_AUTH_URL`, storage endpoint values, and exact
    `CORS_ORIGINS`.
-3. Generate a strong `HIAI_DOCS_API_KEY` for operator-only admin routes.
-4. Use durable volumes for PostgreSQL and SeaweedFS.
-5. Configure TLS, backups, monitoring, and provider budgets.
-6. Run `docker compose config --quiet` before starting.
+3. Configure embedding provider URLs, models, and credentials through the
+   deployment environment. Do not enter provider credentials in browser
+   settings or persist them in browser storage.
+4. Generate a strong `HIAI_DOCS_API_KEY` for operator-only admin routes.
+5. Use durable volumes for PostgreSQL and SeaweedFS.
+6. Configure TLS, backups, monitoring, and provider budgets.
+7. Run `docker compose config --quiet` before starting.
 
 `HIAI_DOCS_API_KEY` is an operator credential for `/api/admin/*` and protected
 metrics. Do not distribute it to CLI, MCP, SDK, or Docsmint users. Create global

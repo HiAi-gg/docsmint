@@ -30,6 +30,7 @@ import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
 import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
+import { createPrintableDocumentHtml } from "$lib/components/editor/printable-document";
 import {
 	hydrateSharedAttachmentImages,
 	type ProseMirrorDoc,
@@ -271,15 +272,6 @@ async function handleExportDocx() {
 async function handleExportPdf() {
 	const doc = getCurrentDoc();
 	if (!doc) return;
-	const printRoot = document.createElement("div");
-	printRoot.innerHTML = renderDocumentContent(doc);
-	const objectUrls = await hydrateSharedAttachmentImages(
-		printRoot,
-		data.token ?? "",
-		verifiedPassword,
-	);
-	const htmlContent = printRoot.innerHTML;
-
 	const iframe = document.createElement("iframe");
 	iframe.style.position = "fixed";
 	iframe.style.right = "0";
@@ -292,85 +284,23 @@ async function handleExportPdf() {
 	const iframeDoc = iframe.contentWindow?.document;
 	if (!iframeDoc) {
 		iframe.remove();
-		for (const url of objectUrls) URL.revokeObjectURL(url);
 		return;
 	}
 
 	iframeDoc.open();
-	iframeDoc.write(`
-<html>
-<head>
-<title>${doc.title}</title>
-<style>
-body {
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-	line-height: 1.6;
-	color: #000;
-	padding: 2cm;
-}
-h1 { font-size: 28px; font-weight: bold; margin-bottom: 20px; }
-h2 { font-size: 22px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
-h3 { font-size: 18px; font-weight: 600; margin-top: 20px; margin-bottom: 8px; }
-p { margin-bottom: 12px; }
-ul, ol { padding-left: 20px; margin-bottom: 12px; }
-li { margin-bottom: 4px; }
-ul[data-type="taskList"] { list-style: none; padding-left: 0; }
-ul[data-type="taskList"] li {
-	list-style: none;
-	display: flex;
-	align-items: flex-start;
-	gap: 8px;
-}
-ul[data-type="taskList"] li > label {
-	display: flex;
-	align-items: flex-start;
-	flex: 0 0 auto;
-	padding-top: 0.25em;
-}
-ul[data-type="taskList"] li > div {
-	flex: 1 1 auto;
-	min-width: 0;
-}
-ul[data-type="taskList"] li > div > p {
-	margin: 0 0 12px;
-}
-blockquote {
-	border-left: 3px solid #ccc;
-	padding-left: 12px;
-	margin: 12px 0;
-	color: #666;
-	font-style: italic;
-}
-pre {
-	background: #f4f4f4;
-	border: 1px solid #ddd;
-	padding: 12px;
-	border-radius: 4px;
-	overflow-x: auto;
-	font-family: monospace;
-}
-code {
-	background: #f4f4f4;
-	padding: 2px 4px;
-	border-radius: 3px;
-	font-family: monospace;
-}
-table { border-collapse: collapse; width: 100%; margin: 16px 0; }
-th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-th { background-color: #f4f4f4; }
-img { max-width: 100%; height: auto; }
-@media print {
-	body { padding: 0; }
-}
-</style>
-</head>
-<body>
-<h1>${doc.title}</h1>
-${htmlContent}
-</body>
-</html>
-	`);
+	iframeDoc.write(
+		createPrintableDocumentHtml({
+			title: doc.title,
+			contentJson: doc.contentJson,
+			markdown: doc.content,
+		}),
+	);
 	iframeDoc.close();
+	const objectUrls = await hydrateSharedAttachmentImages(
+		iframeDoc,
+		data.token ?? "",
+		verifiedPassword,
+	);
 	await waitForSharedDocumentImages(iframeDoc);
 
 	let cleanedUp = false;

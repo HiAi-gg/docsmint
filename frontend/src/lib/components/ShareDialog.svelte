@@ -19,6 +19,8 @@ export type ShareCreatedResult = {
 	accessMode: "public" | "restricted";
 };
 
+export type ShareDisplayMode = "host-managed" | "standalone";
+
 let {
 	open = $bindable(false),
 	documentId = "",
@@ -27,6 +29,7 @@ let {
 	folderName = "",
 	categoryId = "",
 	categoryName = "",
+	displayMode = "host-managed",
 	onCreated,
 }: {
 	open?: boolean;
@@ -36,6 +39,7 @@ let {
 	folderName?: string;
 	categoryId?: string;
 	categoryName?: string;
+	displayMode?: ShareDisplayMode;
 	onCreated?: (result: ShareCreatedResult) => void;
 } = $props();
 
@@ -103,17 +107,24 @@ async function createLink() {
 				categoryId: categoryId || undefined,
 				password: usePassword ? password : undefined,
 				expiresIn,
-				accessMode,
+				accessMode: displayMode === "standalone" ? "public" : accessMode,
 				allowPasswordFallback:
 					accessMode === "restricted" && usePassword
 						? allowPasswordFallback
 						: undefined,
-				guests: accessMode === "restricted" ? guests : undefined,
+				guests:
+					displayMode !== "standalone" && accessMode === "restricted"
+						? guests
+						: undefined,
 			},
 			request.fetch,
 		);
 		shareUrl = `${window.location.origin}/s/${result.token}`;
-		onCreated?.({ token: result.token, url: shareUrl, accessMode });
+		onCreated?.({
+			token: result.token,
+			url: shareUrl,
+			accessMode: displayMode === "standalone" ? "public" : accessMode,
+		});
 	} catch (e) {
 		error = e instanceof Error ? e.message : m.error_generic();
 		console.error("ShareDialog: createShareLink failed", e);
@@ -160,9 +171,11 @@ function close() {
 
       {#if !shareUrl}
 	        <div class="space-y-4">
-	          <div class="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1" aria-label="Share access mode">
+	          <div class="grid {displayMode === 'standalone' ? 'grid-cols-1' : 'grid-cols-2'} gap-2 rounded-lg bg-muted p-1" aria-label="Share access mode">
 	            <button type="button" onclick={() => { accessMode = "public"; guests = []; allowPasswordFallback = false; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'public' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Public link</button>
-	            <button type="button" onclick={() => { accessMode = "restricted"; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'restricted' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Specific people</button>
+	            {#if displayMode !== "standalone"}
+	              <button type="button" onclick={() => { accessMode = "restricted"; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'restricted' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Specific people</button>
+	            {/if}
 	          </div>
 	          <p class="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
 	            {accessMode === "public"

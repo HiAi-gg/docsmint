@@ -278,7 +278,7 @@ declarations["components/folder-tree-selector.d.ts"] =
 declarations["components/save-as-dialog.d.ts"] =
 	'import type { Component } from "svelte";\nexport declare const SaveAsDialog: Component;\n';
 declarations["components/share-dialog.d.ts"] =
-	'import type { Component } from "svelte";\nexport interface ShareCreatedResult { token: string; url: string; accessMode: "public" | "restricted"; }\nexport declare const ShareDialog: Component<{ onCreated?: (result: ShareCreatedResult) => void; }>;\n';
+	'import type { Component } from "svelte";\nexport interface ShareCreatedResult { token: string; url: string; accessMode: "public" | "restricted"; }\nexport type ShareDisplayMode = "host-managed" | "standalone";\nexport declare const ShareDialog: Component<{ displayMode?: "host-managed" | "standalone"; onCreated?: (result: ShareCreatedResult) => void; }>;\n';
 declarations["components/tag-create-dialog.d.ts"] =
 	'import type { Component } from "svelte";\nexport declare const TagCreateDialog: Component;\n';
 declarations["components/version-history.d.ts"] =
