@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PIPELINE_SCHEMA_VERSION = 1 as const;
+export const PIPELINE_SCHEMA_VERSION = 2 as const;
 export const DEFAULT_EMBED_CHUNKS_PER_JOB = 5;
 export const MAX_EMBED_CHUNKS_PER_JOB = 32;
 
@@ -15,7 +15,7 @@ export type PipelineSource = z.infer<typeof pipelineSourceSchema>;
 export const pipelineRefreshModeSchema = z.enum(["incremental", "full"]);
 export type PipelineRefreshMode = z.infer<typeof pipelineRefreshModeSchema>;
 
-const basePipelineJobSchema = z.object({
+const basePipelineJobFields = {
 	schemaVersion: z.literal(PIPELINE_SCHEMA_VERSION),
 	documentId: z.uuid(),
 	ownerId: z.uuid(),
@@ -24,18 +24,41 @@ const basePipelineJobSchema = z.object({
 	revision: z.string().min(1),
 	requestedAt: z.iso.datetime(),
 	source: pipelineSourceSchema,
-	refreshMode: pipelineRefreshModeSchema.optional(),
-});
+	refreshMode: pipelineRefreshModeSchema,
+	embeddingContextHash: z.string().min(1).optional(),
+} as const;
 
-export const prepareJobSchema = basePipelineJobSchema.extend({
+function normalizeLegacyPipelineJob(value: unknown): unknown {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+	const job = value as Record<string, unknown>;
+	if (job.schemaVersion !== 1) return value;
+	return {
+		...job,
+		schemaVersion: PIPELINE_SCHEMA_VERSION,
+		refreshMode: "full",
+	};
+}
+
+const prepareJobV2Schema = z.object({
+	...basePipelineJobFields,
 	stage: z.literal("prepare"),
 });
+
+export const prepareJobSchema = z.preprocess(
+	normalizeLegacyPipelineJob,
+	prepareJobV2Schema,
+);
 export type PrepareJob = z.infer<typeof prepareJobSchema>;
+
+export function decodePrepareJob(value: unknown): PrepareJob {
+	return prepareJobSchema.parse(value);
+}
 
 export function createEmbedBatchJobSchema(
 	maxChunkCount = MAX_EMBED_CHUNKS_PER_JOB,
 ) {
-	return basePipelineJobSchema.extend({
+	const schema = z.object({
+		...basePipelineJobFields,
 		stage: z.literal("embed"),
 		batchIndex: z.number().int().nonnegative(),
 		totalBatches: z.number().int().positive(),
@@ -44,20 +67,36 @@ export function createEmbedBatchJobSchema(
 			.min(1)
 			.max(maxChunkCount),
 	});
+	return z.preprocess(normalizeLegacyPipelineJob, schema);
 }
 
 export const embedBatchJobSchema = createEmbedBatchJobSchema();
 export type EmbedBatchJob = z.infer<typeof embedBatchJobSchema>;
 
-export const graphJobSchema = basePipelineJobSchema.extend({
+const graphJobV2Schema = z.object({
+	...basePipelineJobFields,
 	stage: z.literal("graph"),
 });
-export const summarizeJobSchema = basePipelineJobSchema.extend({
+const summarizeJobV2Schema = z.object({
+	...basePipelineJobFields,
 	stage: z.literal("summarize"),
 });
-export const finalizeJobSchema = basePipelineJobSchema.extend({
+const finalizeJobV2Schema = z.object({
+	...basePipelineJobFields,
 	stage: z.literal("finalize"),
 });
+export const graphJobSchema = z.preprocess(
+	normalizeLegacyPipelineJob,
+	graphJobV2Schema,
+);
+export const summarizeJobSchema = z.preprocess(
+	normalizeLegacyPipelineJob,
+	summarizeJobV2Schema,
+);
+export const finalizeJobSchema = z.preprocess(
+	normalizeLegacyPipelineJob,
+	finalizeJobV2Schema,
+);
 
 export type PipelineStage =
 	| "prepare"
@@ -66,13 +105,27 @@ export type PipelineStage =
 	| "summarize"
 	| "finalize";
 
-export const pipelineJobSchema = z.discriminatedUnion("stage", [
-	prepareJobSchema,
-	embedBatchJobSchema,
-	graphJobSchema,
-	summarizeJobSchema,
-	finalizeJobSchema,
-]);
+const embedBatchJobV2Schema = z.object({
+	...basePipelineJobFields,
+	stage: z.literal("embed"),
+	batchIndex: z.number().int().nonnegative(),
+	totalBatches: z.number().int().positive(),
+	chunkIndexes: z
+		.array(z.number().int().nonnegative())
+		.min(1)
+		.max(MAX_EMBED_CHUNKS_PER_JOB),
+});
+
+export const pipelineJobSchema = z.preprocess(
+	normalizeLegacyPipelineJob,
+	z.discriminatedUnion("stage", [
+		prepareJobV2Schema,
+		embedBatchJobV2Schema,
+		graphJobV2Schema,
+		summarizeJobV2Schema,
+		finalizeJobV2Schema,
+	]),
+);
 export type PipelineJob = z.infer<typeof pipelineJobSchema>;
 
 export const enqueueDocumentPipelineSchema = z.object({

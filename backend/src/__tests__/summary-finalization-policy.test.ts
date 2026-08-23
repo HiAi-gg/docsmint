@@ -27,6 +27,34 @@ const run = {
 };
 
 describe("summary retry and finalization policy", () => {
+	test("cancels summary work when the activated embedding context changed", async () => {
+		const effects: string[] = [];
+		const contextJob = { ...job, embeddingContextHash: "context-old" };
+		await Policy.processSummaryStage?.(contextJob, {
+			isCancelled: async () => false,
+			isCurrent: async () => true,
+			getRun: async () => ({
+				...run,
+				embeddingContextHash: "context-new",
+			}),
+			enabled: () => true,
+			summarize: async () => {
+				effects.push("summarize");
+				return "ready";
+			},
+			setSummaryStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+			enqueueFinalize: async () => {
+				effects.push("finalize");
+			},
+		});
+		expect(effects).toEqual(["cancelled:stale_context", "cancel-run"]);
+	});
+
 	test("derives ready and warning final states without loading queue dependencies", () => {
 		expect(typeof Policy.deriveFinalStatus).toBe("function");
 		expect(Policy.deriveFinalStatus?.(run)).toBe("ready");

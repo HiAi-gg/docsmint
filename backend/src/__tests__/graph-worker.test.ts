@@ -5,7 +5,8 @@ import {
 } from "../queue/workers/graph.worker";
 
 const job = {
-	schemaVersion: 1 as const,
+	schemaVersion: 2 as const,
+	refreshMode: "full" as const,
 	stage: "graph" as const,
 	documentId: "00000000-0000-4000-8000-000000000001",
 	ownerId: "00000000-0000-4000-8000-000000000002",
@@ -145,6 +146,34 @@ describe("graph worker isolation", () => {
 		});
 		await createGraphWorker(state)(job);
 		expect(state.statuses).toEqual(["cancelled"]);
+	});
+
+	it("cancels graph work when the activated embedding context changed", async () => {
+		const effects: string[] = [];
+		const contextJob = {
+			...job,
+			schemaVersion: 2 as const,
+			refreshMode: "incremental" as const,
+			embeddingContextHash: "context-old",
+		};
+		const state = deps({
+			getRun: async () => ({
+				...contextJob,
+				embedStatus: "ready" as const,
+				embeddingContextHash: "context-new",
+			}),
+			extract: async () => {
+				throw new Error("stale context must not extract");
+			},
+			setGraphStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+		});
+		await createGraphWorker(state)(contextJob);
+		expect(effects).toEqual(["cancelled:stale_context", "cancel-run"]);
 	});
 
 	it("advances to summarize when embeddings are intentionally skipped", async () => {

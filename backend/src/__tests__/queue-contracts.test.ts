@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-	createEmbedBatchJobSchema,
-	enqueueDocumentPipelineSchema,
-	JOB_IDS,
-	prepareJobSchema,
-} from "../queue/contracts";
+import * as contracts from "../queue/contracts";
 import {
 	configureDefaultJobOptions,
 	DEFAULT_JOB_OPTIONS,
@@ -14,6 +9,12 @@ import {
 const documentId = "11111111-1111-4111-8111-111111111111";
 const ownerId = "22222222-2222-4222-8222-222222222222";
 const generationId = "33333333-3333-4333-8333-333333333333";
+const {
+	createEmbedBatchJobSchema,
+	enqueueDocumentPipelineSchema,
+	JOB_IDS,
+	prepareJobSchema,
+} = contracts;
 
 describe("versioned queue contracts", () => {
 	test("applies validated runtime retry and retention settings", () => {
@@ -67,7 +68,7 @@ describe("versioned queue contracts", () => {
 		).toBe(false);
 		expect(
 			prepareJobSchema.safeParse({
-				schemaVersion: 2,
+				schemaVersion: 3,
 				stage: "prepare",
 				documentId,
 				ownerId,
@@ -77,6 +78,29 @@ describe("versioned queue contracts", () => {
 				source: "interactive",
 			}).success,
 		).toBe(false);
+	});
+
+	test("decodes legacy v1 prepare jobs as explicit full-refresh v2 jobs", () => {
+		const decodePrepareJob = Reflect.get(contracts, "decodePrepareJob") as
+			| ((value: unknown) => Record<string, unknown>)
+			| undefined;
+		expect(decodePrepareJob).toBeFunction();
+		if (!decodePrepareJob) return;
+		const decoded = decodePrepareJob({
+			schemaVersion: 1,
+			stage: "prepare",
+			documentId,
+			ownerId,
+			generationId,
+			revision: "rev-1",
+			requestedAt: new Date(0).toISOString(),
+			source: "interactive",
+		});
+
+		expect(decoded).toMatchObject({
+			schemaVersion: 2,
+			refreshMode: "full",
+		});
 	});
 
 	test("accepts an optional workspace context for durable jobs", () => {

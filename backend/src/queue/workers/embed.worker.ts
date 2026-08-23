@@ -13,16 +13,17 @@ import { DEFAULT_JOB_OPTIONS, QUEUE_NAMES, SOURCE_PRIORITY } from "../names";
 
 export interface EmbedWorkerDependencies {
 	isCancelled?(job: EmbedBatchJob): Promise<boolean>;
-	loadDocument(input: {
-		documentId: string;
-		ownerId: string;
-		generationId: string;
-		workspaceId?: string;
-	}): Promise<{
+	loadDocument(input: EmbedBatchJob): Promise<{
 		title: string;
 		content: string;
 		revision: string;
 		pendingGenerationId: string | null;
+		activeGenerationId?: string | null;
+		embeddingContextHash?: string;
+		metadataPreamble?: string;
+		candidateChunkIndexes?: number[];
+		batchStatus?: "processing" | "ready";
+		profile?: { model: string; profile: string; dimensions: number };
 	} | null>;
 	getEmbedding(text: string): Promise<EmbeddingResult>;
 	markStale(job: EmbedBatchJob, errorCode: string): Promise<void>;
@@ -56,6 +57,7 @@ export interface EmbedWorkerDependencies {
 		generationId: string;
 		totalChunks: number;
 		profile: { model: string; profile: string; dimensions: number };
+		embeddingContextHash?: string;
 	}): Promise<void>;
 	enqueueGraph(
 		data: PipelineJob,
@@ -77,63 +79,90 @@ export async function processEmbedJob(
 	if (
 		!document ||
 		document.revision !== job.revision ||
-		document.pendingGenerationId !== job.generationId
+		(document.pendingGenerationId !== job.generationId &&
+			!(
+				document.batchStatus === "ready" &&
+				document.activeGenerationId === job.generationId
+			))
 	) {
 		await deps.markStale(job, "stale_revision");
 		return { status: "stale", activated: false };
 	}
+	if (
+		job.embeddingContextHash !== undefined &&
+		document.embeddingContextHash !== job.embeddingContextHash
+	) {
+		await deps.markStale(job, "stale_context");
+		return { status: "stale", activated: false };
+	}
 	const chunks = chunkText(`${document.title}\n\n${document.content}`);
-	const selected = job.chunkIndexes.map((index) => ({
-		index,
-		chunk: chunks[index],
-	}));
+	const candidateChunkIndexes = new Set(document.candidateChunkIndexes ?? []);
+	const selected = job.chunkIndexes
+		.filter((index) => !candidateChunkIndexes.has(index))
+		.map((index) => ({
+			index,
+			chunk: chunks[index],
+		}));
 	if (selected.some(({ chunk }) => !chunk)) {
 		await deps.markStale(job, "stale_chunks");
 		return { status: "stale", activated: false };
 	}
-	const results = await Promise.all(
-		selected.map(async ({ index, chunk }) => {
-			if (!chunk) throw new Error("chunk_missing");
-			const result = await deps.getEmbedding(chunk.text);
-			if (!result.ok) throw new Error(`embedding_${result.code}`);
-			return { index, chunk, result };
-		}),
-	);
+	const results =
+		document.batchStatus === "ready"
+			? []
+			: await Promise.all(
+					selected.map(async ({ index, chunk }) => {
+						if (!chunk) throw new Error("chunk_missing");
+						const providerText = document.metadataPreamble
+							? `${document.metadataPreamble}\n\n${chunk.text}`
+							: chunk.text;
+						const result = await deps.getEmbedding(providerText);
+						if (!result.ok) throw new Error(`embedding_${result.code}`);
+						return { index, chunk, result };
+					}),
+				);
 	const first = results[0]?.result;
-	if (!first) throw new Error("empty_batch");
+	const profile = first
+		? {
+				model: first.model,
+				profile: first.profile,
+				dimensions: first.dimensions,
+			}
+		: document.profile;
+	if (!profile) throw new Error("empty_batch");
 	if (
 		results.some(
 			({ result }) =>
-				result.model !== first.model ||
-				result.profile !== first.profile ||
-				result.dimensions !== first.dimensions,
+				result.model !== profile.model ||
+				result.profile !== profile.profile ||
+				result.dimensions !== profile.dimensions,
 		)
 	)
 		throw new Error("mixed_embedding_profile");
 	if (await deps.isCancelled?.(job))
 		return { status: "cancelled", activated: false };
-	const stored = await deps.storeBatch({
-		job,
-		rows: results.map(({ index, chunk, result }) => ({
-			chunkIndex: index,
-			chunkText: chunk.text,
-			charStart: chunk.charStart,
-			charEnd: chunk.charEnd,
-			embedding: result.vector,
-			model: result.model,
-			profile: result.profile,
-			dimensions: result.dimensions,
-		})),
-	});
-	if (stored !== "stored") {
-		if (stored === "stale") await deps.markStale(job, "stale_batch");
-		return { status: stored, activated: false };
+	const stored =
+		document.batchStatus === "ready"
+			? ("duplicate" as const)
+			: results.length === 0
+				? ("stored" as const)
+				: await deps.storeBatch({
+						job,
+						rows: results.map(({ index, chunk, result }) => ({
+							chunkIndex: index,
+							chunkText: chunk.text,
+							charStart: chunk.charStart,
+							charEnd: chunk.charEnd,
+							embedding: result.vector,
+							model: result.model,
+							profile: result.profile,
+							dimensions: result.dimensions,
+						})),
+					});
+	if (stored === "stale") {
+		await deps.markStale(job, "stale_batch");
+		return { status: "stale", activated: false };
 	}
-	const profile = {
-		model: first.model,
-		profile: first.profile,
-		dimensions: first.dimensions,
-	};
 	if (await deps.isCancelled?.(job))
 		return { status: "cancelled", activated: false };
 	const completion = await deps.completeBatch({ job, profile });
@@ -163,6 +192,7 @@ export async function processEmbedJob(
 		generationId: job.generationId,
 		totalChunks: completion.totalChunks,
 		profile,
+		embeddingContextHash: job.embeddingContextHash,
 	});
 	if (await deps.isCancelled?.(job))
 		return { status: "cancelled", activated: false };
@@ -174,7 +204,7 @@ export async function processEmbedJob(
 			priority: SOURCE_PRIORITY[job.source],
 		},
 	);
-	return { status: "stored", activated: true };
+	return { status: stored, activated: true };
 }
 
 export function createEmbedWorker(

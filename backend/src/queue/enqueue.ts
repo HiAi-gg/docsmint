@@ -6,6 +6,7 @@ import {
 	enqueueDocumentPipelineSchema,
 	JOB_IDS,
 	PIPELINE_SCHEMA_VERSION,
+	type PipelineRefreshMode,
 	type PrepareJob,
 } from "./contracts";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
@@ -27,6 +28,7 @@ export interface PipelineRunStore {
 		generationId: string;
 		workspaceId?: string;
 		forceNewGeneration?: boolean;
+		refreshMode: PipelineRefreshMode;
 	}): Promise<{ run: ActiveRun; created: boolean }>;
 }
 
@@ -143,6 +145,7 @@ const postgresRunStore: PipelineRunStore = {
 						generationId: input.generationId,
 						revision: input.revision,
 						source: input.source,
+						refreshMode: input.refreshMode,
 						requestedAt: input.requestedAt,
 						workspaceId: input.workspaceId,
 					})
@@ -173,8 +176,10 @@ export async function enqueueDocumentPipeline(
 	const requestedAt = new Date(parsed.requestedAt ?? new Date().toISOString());
 	const proposedGenerationId = crypto.randomUUID();
 	const deps = dependencies ?? (await defaultDependencies());
+	const refreshMode = parsed.refreshMode ?? "incremental";
 	const { run, created } = await deps.runs.findOrCreate({
 		...parsed,
+		refreshMode,
 		requestedAt,
 		generationId: proposedGenerationId,
 		forceNewGeneration: parsed.forceNewGeneration,
@@ -190,7 +195,7 @@ export async function enqueueDocumentPipeline(
 			revision: parsed.revision,
 			requestedAt: requestedAt.toISOString(),
 			source: parsed.source,
-			refreshMode: parsed.refreshMode ?? "incremental",
+			refreshMode,
 		};
 		const queued = await deps.prepareQueue.add("prepare", job, {
 			...DEFAULT_JOB_OPTIONS,

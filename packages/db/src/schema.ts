@@ -226,6 +226,7 @@ export const documents = pgTable(
     activeEmbeddingGeneration: uuid("active_embedding_generation"),
     pendingEmbeddingGeneration: uuid("pending_embedding_generation"),
     embeddingProfile: text("embedding_profile"),
+    embeddingContextHash: text("embedding_context_hash"),
     embeddingErrorCode: text("embedding_error_code"),
     embeddingUpdatedAt: timestamp("embedding_updated_at"),
     /** Soft-delete marker. Trashed documents remain tenant-scoped until purge. */
@@ -281,6 +282,8 @@ export const documentPipelineRuns = pgTable(
     generationId: uuid("generation_id").notNull(),
     revision: text("revision").notNull(),
     source: text("source").notNull(),
+    embeddingContextHash: text("embedding_context_hash"),
+    refreshMode: text("refresh_mode").notNull().default("full"),
     status: pipelineStatusEnum("status").notNull().default("pending"),
     prepareStatus: pipelineStatusEnum("prepare_status").notNull().default("pending"),
     embedStatus: pipelineStatusEnum("embed_status").notNull().default("pending"),
@@ -309,6 +312,10 @@ export const documentPipelineRuns = pgTable(
       table.ownerId,
       table.status,
       table.updatedAt,
+    ),
+    check(
+      "document_pipeline_runs_refresh_mode_check",
+      sql`${table.refreshMode} in ('incremental', 'full')`,
     ),
   ],
 );

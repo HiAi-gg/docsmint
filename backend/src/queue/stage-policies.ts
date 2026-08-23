@@ -20,6 +20,7 @@ export interface PipelineJobIdentity {
 	documentId: string;
 	generationId: string;
 	revision: string;
+	embeddingContextHash?: string;
 }
 
 export interface PipelineRunState extends PipelineJobIdentity {
@@ -53,7 +54,12 @@ export interface SummaryStageDependencies<TJob extends PipelineJobIdentity> {
 		job: TJob,
 	): Promise<Pick<
 		PipelineRunState,
-		"ownerId" | "documentId" | "generationId" | "revision" | "embedStatus"
+		| "ownerId"
+		| "documentId"
+		| "generationId"
+		| "revision"
+		| "embedStatus"
+		| "embeddingContextHash"
 	> | null>;
 	enabled(): boolean;
 	summarize(job: TJob): Promise<"ready" | "skipped" | "cancelled">;
@@ -63,7 +69,10 @@ export interface SummaryStageDependencies<TJob extends PipelineJobIdentity> {
 		errorCode?: string,
 	): Promise<void>;
 	enqueueFinalize(job: TJob): Promise<void>;
-	cancelStaleRun?(job: TJob): Promise<void>;
+	cancelStaleRun?(
+		job: TJob,
+		errorCode?: "stale_revision" | "stale_context",
+	): Promise<void>;
 }
 
 /** Optional summary failures are terminal so BullMQ cannot race finalization. */
@@ -93,7 +102,19 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 			"cancelled",
 			"stale_revision",
 		);
-		await dependencies.cancelStaleRun?.(job);
+		await dependencies.cancelStaleRun?.(job, "stale_revision");
+		return;
+	}
+	if (
+		job.embeddingContextHash !== undefined &&
+		run.embeddingContextHash !== job.embeddingContextHash
+	) {
+		await dependencies.setSummaryStatus(
+			job.generationId,
+			"cancelled",
+			"stale_context",
+		);
+		await dependencies.cancelStaleRun?.(job, "stale_context");
 		return;
 	}
 	if (!dependencies.enabled()) {

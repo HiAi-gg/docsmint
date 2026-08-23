@@ -83,6 +83,7 @@ export async function activateEmbeddingGeneration(
 	generationId: string,
 	expectedChunks: number,
 	profile?: EmbeddingGenerationProfile | string,
+	embeddingContextHash?: string,
 ): Promise<void> {
 	await withTenant(WORKER_TENANT, async (tx) => {
 		const run = await tx
@@ -93,11 +94,28 @@ export async function activateEmbeddingGeneration(
 			.for("update");
 		if (run[0]?.status === "cancelled") throw new Error("pipeline_cancelled");
 		const documentRows = await tx
-			.select({ pending: documents.pendingEmbeddingGeneration })
+			.select({
+				active: documents.activeEmbeddingGeneration,
+				pending: documents.pendingEmbeddingGeneration,
+				embeddingContextHash: documents.embeddingContextHash,
+			})
 			.from(documents)
 			.where(eq(documents.id, documentId))
 			.limit(1);
-		if (documentRows[0]?.pending !== generationId) {
+		const documentState = documentRows[0];
+		if (
+			documentState?.active === generationId &&
+			documentState.pending === null
+		) {
+			if (
+				embeddingContextHash !== undefined &&
+				documentState.embeddingContextHash !== embeddingContextHash
+			) {
+				throw new Error("generation_context_mismatch");
+			}
+			return;
+		}
+		if (documentState?.pending !== generationId) {
 			throw new Error("generation_not_pending");
 		}
 
@@ -146,6 +164,7 @@ export async function activateEmbeddingGeneration(
 				activeEmbeddingGeneration: generationId,
 				pendingEmbeddingGeneration: null,
 				embeddingProfile: expectedProfile,
+				...(embeddingContextHash !== undefined ? { embeddingContextHash } : {}),
 				embeddingStatus: "ready",
 				embeddingErrorCode: null,
 				embeddingUpdatedAt: new Date(),

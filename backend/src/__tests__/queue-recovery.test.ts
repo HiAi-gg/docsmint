@@ -4,6 +4,7 @@ import {
 	classifyPipelineError,
 	type RecoverablePipelineJob,
 	recoverStalledPipeline,
+	selectRecoveryStage,
 } from "../queue/recovery";
 
 // @ts-expect-error Bun supports query-suffixed TypeScript module imports.
@@ -15,7 +16,8 @@ const candidate: RecoverablePipelineJob = {
 	attempts: 1,
 	observedUpdatedAt: new Date(900_000),
 	job: {
-		schemaVersion: 1,
+		schemaVersion: 2,
+		refreshMode: "full",
 		stage: "graph",
 		documentId: "11111111-1111-4111-8111-111111111111",
 		ownerId: "22222222-2222-4222-8222-222222222222",
@@ -32,7 +34,8 @@ const pendingPrepareCandidate: RecoverablePipelineJob = {
 	attempts: 0,
 	observedUpdatedAt: new Date(700_000),
 	job: {
-		schemaVersion: 1,
+		schemaVersion: 2,
+		refreshMode: "full",
 		stage: "prepare",
 		documentId: "44444444-4444-4444-8444-444444444444",
 		ownerId: "55555555-5555-4555-8555-555555555555",
@@ -44,6 +47,26 @@ const pendingPrepareCandidate: RecoverablePipelineJob = {
 };
 
 describe("pipeline recovery", () => {
+	test("recovers a ready generation that was not activated", () => {
+		expect(
+			selectRecoveryStage(
+				{
+					status: "processing",
+					prepareStatus: "ready",
+					embedStatus: "ready",
+					graphStatus: "pending",
+					summarizeStatus: "pending",
+					finalizeStatus: "pending",
+					generationId: candidate.job.generationId,
+				},
+				{
+					activeGenerationId: null,
+					pendingGenerationId: candidate.job.generationId,
+				},
+			),
+		).toBe("embed");
+	});
+
 	test("classifies transient provider and infrastructure failures", () => {
 		expect(classifyPipelineError({ status: 429, code: "rate_limit" })).toEqual({
 			code: "rate_limit",

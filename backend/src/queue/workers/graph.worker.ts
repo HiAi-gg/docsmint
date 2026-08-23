@@ -15,6 +15,7 @@ export interface GraphPipelineState {
 	documentId: string;
 	generationId: string;
 	revision: string;
+	embeddingContextHash?: string;
 	embedStatus: PipelineStageStatus;
 }
 
@@ -27,7 +28,10 @@ export interface GraphWorkerDependencies {
 	compensateExtract?(
 		job: ReturnType<typeof graphJobSchema.parse>,
 	): Promise<void>;
-	cancelStaleRun(job: ReturnType<typeof graphJobSchema.parse>): Promise<void>;
+	cancelStaleRun(
+		job: ReturnType<typeof graphJobSchema.parse>,
+		errorCode?: "stale_revision" | "stale_context",
+	): Promise<void>;
 	setGraphStatus(
 		generationId: string,
 		status: PipelineStageStatus,
@@ -58,7 +62,15 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 				"cancelled",
 				"stale_revision",
 			);
-			await deps.cancelStaleRun(job);
+			await deps.cancelStaleRun(job, "stale_revision");
+			return;
+		}
+		if (
+			job.embeddingContextHash !== undefined &&
+			run.embeddingContextHash !== job.embeddingContextHash
+		) {
+			await deps.setGraphStatus(job.generationId, "cancelled", "stale_context");
+			await deps.cancelStaleRun(job, "stale_context");
 			return;
 		}
 		if (run.embedStatus !== "ready") {

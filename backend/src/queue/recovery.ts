@@ -1,5 +1,5 @@
 import type { PipelineJob, PipelineStage } from "./contracts";
-import { JOB_IDS } from "./contracts";
+import { JOB_IDS, PIPELINE_SCHEMA_VERSION } from "./contracts";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
 import { getPipelineQueue } from "./queues";
 
@@ -131,8 +131,21 @@ const admin = adminTenantContext(ZERO_UUID);
 const stalled = ["pending", "processing", "retrying"] as const;
 const active = ["processing", "retrying"] as const;
 
-function stalledStage(
-	run: typeof documentPipelineRuns.$inferSelect,
+export function selectRecoveryStage(
+	run: Pick<
+		typeof documentPipelineRuns.$inferSelect,
+		| "status"
+		| "prepareStatus"
+		| "embedStatus"
+		| "graphStatus"
+		| "summarizeStatus"
+		| "finalizeStatus"
+		| "generationId"
+	>,
+	document?: {
+		activeGenerationId: string | null;
+		pendingGenerationId: string | null;
+	},
 ): PipelineStage | null {
 	// The run is committed before Queue.add. Redis loss at that boundary leaves
 	// a pending run without a job. Only prepare is eligible here: pending
@@ -142,6 +155,12 @@ function stalledStage(
 	if (active.includes(run.prepareStatus as (typeof active)[number]))
 		return "prepare";
 	if (active.includes(run.embedStatus as (typeof active)[number]))
+		return "embed";
+	if (
+		run.embedStatus === "ready" &&
+		document?.pendingGenerationId === run.generationId &&
+		document.activeGenerationId !== run.generationId
+	)
 		return "embed";
 	if (active.includes(run.graphStatus as (typeof active)[number]))
 		return "graph";
@@ -167,10 +186,18 @@ export const postgresRecoveryStore: RecoveryStore = {
 				.limit(limit);
 			const output: RecoverablePipelineJob[] = [];
 			for (const run of runs) {
-				const stage = stalledStage(run);
+				const [document] = await tx
+					.select({
+						activeGenerationId: documents.activeEmbeddingGeneration,
+						pendingGenerationId: documents.pendingEmbeddingGeneration,
+					})
+					.from(documents)
+					.where(eq(documents.id, run.documentId))
+					.limit(1);
+				const stage = selectRecoveryStage(run, document);
 				if (!stage) continue;
 				const base = {
-					schemaVersion: 1 as const,
+					schemaVersion: PIPELINE_SCHEMA_VERSION,
 					documentId: run.documentId,
 					ownerId: run.ownerId,
 					workspaceId: run.workspaceId ?? undefined,
@@ -178,17 +205,30 @@ export const postgresRecoveryStore: RecoveryStore = {
 					revision: run.revision,
 					requestedAt: run.requestedAt.toISOString(),
 					source: run.source as PipelineJob["source"],
+					refreshMode:
+						run.refreshMode === "incremental"
+							? ("incremental" as const)
+							: ("full" as const),
+					embeddingContextHash: run.embeddingContextHash ?? undefined,
 				};
 				if (stage === "embed") {
+					const activationRetry =
+						run.embedStatus === "ready" &&
+						document?.pendingGenerationId === run.generationId;
 					const batches = await tx
 						.select()
 						.from(documentPipelineBatches)
 						.where(
 							and(
 								eq(documentPipelineBatches.generationId, run.generationId),
-								inArray(documentPipelineBatches.status, [...active]),
+								inArray(
+									documentPipelineBatches.status,
+									activationRetry ? ["ready"] : [...active],
+								),
 							),
-						);
+						)
+						.orderBy(desc(documentPipelineBatches.batchIndex))
+						.limit(activationRetry ? 1 : 100);
 					for (const batch of batches)
 						output.push({
 							runId: run.id,
@@ -287,10 +327,11 @@ export function createBullMqRecoveryWriter(
 import {
 	documentPipelineBatches,
 	documentPipelineRuns,
+	documents,
 } from "@hiai-docs/db/schema";
 import {
 	adminTenantContext,
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
