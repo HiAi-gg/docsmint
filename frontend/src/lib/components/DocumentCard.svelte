@@ -37,6 +37,10 @@ import type { Document } from "$lib/types.js";
 import { copyToClipboard } from "$lib/utils/clipboard.js";
 import { stripMarkdown } from "$lib/utils/strip-markdown";
 import { cn, formatRelativeTime } from "$lib/utils.js";
+import {
+	handleCardNavigationKeydown,
+	stopCardMenuKeydown,
+} from "./card-keyboard";
 
 const {
 	document: doc,
@@ -111,7 +115,8 @@ const preview = $derived(
 <Card
   class="group cursor-pointer transition-shadow duration-200 hover:shadow-md"
   onclick={navigateToDoc}
-  onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateToDoc(); } }}
+	onkeydown={(event: KeyboardEvent) =>
+		handleCardNavigationKeydown(event, navigateToDoc)}
   role="button"
   tabindex={0}
 >
@@ -124,7 +129,7 @@ const preview = $derived(
       <DropdownMenuTrigger
         class="inline-flex size-8 items-center justify-center rounded-md opacity-100 transition-opacity hover:bg-accent sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
         onclick={(e: MouseEvent) => e.stopPropagation()}
-		onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
+		onkeydown={stopCardMenuKeydown}
       >
         <MoreVertical class="size-4" />
         <span class="sr-only">{m.doc_open_menu()}</span>

@@ -5,6 +5,11 @@ import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
 import { createShareLink } from "$lib/api/share";
+import {
+	buildShareLinkRequest,
+	type ShareDisplayMode,
+	shareAccessModesForDisplay,
+} from "$lib/components/share-configuration";
 import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
@@ -18,8 +23,6 @@ export type ShareCreatedResult = {
 	url: string;
 	accessMode: "public" | "restricted";
 };
-
-export type ShareDisplayMode = "host-managed" | "standalone";
 
 let {
 	open = $bindable(false),
@@ -57,6 +60,7 @@ let copied = $state(false);
 let creating = $state(false);
 let error = $state("");
 const request = getDocsmintRequestAdapter();
+const availableAccessModes = $derived(shareAccessModesForDisplay(displayMode));
 
 // Register an Escape shortcut scoped to "dialog" so the share dialog
 // closes when the user hits Escape. The shortcut only matters while
@@ -100,30 +104,24 @@ async function createLink() {
 	creating = true;
 	error = "";
 	try {
-		const result = await createShareLink(
-			{
-				documentId: documentId || undefined,
-				folderId: folderId || undefined,
-				categoryId: categoryId || undefined,
-				password: usePassword ? password : undefined,
-				expiresIn,
-				accessMode: displayMode === "standalone" ? "public" : accessMode,
-				allowPasswordFallback:
-					accessMode === "restricted" && usePassword
-						? allowPasswordFallback
-						: undefined,
-				guests:
-					displayMode !== "standalone" && accessMode === "restricted"
-						? guests
-						: undefined,
-			},
-			request.fetch,
-		);
+		const shareRequest = buildShareLinkRequest({
+			displayMode,
+			documentId,
+			folderId,
+			categoryId,
+			usePassword,
+			password,
+			expiresIn,
+			accessMode,
+			allowPasswordFallback,
+			guests,
+		});
+		const result = await createShareLink(shareRequest, request.fetch);
 		shareUrl = `${window.location.origin}/s/${result.token}`;
 		onCreated?.({
 			token: result.token,
 			url: shareUrl,
-			accessMode: displayMode === "standalone" ? "public" : accessMode,
+			accessMode: shareRequest.accessMode,
 		});
 	} catch (e) {
 		error = e instanceof Error ? e.message : m.error_generic();
@@ -171,11 +169,10 @@ function close() {
 
       {#if !shareUrl}
 	        <div class="space-y-4">
-	          <div class="grid {displayMode === 'standalone' ? 'grid-cols-1' : 'grid-cols-2'} gap-2 rounded-lg bg-muted p-1" aria-label="Share access mode">
-	            <button type="button" onclick={() => { accessMode = "public"; guests = []; allowPasswordFallback = false; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'public' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Public link</button>
-	            {#if displayMode !== "standalone"}
-	              <button type="button" onclick={() => { accessMode = "restricted"; }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === 'restricted' ? 'bg-background shadow-sm' : 'text-muted-foreground'}">Specific people</button>
-	            {/if}
+	          <div class="grid {availableAccessModes.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} gap-2 rounded-lg bg-muted p-1" aria-label="Share access mode">
+	            {#each availableAccessModes as mode}
+	              <button type="button" onclick={() => { accessMode = mode; if (mode === "public") { guests = []; allowPasswordFallback = false; } }} class="rounded-md px-3 py-2 text-sm font-medium {accessMode === mode ? 'bg-background shadow-sm' : 'text-muted-foreground'}">{mode === "public" ? "Public link" : "Specific people"}</button>
+	            {/each}
 	          </div>
 	          <p class="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
 	            {accessMode === "public"

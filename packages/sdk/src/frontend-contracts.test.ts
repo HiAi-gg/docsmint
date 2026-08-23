@@ -20,7 +20,6 @@ test("ShareDialog exposes the created restricted link to hosts", () => {
 	);
 	expect(source).toContain("onCreated?: (result: ShareCreatedResult) => void");
 	expect(source).toContain("onCreated?.({");
-	expect(source).toContain('accessMode: displayMode === "standalone" ? "public" : accessMode');
 	expect(source).toContain("data-share-created-url");
 	expect(source).toContain("data-share-copy-action");
 	expect(source).toContain("flex-col gap-2 sm:flex-row");

@@ -26,6 +26,10 @@ import {
 import * as m from "$lib/paraglide/messages.js";
 import type { Folder as FolderType } from "$lib/types.js";
 import { formatRelativeTime } from "$lib/utils.js";
+import {
+	handleCardNavigationKeydown,
+	stopCardMenuKeydown,
+} from "./card-keyboard";
 
 const {
 	folder,
@@ -56,7 +60,8 @@ async function handleMove(parentId: string | null, categoryId: string | null) {
 <Card
   class="group cursor-pointer transition-shadow duration-200 hover:shadow-md"
   onclick={navigateToFolder}
-  onkeydown={(e: KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateToFolder(); } }}
+	onkeydown={(event: KeyboardEvent) =>
+		handleCardNavigationKeydown(event, navigateToFolder)}
   role="button"
   tabindex={0}
 >
@@ -74,7 +79,7 @@ async function handleMove(parentId: string | null, categoryId: string | null) {
       <DropdownMenuTrigger
         class="inline-flex size-8 shrink-0 items-center justify-center rounded-md opacity-100 transition-opacity hover:bg-accent sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100"
         onclick={(e: MouseEvent) => e.stopPropagation()}
-		onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
+		onkeydown={stopCardMenuKeydown}
       >
         <MoreVertical class="size-4" />
         <span class="sr-only">{m.doc_open_menu()}</span>

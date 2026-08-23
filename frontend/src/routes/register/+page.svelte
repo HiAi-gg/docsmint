@@ -1,6 +1,7 @@
 <script lang="ts">
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
+import { submitRegistration } from "$lib/auth/register-submission";
 import { signUp } from "$lib/auth-client";
 import * as m from "$lib/paraglide/messages.js";
 
@@ -14,24 +15,21 @@ async function handleSubmit(e: SubmitEvent) {
 	e.preventDefault();
 	loading = true;
 	error = "";
-
-	try {
-		const result = await signUp.email({
-			name,
-			email,
-			password,
-			callbackURL: "/",
-		});
-		if (result.error) {
-			error = result.error.message ?? m.auth_signup_error();
-			return;
-		}
-		await goto("/");
-	} catch {
-		error = m.error_network();
-	} finally {
-		loading = false;
-	}
+	await submitRegistration(
+		{ name, email, password },
+		{
+			signUp: (input) => signUp.email({ ...input, callbackURL: "/" }),
+			navigate: goto,
+			onLoading: (value) => {
+				loading = value;
+			},
+			onError: (value) => {
+				error = value;
+			},
+			signupError: m.auth_signup_error(),
+			networkError: m.error_network(),
+		},
+	);
 }
 </script>
 
