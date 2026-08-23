@@ -83,26 +83,64 @@ export function sanitizeEmbeddingText(text: string): string {
 	return output.join("");
 }
 
-function splitOversizedParagraph(paragraph: string): string[] {
-	if (paragraph.length <= TARGET_CHARS) return [paragraph];
-	const parts: string[] = [];
+interface SourceUnit {
+	text: string;
+	charStart: number;
+	separatorBefore: string;
+}
+
+function splitOversizedParagraph(paragraph: SourceUnit): SourceUnit[] {
+	if (paragraph.text.length <= TARGET_CHARS) return [paragraph];
+	const parts: SourceUnit[] = [];
 	let start = 0;
 	let lastSentenceEnd = -1;
-	for (let cursor = 0; cursor < paragraph.length; cursor += 1) {
-		const char = paragraph.charCodeAt(cursor);
+	for (let cursor = 0; cursor < paragraph.text.length; cursor += 1) {
+		const char = paragraph.text.charCodeAt(cursor);
 		if (char === 33 || char === 46 || char === 63) {
 			lastSentenceEnd = cursor + 1;
 		}
 		if (cursor + 1 - start < TARGET_CHARS) continue;
 		const end = lastSentenceEnd > start ? lastSentenceEnd : cursor + 1;
-		const part = paragraph.slice(start, end).trim();
-		if (part) parts.push(part);
+		const text = paragraph.text.slice(start, end);
+		if (text.trim()) {
+			parts.push({
+				text,
+				charStart: paragraph.charStart + start,
+				separatorBefore: parts.length === 0 ? paragraph.separatorBefore : "",
+			});
+		}
 		start = end;
 		lastSentenceEnd = -1;
 	}
-	const remainder = paragraph.slice(start).trim();
-	if (remainder) parts.push(remainder);
+	const text = paragraph.text.slice(start);
+	if (text.trim()) {
+		parts.push({
+			text,
+			charStart: paragraph.charStart + start,
+			separatorBefore: parts.length === 0 ? paragraph.separatorBefore : "",
+		});
+	}
 	return parts;
+}
+
+function sourceUnits(text: string): SourceUnit[] {
+	const units: SourceUnit[] = [];
+	const separator = /\n\s*\n/g;
+	let cursor = 0;
+	let separatorBefore = "";
+	for (const match of text.matchAll(separator)) {
+		const textBefore = text.slice(cursor, match.index);
+		if (textBefore.trim()) {
+			units.push({ text: textBefore, charStart: cursor, separatorBefore });
+		}
+		separatorBefore = match[0];
+		cursor = (match.index ?? 0) + match[0].length;
+	}
+	const remainder = text.slice(cursor);
+	if (remainder.trim()) {
+		units.push({ text: remainder, charStart: cursor, separatorBefore });
+	}
+	return units;
 }
 
 /**
@@ -130,77 +168,77 @@ export function chunkText(text: string): ChunkResult[] {
 	}
 	const semanticText = sanitizeEmbeddingText(text);
 
-	// Split into paragraphs (preserve double-newline boundaries)
-	const paragraphs = semanticText
-		.split(/\n\s*\n/)
-		.filter((p) => p.trim().length > 0);
-
+	const paragraphs = sourceUnits(semanticText);
 	if (paragraphs.length === 0) {
 		return [];
 	}
 
 	// Split oversized paragraphs with a bounded linear scanner. Every emitted
 	// unit is capped even when the input contains no sentence punctuation.
-	const normalizedParagraphs: string[] = [];
+	const normalizedParagraphs: SourceUnit[] = [];
 	for (const para of paragraphs) {
 		normalizedParagraphs.push(...splitOversizedParagraph(para));
 	}
 
-	const strings: string[] = [];
-	const startPositions: number[] = [];
+	const chunks: Array<{ text: string; charStart: number; charEnd: number }> =
+		[];
 	let currentChunk = "";
-	let currentChunkStartPos = 0;
-	let currentPos = 0;
+	let currentChunkStart = 0;
+	let currentChunkEnd = 0;
 
 	for (const paragraph of normalizedParagraphs) {
-		const prefix = currentChunk ? "\n\n" : "";
+		const prefix = currentChunk ? paragraph.separatorBefore : "";
 		const candidate = currentChunk
-			? `${currentChunk}${prefix}${paragraph}`
-			: paragraph;
+			? `${currentChunk}${prefix}${paragraph.text}`
+			: paragraph.text;
 
-		if (candidate.length <= TARGET_CHARS) {
+		if (
+			candidate.length <= TARGET_CHARS &&
+			(!currentChunk || currentChunkEnd + prefix.length === paragraph.charStart)
+		) {
 			if (currentChunk.length === 0) {
-				currentChunkStartPos = currentPos;
+				currentChunkStart = paragraph.charStart;
 			}
 			currentChunk = candidate;
-			currentPos += prefix.length + paragraph.length;
+			currentChunkEnd = paragraph.charStart + paragraph.text.length;
 		} else {
 			// Flush current chunk if non-empty
 			if (currentChunk.length > 0) {
-				const trimmed = currentChunk.trim();
-				strings.push(trimmed);
-				startPositions.push(currentChunkStartPos);
+				chunks.push({
+					text: currentChunk,
+					charStart: currentChunkStart,
+					charEnd: currentChunkEnd,
+				});
 			}
 			// Start new chunk with overlap from end of previous chunk
 			if (OVERLAP_CHARS > 0 && currentChunk.length > 0) {
-				const overlap = currentChunk.slice(-OVERLAP_CHARS);
-				currentChunk = `${overlap}\n\n${paragraph}`;
-				// Overlap chars are recycled; the new content starts at currentPos
-				currentChunkStartPos = currentPos - OVERLAP_CHARS;
-				currentPos += OVERLAP_CHARS + prefix.length + paragraph.length;
+				currentChunkStart = Math.max(
+					currentChunkEnd - OVERLAP_CHARS,
+					currentChunkStart,
+				);
+				currentChunk = semanticText.slice(currentChunkStart, currentChunkEnd);
+				currentChunk = `${currentChunk}${prefix}${paragraph.text}`;
 			} else {
-				currentChunk = paragraph;
-				currentChunkStartPos = currentPos;
-				currentPos += paragraph.length;
+				currentChunk = paragraph.text;
+				currentChunkStart = paragraph.charStart;
 			}
+			currentChunkEnd = paragraph.charStart + paragraph.text.length;
 		}
 	}
 
 	// Flush remaining chunk
 	if (currentChunk.trim().length > 0) {
-		strings.push(currentChunk.trim());
-		startPositions.push(currentChunkStartPos);
+		chunks.push({
+			text: currentChunk,
+			charStart: currentChunkStart,
+			charEnd: currentChunkEnd,
+		});
 	}
 
-	return strings.flatMap((text, i) => {
-		const pos = startPositions[i] ?? 0;
-		const charStart = Math.max(0, Math.min(pos, semanticText.length));
-		const charEnd = Math.min(semanticText.length, charStart + text.length);
-		const sourceText = semanticText.slice(charStart, charEnd);
-		if (sourceText.trim().length === 0) return [];
+	return chunks.map(({ text, charStart, charEnd }) => {
 		return {
-			text: sourceText,
-			hash: chunkHash(sourceText),
+			text,
+			hash: chunkHash(text),
 			charStart,
 			charEnd,
 		};

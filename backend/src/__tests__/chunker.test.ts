@@ -62,6 +62,19 @@ describe("chunkText", () => {
 		}
 	});
 
+	it("keeps source overlap when a third paragraph forces a second split", () => {
+		const source = [
+			"A".repeat(1_000),
+			"B".repeat(1_000),
+			"C".repeat(1_000),
+		].join("\n\n");
+
+		const third = chunkText(source)[2];
+
+		expect(third).toMatchObject({ charStart: 1_802, charEnd: 3_004 });
+		expect(third?.text).toBe(`${"B".repeat(200)}\n\n${"C".repeat(1_000)}`);
+	});
+
 	it("handles single very long paragraph by splitting sentences", () => {
 		// Single paragraph > TARGET_CHARS * 1.5, with sentence endings
 		const longPara = "This is a sentence. ".repeat(200); // ~4000 chars
