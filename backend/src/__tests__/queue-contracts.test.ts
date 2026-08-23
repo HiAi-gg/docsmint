@@ -103,6 +103,21 @@ describe("versioned queue contracts", () => {
 		});
 	});
 
+	test("does not treat a refresh-less v2 prepare job as legacy", () => {
+		expect(
+			prepareJobSchema.safeParse({
+				schemaVersion: 2,
+				stage: "prepare",
+				documentId,
+				ownerId,
+				generationId,
+				revision: "rev-1",
+				requestedAt: new Date(0).toISOString(),
+				source: "interactive",
+			}).success,
+		).toBe(false);
+	});
+
 	test("accepts an optional workspace context for durable jobs", () => {
 		const parsed = enqueueDocumentPipelineSchema.safeParse({
 			documentId,

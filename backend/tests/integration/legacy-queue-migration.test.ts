@@ -1,16 +1,19 @@
 import { describe, expect, it } from "bun:test";
-import { JOB_IDS, PIPELINE_SCHEMA_VERSION, prepareJobSchema } from "../../src/queue/contracts";
+import { JOB_IDS, prepareJobSchema } from "../../src/queue/contracts";
 
 const OWNER_ID = "00000000-0000-4000-8000-000000000001";
 const DOCUMENT_ID = "00000000-0000-4000-8000-000000000002";
 const GENERATION_ID = "00000000-0000-4000-8000-000000000003";
 
 function migrateLegacyJob(raw: string) {
-	const parsed = JSON.parse(raw) as { documentId?: string; id?: string } | string;
-	const documentId = typeof parsed === "string" ? parsed : parsed.documentId ?? parsed.id;
+	const parsed = JSON.parse(raw) as
+		| { documentId?: string; id?: string }
+		| string;
+	const documentId =
+		typeof parsed === "string" ? parsed : (parsed.documentId ?? parsed.id);
 	if (!documentId) throw new Error("legacy job has no document id");
 	return prepareJobSchema.parse({
-		schemaVersion: PIPELINE_SCHEMA_VERSION,
+		schemaVersion: 1,
 		stage: "prepare",
 		documentId,
 		ownerId: OWNER_ID,
@@ -23,9 +26,18 @@ function migrateLegacyJob(raw: string) {
 
 describe("legacy embedding queue migration", () => {
 	it("converts string and retry-envelope jobs to one prepare contract", () => {
-		const jobs = [migrateLegacyJob(JSON.stringify(DOCUMENT_ID)), migrateLegacyJob(JSON.stringify({ id: DOCUMENT_ID }))];
+		const jobs = [
+			migrateLegacyJob(JSON.stringify(DOCUMENT_ID)),
+			migrateLegacyJob(JSON.stringify({ id: DOCUMENT_ID })),
+		];
 		expect(jobs.every((job) => job.stage === "prepare")).toBe(true);
-		expect(new Set(jobs.map((job) => JOB_IDS.prepare(job.documentId, job.generationId))).size).toBe(1);
+		expect(jobs.every((job) => job.schemaVersion === 2)).toBe(true);
+		expect(jobs.every((job) => job.refreshMode === "full")).toBe(true);
+		expect(
+			new Set(
+				jobs.map((job) => JOB_IDS.prepare(job.documentId, job.generationId)),
+			).size,
+		).toBe(1);
 	});
 
 	it("uses deterministic prepare IDs for restart-safe deduplication", () => {
