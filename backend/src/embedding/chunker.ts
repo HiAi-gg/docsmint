@@ -192,13 +192,17 @@ export function chunkText(text: string): ChunkResult[] {
 		startPositions.push(currentChunkStartPos);
 	}
 
-	return strings.map((text, i) => {
+	return strings.flatMap((text, i) => {
 		const pos = startPositions[i] ?? 0;
+		const charStart = Math.max(0, Math.min(pos, semanticText.length));
+		const charEnd = Math.min(semanticText.length, charStart + text.length);
+		const sourceText = semanticText.slice(charStart, charEnd);
+		if (sourceText.trim().length === 0) return [];
 		return {
-			text,
-			hash: chunkHash(text),
-			charStart: pos,
-			charEnd: pos + text.length,
+			text: sourceText,
+			hash: chunkHash(sourceText),
+			charStart,
+			charEnd,
 		};
 	});
 }

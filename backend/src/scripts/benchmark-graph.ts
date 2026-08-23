@@ -10,15 +10,12 @@
  * with an admin-only RAG-only benchmark profile to measure:
  *   - recall@k improvement (graph vs no-graph)
  *   - p50/p95 latency of graph expansion
- *   - sensitivity to GRAPH_EXPANSION_BOOST (optional)
  *
  * Flags:
  *   --base-url <url>     API base URL (default http://localhost:50700)
  *   --api-key <key>      Admin API key (default test-key)
  *   --runs <n>           Iterations per query for latency averaging (default 3)
  *   --k <n>              Recall@k cutoff (default 10)
- *   --boost-range <vals> Comma-separated boost values for sensitivity test
- *                        e.g. 0.1,0.3,0.5,1.0
  *   --json               Emit JSON summary on stdout
  *   --help               Print this usage text
  */
@@ -167,7 +164,6 @@ interface CliArgs {
 	apiKey: string;
 	runs: number;
 	k: number;
-	boostRange: number[] | null;
 	json: boolean;
 	help: boolean;
 }
@@ -186,7 +182,6 @@ function parseArgs(): CliArgs {
 		apiKey: resolveGraphBenchmarkApiKey() ?? "",
 		runs: 3,
 		k: 10,
-		boostRange: null,
 		json: false,
 		help: false,
 	};
@@ -219,11 +214,6 @@ function parseArgs(): CliArgs {
 				if (val !== undefined) args.k = Number.parseInt(val, 10);
 				break;
 			}
-			case "--boost-range": {
-				const val = process.argv[++i];
-				if (val !== undefined) args.boostRange = val.split(",").map(Number);
-				break;
-			}
 			default:
 				if (arg?.startsWith("--")) {
 					console.error(`Unknown flag: ${arg}`);
@@ -244,8 +234,6 @@ Options:
   --api-key <key>      Admin API key (default: test-key)
   --runs <n>           Iterations per query for latency averaging (default: 3)
   --k <n>              Recall@k cutoff (default: 10)
-  --boost-range <vals> Comma-separated boost values for sensitivity test
-                       e.g. 0.1,0.3,0.5,1.0
   --json               Emit JSON summary on stdout
   --help               Print this usage text
 
@@ -550,13 +538,6 @@ interface FullBenchmarkResult {
 	queryCount: number;
 	runs: QueryResult[];
 	aggregate: BenchmarkRunResult["aggregate"];
-	sensitivity?: Array<{
-		boost: number;
-		avgRecallWithGraph: number;
-		avgDelta: number;
-		p50LatencyGraph: number;
-		p95LatencyGraph: number;
-	}>;
 }
 
 async function main(): Promise<void> {
@@ -658,124 +639,6 @@ async function main(): Promise<void> {
 	printAggregate(graphResult.aggregate, "With graph");
 	console.log();
 
-	// ── Sensitivity testing ─────────────────────────────────────────
-	const sensitivityResults: Array<{
-		boost: number;
-		avgRecallWithGraph: number;
-		avgDelta: number;
-		p50LatencyGraph: number;
-		p95LatencyGraph: number;
-	}> = [];
-
-	if (args.boostRange && args.boostRange.length > 0) {
-		console.log(
-			`${ANSI.bold}--- Sensitivity: recall@k vs GRAPH_EXPANSION_BOOST ---${ANSI.reset}\n`,
-		);
-		// Set boost via env override (the search endpoint reads graphBoost from query param,
-		// which we pass via runSearch -> ?graphBoost=N is handled by the search query schema)
-		// We need to modify runSearch to support boost param. Let's do it inline.
-		for (const boost of args.boostRange) {
-			console.log(`${ANSI.bold}Boost = ${boost}${ANSI.reset}`);
-
-			// Run with custom boost via ?graphBoost query param
-			const queryResults: QueryResult[] = [];
-			for (const spec of QUERIES) {
-				const noGraphLatencies: number[] = [];
-				const noGraphRecallValues: number[] = [];
-				for (let r = 0; r < args.runs; r++) {
-					const result = await runSearch(
-						args.baseUrl,
-						args.apiKey,
-						spec.text,
-						false,
-						args.k,
-					);
-					noGraphLatencies.push(result.latencyMs);
-					noGraphRecallValues.push(
-						computeRecallAtK(result.ids, spec.relevantDocIds, args.k),
-					);
-				}
-				const recallNoGraph =
-					noGraphRecallValues.reduce((a, b) => a + b, 0) /
-					noGraphRecallValues.length;
-
-				const graphLatencies: number[] = [];
-				const graphRecallValues: number[] = [];
-				for (let r = 0; r < args.runs; r++) {
-					const params = new URLSearchParams({
-						q: spec.text,
-						limit: String(args.k),
-						graph: "true",
-						graphBoost: String(boost),
-					});
-					const url = `${args.baseUrl}/api/search?${params}`;
-					const start = performance.now();
-					const resp = await fetch(url, {
-						headers: graphBenchmarkHeaders(args.apiKey, "graphrag"),
-					});
-					const elapsed = performance.now() - start;
-					const data = resp.ok
-						? ((await resp.json()) as SearchResponse)
-						: { items: [] };
-					graphLatencies.push(elapsed);
-					graphRecallValues.push(
-						computeRecallAtK(
-							(data.items ?? []).map((item) => item.id),
-							spec.relevantDocIds,
-							args.k,
-						),
-					);
-				}
-				const recallWithGraph =
-					graphRecallValues.reduce((a, b) => a + b, 0) /
-					graphRecallValues.length;
-
-				queryResults.push({
-					query: spec.text,
-					recallNoGraph,
-					recallWithGraph,
-					delta: recallWithGraph - recallNoGraph,
-					p50LatencyNoGraph: percentile(noGraphLatencies, 50),
-					p50LatencyGraph: percentile(graphLatencies, 50),
-					p95LatencyGraph: percentile(graphLatencies, 95),
-				});
-			}
-
-			const avgRecall =
-				queryResults.reduce((s, q) => s + q.recallWithGraph, 0) /
-				queryResults.length;
-			const avgDelta =
-				queryResults.reduce((s, q) => s + q.delta, 0) / queryResults.length;
-			const allLatencies = queryResults.map((q) => q.p50LatencyGraph);
-			const allP95 = queryResults.map((q) => q.p95LatencyGraph);
-
-			sensitivityResults.push({
-				boost,
-				avgRecallWithGraph: avgRecall,
-				avgDelta,
-				p50LatencyGraph: percentile(allLatencies, 50),
-				p95LatencyGraph: percentile(allP95, 95),
-			});
-		}
-
-		// Print sensitivity table
-		console.log(
-			`\n${ANSI.bold}Sensitivity Summary: recall@k vs GRAPH_EXPANSION_BOOST${ANSI.reset}`,
-		);
-		console.log(
-			`${"Boost".padEnd(10)} | ${"Avg recall (graph)".padEnd(18)} | ${"Δ vs baseline".padEnd(12)} | ${"p50 lat".padEnd(10)} | ${"p95 lat".padEnd(10)}`,
-		);
-		console.log("-".repeat(70));
-		for (const sr of sensitivityResults) {
-			const baselineRecall = graphResult.aggregate.avgRecallNoGraph;
-			const deltaVsBaseline = sr.avgRecallWithGraph - baselineRecall;
-			console.log(
-				`${String(sr.boost).padEnd(10)} | ${sr.avgRecallWithGraph.toFixed(4).padEnd(18)} | ${colorDelta(deltaVsBaseline).padStart(12)} | ${sr.p50LatencyGraph.toFixed(1).padEnd(10)} | ${sr.p95LatencyGraph.toFixed(1).padEnd(10)}`,
-			);
-		}
-		console.log();
-	}
-
 	// ── JSON output ─────────────────────────────────────────────────
 	if (args.json) {
 		const output: FullBenchmarkResult = {
@@ -786,9 +649,6 @@ async function main(): Promise<void> {
 			runs: graphResult.queries,
 			aggregate: graphResult.aggregate,
 		};
-		if (sensitivityResults.length > 0) {
-			output.sensitivity = sensitivityResults;
-		}
 		console.log(JSON.stringify(output, null, 2));
 	}
 

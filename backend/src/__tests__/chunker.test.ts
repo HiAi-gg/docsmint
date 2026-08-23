@@ -48,6 +48,20 @@ describe("chunkText", () => {
 		}
 	});
 
+	it("returns offsets that select each exact overlapping source substring", () => {
+		const source = [
+			"A".repeat(1_000),
+			"B".repeat(1_000),
+			"C".repeat(1_000),
+		].join("\n\n");
+		const chunks = chunkText(source);
+
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(source.slice(chunk.charStart, chunk.charEnd)).toBe(chunk.text);
+		}
+	});
+
 	it("handles single very long paragraph by splitting sentences", () => {
 		// Single paragraph > TARGET_CHARS * 1.5, with sentence endings
 		const longPara = "This is a sentence. ".repeat(200); // ~4000 chars

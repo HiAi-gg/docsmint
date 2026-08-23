@@ -19,7 +19,10 @@ import {
 import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { getEmbedding } from "../../embedding";
-import { embeddingProfileId } from "../../embedding/validation";
+import {
+	embeddingHealthStatColumns,
+	embeddingProfileId,
+} from "../../embedding/validation";
 import { config } from "../../lib/config";
 import { getGraphDb } from "../../lib/graph/init";
 import { logger } from "../../lib/logger";
@@ -129,10 +132,13 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 			const currentProfile = config.EMBEDDING_MODEL
 				? embeddingProfileId(config.EMBEDDING_MODEL, 1024, "v1")
 				: null;
+			const embeddingStats = embeddingHealthStatColumns(
+				documentEmbeddings.embedding,
+			);
 			const [
 				docsWithEmbeddingsRow,
 				totalChunksRow,
-				emptyChunksRow,
+				embeddingStatsRow,
 				statusRows,
 				activeInvalidRows,
 				inactiveGenerationRows,
@@ -146,11 +152,7 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 						})
 						.from(documentEmbeddings),
 					tx.select({ value: count() }).from(documentEmbeddings),
-					tx
-						.select({
-							value: sql<number>`SUM(CASE WHEN ${documentEmbeddings.embedding} IS NULL THEN 1 ELSE 0 END)::int`,
-						})
-						.from(documentEmbeddings),
+					tx.select(embeddingStats).from(documentEmbeddings),
 					tx
 						.select({
 							status: documents.embeddingStatus,
@@ -202,7 +204,10 @@ export const adminRoutes = new Elysia({ prefix: "/api/admin" })
 				stats: {
 					docsWithEmbeddings: docsWithEmbeddingsRow[0]?.value ?? 0,
 					totalChunks: totalChunksRow[0]?.value ?? 0,
-					emptyChunks: emptyChunksRow[0]?.value ?? 0,
+					nullChunks: embeddingStatsRow[0]?.nullChunks ?? 0,
+					zeroChunks: embeddingStatsRow[0]?.zeroChunks ?? 0,
+					nearZeroChunks: embeddingStatsRow[0]?.nearZeroChunks ?? 0,
+					emptyChunks: embeddingStatsRow[0]?.emptyChunks ?? 0,
 					statusCounts: {
 						pending: statusCounts.pending ?? 0,
 						processing: statusCounts.processing ?? 0,

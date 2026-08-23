@@ -347,6 +347,12 @@ describe("Search API key contract", () => {
 });
 
 describe("GET /api/search — automatic GraphRAG contract", () => {
+	it("rejects ranking windows beyond 1000 with the existing validation shape", async () => {
+		const res = await authedGet("/api/search?q=hello&page=11&limit=100");
+		expect(res.status).toBe(400);
+		expect(res.body).toMatchObject({ error: "Invalid query" });
+	});
+
 	it("keeps legacy graph parameters non-authoritative and marks them deprecated", async () => {
 		const res = await authedGet(
 			"/api/search?q=hello&graph=true&graphHops=3&graphBoost=1",

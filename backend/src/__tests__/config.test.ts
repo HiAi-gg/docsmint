@@ -198,6 +198,14 @@ describe("config schema", () => {
 		}
 	});
 
+	test("ignores the removed graph expansion boost environment input", () => {
+		const result = realEnvSchema.safeParse({ GRAPH_EXPANSION_BOOST: "1.75" });
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect("GRAPH_EXPANSION_BOOST" in result.data).toBe(false);
+		}
+	});
+
 	test("loads bounded BullMQ and provider limiter defaults", () => {
 		const result = realEnvSchema.safeParse({});
 		expect(result.success).toBe(true);

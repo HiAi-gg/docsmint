@@ -691,7 +691,6 @@ mock.module("../../src/lib/config.js", () => ({
     GRAPH_EXTRACT_FALLBACK_API_KEY: undefined,
     GRAPH_EXTRACT_FALLBACK_MODEL: undefined,
     GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5,
-    GRAPH_EXPANSION_BOOST: 0.3,
     ADMIN_CROSS_TENANT: true,
     HYBRID_TEXT_WEIGHT: 0.4,
     HYBRID_SEMANTIC_WEIGHT: 0.6,

@@ -835,12 +835,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **`GET /api/admin/graph/stats`** — Apache AGE inventory (node and edge counts). Returns `{ available: false, reason: "..." }` when GraphRAG is disabled or unreachable.
 - **`POST /api/admin/reindex/folder/:folderId?dryRun=true`** — bulk re-embed every document in a folder (operator-scoped, bypasses per-user filter).
 - **`POST /api/admin/reindex/tag/:tagId?dryRun=true`** — bulk re-embed every document carrying a tag.
-- **Search query parameters**: `graph` (boolean, default `false`), `graphHops` (1-3, default `2`), `graphBoost` (0-2, default = `GRAPH_EXPANSION_BOOST`). `graph=true` is a no-op when `GRAPH_SEARCH_ENABLED=false`.
+- **Search query parameters**: `graph` (boolean, default `false`), `graphHops` (1-3, default `2`), and deprecated ignored `graphBoost` (0-2). `graph=true` is a no-op when `GRAPH_SEARCH_ENABLED=false`.
 - **New environment variables**:
   - `FOLDER_REEMBED_BATCH_SIZE` (default `100`)
   - `CATEGORY_REEMBED_BATCH_SIZE` (default `100`)
   - `TAG_REEMBED_BATCH_SIZE` (default `500`)
-  - `GRAPH_EXPANSION_BOOST` (default `0.3`)
   - `GRAPH_EXTRACT_ENABLED` (default `false`)
   - `GRAPH_SEARCH_ENABLED` (default `false`)
   - `GRAPH_EXTRACT_MODEL`, `GRAPH_EXTRACT_BASE_URL`, `GRAPH_EXTRACT_API_KEY`
@@ -860,7 +859,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - **Re-embed on metadata changes is now system-wide.** Tag rename, tag delete, category rename, category delete, folder delete — all trigger a re-embed of every affected document through the shared helper. Previously several of these paths silently left stale embeddings that referenced old metadata names in their preamble.
 - The embedding worker now writes `embeddingModel: config.EMBEDDING_MODEL ?? ""` on every new chunk row, so subsequent targeted reindex has a precise signal. The local `rows` type annotation in the worker transaction includes `embeddingModel: string` to match.
 - `PATCH /api/documents/:id` re-embed path uses `enqueueReembed` (with Redis SET-NX dedup) instead of going straight to `enqueueEmbedding`. A rapid PATCH storm on the same document now coalesces into a single worker tick.
-- GraphRAG expansion boost is sourced from `config.GRAPH_EXPANSION_BOOST` (env-tunable, default `0.3`) instead of a hard-coded constant. Per-request overrides via `?graphBoost=N` remain supported.
+- GraphRAG uses the bounded `SEARCH_GRAPH_MAX_CONTRIBUTION` ranking input. Deprecated `graphBoost` remains accepted as an ignored compatibility input.
 - `reembedDocsInCategory` unions documents directly attached to the category AND documents in folders attached to the category, because the embedding preamble resolves category name from either path. The `CATEGORY_REEMBED_BATCH_SIZE` cap applies to the merged set.
 
 ### Fixed

@@ -112,6 +112,7 @@ export function folderCategoryMatchesOwner(
 
 const CHANNELS = ["exact", "fts", "fuzzy", "vector"] as const;
 const EXPANDED_CHANNELS = new Set<SearchChannel>(["fts", "fuzzy", "vector"]);
+export const MAX_SEARCH_RANKING_WINDOW = 1_000;
 
 /**
  * Search-domain orchestration. The HTTP layer owns validation and hydration;
@@ -124,6 +125,7 @@ export async function searchDocuments(
 ): Promise<SearchResponse> {
 	const page = clampPage(request.page);
 	const limit = clampLimit(request.limit);
+	const rankingWindow = page * limit;
 	const plan = analyzeQuery(request.query);
 	const retrieveFast = adapters.retrieveFast ?? retrieveFastChannels;
 	const retrieveExpanded =
@@ -166,7 +168,7 @@ export async function searchDocuments(
 	const fastStarted = performance.now();
 	try {
 		fast = await retrieveFast(ctx, plan, {
-			limit: limit * 2,
+			limit: rankingWindow,
 			documentIds: request.documentIds,
 			getEmbedding: getCachedEmbedding,
 		} as Parameters<typeof retrieveFastChannels>[2]);
@@ -217,7 +219,7 @@ export async function searchDocuments(
 				expansionModel = expansion.model;
 				try {
 					expanded = await retrieveExpanded(ctx, expandedPlan, {
-						limit: limit * 2,
+						limit: rankingWindow,
 						documentIds: request.documentIds,
 						getEmbedding: getCachedEmbedding,
 					});

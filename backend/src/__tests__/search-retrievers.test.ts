@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { EmbeddingResult } from "../embedding/result";
 import { retrieveFastChannels } from "../search/retrievers";
 import type { QueryPlan, SearchChannel } from "../search/types";
@@ -32,6 +33,42 @@ function executor(rowsByChannel: Partial<Record<SearchChannel, FakeRow[]>>) {
 }
 
 describe("owner-scoped retrieval channels", () => {
+	test("filters near-zero stored vectors with the shared norm epsilon", async () => {
+		let vectorQuery: unknown;
+		await retrieveFastChannels({ userId: OWNER_ID, role: "user" }, plan, {
+			execute: async (channel, _ctx, query) => {
+				if (channel === "vector") vectorQuery = query;
+				return [];
+			},
+			queryEmbedding: embedding,
+		});
+
+		expect(vectorQuery).toBeDefined();
+		const rendered = new PgDialect().sqlToQuery(
+			vectorQuery as Parameters<PgDialect["sqlToQuery"]>[0],
+		);
+		expect(rendered.sql).toContain("vector_norm(de.embedding) >");
+		expect(rendered.params).toContain(1e-9);
+	});
+
+	test("allows internal retrieval windows larger than the public page size", async () => {
+		const limits: number[] = [];
+		await retrieveFastChannels({ userId: OWNER_ID, role: "user" }, plan, {
+			limit: 500,
+			execute: async (_channel, _ctx, query) => {
+				const rendered = new PgDialect().sqlToQuery(
+					query as Parameters<PgDialect["sqlToQuery"]>[0],
+				);
+				const limit = rendered.params.at(-1);
+				if (typeof limit === "number") limits.push(limit);
+				return [];
+			},
+			queryEmbedding: embedding,
+		});
+
+		expect(limits).toEqual([500, 500, 500, 500]);
+	});
+
 	test("returns exact, multilingual FTS, and fuzzy candidates with ranks", async () => {
 		const results = await retrieveFastChannels(
 			{ userId: OWNER_ID, role: "user" },

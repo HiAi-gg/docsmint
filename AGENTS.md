@@ -196,7 +196,6 @@ GraphRAG layers a knowledge graph over the retrieval channels to surface related
 |----------|---------|---------|
 | `GRAPH_EXTRACT_ENABLED` | `true` | Enable LLM entity extraction after ready generations; set `false` as an operator kill switch |
 | `GRAPH_SEARCH_ENABLED` | `true` | Enable automatic graph-neighbor expansion in normal search; set `false` as an operator kill switch |
-| `GRAPH_EXPANSION_BOOST` | `0.3` | Multiplier on graph-discovered neighbor scores (range: 0–2) |
 | `GRAPH_EXTRACT_MIN_CONFIDENCE` | `0.5` | Minimum entity confidence threshold (0.0–1.0) |
 | `GRAPH_EXTRACT_BASE_URL` | — | OpenAI-compatible chat-completion URL (REQUIRED for extraction) |
 | `GRAPH_EXTRACT_API_KEY` | — | API key for extraction LLM |
@@ -276,7 +275,7 @@ Notable groups:
 - **Legacy hybrid weights:** `HYBRID_TEXT_WEIGHT` (`0.4`), `HYBRID_SEMANTIC_WEIGHT` (`0.6`) remain compatibility inputs; current ranking uses `SEARCH_*` RRF controls
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
-- **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXPANSION_BOOST` (`0.3`), `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
+- **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
 - **Auth secrets:** `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `STORAGE_SECRET_KEY` — each must be unique and set explicitly in production
 
 Full list with defaults: see `.env.example`.

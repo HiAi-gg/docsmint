@@ -3,6 +3,7 @@ import { withTenant } from "@hiai-docs/db/with-tenant";
 import { sql } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
+import { EMBEDDING_NORM_EPSILON } from "../embedding/validation";
 import { config } from "../lib/config";
 import type {
 	ChannelResult,
@@ -294,7 +295,7 @@ async function retrieveVector(
 				AND de.embedding_profile = d.embedding_profile
 				AND de.embedding_profile = ${queryEmbedding.profile}
 				AND de.embedding IS NOT NULL
-				AND vector_norm(de.embedding) > 0
+				AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
 		), top_chunks AS (
 			SELECT document_id, owner_id, score
 			FROM ranked_chunks
@@ -362,7 +363,7 @@ function toFiniteNumber(value: unknown): number | undefined {
 
 function clampLimit(value: number): number {
 	if (!Number.isFinite(value)) return DEFAULT_LIMIT;
-	return Math.max(1, Math.min(100, Math.floor(value)));
+	return Math.max(1, Math.min(1_000, Math.floor(value)));
 }
 
 async function productionExecutor(

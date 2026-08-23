@@ -4,6 +4,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import { getEmbedding } from "../../embedding";
 import type { EmbeddingResult } from "../../embedding/result";
+import { EMBEDDING_NORM_EPSILON } from "../../embedding/validation";
 import {
 	type ContentAccess,
 	canAccessContent,
@@ -15,7 +16,10 @@ import { logger } from "../../lib/logger";
 import { resolveShareDocumentScope } from "../../lib/share-access";
 import { withTenant } from "../../lib/with-tenant";
 import type { GraphVisibilityScope } from "../../search/graph-retriever";
-import { searchDocuments } from "../../search/orchestrator";
+import {
+	MAX_SEARCH_RANKING_WINDOW,
+	searchDocuments,
+} from "../../search/orchestrator";
 import type { SearchExplanation } from "../../search/types";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
 import {
@@ -205,6 +209,16 @@ export function createSearchRoutes(
 			if (!parsed.success) {
 				set.status = 400;
 				return { error: "Invalid query", details: parsed.error.flatten() };
+			}
+			if (parsed.data.page * parsed.data.limit > MAX_SEARCH_RANKING_WINDOW) {
+				set.status = 400;
+				return {
+					error: "Invalid query",
+					details: {
+						formErrors: ["Search ranking window must not exceed 1000"],
+						fieldErrors: {},
+					},
+				};
 			}
 			try {
 				const {
@@ -517,7 +531,7 @@ async function hydrateResults(
 						AND de.embedding_profile = d.embedding_profile
 						AND de.embedding_profile = ${embedding.profile}
 						AND de.embedding IS NOT NULL
-						AND vector_norm(de.embedding) > 0
+						AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
 					ORDER BY de.document_id, score DESC, de.chunk_index ASC
 				`),
 				);

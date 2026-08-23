@@ -414,15 +414,6 @@ export const envSchema = z
 		// Hybrid search weights — applied to the merged text + semantic score.
 		// Both must be in [0, 1]; defaults preserve the historical 0.4 text /
 		// 0.6 semantic balance from the README contract.
-		// Graph-augmented search boost. Multiplier applied to graph-derived
-		// documents when they are merged into a search result list (existing
-		// documents get this same fraction as a multiplicative boost on their
-		// own score, new neighbors get this as their initial score). Default
-		// 0.3 keeps the ranking honest - a graph neighbor scores BELOW a
-		// single semantic match but ABOVE the noise floor. Tune up for
-		// graph-heavy corpora, tune down if graph results crowd out semantic
-		// hits. Range [0, 2]; 0 disables graph boost entirely.
-		GRAPH_EXPANSION_BOOST: z.coerce.number().min(0).max(2).default(0.3),
 		// When `false`, admin reindex endpoints require an explicit `?ownerId=`
 		// query parameter. When `true` (default, backward-compatible), they are
 		// cross-tenant and the ownerId parameter is optional.

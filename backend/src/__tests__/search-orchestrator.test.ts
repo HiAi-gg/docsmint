@@ -83,6 +83,23 @@ function expansion(plan: QueryPlan, variants = ["English"] as string[]) {
 }
 
 describe("automatic GraphRAG search orchestration", () => {
+	test("retrieves enough candidates to rank the requested page window", async () => {
+		let retrievedLimit: number | undefined;
+		await searchDocuments(
+			ctx,
+			{ query: "deep page", page: 5, limit: 100, graphEnabled: false },
+			{
+				retrieveFast: async (_ctx, _plan, options) => {
+					retrievedLimit = options?.limit;
+					return channels({});
+				},
+				expand: async () => null,
+			},
+		);
+
+		expect(retrievedLimit).toBe(500);
+	});
+
 	test("filters authorized candidates before pagination so a page stays full", async () => {
 		const response = await searchDocuments(
 			ctx,
