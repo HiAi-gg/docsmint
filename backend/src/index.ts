@@ -27,14 +27,17 @@ import { visibilityRoutes } from "./api/routes/visibility";
 import { webhookRoutes } from "./api/routes/webhooks";
 import { ensureApiKeyOwner } from "./lib/api-key-owner";
 import { config } from "./lib/config";
+import { client } from "./lib/db";
 import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { DocsmintWorkspaceContextError } from "./lib/external-tenant-context";
 import { logger } from "./lib/logger";
+import { redis } from "./lib/redis";
 import { startReembedCron } from "./lib/reembed-cron";
 import { configureDocsMintRuntime } from "./lib/runtime-options";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
 import { createPipelineStageDependencies } from "./queue/adapters";
 import { configureOwnerStageLimits } from "./queue/fair-scheduler";
+import { evaluatePipelineHealth, PIPELINE_STAGES } from "./queue/health";
 import { configureDefaultJobOptions } from "./queue/names";
 import {
 	createBullMqRecoveryWriter,
@@ -231,31 +234,60 @@ const app = new Elysia()
 			? swagger(swaggerConfig)
 			: (e: Elysia) => e,
 	)
-	.get("/api/health", async ({ request }) => {
+	.get("/api/health", async ({ request, set }) => {
 		const ip =
 			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
 			request.headers.get("x-real-ip") ??
 			"unknown";
-		const rl = await healthRateLimiter(ip);
-		const headers = rateLimitHeaders(rl.remaining, rl.retryAfter);
-
-		let storageStatus = "unknown";
-		try {
-			await storage.send(new ListBucketsCommand({}));
-			storageStatus = "ok";
-		} catch {
-			storageStatus = "error";
+		const rl = await healthRateLimiter(ip, request);
+		set.headers = rateLimitHeaders(rl.remaining, rl.retryAfter);
+		if (!rl.allowed) {
+			set.status = 429;
+			return { error: "Too many requests" };
 		}
 
-		return Object.assign(
-			{
-				status: "ok",
-				service: "hiai-docs",
-				timestamp: new Date().toISOString(),
-				storage: storageStatus,
-			},
-			headers,
-		);
+		const [databaseAvailable, redisAvailable, storageAvailable] =
+			await Promise.all([
+				client`SELECT 1`.then(
+					() => true,
+					() => false,
+				),
+				redis.ping().then(
+					() => true,
+					() => false,
+				),
+				storage.send(new ListBucketsCommand({})).then(
+					() => true,
+					() => false,
+				),
+			]);
+		const queueAvailable =
+			pipelineRuntime.workers.size === PIPELINE_STAGES.length &&
+			[...pipelineRuntime.workers.values()].every(
+				(worker) => worker.isRunning?.() === true,
+			);
+		const readiness = evaluatePipelineHealth({
+			databaseAvailable,
+			redisAvailable,
+			storageAvailable,
+			queueAvailable,
+			recoveryAvailable: true,
+			oldestInteractiveWaitMs: 0,
+			interactiveSloMs: Number.POSITIVE_INFINITY,
+			graphAvailable: true,
+		});
+		if (readiness.status === "unhealthy") set.status = 503;
+
+		return {
+			status: readiness.status === "unhealthy" ? "unhealthy" : "ok",
+			service: "hiai-docs",
+			timestamp: new Date().toISOString(),
+			database: databaseAvailable ? "ok" : "error",
+			redis: redisAvailable ? "ok" : "error",
+			storage: storageAvailable ? "ok" : "error",
+			queue: queueAvailable ? "ok" : "error",
+			...(readiness.reasons.length ? { reasons: readiness.reasons } : {}),
+		};
 	})
 	// Tenant context is resolved EXPLICITLY in each route handler via
 	// `buildTenantContext(request)` (see `api/middleware/tenant.ts`).
@@ -289,6 +321,7 @@ app.listen({
 	port: config.API_PORT,
 	development: config.NODE_ENV !== "production",
 	idleTimeout: 30,
+	maxRequestBodySize: MAX_BODY_SIZE_BYTES,
 });
 logger.info({ port: config.API_PORT }, "hiai-docs API started");
 

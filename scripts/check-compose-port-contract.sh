@@ -18,12 +18,16 @@ const compose = await Bun.stdin.json();
 const api = compose.services.api;
 const web = compose.services.web;
 const storage = compose.services.seaweedfs;
+const postgres = compose.services.postgres;
+const redis = compose.services.redis;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(api.ports.some((port) => port.published === "50800" && port.target === 50700), "API test host mapping must be 50800:50700");
+assert(api.ports.some((port) => port.published === "50800" && port.target === 50700 && port.host_ip === "127.0.0.1"), "API test host mapping must be loopback-only 127.0.0.1:50800:50700");
+assert(postgres.ports.every((port) => port.host_ip === "127.0.0.1"), "PostgreSQL host mapping must be loopback-only");
+assert(redis.ports.every((port) => port.host_ip === "127.0.0.1"), "Redis host mapping must be loopback-only");
 assert(api.environment.API_PORT === "50700", "API process must listen on 50700");
 assert(api.healthcheck.test.join(" ").includes("127.0.0.1:50700/api/health"), "API healthcheck must use 50700");
 
@@ -50,12 +54,16 @@ const compose = await Bun.stdin.json();
 const api = compose.services.api;
 const web = compose.services.web;
 const storage = compose.services.seaweedfs;
+const postgres = compose.services.postgres;
+const redis = compose.services.redis;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-assert(api.ports.some((port) => port.published === "50800" && port.target === 50700), "Dev API test host mapping must be 50800:50700");
+assert(api.ports.some((port) => port.published === "50800" && port.target === 50700 && port.host_ip === "127.0.0.1"), "Dev API test host mapping must be loopback-only 127.0.0.1:50800:50700");
+assert(postgres.ports.every((port) => port.host_ip === "127.0.0.1"), "Dev PostgreSQL host mapping must be loopback-only");
+assert(redis.ports.every((port) => port.host_ip === "127.0.0.1"), "Dev Redis host mapping must be loopback-only");
 assert(api.environment.API_PORT === "50700", "Dev API process must listen on 50700");
 assert(web.ports.some((port) => port.published === "50801" && port.target === 50701), "Dev web test host mapping must be 50801:50701");
 assert(web.environment.API_URL === "http://api:50700", "Dev web must reach api:50700");

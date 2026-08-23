@@ -116,13 +116,14 @@ function seedShareLink(opts: {
   documentId?: string | null;
   folderId?: string | null;
   expiresAt?: Date | null;
+  passwordHash?: string | null;
 }) {
   getState().shareLinks.set(opts.id, {
     id: opts.id,
     token: opts.token,
     documentId: opts.documentId ?? null,
     folderId: opts.folderId ?? null,
-    passwordHash: null,
+    passwordHash: opts.passwordHash ?? null,
     expiresAt: opts.expiresAt === undefined ? null : opts.expiresAt,
     createdBy: OWNER_ID,
     createdAt: new Date(),
@@ -217,6 +218,45 @@ describe("GET /api/attachments/:id/raw — auth gate", () => {
 });
 
 describe("GET /api/attachments/:id/raw — share-token path", () => {
+	it("rejects a protected share token without password proof", async () => {
+		seedAttachment();
+		seedShareLink({
+			id: "link-protected",
+			token: "share-token-protected",
+			documentId: DOC_ID,
+			passwordHash: await Bun.password.hash("topsecret"),
+		});
+
+		const res = await request(app, `/api/attachments/${ATTACHMENT_ID}/raw`, {
+			headers: {
+				...noAuthHeaders(),
+				"x-share-token": "share-token-protected",
+			},
+		});
+
+		expect(res.status).toBe(401);
+		expect(res.body).toEqual({ error: "Authentication required" });
+	});
+
+	it("streams a protected shared attachment with correct password proof", async () => {
+		seedAttachment();
+		seedShareLink({
+			id: "link-protected-valid",
+			token: "share-token-protected-valid",
+			documentId: DOC_ID,
+			passwordHash: await Bun.password.hash("topsecret"),
+		});
+
+		const res = await rawGet(app, `/api/attachments/${ATTACHMENT_ID}/raw`, {
+			...noAuthHeaders(),
+			"x-share-token": "share-token-protected-valid",
+			"x-share-password": "topsecret",
+		});
+
+		expect(res.status).toBe(200);
+		expect(Array.from(res.bytes)).toEqual([0x89, 0x50, 0x4e, 0x47]);
+	});
+
   it("returns 200 when the share token targets this document directly", async () => {
     seedAttachment();
     seedShareLink({

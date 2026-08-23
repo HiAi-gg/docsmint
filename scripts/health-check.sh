@@ -12,7 +12,8 @@
 #   DB_NAME     default hiai_docs
 #   DB_HOST     default localhost
 #   REDIS_PORT  default 6384  (matches docker-compose.yml default)
-#   OLLAMA_URL  default http://localhost:11434
+#   AI_PROVIDER default openrouter; Ollama is checked only when set to ollama
+#   OLLAMA_URL  default http://localhost:11434 when Ollama is selected
 #   STORAGE_PORT  default 50702 (host-published SeaweedFS S3 gateway)
 #
 # Example:
@@ -27,6 +28,7 @@ DB_PORT="${DB_PORT:-5437}"
 DB_USER="${DB_USER:-aiuser}"
 DB_NAME="${DB_NAME:-hiai_docs}"
 REDIS_PORT="${REDIS_PORT:-6384}"
+AI_PROVIDER="${AI_PROVIDER:-openrouter}"
 OLLAMA_URL="${OLLAMA_URL:-http://localhost:11434}"
 STORAGE_PORT="${STORAGE_PORT:-50702}"
 
@@ -48,14 +50,18 @@ echo "======================="
 echo "API:        http://localhost:${API_PORT}/api/health"
 echo "PostgreSQL: ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 echo "Redis:      localhost:${REDIS_PORT}"
-echo "Ollama:     ${OLLAMA_URL}"
+if [[ "$AI_PROVIDER" == "ollama" ]]; then
+  echo "Ollama:     ${OLLAMA_URL}"
+fi
 echo "SeaweedFS:  http://localhost:${STORAGE_PORT}/status"
 echo ""
 
 check "API"        "curl -fsS http://localhost:${API_PORT}/api/health"
 check "PostgreSQL" "psql -h ${DB_HOST} -p ${DB_PORT} -U ${DB_USER} -d ${DB_NAME} -c 'SELECT 1'"
 check "Redis"      "redis-cli -p ${REDIS_PORT} ping"
-check "Ollama"     "curl -fsS ${OLLAMA_URL}/api/tags"
+if [[ "$AI_PROVIDER" == "ollama" ]]; then
+  check "Ollama"     "curl -fsS ${OLLAMA_URL}/api/tags"
+fi
 check "SeaweedFS"  "curl -fsS http://localhost:${STORAGE_PORT}/status"
 
 echo ""

@@ -42,13 +42,6 @@ function isApiRoute(url: string): boolean {
 	return true;
 }
 
-function isMultipart(request: Request): boolean {
-	return (
-		request.headers.get("content-type")?.includes("multipart/form-data") ===
-		true
-	);
-}
-
 export function isAllowedCsrfOrigin(
 	origin: string,
 	host: string,
@@ -74,10 +67,13 @@ export const csrfMiddleware = new Elysia()
 		if (apiKey) return;
 
 		if (!isUnsafeMethod(request.method)) return;
-		if (isMultipart(request)) return;
 
 		const origin = request.headers.get("origin");
 		const host = request.headers.get("host");
+		if (!origin || !host) {
+			set.status = 403;
+			return { error: "CSRF: missing origin" };
+		}
 		if (origin && host) {
 			try {
 				const configuredOrigins =

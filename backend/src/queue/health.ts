@@ -34,7 +34,10 @@ export function emptyPipelineMetricSnapshot(): PipelineMetricSnapshot {
 }
 
 export interface PipelineHealthInput {
+	databaseAvailable: boolean;
 	redisAvailable: boolean;
+	storageAvailable: boolean;
+	queueAvailable: boolean;
 	recoveryAvailable: boolean;
 	oldestInteractiveWaitMs: number;
 	interactiveSloMs: number;
@@ -52,7 +55,10 @@ export function evaluatePipelineHealth(
 	input: PipelineHealthInput,
 ): PipelineHealthReport {
 	const reasons: string[] = [];
+	if (!input.databaseAvailable) reasons.push("database_unavailable");
 	if (!input.redisAvailable) reasons.push("redis_unavailable");
+	if (!input.storageAvailable) reasons.push("storage_unavailable");
+	if (!input.queueAvailable) reasons.push("queue_unavailable");
 	if (!input.recoveryAvailable) reasons.push("recovery_unavailable");
 	if (input.oldestInteractiveWaitMs > input.interactiveSloMs) {
 		reasons.push("interactive_slo_breached");

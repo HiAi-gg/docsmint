@@ -8,7 +8,7 @@ services:
     image: hiai-postgres:18-custom
     restart: unless-stopped
     ports:
-      - "${DB_PORT:-5437}:5432"
+      - "127.0.0.1:${DB_PORT:-5437}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
       # init.sql and the runtime-role bootstrap live in the build image.
@@ -34,7 +34,7 @@ services:
     image: redis:8-alpine
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6384}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6384}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -105,7 +105,7 @@ services:
     ports:
       # API_PORT selects only the published host port. The container contract
       # is always 50700 so service discovery and health checks stay stable.
-      - "${API_PORT:-50700}:50700"
+      - "127.0.0.1:${API_PORT:-50700}:50700"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -142,6 +142,7 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${API_PORT:-50700}}
       # Custom host WEB_PORT mappings require an explicit CORS_ORIGINS value.
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
       # OpenRouter is the public default; override these three values for
       # Ollama or another OpenAI-compatible embedding service.
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

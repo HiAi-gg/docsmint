@@ -13,7 +13,7 @@ services:
     image: hiai-postgres:18-custom
     restart: unless-stopped
     ports:
-      - "${DB_PORT:-5437}:5432"
+      - "127.0.0.1:${DB_PORT:-5437}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
     environment:
@@ -38,7 +38,7 @@ services:
     image: redis:8-alpine
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6384}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6384}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -88,7 +88,7 @@ services:
     working_dir: /mnt/ai_data/projects/hiai-docs
     restart: unless-stopped
     ports:
-      - "${API_PORT:-50700}:50700"
+      - "127.0.0.1:${API_PORT:-50700}:50700"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

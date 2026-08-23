@@ -362,6 +362,30 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     expect(stored.size).toBe(4096);
   });
 
+  it("deletes an object whose actual stored size exceeds the attachment cap", async () => {
+    const docId = seedOwnedDocument();
+    const key = `${OWNER_ID}/${docId}/oversized.png`;
+    const storage = getStorageMockState();
+    storage.storedSizes.set(key, 26 * 1024 * 1024);
+    const removeCallsBefore = storage.removeObjectCalls;
+
+    const res = await request(
+      app,
+      `/api/documents/${docId}/attachments/confirm`,
+      {
+        method: "POST",
+        headers: ownerHeaders(),
+        body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+      },
+    );
+
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: "Uploaded file exceeds the 25MB limit" });
+    expect(storage.removeObjectCalls).toBe(removeCallsBefore + 1);
+    expect(storage.removedKeys.at(-1)).toBe(key);
+    expect(getState().attachments.size).toBe(0);
+  });
+
   it("returns 400 when the key prefix doesn't match the user", async () => {
     const docId = seedOwnedDocument();
     const res = await request(

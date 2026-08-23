@@ -297,6 +297,17 @@ async function verifyUploadIntegrity(
 	}
 }
 
+async function removeUploadedObject(
+	key: string,
+	reason: string,
+): Promise<void> {
+	try {
+		await storage.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+	} catch (error) {
+		logger.error({ err: error, key }, reason);
+	}
+}
+
 async function getClientIp(request: Request): Promise<string> {
 	return (
 		request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -606,6 +617,21 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// observed. A client that lies about size gets corrected
 			// here so the DB row reflects what was actually stored.
 			const storedSize = headOutput.ContentLength ?? size;
+			if (storedSize > ATTACHMENT_MAX_SIZE_BYTES) {
+				await removeUploadedObject(
+					key,
+					"Failed to remove an oversized attachment upload",
+				);
+				if (admission && quotaContext && quotaReservationId) {
+					await admission
+						.releaseReservation(quotaContext, quotaReservationId)
+						.catch(() => undefined);
+				}
+				set.status = 413;
+				return {
+					error: `Uploaded file exceeds the ${config.ATTACHMENT_MAX_SIZE_MB}MB limit`,
+				};
+			}
 
 			if (admission && quotaContext && quotaReservationId) {
 				try {
@@ -617,6 +643,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					await admission
 						.releaseReservation(quotaContext, quotaReservationId)
 						.catch(() => undefined);
+					await removeUploadedObject(
+						key,
+						"Failed to remove attachment after quota finalization rejection",
+					);
 					logger.error(
 						{ err: error, documentId },
 						"Attachment storage quota finalization failed",
@@ -676,6 +706,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							.releaseCommitted(quotaContext)
 							.catch(() => undefined);
 					}
+					await removeUploadedObject(
+						key,
+						"Failed to remove orphaned attachment after DB insertion",
+					);
 					set.status = 500;
 					return { error: "Failed to save attachment record" };
 				}
@@ -695,6 +729,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				if (admission && quotaContext && quotaReservationId) {
 					await admission.releaseCommitted(quotaContext).catch(() => undefined);
 				}
+				await removeUploadedObject(
+					key,
+					"Failed to remove orphaned attachment after DB insertion error",
+				);
 				logger.error({ err, key }, "Confirm failed: DB insert error");
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
@@ -799,14 +837,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// network blip) logs a warning but does not fail the upload.
 			const integrityOk = await verifyUploadIntegrity(buffer, key);
 			if (!integrityOk) {
-				await storage
-					.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
-					.catch((removeErr) => {
-						logger.error(
-							{ err: removeErr, key },
-							"Failed to clean up corrupted upload",
-						);
-					});
+				await removeUploadedObject(key, "Failed to clean up corrupted upload");
 				set.status = 500;
 				return { error: "Upload integrity check failed" };
 			}
@@ -827,6 +858,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			});
 
 			if (!created) {
+				await removeUploadedObject(
+					key,
+					"Failed to remove orphaned legacy attachment upload",
+				);
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
 			}
@@ -1144,6 +1179,20 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						},
 						"Share-token access denied for attachment",
 					);
+					set.status = 401;
+					return { error: "Authentication required" };
+				}
+				const shareScope = await resolveShareDocumentScope(
+					lookupCtx,
+					shareToken,
+				);
+				if (
+					!shareScope ||
+					!(await verifyShareScopePassword(
+						shareScope,
+						request.headers.get("x-share-password"),
+					))
+				) {
 					set.status = 401;
 					return { error: "Authentication required" };
 				}

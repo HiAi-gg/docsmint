@@ -2,6 +2,38 @@ import { Elysia } from "elysia";
 import { logger } from "../../lib/logger";
 import { verifyWebhookSignature } from "../middleware/webhook-verify";
 
+const WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
+
+class WebhookBodyTooLargeError extends Error {}
+
+async function readWebhookBody(request: Request): Promise<string> {
+	const contentLength = request.headers.get("content-length");
+	if (
+		contentLength !== null &&
+		Number.isFinite(Number(contentLength)) &&
+		Number(contentLength) > WEBHOOK_MAX_BODY_BYTES
+	) {
+		throw new WebhookBodyTooLargeError();
+	}
+	if (!request.body) return "";
+
+	const reader = request.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let bytesRead = 0;
+	while (true) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		if (!value) continue;
+		bytesRead += value.byteLength;
+		if (bytesRead > WEBHOOK_MAX_BODY_BYTES) {
+			await reader.cancel();
+			throw new WebhookBodyTooLargeError();
+		}
+		chunks.push(value);
+	}
+	return Buffer.concat(chunks).toString("utf8");
+}
+
 /**
  * DEPRECATED: MinIO webhook receiver.
  * SeaweedFS does not support MinIO-compatible bucket event notifications.
@@ -10,8 +42,17 @@ import { verifyWebhookSignature } from "../middleware/webhook-verify";
  */
 export const webhookRoutes = new Elysia({ prefix: "/api/webhooks" }).post(
 	"/storage",
-	async ({ request }) => {
-		const rawBody = await request.text();
+	async ({ request, set }) => {
+		let rawBody: string;
+		try {
+			rawBody = await readWebhookBody(request);
+		} catch (error) {
+			if (error instanceof WebhookBodyTooLargeError) {
+				set.status = 413;
+				return { error: "Webhook body too large (max 1MB)" };
+			}
+			throw error;
+		}
 		const sig = request.headers.get("x-storage-signature");
 
 		if (!verifyWebhookSignature(rawBody, sig)) {

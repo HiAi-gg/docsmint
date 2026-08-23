@@ -4,7 +4,6 @@
 
 :80 {
 	# For local development / Docker internal
-	reverse_proxy /api/* api:50700
 	reverse_proxy web:50701
 
 	encode gzip
@@ -14,7 +13,7 @@
 		# Prod-safe CSP — the :80 catch-all must not hardcode dev origins.
 		# Developers: override in a local Caddyfile if you need dev-specific
 		# connect-src (e.g. http://localhost:50700 ws://localhost:50700).
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https:// wss://; font-src 'self' data:; frame-ancestors 'none'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https:// wss://; font-src 'self' data:; frame-ancestors 'none'; form-action 'self'"
 		# HSTS — harmless on plain HTTP, enforced once TLS is provisioned
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
@@ -36,13 +35,11 @@
 # Public object-storage endpoint used by presigned import/download URLs. Keep
 # it on a separate host so S3 object paths never overlap application routes.
 storage.docs.{$DOMAIN:localhost} {
-	tls internal
 	reverse_proxy seaweedfs:8333
 }
 
 docs.{$DOMAIN:localhost} {
 	# For production — Caddy auto-provisions TLS
-	reverse_proxy /api/* api:50700
 	reverse_proxy web:50701
 
 	encode gzip
@@ -60,7 +57,7 @@ docs.{$DOMAIN:localhost} {
 		# Restrictive CSP — SvelteKit requires 'unsafe-inline' in style-src
 		# because it injects styles at runtime and cannot use nonces.
 		# This is an accepted trade-off for SvelteKit SPAs.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' wss:// https://; font-src 'self' data:; frame-ancestors 'none'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' wss:// https://; font-src 'self' data:; frame-ancestors 'none'; form-action 'self'"
 		# HSTS — 1 year, include subdomains, preload-ready
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

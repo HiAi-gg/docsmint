@@ -71,11 +71,18 @@ async function authorizeVersionDocument(
  */
 type DiffHunk = { type: "add" | "remove" | "unchanged"; lines: string[] };
 
+const VERSION_DIFF_MAX_MATRIX_CELLS = 1_000_000;
+
+class VersionDiffTooLargeError extends Error {}
+
 function diffLines(a: string, b: string): DiffHunk[] {
 	const aLines = a.split("\n");
 	const bLines = b.split("\n");
 	const n = aLines.length;
 	const m = bLines.length;
+	if (n * m > VERSION_DIFF_MAX_MATRIX_CELLS) {
+		throw new VersionDiffTooLargeError();
+	}
 
 	// Build LCS length table. lcs[i][j] = LCS length of aLines[0..i) and bLines[0..j).
 	const lcs: number[][] = Array.from({ length: n + 1 }, () =>
@@ -698,6 +705,10 @@ export const versionRoutes = new Elysia({
 			}
 			return diff;
 		} catch (err) {
+			if (err instanceof VersionDiffTooLargeError) {
+				set.status = 413;
+				return { error: "Version diff exceeds the safe comparison limit" };
+			}
 			logger.error(
 				{ err, docId: params.id, from: fromId, to: toId },
 				"Failed to diff versions",

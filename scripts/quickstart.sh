@@ -29,6 +29,22 @@ set_value() {
 	mv "$tmp" "$ENV_FILE"
 }
 
+set_provider_default() {
+	local key="$1" desired="$2" current managed
+	shift 2
+	current="$(read_value "$key")"
+	if [[ -z "$current" || "$current" == change-me* || "$current" == replace-with* ]]; then
+		set_value "$key" "$desired"
+		return
+	fi
+	for managed in "$@"; do
+		if [[ "$current" == "$managed" ]]; then
+			set_value "$key" "$desired"
+			return
+		fi
+	done
+}
+
 generate_secret_if_placeholder() {
 	local key="$1" current
 	current="$(read_value "$key")"
@@ -62,47 +78,46 @@ provider="$(read_value AI_PROVIDER)"
 provider="${provider:-openrouter}"
 ollama_port="$(read_value OLLAMA_PORT)"
 ollama_port="${ollama_port:-11434}"
+ollama_url="http://host.docker.internal:${ollama_port}/v1"
 set_value AI_PROVIDER "$provider"
 set_value OLLAMA_PORT "$ollama_port"
 
 case "$provider" in
 	openrouter)
-		set_value PROVIDER_LIMITER_MODE "remote"
-		set_value EMBEDDING_BASE_URL "https://openrouter.ai/api/v1"
-		set_value EMBEDDING_MODEL "openai/text-embedding-3-small"
-		set_value EMBEDDING_FALLBACK_BASE_URL "https://openrouter.ai/api/v1"
-		set_value EMBEDDING_FALLBACK_MODEL "baai/bge-m3"
-		set_value GRAPH_EXTRACT_BASE_URL "https://openrouter.ai/api/v1"
-		set_value GRAPH_EXTRACT_MODEL "mistralai/ministral-14b-2512"
-		set_value GRAPH_EXTRACT_FALLBACK_BASE_URL "https://openrouter.ai/api/v1"
-		set_value GRAPH_EXTRACT_FALLBACK_MODEL "google/gemma-4-31b-it"
-		set_value SEARCH_EXPANSION_BASE_URL "https://openrouter.ai/api/v1"
-		set_value SEARCH_EXPANSION_MODEL "mistralai/ministral-14b-2512"
-		set_value SEARCH_EXPANSION_FALLBACK_BASE_URL "https://openrouter.ai/api/v1"
-		set_value SEARCH_EXPANSION_FALLBACK_MODEL "google/gemma-4-31b-it"
+		set_provider_default PROVIDER_LIMITER_MODE "remote" "remote" "local"
+		set_provider_default EMBEDDING_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default EMBEDDING_MODEL "openai/text-embedding-3-small" "openai/text-embedding-3-small" "bge-m3"
+		set_provider_default EMBEDDING_FALLBACK_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default EMBEDDING_FALLBACK_MODEL "baai/bge-m3" "baai/bge-m3" "bge-m3"
+		set_provider_default GRAPH_EXTRACT_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default GRAPH_EXTRACT_MODEL "mistralai/ministral-14b-2512" "mistralai/ministral-14b-2512" "qwen3:8b"
+		set_provider_default GRAPH_EXTRACT_FALLBACK_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default GRAPH_EXTRACT_FALLBACK_MODEL "google/gemma-4-31b-it" "google/gemma-4-31b-it" "qwen3:8b"
+		set_provider_default SEARCH_EXPANSION_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default SEARCH_EXPANSION_MODEL "mistralai/ministral-14b-2512" "mistralai/ministral-14b-2512" "qwen3:8b"
+		set_provider_default SEARCH_EXPANSION_FALLBACK_BASE_URL "https://openrouter.ai/api/v1" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default SEARCH_EXPANSION_FALLBACK_MODEL "google/gemma-4-31b-it" "google/gemma-4-31b-it" "qwen3:8b"
 		;;
 	ollama)
-		set_value PROVIDER_LIMITER_MODE "local"
-		ollama_url="http://host.docker.internal:${ollama_port}/v1"
-		set_value OPENROUTER_API_KEY ""
-		set_value EMBEDDING_BASE_URL "$ollama_url"
-		set_value EMBEDDING_API_KEY ""
-		set_value EMBEDDING_MODEL "bge-m3"
-		set_value EMBEDDING_FALLBACK_BASE_URL "$ollama_url"
-		set_value EMBEDDING_FALLBACK_API_KEY ""
-		set_value EMBEDDING_FALLBACK_MODEL "bge-m3"
-		set_value GRAPH_EXTRACT_BASE_URL "$ollama_url"
-		set_value GRAPH_EXTRACT_API_KEY ""
-		set_value GRAPH_EXTRACT_MODEL "qwen3:8b"
-		set_value GRAPH_EXTRACT_FALLBACK_BASE_URL "$ollama_url"
-		set_value GRAPH_EXTRACT_FALLBACK_API_KEY ""
-		set_value GRAPH_EXTRACT_FALLBACK_MODEL "qwen3:8b"
-		set_value SEARCH_EXPANSION_BASE_URL "$ollama_url"
-		set_value SEARCH_EXPANSION_API_KEY ""
-		set_value SEARCH_EXPANSION_MODEL "qwen3:8b"
-		set_value SEARCH_EXPANSION_FALLBACK_BASE_URL "$ollama_url"
-		set_value SEARCH_EXPANSION_FALLBACK_API_KEY ""
-		set_value SEARCH_EXPANSION_FALLBACK_MODEL "qwen3:8b"
+		set_provider_default PROVIDER_LIMITER_MODE "local" "remote" "local"
+		set_provider_default EMBEDDING_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default EMBEDDING_API_KEY ""
+		set_provider_default EMBEDDING_MODEL "bge-m3" "openai/text-embedding-3-small" "bge-m3"
+		set_provider_default EMBEDDING_FALLBACK_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default EMBEDDING_FALLBACK_API_KEY ""
+		set_provider_default EMBEDDING_FALLBACK_MODEL "bge-m3" "baai/bge-m3" "bge-m3"
+		set_provider_default GRAPH_EXTRACT_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default GRAPH_EXTRACT_API_KEY ""
+		set_provider_default GRAPH_EXTRACT_MODEL "qwen3:8b" "mistralai/ministral-14b-2512" "qwen3:8b"
+		set_provider_default GRAPH_EXTRACT_FALLBACK_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default GRAPH_EXTRACT_FALLBACK_API_KEY ""
+		set_provider_default GRAPH_EXTRACT_FALLBACK_MODEL "qwen3:8b" "google/gemma-4-31b-it" "qwen3:8b"
+		set_provider_default SEARCH_EXPANSION_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default SEARCH_EXPANSION_API_KEY ""
+		set_provider_default SEARCH_EXPANSION_MODEL "qwen3:8b" "mistralai/ministral-14b-2512" "qwen3:8b"
+		set_provider_default SEARCH_EXPANSION_FALLBACK_BASE_URL "$ollama_url" "https://openrouter.ai/api/v1" "$ollama_url"
+		set_provider_default SEARCH_EXPANSION_FALLBACK_API_KEY ""
+		set_provider_default SEARCH_EXPANSION_FALLBACK_MODEL "qwen3:8b" "google/gemma-4-31b-it" "qwen3:8b"
 		;;
 	*)
 		printf 'Unsupported AI_PROVIDER=%s (use openrouter or ollama)\n' "$provider" >&2

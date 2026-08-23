@@ -15,7 +15,10 @@ describe("pipeline health contracts", () => {
 	it("reports optional graph outage as degraded, not unhealthy", () => {
 		expect(
 			evaluatePipelineHealth({
+				databaseAvailable: true,
 				redisAvailable: true,
+				storageAvailable: true,
+				queueAvailable: true,
 				recoveryAvailable: true,
 				oldestInteractiveWaitMs: 10,
 				interactiveSloMs: 100,
@@ -30,7 +33,10 @@ describe("pipeline health contracts", () => {
 
 	it("marks queue unhealthy for Redis or recovery/SLO failures", () => {
 		const report = evaluatePipelineHealth({
+			databaseAvailable: true,
 			redisAvailable: false,
+			storageAvailable: true,
+			queueAvailable: true,
 			recoveryAvailable: true,
 			oldestInteractiveWaitMs: 200,
 			interactiveSloMs: 100,
@@ -41,5 +47,30 @@ describe("pipeline health contracts", () => {
 			"redis_unavailable",
 			"interactive_slo_breached",
 		]);
+	});
+
+	it("marks readiness unhealthy when any required service is unavailable", () => {
+		for (const unavailable of [
+			"databaseAvailable",
+			"storageAvailable",
+			"queueAvailable",
+		] as const) {
+			const report = evaluatePipelineHealth({
+				redisAvailable: true,
+				recoveryAvailable: true,
+				oldestInteractiveWaitMs: 0,
+				interactiveSloMs: 100,
+				graphAvailable: true,
+				databaseAvailable: true,
+				storageAvailable: true,
+				queueAvailable: true,
+				[unavailable]: false,
+			});
+
+			expect(report.status).toBe("unhealthy");
+			expect(report.reasons).toContain(
+				unavailable.replace("Available", "_unavailable"),
+			);
+		}
 	});
 });

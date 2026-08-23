@@ -236,3 +236,36 @@ describe("GET /api/documents/:id/versions/:vid", () => {
     expect((res.body as any).error).toBe("Document not found");
   });
 });
+
+describe("GET /api/documents/:id/versions/diff", () => {
+	it("returns 413 before allocating an oversized quadratic diff matrix", async () => {
+		seedDocument();
+		getState().versions.push(
+			{
+				id: "v-diff-from",
+				documentId: docId,
+				content: Array.from({ length: 1001 }, (_, index) => `before-${index}`).join("\n"),
+				contentJson: null,
+				createdBy: OWNER_ID,
+				createdAt: new Date("2024-07-01T00:00:00Z"),
+			},
+			{
+				id: "v-diff-to",
+				documentId: docId,
+				content: Array.from({ length: 1001 }, (_, index) => `after-${index}`).join("\n"),
+				contentJson: null,
+				createdBy: OWNER_ID,
+				createdAt: new Date("2024-07-02T00:00:00Z"),
+			},
+		);
+
+		const res = await authedGet(
+			`/api/documents/${docId}/versions/diff?from=v-diff-from&to=v-diff-to`,
+		);
+
+		expect(res.status).toBe(413);
+		expect(res.body).toEqual({
+			error: "Version diff exceeds the safe comparison limit",
+		});
+	});
+});

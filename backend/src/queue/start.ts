@@ -27,6 +27,7 @@ import {
 
 export interface ManagedPipelineWorker {
 	waitUntilReady?(): Promise<unknown>;
+	isRunning?(): boolean;
 	pause?(doNotWaitActive?: boolean): Promise<void>;
 	close(force?: boolean): Promise<void>;
 }
