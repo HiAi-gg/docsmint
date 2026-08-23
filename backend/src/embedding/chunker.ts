@@ -212,12 +212,18 @@ export function chunkText(text: string): ChunkResult[] {
 			}
 			// Start new chunk with overlap from end of previous chunk
 			if (OVERLAP_CHARS > 0 && currentChunk.length > 0) {
-				currentChunkStart = Math.max(
+				const overlapStart = Math.max(
 					currentChunkEnd - OVERLAP_CHARS,
 					currentChunkStart,
 				);
-				currentChunk = semanticText.slice(currentChunkStart, currentChunkEnd);
-				currentChunk = `${currentChunk}${prefix}${paragraph.text}`;
+				const overlapCandidate = `${semanticText.slice(overlapStart, currentChunkEnd)}${prefix}${paragraph.text}`;
+				if (overlapCandidate.length <= TARGET_CHARS) {
+					currentChunkStart = overlapStart;
+					currentChunk = overlapCandidate;
+				} else {
+					currentChunkStart = paragraph.charStart;
+					currentChunk = paragraph.text;
+				}
 			} else {
 				currentChunk = paragraph.text;
 				currentChunkStart = paragraph.charStart;

@@ -75,6 +75,24 @@ describe("chunkText", () => {
 		expect(third?.text).toBe(`${"B".repeat(200)}\n\n${"C".repeat(1_000)}`);
 	});
 
+	it("drops overlap rather than emitting an unbounded whitespace gap", () => {
+		const source = `${"A".repeat(1_000)}\n${" ".repeat(100_000)}\n${"B".repeat(1_000)}`;
+		const chunks = chunkText(source);
+		const second = chunks[1];
+
+		expect(second).toMatchObject({
+			charStart: source.lastIndexOf("B".repeat(1_000)),
+			charEnd: source.length,
+		});
+		expect(second?.text).toBe("B".repeat(1_000));
+		expect(
+			Math.max(...chunks.map((chunk) => chunk.text.length)),
+		).toBeLessThanOrEqual(2_000);
+		for (const chunk of chunks) {
+			expect(source.slice(chunk.charStart, chunk.charEnd)).toBe(chunk.text);
+		}
+	});
+
 	it("handles single very long paragraph by splitting sentences", () => {
 		// Single paragraph > TARGET_CHARS * 1.5, with sentence endings
 		const longPara = "This is a sentence. ".repeat(200); // ~4000 chars
