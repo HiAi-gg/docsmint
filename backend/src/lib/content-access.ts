@@ -94,6 +94,19 @@ export function contentAccessForExternalContext(
 		actorRole: "owner" | "admin" | "editor" | "viewer";
 	},
 ): ContentAccess {
+	if (ctx.resourceScope) {
+		return {
+			principal: { kind: "session", userId: ctx.userId },
+			ctx,
+			userId: ctx.userId,
+			categoryId: ctx.resourceScope.categoryId,
+			permissions: new Set<CategoryApiPermission>(
+				ctx.resourceScope.permissions,
+			),
+			restricted: true,
+			externalRole: ctx.actorRole,
+		};
+	}
 	const permissions = new Set<CategoryApiPermission>(["read"]);
 	if (ctx.actorRole === "owner" || ctx.actorRole === "admin") {
 		permissions.add("edit");
@@ -108,10 +121,8 @@ export function contentAccessForExternalContext(
 		userId: ctx.userId,
 		categoryId: null,
 		permissions,
-		// Workspace assertions are already tenant-bound by the signed
-		// workspaceId and RLS context. `restricted` is reserved for category-
-		// scoped API keys; treating a full workspace assertion as category
-		// restricted makes category/folder list routes return an empty set.
+		// An unscoped assertion remains workspace-wide. Only a signed resource
+		// scope or an existing category API key sets `restricted`.
 		restricted: false,
 		externalRole: ctx.actorRole,
 	};
@@ -179,7 +190,7 @@ export function isAuthorizedCategory(
 	access: ContentAccess,
 	categoryId: string | null,
 ): boolean {
-	if (access.externalRole) return true;
+	if (access.externalRole && !access.restricted) return true;
 	return (
 		!access.restricted || (!!categoryId && categoryId === access.categoryId)
 	);

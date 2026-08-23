@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { db, type Database } from "./client";
+import { type Database, db } from "./client";
+
+export type WorkspaceResourcePermission = "read" | "edit" | "write";
+export type WorkspaceResourceScope = Readonly<{
+	kind: "category";
+	categoryId: string;
+	permissions: readonly WorkspaceResourcePermission[];
+}>;
 
 /** A transaction carrying the same query surface as the tenant-scoped DB. */
 export type TenantTransaction = Parameters<
@@ -44,6 +51,8 @@ export interface TenantContext {
 	workspaceId?: string;
 	source?: "personal" | "external";
 	actorRole?: "owner" | "admin" | "editor" | "viewer";
+	/** Resource restriction copied from a verified external assertion. */
+	resourceScope?: WorkspaceResourceScope;
 	/** Unix timestamp from a verified external workspace assertion. */
 	assertionExpiresAt?: number;
 }

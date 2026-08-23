@@ -116,6 +116,50 @@ describe("content API authorization matrix", () => {
 		expect(canAccessContent(editor, "write")).toBe(true);
 	});
 
+	test("signed category scope replaces role-derived workspace permissions exactly", () => {
+		const access = contentAccessForExternalContext({
+			userId: ownerId,
+			workspaceId: "workspace-a",
+			source: "external",
+			role: "user",
+			actorRole: "owner",
+			resourceScope: {
+				kind: "category",
+				categoryId,
+				permissions: ["edit", "edit"],
+			},
+		});
+
+		expect(access.restricted).toBe(true);
+		expect(access.categoryId).toBe(categoryId);
+		expect([...access.permissions]).toEqual(["edit"]);
+		expect(canAccessContent(access, "read")).toBe(false);
+		expect(canAccessContent(access, "edit")).toBe(true);
+		expect(canAccessContent(access, "write")).toBe(false);
+		expect(isAuthorizedCategory(access, categoryId)).toBe(true);
+		expect(isAuthorizedCategory(access, otherCategoryId)).toBe(false);
+		expect(canManageCategories(access)).toBe(false);
+	});
+
+	test("an empty signed permission set denies every category content action", () => {
+		const access = contentAccessForExternalContext({
+			userId: ownerId,
+			workspaceId: "workspace-a",
+			source: "external",
+			role: "user",
+			actorRole: "owner",
+			resourceScope: {
+				kind: "category",
+				categoryId,
+				permissions: [],
+			},
+		});
+		expect([...access.permissions]).toEqual([]);
+		expect(canAccessContent(access, "read")).toBe(false);
+		expect(canAccessContent(access, "edit")).toBe(false);
+		expect(canAccessContent(access, "write")).toBe(false);
+	});
+
 	test("document category prefers its explicit category and falls back to folder ancestry", () => {
 		expect(
 			effectiveDocumentCategory({

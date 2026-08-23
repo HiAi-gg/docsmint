@@ -93,6 +93,7 @@ export async function buildTenantContext(
 			workspaceId: workspace.workspaceId,
 			source: "external",
 			actorRole: workspace.actorRole,
+			resourceScope: workspace.resourceScope,
 			assertionExpiresAt: workspace.expiresAt,
 		};
 	}

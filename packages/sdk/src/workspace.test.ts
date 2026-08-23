@@ -19,6 +19,15 @@ const options = {
 	nowSeconds: 1_700_000_030,
 };
 
+const scopedContext = {
+	...context,
+	resourceScope: {
+		kind: "category" as const,
+		categoryId: "11111111-1111-4111-8111-111111111111",
+		permissions: ["read", "write"] as const,
+	},
+};
+
 async function signedPayload(payload: string): Promise<string> {
 	const key = await crypto.subtle.importKey(
 		"raw",
@@ -44,6 +53,129 @@ describe("workspace assertions", () => {
 		await expect(
 			verifyDocsmintWorkspaceAssertion(assertion, options),
 		).resolves.toEqual(context);
+	});
+
+	test("signs a strict category scope and returns a deeply frozen copy", async () => {
+		const assertion = await createDocsmintWorkspaceAssertion(
+			scopedContext as never,
+			options.secret,
+		);
+		const verified = await verifyDocsmintWorkspaceAssertion(assertion, options);
+		expect(verified).toEqual(scopedContext);
+		expect(Object.isFrozen(verified)).toBe(true);
+		expect(
+			Object.isFrozen((verified as typeof scopedContext).resourceScope),
+		).toBe(true);
+		expect(
+			Object.isFrozen(
+				(verified as typeof scopedContext).resourceScope.permissions,
+			),
+		).toBe(true);
+	});
+
+	test("rejects unknown assertion and category-scope fields exactly", async () => {
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{ ...context, unexpected: true } as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace assertion payload fields");
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{
+					...scopedContext,
+					resourceScope: { ...scopedContext.resourceScope, unexpected: true },
+				} as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace resource scope fields");
+
+		const unknownPayload = Buffer.from(
+			JSON.stringify({ ...context, unexpected: true }),
+		).toString("base64url");
+		await expect(
+			verifyDocsmintWorkspaceAssertion(
+				await signedPayload(unknownPayload),
+				options,
+			),
+		).rejects.toThrow("Invalid workspace assertion payload fields");
+	});
+
+	test("rejects invalid category ids and permissions but permits an empty set", async () => {
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{
+					...scopedContext,
+					resourceScope: { ...scopedContext.resourceScope, kind: "folder" },
+				} as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace resource scope kind");
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{
+					...scopedContext,
+					resourceScope: {
+						...scopedContext.resourceScope,
+						categoryId: "category-1",
+					},
+				} as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace resource categoryId");
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{
+					...scopedContext,
+					resourceScope: {
+						...scopedContext.resourceScope,
+						permissions: ["read", "delete"],
+					},
+				} as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace resource permissions");
+
+		const emptyPermissions = {
+			...scopedContext,
+			resourceScope: { ...scopedContext.resourceScope, permissions: [] },
+		};
+		const assertion = await createDocsmintWorkspaceAssertion(
+			emptyPermissions as never,
+			options.secret,
+		);
+		await expect(
+			verifyDocsmintWorkspaceAssertion(assertion, options),
+		).resolves.toEqual(emptyPermissions);
+	});
+
+	test("authenticates category and permission bytes before validation", async () => {
+		const assertion = await createDocsmintWorkspaceAssertion(
+			scopedContext as never,
+			options.secret,
+		);
+		const [payload, signature] = assertion.split(".");
+		if (!payload || !signature) throw new Error("invalid test assertion");
+		const decoded = JSON.parse(
+			Buffer.from(payload, "base64url").toString("utf8"),
+		);
+		for (const resourceScope of [
+			{
+				...decoded.resourceScope,
+				categoryId: "22222222-2222-4222-8222-222222222222",
+			},
+			{ ...decoded.resourceScope, permissions: ["edit"] },
+		]) {
+			const tamperedPayload = Buffer.from(
+				JSON.stringify({ ...decoded, resourceScope }),
+			).toString("base64url");
+			await expect(
+				verifyDocsmintWorkspaceAssertion(
+					`${tamperedPayload}.${signature}`,
+					options,
+				),
+			).rejects.toThrow("signature");
+		}
 	});
 
 	test("rejects an extra segment, a wrong secret, and a future assertion", async () => {
@@ -84,15 +216,21 @@ describe("workspace assertions", () => {
 		);
 		await expect(
 			verifyDocsmintWorkspaceAssertion(expired, options),
-		).rejects.toThrow("lifetime");
+		).rejects.toThrow("expired");
 
 		const excessiveTtl = await createDocsmintWorkspaceAssertion(
-			{ ...context, expiresAt: context.issuedAt + 61 },
+			{ ...context, expiresAt: context.issuedAt + 60 },
 			options.secret,
 		);
 		await expect(
 			verifyDocsmintWorkspaceAssertion(excessiveTtl, options),
-		).rejects.toThrow("lifetime");
+		).resolves.toEqual(context);
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{ ...context, expiresAt: context.issuedAt + 61 },
+				options.secret,
+			),
+		).rejects.toThrow("maximum TTL");
 	});
 
 	test("accepts only the documented five-second clock skew", async () => {
@@ -118,7 +256,7 @@ describe("workspace assertions", () => {
 		);
 		await expect(
 			verifyDocsmintWorkspaceAssertion(outsideSkew, options),
-		).rejects.toThrow("lifetime");
+		).rejects.toThrow("not yet valid");
 	});
 
 	test("rejects malformed base64url, malformed JSON, invalid role, and missing workspace", async () => {

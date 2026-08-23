@@ -5,14 +5,6 @@ export {
 	DocsNetworkError,
 	DocsTimeoutError,
 } from "./client.js";
-export type * from "./types.js";
-export {
-	configureUserDataLifecycle,
-	createUserDataLifecycle,
-	encodeUserDataExportNdjson,
-	exportUserData,
-	purgeUserData,
-} from "./lifecycle.js";
 export type {
 	AssertPurgeAllowed,
 	ExportUserDataContext,
@@ -26,8 +18,23 @@ export type {
 	UserDataLifecycleAdapter,
 } from "./lifecycle.js";
 export {
-	createDocsmintWorkspaceAssertion,
-	verifyDocsmintWorkspaceAssertion,
-	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
+	configureUserDataLifecycle,
+	createUserDataLifecycle,
+	encodeUserDataExportNdjson,
+	exportUserData,
+	purgeUserData,
+} from "./lifecycle.js";
+export type * from "./types.js";
+export type {
+	DocsmintWorkspaceContext,
+	WorkspaceAssertionOptions,
+	WorkspaceAssertionPayload,
+	WorkspaceResourcePermission,
+	WorkspaceResourceScope,
+	WorkspaceRole,
 } from "./workspace.js";
-export type { DocsmintWorkspaceContext, WorkspaceAssertionOptions } from "./workspace.js";
+export {
+	createDocsmintWorkspaceAssertion,
+	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
+	verifyDocsmintWorkspaceAssertion,
+} from "./workspace.js";
