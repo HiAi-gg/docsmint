@@ -10,10 +10,9 @@
  *   4. Create relationships to the source Document and between entities
  *      where possible.
  *
- * All steps are feature-flagged and best-effort:
- *   - `GRAPH_EXTRACT_ENABLED=false` short-circuits to `[]`.
- *   - AGE unreachable → `[]` (never throws).
- *   - LLM call fails or returns malformed JSON → `[]`.
+ * All steps are feature-flagged and best-effort. Disabled or unavailable
+ * dependencies return an explicit `unavailable` outcome, provider/persistence
+ * errors return `failed`, and generation-fence rejection returns `stale`.
  *
  * The embedding worker MUST be able to call this function without it ever
  * raising — graph extraction is enrichment, not a hard dependency.
@@ -66,6 +65,14 @@ export interface ExtractedEntity {
 	confidence?: number;
 	relationships: ExtractedRelationship[];
 }
+
+export type GraphExtractionOutcome =
+	| { status: "ready"; entities: ExtractedEntity[] }
+	| {
+			status: "unavailable" | "failed" | "stale";
+			warning: string;
+			entities: ExtractedEntity[];
+	  };
 
 export interface ExtractEntitiesOptions {
 	/** Pipeline generation that owns the replacement graph projection. */
@@ -207,32 +214,46 @@ export function _documentEntityEdgeCypherForTests(): string {
 	);
 }
 
+/** Test-only SQL wrapper for delimiter-collision regression coverage. */
+export function _entityUpsertSqlForTests(name: string): string {
+	return buildCypherSql(
+		entityUpsertCypher(
+			"document-id",
+			"Concept",
+			name,
+			"2026-08-23T00:00:00.000Z",
+			0.9,
+		),
+	);
+}
+
 /**
  * Extract entities from a single document chunk and persist them to AGE.
  *
- * Returns the array of extracted entities (possibly empty). Never throws.
- * If AGE is disabled, unreachable, or the LLM call fails, returns `[]`.
+ * Returns a typed lifecycle outcome and never lets optional graph failures
+ * fail the embedding pipeline.
  *
  * Flow:
  *   1. Short-circuit when GRAPH_EXTRACT_ENABLED is false.
  *   2. Redis dedup gate — only when BOTH chunkHash AND chunkIndex are
  *      supplied. SET NX EX claims a per-(docId,chunkIndex,chunkHash)
  *      slot; a `null` reply means a sibling worker already processed
- *      this chunk and we return [] immediately. Redis errors fall
+ *      this chunk and we return a ready outcome immediately. Redis errors fall
  *      through to extraction (best-effort).
  *   3. AGE gate — getGraphDb() returns null if the extension is missing
  *      or unreachable; we degrade gracefully.
  *   4. Empty chunk short-circuit — whitespace-only text never reaches
  *      the LLM.
- *   5. LLM call + AGE persistence, both wrapped so a failure logs and
- *      returns [] instead of throwing.
+ *   5. LLM call + AGE persistence, both wrapped into typed outcomes.
  */
 export async function extractEntities(
 	chunkText: string,
 	documentId: string,
 	options: ExtractEntitiesOptions = {},
-): Promise<ExtractedEntity[]> {
-	if (!config.GRAPH_EXTRACT_ENABLED) return [];
+): Promise<GraphExtractionOutcome> {
+	if (!config.GRAPH_EXTRACT_ENABLED) {
+		return { status: "unavailable", warning: "graph_disabled", entities: [] };
+	}
 	let claimedDedupKey: string | undefined;
 	const releaseDedupClaim = async () => {
 		if (!claimedDedupKey) return;
@@ -274,21 +295,27 @@ export async function extractEntities(
 			);
 			acquired = true;
 		}
-		if (!acquired) return [];
+		if (!acquired) return { status: "ready", entities: [] };
 	}
+
+	if (!chunkText.trim()) return { status: "ready", entities: [] };
 
 	const sql = await getGraphDb();
 	if (!sql) {
 		await releaseDedupClaim();
-		return [];
+		return { status: "unavailable", warning: "age_unavailable", entities: [] };
 	}
 
-	if (!chunkText) {
+	if (!hasConfiguredGraphProvider(options)) {
 		await releaseDedupClaim();
-		return [];
+		return {
+			status: "unavailable",
+			warning: "provider_unavailable",
+			entities: [],
+		};
 	}
 
-	let entities: ExtractedEntity[];
+	let entities: ExtractedEntity[] | null;
 	try {
 		entities = await callEntityExtractionLLM(chunkText, options);
 	} catch (err) {
@@ -297,7 +324,11 @@ export async function extractEntities(
 			{ err, documentId },
 			"Entity extraction LLM call failed — skipping",
 		);
-		return [];
+		return { status: "failed", warning: "provider_failed", entities: [] };
+	}
+	if (entities === null) {
+		await releaseDedupClaim();
+		return { status: "failed", warning: "provider_failed", entities: [] };
 	}
 
 	try {
@@ -307,19 +338,29 @@ export async function extractEntities(
 		});
 	} catch (err) {
 		await releaseDedupClaim();
-		if (isStaleRevisionError(err)) throw err;
+		if (isStaleRevisionError(err)) {
+			return { status: "stale", warning: "stale_revision", entities: [] };
+		}
 		logger.warn(
 			{ err, documentId, count: entities.length },
 			"Failed to persist extracted entities to AGE — discarding",
 		);
-		return [];
+		return { status: "failed", warning: "age_persist_failed", entities: [] };
 	}
 
 	logger.debug(
 		{ documentId, count: entities.length },
 		"Extracted entities and persisted to AGE",
 	);
-	return entities;
+	return { status: "ready", entities };
+}
+
+function hasConfiguredGraphProvider(options: ExtractEntitiesOptions): boolean {
+	return Boolean(
+		options.llmBaseUrl ||
+			config.GRAPH_EXTRACT_BASE_URL ||
+			config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
+	);
 }
 
 // ---------------------------------------------------------------------
@@ -363,13 +404,13 @@ const extractionOutputSchema = z.object({
 /**
  * Call the OpenAI-compatible chat-completions endpoint to extract entities.
  * Tries the primary embedding provider first, then the fallback, then gives
- * up with `[]`. The `json_object` response format is requested so the model
+ * up with `null`. The `json_object` response format is requested so the model
  * returns valid JSON without markdown fencing.
  */
 async function callEntityExtractionLLM(
 	text: string,
 	options: ExtractEntitiesOptions,
-): Promise<ExtractedEntity[]> {
+): Promise<ExtractedEntity[] | null> {
 	const primaryBase = options.llmBaseUrl ?? config.GRAPH_EXTRACT_BASE_URL;
 	const primaryExplicitKey = options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY;
 	const primaryModel =
@@ -410,7 +451,7 @@ async function callEntityExtractionLLM(
 		});
 	}
 	const [primary, fallback] = providers;
-	if (!primary) return [];
+	if (!primary) return null;
 
 	const result = await requestStructuredChat({
 		primary,
@@ -423,7 +464,7 @@ async function callEntityExtractionLLM(
 		maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
 		temperature: options.temperature ?? DEFAULT_TEMPERATURE,
 	});
-	return result ? parseExtractionResponse(JSON.stringify(result.data)) : [];
+	return result ? parseExtractionResponse(JSON.stringify(result.data)) : null;
 }
 
 /**
@@ -579,7 +620,7 @@ async function persistEntities(
 	// Wrap all cypher writes in a transaction so a failure mid-way rolls
 	// back partial graph state (some entities persisted, some edges missing).
 	// AGE's cypher() requires a literal dollar-quoted string constant, not a
-	// bind parameter, so we use sql.unsafe() with $$ ... $$ dollar-quoting.
+	// bind parameter, so we select a tag absent from each complete payload.
 	// The helper functions already inline values via JSON.stringify, which
 	// is safe against injection.
 	await sql.begin(async (tx) => {
@@ -617,9 +658,7 @@ async function persistEntities(
 					revision: identity.revision,
 					timestamp: nowIso,
 				})) {
-					await tx.unsafe(
-						`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
-					);
+					await tx.unsafe(buildCypherSql(cypher));
 				}
 
 				// 2. Upsert each entity vertex and create a MENTIONS edge to the
@@ -629,10 +668,20 @@ async function persistEntities(
 					const name = ent.name;
 					const conf = ent.confidence;
 					await tx.unsafe(
-						`SELECT * FROM cypher('docs_graph', $$ ${entityUpsertCypher(documentId, label, name, nowIso, conf)} $$) AS (result agtype)`,
+						buildCypherSql(
+							entityUpsertCypher(documentId, label, name, nowIso, conf),
+						),
 					);
 					await tx.unsafe(
-						`SELECT * FROM cypher('docs_graph', $$ ${documentEntityEdgeCypher(documentId, identity.generationId, label, name, conf)} $$) AS (result agtype)`,
+						buildCypherSql(
+							documentEntityEdgeCypher(
+								documentId,
+								identity.generationId,
+								label,
+								name,
+								conf,
+							),
+						),
 					);
 				}
 
@@ -649,14 +698,18 @@ async function persistEntities(
 							rel.relationType,
 							rel.confidence,
 						);
-						await tx.unsafe(
-							`SELECT * FROM cypher('docs_graph', $$ ${cypher} $$) AS (result agtype)`,
-						);
+						await tx.unsafe(buildCypherSql(cypher));
 					}
 				}
 			},
 		});
 	});
+}
+
+function buildCypherSql(cypher: string): string {
+	let tag = "hiai";
+	while (cypher.includes(`$${tag}$`)) tag = `${tag}_x`;
+	return `SELECT * FROM cypher('docs_graph', $${tag}$ ${cypher} $${tag}$) AS (result agtype)`;
 }
 
 /**

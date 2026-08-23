@@ -118,7 +118,11 @@ describe("Phase 5.3 — extractEntities Redis dedup", () => {
 			chunkHash: "hash-X",
 			chunkIndex: 0,
 		});
-		expect(r2).toEqual([]);
+		expect(r2).toEqual({
+			status: "unavailable",
+			warning: "age_unavailable",
+			entities: [],
+		});
 		expect(redisSetCalls.length).toBe(2);
 		expect(getGraphDbCallCount).toBe(2);
 		expect(redisDelCalls).toHaveLength(2);
@@ -179,7 +183,11 @@ describe("Phase 5.3 — extractEntities Redis dedup", () => {
 			chunkHash: "hash-1",
 			chunkIndex: 0,
 		});
-		expect(r).toEqual([]);
+		expect(r).toEqual({
+			status: "unavailable",
+			warning: "age_unavailable",
+			entities: [],
+		});
 		expect(getGraphDbCallCount).toBe(1);
 	});
 });
@@ -192,7 +200,11 @@ describe("Phase 5.3 — backward compat (no chunkHash/chunkIndex)", () => {
 	test("omitting both chunkHash and chunkIndex = no Redis interaction", async () => {
 		const { extractEntities } = await import("../lib/graph/extract-entities");
 		const r = await extractEntities("text", "doc-2");
-		expect(r).toEqual([]);
+		expect(r).toEqual({
+			status: "unavailable",
+			warning: "age_unavailable",
+			entities: [],
+		});
 		expect(redisSetCalls.length).toBe(0);
 		expect(getGraphDbCallCount).toBe(1);
 	});
@@ -202,7 +214,11 @@ describe("Phase 5.3 — backward compat (no chunkHash/chunkIndex)", () => {
 		const r = await extractEntities("text", "doc-2", {
 			chunkHash: "hash-only",
 		});
-		expect(r).toEqual([]);
+		expect(r).toEqual({
+			status: "unavailable",
+			warning: "age_unavailable",
+			entities: [],
+		});
 		expect(redisSetCalls.length).toBe(0);
 		expect(getGraphDbCallCount).toBe(1);
 	});
@@ -210,7 +226,11 @@ describe("Phase 5.3 — backward compat (no chunkHash/chunkIndex)", () => {
 	test("chunkIndex alone (no chunkHash) = no Redis", async () => {
 		const { extractEntities } = await import("../lib/graph/extract-entities");
 		const r = await extractEntities("text", "doc-2", { chunkIndex: 0 });
-		expect(r).toEqual([]);
+		expect(r).toEqual({
+			status: "unavailable",
+			warning: "age_unavailable",
+			entities: [],
+		});
 		expect(redisSetCalls.length).toBe(0);
 		expect(getGraphDbCallCount).toBe(1);
 	});

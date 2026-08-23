@@ -10,6 +10,8 @@ describe("graph expand module", () => {
 			"MATCH path=(seed:Document)-[:MENTIONS*1..2]-(neighbor:Document)",
 		);
 		expect(cypher).toContain("length(path) AS hops");
+		expect(cypher).toContain("seed.generation_id AS seed_generation_id");
+		expect(cypher).toContain("neighbor.generation_id AS generation_id");
 		expect(cypher).toContain("RETURN DISTINCT");
 		expect(cypher).not.toContain("shortestPath");
 	});
@@ -23,11 +25,9 @@ describe("graph expand module", () => {
 	});
 
 	test("expandResults returns empty Map when GRAPH_SEARCH_ENABLED is false", async () => {
-		// Force a fresh config read with the flag disabled. The default
-		// in `.env` is `false` so the process-wide config already reflects
-		// this, but a prior test could have set it via `process.env`.
-		const prev = process.env.GRAPH_SEARCH_ENABLED;
-		process.env.GRAPH_SEARCH_ENABLED = "false";
+		const { config } = await import("../lib/config");
+		const prev = config.GRAPH_SEARCH_ENABLED;
+		config.GRAPH_SEARCH_ENABLED = false;
 		const { _resetGraphForTests } = await import("../lib/graph/init");
 		_resetGraphForTests();
 		try {
@@ -36,8 +36,7 @@ describe("graph expand module", () => {
 			expect(result).toBeInstanceOf(Map);
 			expect(result.size).toBe(0);
 		} finally {
-			if (prev === undefined) delete process.env.GRAPH_SEARCH_ENABLED;
-			else process.env.GRAPH_SEARCH_ENABLED = prev;
+			config.GRAPH_SEARCH_ENABLED = prev;
 		}
 	});
 
@@ -57,6 +56,7 @@ describe("graph expand module", () => {
 		const cypher = _buildQuerySeedCypher(["Authentication", "English"], 10);
 		expect(cypher).toContain("MATCH (entity)-[:MENTIONS]-(document:Document)");
 		expect(cypher).toContain("QUERY_ENTITY");
+		expect(cypher).toContain("document.generation_id AS generation_id");
 		expect(cypher).toContain("LIMIT 10");
 	});
 

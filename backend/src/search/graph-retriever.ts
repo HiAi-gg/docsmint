@@ -45,6 +45,11 @@ export interface GraphRetrieverAdapters {
 		documentIds: string[],
 		scope: GraphVisibilityScope,
 	) => Promise<Set<string>>;
+	/** Resolve the relational generation that is currently active for each ID. */
+	visibleDocumentGenerations?: (
+		ctx: TenantContext,
+		documentIds: string[],
+	) => Promise<Map<string, string | null>>;
 }
 
 const DEFAULT_LIMIT = 20;
@@ -83,6 +88,12 @@ export async function retrieveGraphCandidates(
 					visibilityScope,
 				);
 	const seeds = requestedSeeds.filter((id) => authorizedSeeds.has(id));
+	const activeSeedGenerations = await resolveActiveGenerations(
+		ctx,
+		seeds,
+		adapters.visibleDocumentGenerations,
+		Boolean(adapters.visibleDocumentIds),
+	);
 	const expand = adapters.expandResults ?? expandResults;
 	const expandQuery = adapters.expandFromQueryPlan ?? expandFromQueryPlan;
 
@@ -96,34 +107,83 @@ export async function retrieveGraphCandidates(
 		related = await expandQuery(request.queryPlan, limit);
 	}
 
+	const relatedWithCurrentSeed = related.filter((candidate) => {
+		if (!candidate.docId || seeds.includes(candidate.docId)) return false;
+		if (seeds.length === 0) return true;
+		if (!candidate.seedGenerationId) return false;
+		return seeds.some(
+			(seed) => activeSeedGenerations.get(seed) === candidate.seedGenerationId,
+		);
+	});
+	const allIds = dedupe(
+		relatedWithCurrentSeed.map((candidate) => candidate.docId),
+	);
+	const visible = await resolveVisibleIds(
+		ctx,
+		allIds,
+		adapters.visibleDocumentIds,
+		visibilityScope,
+	);
+	const activeGenerations = await resolveActiveGenerations(
+		ctx,
+		allIds,
+		adapters.visibleDocumentGenerations,
+		Boolean(adapters.visibleDocumentIds),
+	);
 	const unique = new Map<string, RelatedDoc>();
-	for (const candidate of related) {
-		if (!candidate.docId || seeds.includes(candidate.docId)) continue;
+	for (const candidate of relatedWithCurrentSeed) {
+		if (!visible.has(candidate.docId)) continue;
+		if (
+			activeGenerations.has(candidate.docId) &&
+			candidate.generationId !== activeGenerations.get(candidate.docId)
+		) {
+			continue;
+		}
 		const previous = unique.get(candidate.docId);
 		if (!previous || candidate.hopDistance < previous.hopDistance) {
 			unique.set(candidate.docId, candidate);
 		}
 	}
-	const ids = [...unique.keys()].slice(0, limit);
+	const ids = [...unique.values()]
+		.sort(
+			(left, right) =>
+				left.hopDistance - right.hopDistance ||
+				left.docId.localeCompare(right.docId),
+		)
+		.slice(0, limit)
+		.map((candidate) => candidate.docId);
 	if (ids.length === 0) return [];
-	const visible = await resolveVisibleIds(
-		ctx,
-		ids,
-		adapters.visibleDocumentIds,
-		visibilityScope,
-	);
 
-	return ids
-		.filter((id) => visible.has(id))
-		.map((id, index) => {
-			const evidence = unique.get(id);
-			return {
-				documentId: id,
-				channel: "graph" as const,
-				rank: index + 1,
-				evidence: `Graph relationship ${evidence?.relationType ?? "RELATED_TO"} at ${evidence?.hopDistance ?? 1} hop(s)`,
-			};
-		});
+	return ids.map((id, index) => {
+		const evidence = unique.get(id);
+		return {
+			documentId: id,
+			channel: "graph" as const,
+			rank: index + 1,
+			evidence: `Graph relationship ${evidence?.relationType ?? "RELATED_TO"} at ${evidence?.hopDistance ?? 1} hop(s)`,
+		};
+	});
+}
+
+async function resolveActiveGenerations(
+	ctx: TenantContext,
+	ids: string[],
+	adapter?: GraphRetrieverAdapters["visibleDocumentGenerations"],
+	trustLegacyVisibilityAdapter = false,
+): Promise<Map<string, string | null>> {
+	if (adapter) return adapter(ctx, ids);
+	if (ids.length === 0) return new Map();
+	if (trustLegacyVisibilityAdapter) return new Map();
+	const rows = await withTenant(ctx, (tx) =>
+		tx
+			.select({
+				id: documents.id,
+				generationId: documents.activeEmbeddingGeneration,
+			})
+			.from(documents)
+			.where(and(inArray(documents.id, ids), isNull(documents.deletedAt))),
+	);
+	return new Map(rows.map((row) => [row.id, row.generationId]));
 }
 
 async function resolveVisibleIds(
@@ -132,8 +192,8 @@ async function resolveVisibleIds(
 	adapter?: GraphRetrieverAdapters["visibleDocumentIds"],
 	scope: GraphVisibilityScope = _buildGraphVisibilityScope(ctx),
 ): Promise<Set<string>> {
-	if (adapter) return adapter(ctx, ids, scope);
 	if (ids.length === 0) return new Set();
+	if (adapter) return adapter(ctx, ids, scope);
 	const rows = await withTenant(ctx, async (tx) =>
 		tx
 			.select({

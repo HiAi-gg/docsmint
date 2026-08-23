@@ -293,7 +293,10 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
 	// not a bind parameter — see search-expansion.ts and admin.ts for
 	// the same pattern.  cypherDocReplace already escapes $docId via
 	// JSON.stringify, so inlining is safe.
-	const queryStr = `SELECT * FROM cypher('docs_graph', $$ ${cypherDocReplace(cypher, docId)} $$) AS (labels agtype, name agtype)`;
+	const queryStr = buildCypherSql(
+		cypherDocReplace(cypher, docId),
+		"labels agtype, name agtype",
+	);
 	const rows = (await sql.unsafe(queryStr)) as Array<{
 		labels: string;
 		name: string;
@@ -327,13 +330,18 @@ async function fetchRelatedDocuments(
 	const all = expansion.get(docId) ?? [];
 	if (all.length === 0) return [];
 
-	const neighborIds = Array.from(new Set(all.map((r) => r.docId)));
+	const activeGenerations = await loadActiveGenerations(ctx, [
+		docId,
+		...all.map((neighbor) => neighbor.docId),
+	]);
+	const current = currentGraphNeighbors(expansion, activeGenerations);
+	const neighborIds = current.map((neighbor) => neighbor.docId);
 	if (neighborIds.length === 0) return [];
 
 	const allowedIds = access
 		? await allowedGraphDocumentIds(access, neighborIds)
 		: await filterToOwnedDocuments(ctx, neighborIds);
-	return all.filter((r) => allowedIds.has(r.docId));
+	return current.filter((neighbor) => allowedIds.has(neighbor.docId));
 }
 
 /**
@@ -366,12 +374,15 @@ async function graphRagLookup(
 	}
 
 	const expansion = await expandResults(seeds, 2);
+	const activeGenerations = await loadActiveGenerations(ctx, [
+		...seeds,
+		...[...expansion.values()].flatMap((neighbors) =>
+			neighbors.map((neighbor) => neighbor.docId),
+		),
+	]);
 	const neighborMap = new Map<string, DocumentNeighbor>();
-	for (const neighbors of expansion.values()) {
-		for (const n of neighbors) {
-			if (n.docId === neighborMap.get(n.docId)?.docId) continue;
-			neighborMap.set(n.docId, n);
-		}
+	for (const neighbor of currentGraphNeighbors(expansion, activeGenerations)) {
+		neighborMap.set(neighbor.docId, neighbor);
 	}
 
 	const neighborIds = Array.from(neighborMap.keys());
@@ -489,6 +500,58 @@ async function filterToOwnedDocuments(
 	return new Set(rows.map((r) => r.id));
 }
 
+async function loadActiveGenerations(
+	ctx: import("../../api/middleware/tenant").TenantContext,
+	docIds: string[],
+): Promise<Map<string, string | null>> {
+	const uniqueIds = Array.from(new Set(docIds));
+	if (uniqueIds.length === 0) return new Map();
+	const rows = await withTenant(ctx, (tx) =>
+		tx
+			.select({
+				id: documents.id,
+				generationId: documents.activeEmbeddingGeneration,
+			})
+			.from(documents)
+			.where(
+				and(
+					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+					inArray(documents.id, uniqueIds),
+					isNull(documents.deletedAt),
+				),
+			),
+	);
+	return new Map(rows.map((row) => [row.id, row.generationId]));
+}
+
+function currentGraphNeighbors(
+	expansion: Map<string, RelatedDoc[]>,
+	activeGenerations: Map<string, string | null>,
+): DocumentNeighbor[] {
+	const current = new Map<string, DocumentNeighbor>();
+	for (const [seedId, neighbors] of expansion) {
+		const seedGeneration = activeGenerations.get(seedId);
+		if (!seedGeneration) continue;
+		for (const neighbor of neighbors) {
+			if (
+				neighbor.seedGenerationId !== seedGeneration ||
+				neighbor.generationId !== activeGenerations.get(neighbor.docId)
+			) {
+				continue;
+			}
+			const previous = current.get(neighbor.docId);
+			if (!previous || neighbor.hopDistance < previous.hopDistance) {
+				current.set(neighbor.docId, neighbor);
+			}
+		}
+	}
+	return [...current.values()].sort(
+		(left, right) =>
+			left.hopDistance - right.hopDistance ||
+			left.docId.localeCompare(right.docId),
+	);
+}
+
 /**
  * Load the display fields (title, content snippet, folder, timestamps) for
  * a list of document ids. Used by the graph RAG search endpoint so agent
@@ -535,7 +598,13 @@ async function loadDocumentSummaries(
  * handles escaping of any embedded quotes / backslashes.
  */
 function cypherDocReplace(cypher: string, docId: string): string {
-	return cypher.replace("$docId", JSON.stringify(docId));
+	return cypher.replace("$docId", () => JSON.stringify(docId));
+}
+
+function buildCypherSql(cypher: string, columns: string): string {
+	let tag = "hiai";
+	while (cypher.includes(`$${tag}$`)) tag = `${tag}_x`;
+	return `SELECT * FROM cypher('docs_graph', $${tag}$ ${cypher} $${tag}$) AS (${columns})`;
 }
 
 /**
@@ -569,11 +638,13 @@ function stripQuotes(value: string): string {
  * without reaching into `init.ts`.
  */
 export type { RelatedDoc };
-
 /**
  * Test-only export of fetchDocumentEntities so unit tests can verify
  * that the cypher query is sent via sql.unsafe() with dollar-quoting
  * rather than as a postgres-js bind parameter. Not part of the public
  * API surface — prefixed with underscore per project convention.
  */
-export { fetchDocumentEntities as _fetchDocumentEntitiesForTests };
+export {
+	currentGraphNeighbors as _currentGraphNeighborsForTests,
+	fetchDocumentEntities as _fetchDocumentEntitiesForTests,
+};

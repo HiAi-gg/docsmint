@@ -18,6 +18,58 @@
 import { describe, expect, mock, test } from "bun:test";
 
 describe("graph routes cypher safety (N1)", () => {
+	test("filters stale graph generations and orders current neighbors deterministically", async () => {
+		const mod = await import("../api/routes/graph");
+		const expansion = new Map([
+			[
+				"seed",
+				[
+					{
+						docId: "alpha",
+						generationId: "old-alpha",
+						seedGenerationId: "seed-current",
+						relationType: "MENTIONS",
+						hopDistance: 1,
+					},
+					{
+						docId: "gamma",
+						generationId: "gamma-current",
+						seedGenerationId: "seed-current",
+						relationType: "MENTIONS",
+						hopDistance: 2,
+					},
+					{
+						docId: "beta",
+						generationId: "beta-current",
+						seedGenerationId: "seed-current",
+						relationType: "MENTIONS",
+						hopDistance: 1,
+					},
+					{
+						docId: "delta",
+						generationId: "delta-current",
+						seedGenerationId: "old-seed",
+						relationType: "MENTIONS",
+						hopDistance: 1,
+					},
+				],
+			],
+		]);
+
+		const result = mod._currentGraphNeighborsForTests(
+			expansion,
+			new Map([
+				["seed", "seed-current"],
+				["alpha", "alpha-current"],
+				["beta", "beta-current"],
+				["gamma", "gamma-current"],
+				["delta", "delta-current"],
+			]),
+		);
+
+		expect(result.map((neighbor) => neighbor.docId)).toEqual(["beta", "gamma"]);
+	});
+
 	test("fetchDocumentEntities calls sql.unsafe() with dollar-quoted cypher", async () => {
 		// Arrange: mock getGraphDb to return a spy-able sql object
 		let capturedQuery: string | undefined;
@@ -48,9 +100,11 @@ describe("graph routes cypher safety (N1)", () => {
 			expect(unsafeSpy).toHaveBeenCalledTimes(1);
 			expect(capturedQuery).toBeDefined();
 
-			// 1. Use cypher('docs_graph', $$ ... $$) — dollar-quoting
-			expect(capturedQuery).toContain("$$");
-			expect(capturedQuery).toMatch(/cypher\s*\(\s*'docs_graph'\s*,\s*\$\$/);
+			// 1. Use a collision-resistant dollar-quoted Cypher literal.
+			expect(capturedQuery).toContain("$hiai$");
+			expect(capturedQuery).toMatch(
+				/cypher\s*\(\s*'docs_graph'\s*,\s*\$hiai\$/,
+			);
 
 			// 2. Have the docId inlined in the cypher body
 			expect(capturedQuery).toContain("test-doc-uuid-123");
@@ -81,7 +135,7 @@ describe("graph routes cypher safety (N1)", () => {
 		expect(result).toEqual([]);
 	});
 
-	test("fetchDocumentEntities safely escapes docId with special characters", async () => {
+	test("fetchDocumentEntities uses a collision-resistant delimiter", async () => {
 		let capturedQuery: string | undefined;
 		const unsafeSpy = mock(async (query: string) => {
 			capturedQuery = query;
@@ -97,15 +151,14 @@ describe("graph routes cypher safety (N1)", () => {
 
 		const mod = await import("../api/routes/graph");
 
-		// docId with single quote and backslash
-		await mod._fetchDocumentEntitiesForTests("doc'O'brien\\test");
+		await mod._fetchDocumentEntitiesForTests("doc$$payload");
 
 		expect(unsafeSpy).toHaveBeenCalled();
 		expect(capturedQuery).toBeDefined();
 
-		// cypherDocReplace uses JSON.stringify which wraps in double quotes
-		// and escapes internal quotes — the docId value should be JSON-safe
-		expect(capturedQuery).toMatch(/\$\$.*"doc.*test".*\$\$/s);
+		expect(capturedQuery).toContain('"doc$$payload"');
+		expect(capturedQuery).not.toContain("cypher('docs_graph', $$");
+		expect(capturedQuery).toContain("$hiai$");
 
 		// The postgres-js tagged-template form would have $1 here — verify
 		// no bind-param placeholder leaked into the query.

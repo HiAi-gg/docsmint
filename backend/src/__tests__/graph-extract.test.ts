@@ -27,19 +27,34 @@ describe("graph extract-entities module", () => {
 		globalThis.fetch = originalFetch;
 	});
 
+	test("uses a collision-resistant dollar tag for entity Cypher", async () => {
+		const graph = await import("../lib/graph/extract-entities");
+		const buildSql = Reflect.get(graph, "_entityUpsertSqlForTests") as
+			| ((name: string) => string)
+			| undefined;
+		expect(buildSql).toBeFunction();
+		if (!buildSql) return;
+		const sql = buildSql("hostile $$ $hiai$ $hiai_x$ entity");
+		expect(sql).toContain("cypher('docs_graph', $hiai_x_x$");
+		expect(sql.match(/\$hiai_x_x\$/g)).toHaveLength(2);
+	});
+
 	test("extractEntities returns [] when GRAPH_EXTRACT_ENABLED is false", async () => {
-		const prev = process.env.GRAPH_EXTRACT_ENABLED;
-		process.env.GRAPH_EXTRACT_ENABLED = "false";
+		const { config } = await import("../lib/config");
+		const prev = config.GRAPH_EXTRACT_ENABLED;
+		config.GRAPH_EXTRACT_ENABLED = false;
 		const { _resetGraphForTests } = await import("../lib/graph/init");
 		_resetGraphForTests();
 		try {
 			const { extractEntities } = await import("../lib/graph/extract-entities");
 			const result = await extractEntities("Some text", "doc-1");
-			expect(Array.isArray(result)).toBe(true);
-			expect(result.length).toBe(0);
+			expect(result).toEqual({
+				status: "unavailable",
+				warning: "graph_disabled",
+				entities: [],
+			});
 		} finally {
-			if (prev === undefined) delete process.env.GRAPH_EXTRACT_ENABLED;
-			else process.env.GRAPH_EXTRACT_ENABLED = prev;
+			config.GRAPH_EXTRACT_ENABLED = prev;
 		}
 	});
 
@@ -51,9 +66,9 @@ describe("graph extract-entities module", () => {
 		try {
 			const { extractEntities } = await import("../lib/graph/extract-entities");
 			const a = await extractEntities("", "doc-1");
-			expect(a.length).toBe(0);
+			expect(a).toEqual({ status: "ready", entities: [] });
 			const b = await extractEntities("   \n\t  ", "doc-1");
-			expect(b.length).toBe(0);
+			expect(b).toEqual({ status: "ready", entities: [] });
 		} finally {
 			if (prev === undefined) delete process.env.GRAPH_EXTRACT_ENABLED;
 			else process.env.GRAPH_EXTRACT_ENABLED = prev;

@@ -23,7 +23,7 @@ function deps(
 	return {
 		statuses,
 		getRun: async () => ({ ...job, embedStatus: "ready" as const }),
-		extract: async () => {},
+		extract: async () => ({ status: "ready" as const }),
 		setGraphStatus: async (_id: string, status: PipelineStageStatus) => {
 			statuses.push(status);
 		},
@@ -34,6 +34,74 @@ function deps(
 }
 
 describe("graph worker isolation", () => {
+	it("records an unavailable graph dependency as an optional warning", async () => {
+		const effects: string[] = [];
+		const state = deps({
+			extract: async () => ({
+				status: "unavailable" as const,
+				warning: "age_unavailable",
+				entities: [],
+			}),
+			setGraphStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			enqueueSummarize: async () => {
+				effects.push("summarize");
+			},
+		});
+		await createGraphWorker(state)(job);
+		expect(effects).toEqual([
+			"processing:",
+			"failed:age_unavailable",
+			"summarize",
+		]);
+	});
+
+	it("records a provider failure as an optional graph warning", async () => {
+		const effects: string[] = [];
+		const state = deps({
+			extract: async () => ({
+				status: "failed" as const,
+				warning: "provider_failed",
+				entities: [],
+			}),
+			setGraphStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			enqueueSummarize: async () => {
+				effects.push("summarize");
+			},
+		});
+		await createGraphWorker(state)(job);
+		expect(effects).toEqual([
+			"processing:",
+			"failed:provider_failed",
+			"summarize",
+		]);
+	});
+
+	it("cancels a typed stale extraction outcome", async () => {
+		const effects: string[] = [];
+		const state = deps({
+			extract: async () => ({
+				status: "stale" as const,
+				warning: "stale_revision",
+			}),
+			setGraphStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			cancelStaleRun: async () => {
+				effects.push("cancel-run");
+			},
+		});
+		await createGraphWorker(state)(job);
+		expect(effects).toEqual([
+			"processing:",
+			"cancelled:stale_revision",
+			"cancel-run",
+		]);
+	});
+
 	it("cancellation after extraction prevents ready status and downstream enqueue", async () => {
 		const effects: string[] = [];
 		let checks = 0;
@@ -48,6 +116,7 @@ describe("graph worker isolation", () => {
 			}),
 			extract: async () => {
 				effects.push("extract");
+				return { status: "ready" as const };
 			},
 			compensateExtract: async () => {
 				effects.push("compensate");
@@ -69,7 +138,7 @@ describe("graph worker isolation", () => {
 		const worker = createGraphWorker({
 			isCancelled: async () => ++checks >= 4,
 			getRun: async () => ({ ...job, embedStatus: "ready" }),
-			extract: async () => {},
+			extract: async () => ({ status: "ready" as const }),
 			compensateExtract: async () => {
 				throw new Error("graph cleanup failed");
 			},

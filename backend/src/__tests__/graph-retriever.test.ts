@@ -25,6 +25,84 @@ afterEach(async () => {
 });
 
 describe("graph visibility scope", () => {
+	test("drops stale graph generations and orders candidates by hop then document id", async () => {
+		await enableGraphSearchForTest();
+		const { retrieveGraphCandidates } = await import(
+			"../search/graph-retriever"
+		);
+		const ctx: TenantContext = { userId: OWNER, role: "user" };
+		const activeGenerations = new Map([
+			["seed", "seed-new"],
+			["alpha", "alpha-new"],
+			["beta", "beta-new"],
+			["gamma", "gamma-new"],
+		]);
+		const results = await retrieveGraphCandidates(
+			ctx,
+			{ documentSeeds: ["seed"], queryPlan },
+			{
+				visibleDocumentIds: async (_ctx, ids) => new Set(ids),
+				visibleDocumentGenerations: async (_ctx, ids) =>
+					new Map(ids.map((id) => [id, activeGenerations.get(id) ?? null])),
+				expandResults: async () =>
+					new Map([
+						[
+							"seed",
+							[
+								{
+									docId: "alpha",
+									generationId: "alpha-old",
+									seedGenerationId: "seed-new",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+								{
+									docId: "gamma",
+									generationId: "gamma-new",
+									seedGenerationId: "seed-new",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+								{
+									docId: "beta",
+									generationId: "beta-new",
+									seedGenerationId: "seed-new",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+								{
+									docId: "alpha",
+									generationId: "alpha-new",
+									seedGenerationId: "seed-new",
+									hopDistance: 2,
+									relationType: "MENTIONS",
+								},
+								{
+									docId: "discarded-seed-generation",
+									generationId: "discarded-new",
+									seedGenerationId: "seed-old",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+							],
+						],
+					]),
+				expandFromQueryPlan: async () => [],
+			} as Parameters<typeof retrieveGraphCandidates>[2] & {
+				visibleDocumentGenerations: (
+					ctx: TenantContext,
+					ids: string[],
+				) => Promise<Map<string, string | null>>;
+			},
+		);
+
+		expect(results.map((result) => result.documentId)).toEqual([
+			"beta",
+			"gamma",
+			"alpha",
+		]);
+	});
+
 	test("authorizes document seeds before they reach the AGE expand adapter", async () => {
 		await enableGraphSearchForTest();
 		const { retrieveGraphCandidates } = await import(
@@ -75,6 +153,8 @@ describe("graph visibility scope", () => {
 			{
 				visibleDocumentIds: async (_ctx, ids) =>
 					new Set(ids.filter((id) => id === "query-plan-doc")),
+				visibleDocumentGenerations: async (_ctx, ids) =>
+					new Map(ids.map((id) => [id, "query-plan-generation"])),
 				expandResults: async () => {
 					documentExpansionCalls += 1;
 					return new Map();
@@ -84,6 +164,7 @@ describe("graph visibility scope", () => {
 					return [
 						{
 							docId: "query-plan-doc",
+							generationId: "query-plan-generation",
 							hopDistance: 1,
 							relationType: "MENTIONS",
 						},

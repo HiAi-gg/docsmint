@@ -22,6 +22,8 @@ const DEFAULT_MAX_HOPS = 2;
 
 export interface RelatedDoc {
 	docId: string;
+	generationId: string;
+	seedGenerationId?: string;
 	relationType: string;
 	hopDistance: number;
 }
@@ -51,10 +53,11 @@ export async function expandFromQueryPlan(
 		const cypher = buildQuerySeedCypher(terms, boundedLimit);
 		const queryString = buildCypherSql(
 			cypher,
-			"neighbor_id agtype, relation agtype, hops agtype",
+			"neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
 		);
 		const rows = (await sql.unsafe(queryString)) as Array<{
 			neighbor_id: string;
+			generation_id: string;
 			relation: string;
 			hops: number;
 		}>;
@@ -67,6 +70,7 @@ export async function expandFromQueryPlan(
 			const hops = Number(row.hops);
 			out.push({
 				docId,
+				generationId: stripQuotes(String(row.generation_id ?? "")),
 				relationType: stripQuotes(String(row.relation ?? "QUERY_ENTITY")),
 				hopDistance: Number.isFinite(hops) ? Math.max(1, hops) : 1,
 			});
@@ -112,11 +116,13 @@ export async function expandResults(
 		// escaped in buildTraversalCypher, so inlining is safe.
 		const queryString = buildCypherSql(
 			cypher,
-			"seed_id agtype, neighbor_id agtype, relation agtype, hops agtype",
+			"seed_id agtype, seed_generation_id agtype, neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
 		);
 		const rows = (await sql.unsafe(queryString)) as Array<{
 			seed_id: string;
+			seed_generation_id: string;
 			neighbor_id: string;
+			generation_id: string;
 			relation: string;
 			hops: number;
 		}>;
@@ -129,7 +135,13 @@ export async function expandResults(
 			const hops = Number(row.hops);
 			const hopDistance = Number.isFinite(hops) ? hops : 1;
 			const list = out.get(seedId) ?? [];
-			list.push({ docId: neighborId, relationType: relation, hopDistance });
+			list.push({
+				docId: neighborId,
+				generationId: stripQuotes(String(row.generation_id ?? "")),
+				seedGenerationId: stripQuotes(String(row.seed_generation_id ?? "")),
+				relationType: relation,
+				hopDistance,
+			});
 			out.set(seedId, list);
 		}
 	} catch (err) {
@@ -160,7 +172,9 @@ function buildTraversalCypher(seedIds: string[], maxHops: number): string {
 			MATCH path=(seed:Document)-[:MENTIONS*1..${maxHops}]-(neighbor:Document)
 			WHERE seed.id IN [${seedList}] AND seed <> neighbor
 			RETURN DISTINCT seed.id AS seed_id,
+			       seed.generation_id AS seed_generation_id,
 			       neighbor.id AS neighbor_id,
+			       neighbor.generation_id AS generation_id,
 			       'MENTIONS' AS relation,
 			       length(path) AS hops
 		`;
@@ -188,6 +202,7 @@ function buildQuerySeedCypher(terms: string[], limit: number): string {
 		MATCH (entity)-[:MENTIONS]-(document:Document)
 		WHERE toLower(entity.name) IN [${termList}]
 		RETURN DISTINCT document.id AS neighbor_id,
+		       document.generation_id AS generation_id,
 		       'QUERY_ENTITY' AS relation,
 		       1 AS hops
 		LIMIT ${limit}
@@ -242,7 +257,7 @@ export function _buildQuerySeedSql(terms: string[], limit = 20): string {
 	const boundedLimit = Math.max(1, Math.min(Math.floor(limit), 100));
 	return buildCypherSql(
 		buildQuerySeedCypher(dedupe(terms), boundedLimit),
-		"neighbor_id agtype, relation agtype, hops agtype",
+		"neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
 	);
 }
 

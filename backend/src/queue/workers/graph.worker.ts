@@ -19,12 +19,18 @@ export interface GraphPipelineState {
 	embedStatus: PipelineStageStatus;
 }
 
+export type GraphStageOutcome =
+	| { status: "ready" }
+	| { status: "unavailable" | "failed" | "stale"; warning: string };
+
 export interface GraphWorkerDependencies {
 	isCancelled?(job: ReturnType<typeof graphJobSchema.parse>): Promise<boolean>;
 	getRun(
 		job: ReturnType<typeof graphJobSchema.parse>,
 	): Promise<GraphPipelineState | null>;
-	extract(job: ReturnType<typeof graphJobSchema.parse>): Promise<void>;
+	extract(
+		job: ReturnType<typeof graphJobSchema.parse>,
+	): Promise<GraphStageOutcome>;
 	compensateExtract?(
 		job: ReturnType<typeof graphJobSchema.parse>,
 	): Promise<void>;
@@ -88,9 +94,23 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 		await deps.setGraphStatus(job.generationId, "processing");
 		try {
 			if (await deps.isCancelled?.(job)) return;
-			await deps.extract(job);
+			const outcome = await deps.extract(job);
 			if (await deps.isCancelled?.(job)) {
 				await deps.compensateExtract?.(job);
+				return;
+			}
+			if (outcome.status === "stale") {
+				await deps.setGraphStatus(
+					job.generationId,
+					"cancelled",
+					outcome.warning,
+				);
+				await deps.cancelStaleRun(job, "stale_revision");
+				return;
+			}
+			if (outcome.status === "unavailable" || outcome.status === "failed") {
+				await deps.setGraphStatus(job.generationId, "failed", outcome.warning);
+				if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
 				return;
 			}
 			await deps.setGraphStatus(job.generationId, "ready");

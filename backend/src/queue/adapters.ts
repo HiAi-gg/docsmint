@@ -875,7 +875,7 @@ export function createPipelineStageDependencies(
 					return row;
 				});
 				if (!doc) throw new Error("Pipeline document not found");
-				await withProviderPermit(
+				return withProviderPermit(
 					providerProfile(`graph:${config.GRAPH_EXTRACT_MODEL ?? "default"}`),
 					"graph",
 					() =>
