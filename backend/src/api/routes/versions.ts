@@ -4,8 +4,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	canAccessContent,
-	effectiveDocumentCategory,
-	isAuthorizedCategory,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
@@ -42,6 +41,18 @@ async function authorizeVersionDocument(
 						access.ctx,
 					),
 					isNull(documents.deletedAt),
+					...(access.restricted
+						? [
+								access.categoryId
+									? effectiveDocumentCategoryCondition(
+											documents.categoryId,
+											documents.folderId,
+											access.ctx,
+											access.categoryId,
+										)
+									: isNull(documents.id),
+							]
+						: []),
 				),
 			)
 			.limit(1);
@@ -50,8 +61,7 @@ async function authorizeVersionDocument(
 	return {
 		access,
 		row,
-		authorized:
-			!!row && isAuthorizedCategory(access, effectiveDocumentCategory(row)),
+		authorized: !!row,
 	};
 }
 

@@ -51,6 +51,72 @@ export function tenantOwnerSql(alias: string, ctx: TenantContext): SQL {
 	return sql`${workspaceColumn} IS NULL AND ${ownerColumn} = ${ctx.userId}`;
 }
 
+function inheritedFolderCategorySql(
+	folderId: AnyColumn | SQL,
+	ctx: TenantContext,
+): SQL {
+	return sql`(
+		WITH RECURSIVE ancestors AS (
+			SELECT ancestor_folders.id, ancestor_folders.parent_id,
+				ancestor_folders.category_id, 0 AS depth
+			FROM folders ancestor_folders
+			WHERE ancestor_folders.id = ${folderId}
+				AND ${tenantOwnerSql("ancestor_folders", ctx)}
+			UNION ALL
+			SELECT parent.id, parent.parent_id, parent.category_id,
+				ancestors.depth + 1
+			FROM folders parent
+			JOIN ancestors ON ancestors.parent_id = parent.id
+			WHERE ${tenantOwnerSql("parent", ctx)}
+		)
+		SELECT ancestors.category_id
+		FROM ancestors
+		WHERE ancestors.category_id IS NOT NULL
+		ORDER BY depth ASC
+		LIMIT 1
+	)`;
+}
+
+/** Raw-SQL equivalent for recursive queries that use explicit table aliases. */
+export function effectiveDocumentCategorySql(
+	documentAlias: string,
+	ctx: TenantContext,
+	categoryId: string | AnyColumn | SQL,
+): SQL {
+	return sql`coalesce(
+		${sql.raw(`${documentAlias}.category_id`)},
+		${inheritedFolderCategorySql(sql.raw(`${documentAlias}.folder_id`), ctx)}
+	) = ${categoryId}`;
+}
+
+/** Raw-SQL equivalent for recursive folder queries with an explicit alias. */
+export function effectiveFolderCategorySql(
+	folderAlias: string,
+	ctx: TenantContext,
+	categoryId: string | AnyColumn | SQL,
+): SQL {
+	return sql`${inheritedFolderCategorySql(sql.raw(`${folderAlias}.id`), ctx)} = ${categoryId}`;
+}
+
+/** Effective direct-or-inherited category predicate for Drizzle document queries. */
+export function effectiveDocumentCategoryCondition(
+	documentCategory: AnyColumn,
+	documentFolderId: AnyColumn,
+	ctx: TenantContext,
+	categoryId: string,
+): SQL {
+	return sql`coalesce(${documentCategory}, ${inheritedFolderCategorySql(documentFolderId, ctx)}) = ${categoryId}`;
+}
+
+/** Effective category predicate for a category root folder or any descendant. */
+export function effectiveFolderCategoryCondition(
+	folderId: AnyColumn,
+	ctx: TenantContext,
+	categoryId: string,
+): SQL {
+	return sql`${inheritedFolderCategorySql(folderId, ctx)} = ${categoryId}`;
+}
+
 function categoryGrant(scopes: readonly ApiKeyScope[]): {
 	categoryId: string;
 	permissions: Set<CategoryApiPermission>;
@@ -203,7 +269,7 @@ type QueryExecutor = {
 /** Resolve the category inherited by a folder through its root ancestor. */
 export async function resolveFolderEffectiveCategory(
 	tx: QueryExecutor,
-	ownerId: string,
+	ctx: TenantContext,
 	folderId: string,
 ): Promise<string | null | undefined> {
 	const rows = (await tx.execute(
@@ -212,11 +278,11 @@ export async function resolveFolderEffectiveCategory(
 				SELECT ${folders.id} AS id, ${folders.parentId} AS parent_id,
 					${folders.categoryId} AS category_id
 				FROM ${folders}
-				WHERE ${folders.id} = ${folderId} AND ${folders.ownerId} = ${ownerId}
+				WHERE ${folders.id} = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
 				UNION ALL
 				SELECT f.id, f.parent_id, f.category_id
 				FROM folders f JOIN ancestors a ON f.id = a.parent_id
-				WHERE f.owner_id = ${ownerId}
+				WHERE ${tenantOwnerSql("f", ctx)}
 			)
 			SELECT category_id FROM ancestors WHERE category_id IS NOT NULL LIMIT 1
 		`,
@@ -224,7 +290,7 @@ export async function resolveFolderEffectiveCategory(
 	// undefined distinguishes a missing/unowned folder from an uncategorized one.
 	if (rows.length === 0) {
 		const exists = (await tx.execute(
-			sql`SELECT 1 FROM ${folders} WHERE ${folders.id} = ${folderId} AND ${folders.ownerId} = ${ownerId}`,
+			sql`SELECT 1 FROM ${folders} WHERE ${folders.id} = ${folderId} AND ${tenantOwnerSql("folders", ctx)}`,
 		)) as unknown[];
 		return exists.length > 0 ? null : undefined;
 	}

@@ -1,11 +1,10 @@
 import { documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { recordAuditEvent } from "../../lib/audit";
 import {
 	canAccessContent,
-	effectiveDocumentCategory,
-	isAuthorizedCategory,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
@@ -50,17 +49,33 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(documents)
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(and(eq(documents.id, params.id), isNull(documents.deletedAt)))
+					.where(
+						and(
+							eq(documents.id, params.id),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.limit(1);
 
 				if (!doc) {
 					return { notFound: true as const };
-				}
-				if (doc.ownerId !== userId) {
-					return { forbidden: true as const };
-				}
-				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
-					return { forbidden: true as const };
 				}
 
 				const [updated] = await tx
@@ -85,10 +100,6 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 			if (result.notFound) {
 				set.status = 404;
 				return { error: "Document not found" };
-			}
-			if (result.forbidden) {
-				set.status = 403;
-				return { error: "Forbidden" };
 			}
 
 			const ipAddress =
@@ -150,17 +161,33 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(documents)
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(and(eq(documents.id, params.id), isNull(documents.deletedAt)))
+					.where(
+						and(
+							eq(documents.id, params.id),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.limit(1);
 
 				if (!doc) {
 					return { notFound: true as const };
-				}
-				if (doc.ownerId !== userId) {
-					return { forbidden: true as const };
-				}
-				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
-					return { forbidden: true as const };
 				}
 
 				const [updated] = await tx
@@ -185,10 +212,6 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 			if (result.notFound) {
 				set.status = 404;
 				return { error: "Document not found" };
-			}
-			if (result.forbidden) {
-				set.status = 403;
-				return { error: "Forbidden" };
 			}
 
 			const ipAddress =

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { documents, folders } from "@hiai-docs/db/schema";
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { AuthPrincipal } from "../lib/auth-principal";
 import {
 	canAccessContent,
@@ -6,6 +8,8 @@ import {
 	contentAccessForExternalContext,
 	contentAccessForPrincipal,
 	effectiveDocumentCategory,
+	effectiveDocumentCategoryCondition,
+	effectiveFolderCategoryCondition,
 	isAuthorizedCategory,
 } from "../lib/content-access";
 
@@ -173,5 +177,41 @@ describe("content API authorization matrix", () => {
 				folderCategoryId: categoryId,
 			}),
 		).toBe(categoryId);
+	});
+});
+
+describe("effective category query predicates", () => {
+	const dialect = new PgDialect();
+	const ctx = {
+		userId: ownerId,
+		workspaceId: "workspace-a",
+		source: "external" as const,
+		role: "user" as const,
+	};
+
+	test("document predicate checks direct category before inherited folder ancestry", () => {
+		const query = dialect.sqlToQuery(
+			effectiveDocumentCategoryCondition(
+				documents.categoryId,
+				documents.folderId,
+				ctx,
+				categoryId,
+			),
+		);
+		expect(query.sql).toContain("coalesce");
+		expect(query.sql.toLowerCase()).toContain("with recursive ancestors");
+		expect(query.sql.toLowerCase()).toContain("order by depth asc");
+		expect(query.sql).toContain("workspace_id");
+		expect(query.params).toEqual(["workspace-a", "workspace-a", categoryId]);
+	});
+
+	test("folder predicate authorizes category roots and every nested folder", () => {
+		const query = dialect.sqlToQuery(
+			effectiveFolderCategoryCondition(folders.id, ctx, categoryId),
+		);
+		expect(query.sql.toLowerCase()).toContain("with recursive ancestors");
+		expect(query.sql.toLowerCase()).toContain("order by depth asc");
+		expect(query.sql).toContain("workspace_id");
+		expect(query.params).toEqual(["workspace-a", "workspace-a", categoryId]);
 	});
 });

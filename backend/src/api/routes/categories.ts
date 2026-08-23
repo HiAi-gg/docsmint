@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
 	canAccessContent,
 	canManageCategories,
+	effectiveDocumentCategorySql,
 	resolveContentAccess,
 	tenantOwnerCondition,
 	tenantOwnerSql,
@@ -135,7 +136,6 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const userId = ctx.userId;
 		try {
 			const rows = await withTenant(ctx, async (tx) => {
 				const conditions = [
@@ -162,13 +162,13 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 								UNION ALL
 								SELECT f.id FROM ${folders} f
 								JOIN cat_folders cf ON f.parent_id = cf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int
 							FROM ${documents}
-							WHERE (
-								${documents.categoryId} = "categories"."id"
-								OR ${documents.folderId} IN (SELECT id FROM cat_folders)
-							) AND ${documents.ownerId} = ${userId}
+							WHERE ${tenantOwnerSql("documents", ctx)}
+								AND ${documents.deletedAt} IS NULL
+								AND ${effectiveDocumentCategorySql("documents", ctx, sql.raw('"categories"."id"'))}
 						)`,
 						folderCount: sql<number>`(
 							WITH RECURSIVE cat_folders AS (
@@ -176,6 +176,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 								UNION ALL
 								SELECT f.id FROM ${folders} f
 								JOIN cat_folders cf ON f.parent_id = cf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int FROM cat_folders
 						)`,

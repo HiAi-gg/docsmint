@@ -54,7 +54,7 @@ async function authorizeShareLink(request: Request, shareId: string) {
 					folderCategoryId: row.documentFolderCategoryId,
 				})
 			: row.folderId
-				? await resolveFolderEffectiveCategory(tx, access.userId, row.folderId)
+				? await resolveFolderEffectiveCategory(tx, access.ctx, row.folderId)
 				: row.shareCategoryId;
 		return { ...row, effectiveCategoryId: categoryId ?? null };
 	});
@@ -185,11 +185,7 @@ async function isDocumentInSharedCategory(
 		const effectiveCategoryId =
 			document.categoryId ??
 			(document.folderId
-				? await resolveFolderEffectiveCategory(
-						tx,
-						ctx.userId,
-						document.folderId,
-					)
+				? await resolveFolderEffectiveCategory(tx, ctx, document.folderId)
 				: null);
 		return effectiveCategoryId === categoryId;
 	});
@@ -282,7 +278,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 				}
 				const categoryId = await resolveFolderEffectiveCategory(
 					tx,
-					userId,
+					ctx,
 					folderId,
 				);
 				if (!isAuthorizedCategory(access, categoryId ?? null)) {
@@ -440,16 +436,12 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 					categoryId =
 						document?.categoryId ??
 						(document?.folderId
-							? await resolveFolderEffectiveCategory(
-									tx,
-									userId,
-									document.folderId,
-								)
+							? await resolveFolderEffectiveCategory(tx, ctx, document.folderId)
 							: null);
 				} else if (row.folderId) {
 					categoryId = await resolveFolderEffectiveCategory(
 						tx,
-						userId,
+						ctx,
 						row.folderId,
 					);
 				} else if (row.categoryId) {
@@ -1093,7 +1085,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 				? await withTenant(ownerCtx, async (tx) => {
 						const effectiveCategoryId = await resolveFolderEffectiveCategory(
 							tx,
-							link.createdBy,
+							ownerCtx,
 							folderId,
 						);
 						return effectiveCategoryId === link.categoryId;

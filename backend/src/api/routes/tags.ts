@@ -1,11 +1,10 @@
 import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
-import { and, count, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	canAccessContent,
-	effectiveDocumentCategory,
-	isAuthorizedCategory,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
@@ -33,14 +32,46 @@ const addTagToDocSchema = z.object({
 
 export const tagRoutes = new Elysia({ prefix: "/api" })
 	.get("/tags", async ({ set, request }) => {
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
+		if (!canAccessContent(access, "read")) {
+			set.status = 403;
+			return { error: "Forbidden" };
+		}
 		const _userId = ctx.userId;
 		try {
 			const rows = await withTenant(ctx, async (tx) => {
+				if (!access.restricted) {
+					return tx
+						.select({
+							id: tags.id,
+							name: tags.name,
+							color: tags.color,
+							createdAt: tags.createdAt,
+							documentCount: count(documents.id),
+						})
+						.from(tags)
+						.leftJoin(documentTags, eq(tags.id, documentTags.tagId))
+						.leftJoin(
+							documents,
+							and(
+								eq(documents.id, documentTags.documentId),
+								tenantOwnerCondition(
+									documents.ownerId,
+									documents.workspaceId,
+									ctx,
+								),
+								isNull(documents.deletedAt),
+							),
+						)
+						.where(tenantOwnerCondition(tags.ownerId, tags.workspaceId, ctx))
+						.groupBy(tags.id, tags.name, tags.color, tags.createdAt)
+						.orderBy(tags.name);
+				}
 				return tx
 					.select({
 						id: tags.id,
@@ -50,8 +81,31 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 						documentCount: count(documentTags.documentId),
 					})
 					.from(tags)
-					.leftJoin(documentTags, eq(tags.id, documentTags.tagId))
-					.where(tenantOwnerCondition(tags.ownerId, tags.workspaceId, ctx))
+					.innerJoin(documentTags, eq(tags.id, documentTags.tagId))
+					.innerJoin(documents, eq(documents.id, documentTags.documentId))
+					.where(
+						and(
+							tenantOwnerCondition(tags.ownerId, tags.workspaceId, ctx),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.groupBy(tags.id, tags.name, tags.color, tags.createdAt)
 					.orderBy(tags.name);
 			});
@@ -306,13 +360,22 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.limit(1);
-				if (
-					!doc ||
-					!isAuthorizedCategory(access, effectiveDocumentCategory(doc))
-				) {
+				if (!doc) {
 					return false;
 				}
 
@@ -390,13 +453,22 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.limit(1);
-				if (
-					!doc ||
-					!isAuthorizedCategory(access, effectiveDocumentCategory(doc))
-				) {
+				if (!doc) {
 					return false;
 				}
 

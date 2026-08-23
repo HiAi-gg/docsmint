@@ -16,6 +16,21 @@ describe("dependent document route access contracts", () => {
 		expect(source).toContain("effectiveDocumentCategory(row)");
 	});
 
+	test("document index status reads and refresh writes use effective category scope", async () => {
+		const source = await routeSource("documents");
+		const statusStart = source.indexOf('.get("/documents/:id/index-status"');
+		const refreshStart = source.indexOf('.post("/documents/:id/index/refresh"');
+		const statusRoute = source.slice(statusStart, refreshStart);
+		const refreshRoute = source.slice(
+			refreshStart,
+			source.indexOf('.get("/documents/:id"', refreshStart),
+		);
+		expect(statusRoute).toContain('canAccessContent(access, "read")');
+		expect(statusRoute).toContain("effectiveDocumentCategoryCondition(");
+		expect(refreshRoute).toContain('canAccessContent(access, "write")');
+		expect(refreshRoute).toContain("effectiveDocumentCategoryCondition(");
+	});
+
 	test("versions enforce read for retrieval and edit for snapshots/restores", async () => {
 		const source = await routeSource("versions");
 		expect(
@@ -28,17 +43,15 @@ describe("dependent document route access contracts", () => {
 				/authorizeVersionDocument\([\s\S]*?params\.id,[\s\S]*?"edit"/g,
 			),
 		).toHaveLength(2);
-		expect(source).toContain("effectiveDocumentCategory(row)");
+		expect(source).toContain("effectiveDocumentCategoryCondition(");
 	});
 
 	test("document tag assignment is edit-scoped and category-bounded", async () => {
 		const source = await routeSource("tags");
 		expect(source.match(/canAccessContent\(access, "edit"\)/g)).toHaveLength(2);
-		expect(
-			source.match(
-				/isAuthorizedCategory\(access, effectiveDocumentCategory\(doc\)\)/g,
-			),
-		).toHaveLength(2);
+		expect(source.match(/effectiveDocumentCategoryCondition\(/g)).toHaveLength(
+			3,
+		);
 	});
 
 	test("share and visibility mutations require write scope", async () => {
@@ -49,8 +62,8 @@ describe("dependent document route access contracts", () => {
 		expect(
 			visibility.match(/canAccessContent\(access, "write"\)/g),
 		).toHaveLength(2);
-		expect(visibility.match(/effectiveDocumentCategory\(doc\)/g)).toHaveLength(
-			2,
-		);
+		expect(
+			visibility.match(/effectiveDocumentCategoryCondition\(/g),
+		).toHaveLength(2);
 	});
 });

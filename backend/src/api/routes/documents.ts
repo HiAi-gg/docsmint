@@ -32,6 +32,7 @@ import { recordAuditEvent } from "../../lib/audit";
 import { config } from "../../lib/config";
 import {
 	canAccessContent,
+	effectiveDocumentCategoryCondition,
 	isAuthorizedCategory,
 	resolveContentAccess,
 	resolveFolderEffectiveCategory,
@@ -387,8 +388,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 					isNull(documents.deletedAt),
 				];
-				if (access.restricted && access.categoryId) {
-					conditions.push(eq(documents.categoryId, access.categoryId));
+				if (access.restricted) {
+					conditions.push(
+						access.categoryId
+							? effectiveDocumentCategoryCondition(
+									documents.categoryId,
+									documents.folderId,
+									ctx,
+									access.categoryId,
+								)
+							: sql`false`,
+					);
 				}
 				if (folderId) conditions.push(eq(documents.folderId, folderId));
 
@@ -533,7 +543,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 			isNull(documents.deletedAt),
 			...(effectiveCategoryId
-				? [eq(documents.categoryId, effectiveCategoryId)]
+				? [
+						effectiveDocumentCategoryCondition(
+							documents.categoryId,
+							documents.folderId,
+							ctx,
+							effectiveCategoryId,
+						),
+					]
 				: []),
 		];
 		if (cursor) {
@@ -860,8 +877,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							eq(documentPipelineRuns.documentId, params.id),
 							eq(documentPipelineRuns.ownerId, ctx.userId),
 							isNull(documents.deletedAt),
-							...(access.restricted && access.categoryId
-								? [eq(documents.categoryId, access.categoryId)]
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
 								: []),
 						),
 					)
@@ -953,8 +979,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1010,8 +1045,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						eq(documents.id, parsedParams.data.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1124,7 +1168,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (!canAccessContent(access, "edit")) {
+		if (!canAccessContent(access, "write")) {
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
@@ -1142,8 +1186,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						eq(documents.id, parsedParams.data.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1219,8 +1272,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 										ctx,
 									),
 									isNull(documents.deletedAt),
-									...(access.restricted && access.categoryId
-										? [eq(documents.categoryId, access.categoryId)]
+									...(access.restricted
+										? [
+												access.categoryId
+													? effectiveDocumentCategoryCondition(
+															documents.categoryId,
+															documents.folderId,
+															ctx,
+															access.categoryId,
+														)
+													: sql`false`,
+											]
 										: []),
 								),
 							)
@@ -1395,7 +1457,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					if (body.data.folderId) {
 						destinationCategory = await resolveFolderEffectiveCategory(
 							tx,
-							userId,
+							ctx,
 							body.data.folderId,
 						);
 					}
@@ -1612,8 +1674,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
-							...(access.restricted && access.categoryId
-								? [eq(documents.categoryId, access.categoryId)]
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
 								: []),
 						),
 					)
@@ -1752,8 +1823,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					and(
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNotNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1792,8 +1872,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						eq(documents.id, params.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNotNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1827,8 +1916,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						eq(documents.id, params.id),
 						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 						isNotNull(documents.deletedAt),
-						...(access.restricted && access.categoryId
-							? [eq(documents.categoryId, access.categoryId)]
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
 							: []),
 					),
 				)
@@ -1884,8 +1982,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
-							...(access.restricted && access.categoryId
-								? [eq(documents.categoryId, access.categoryId)]
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
 								: []),
 						),
 					)
@@ -1968,8 +2075,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
-							...(access.restricted && access.categoryId
-								? [eq(documents.categoryId, access.categoryId)]
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
 								: []),
 						),
 					)

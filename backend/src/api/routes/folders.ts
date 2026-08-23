@@ -4,6 +4,9 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	canAccessContent,
+	effectiveDocumentCategoryCondition,
+	effectiveDocumentCategorySql,
+	effectiveFolderCategoryCondition,
 	isAuthorizedCategory,
 	resolveContentAccess,
 	resolveFolderEffectiveCategory,
@@ -46,11 +49,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const userId = ctx.userId;
 		try {
 			if (access.restricted) {
 				const effectiveCategory = await withTenant(ctx, (tx) =>
-					resolveFolderEffectiveCategory(tx, userId, params.id),
+					resolveFolderEffectiveCategory(tx, ctx, params.id),
 				);
 				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
 					set.status = 404;
@@ -74,11 +76,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int
 							FROM documents d
 							WHERE d.folder_id IN (SELECT id FROM sub_folders)
 								AND ${tenantOwnerSql("d", ctx)}
+								AND d.deleted_at IS NULL
+								${access.restricted && access.categoryId ? sql`AND ${effectiveDocumentCategorySql("d", ctx, access.categoryId)}` : sql``}
 						)`,
 						subfolderCount: sql<number>`(
 							WITH RECURSIVE sub_folders AS (
@@ -86,6 +91,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int FROM sub_folders
 						)`,
@@ -95,6 +101,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						and(
 							eq(folders.id, params.id),
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveFolderCategoryCondition(
+													folders.id,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.limit(1);
@@ -118,11 +135,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int
 							FROM documents d
 							WHERE d.folder_id IN (SELECT id FROM sub_folders)
 								AND ${tenantOwnerSql("d", ctx)}
+								AND d.deleted_at IS NULL
+								${access.restricted && access.categoryId ? sql`AND ${effectiveDocumentCategorySql("d", ctx, access.categoryId)}` : sql``}
 						)`,
 						subfolderCount: sql<number>`(
 							WITH RECURSIVE sub_folders AS (
@@ -130,6 +150,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int FROM sub_folders
 						)`,
@@ -139,6 +160,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						and(
 							eq(folders.parentId, params.id),
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveFolderCategoryCondition(
+													folders.id,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.orderBy(folders.order, folders.name);
@@ -163,6 +195,18 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.orderBy(documents.updatedAt);
@@ -194,12 +238,11 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const userId = ctx.userId;
 		try {
 			if (access.restricted && query.parentId) {
 				const parentId = query.parentId;
 				const parentCategory = await withTenant(ctx, (tx) =>
-					resolveFolderEffectiveCategory(tx, userId, parentId),
+					resolveFolderEffectiveCategory(tx, ctx, parentId),
 				);
 				if (!isAuthorizedCategory(access, parentCategory ?? null)) {
 					return [];
@@ -208,6 +251,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			const conditions = [
 				tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 			];
+			if (access.restricted) {
+				conditions.push(
+					access.categoryId
+						? effectiveFolderCategoryCondition(
+								folders.id,
+								ctx,
+								access.categoryId,
+							)
+						: sql`false`,
+				);
+			}
 			if (query.all === "true") {
 				// Don't filter by parentId, get all folders flat!
 			} else if (query.parentId) {
@@ -232,11 +286,14 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int
 							FROM documents d
 							WHERE d.folder_id IN (SELECT id FROM sub_folders)
 								AND ${tenantOwnerSql("d", ctx)}
+								AND d.deleted_at IS NULL
+								${access.restricted && access.categoryId ? sql`AND ${effectiveDocumentCategorySql("d", ctx, access.categoryId)}` : sql``}
 						)`,
 						subfolderCount: sql<number>`(
 							WITH RECURSIVE sub_folders AS (
@@ -244,6 +301,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 								UNION ALL
 								SELECT f.id FROM folders f
 								JOIN sub_folders sf ON f.parent_id = sf.id
+								WHERE ${tenantOwnerSql("f", ctx)}
 							)
 							SELECT COUNT(*)::int FROM sub_folders
 						)`,
@@ -303,7 +361,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				const parentId = parsed.data.parentId ?? null;
 				const categoryId = parentId ? null : (parsed.data.categoryId ?? null);
 				const effectiveCategory = parentId
-					? await resolveFolderEffectiveCategory(tx, userId, parentId)
+					? await resolveFolderEffectiveCategory(tx, ctx, parentId)
 					: categoryId;
 				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
 					return { forbidden: true as const };
@@ -459,7 +517,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				}
 				const sourceCategory = await resolveFolderEffectiveCategory(
 					tx,
-					userId,
+					ctx,
 					params.id,
 				);
 				if (!isAuthorizedCategory(access, sourceCategory ?? null)) {
@@ -472,7 +530,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					const destinationCategory = parsed.data.parentId
 						? await resolveFolderEffectiveCategory(
 								tx,
-								userId,
+								ctx,
 								parsed.data.parentId,
 							)
 						: parsed.data.categoryId === undefined
@@ -640,12 +698,11 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const userId = ctx.userId;
 		try {
 			const deletion = await withTenant(ctx, async (tx) => {
 				const effectiveCategory = await resolveFolderEffectiveCategory(
 					tx,
-					userId,
+					ctx,
 					params.id,
 				);
 				if (!isAuthorizedCategory(access, effectiveCategory ?? null)) {
