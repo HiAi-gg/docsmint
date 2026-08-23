@@ -616,7 +616,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// Sanity-check the size we recorded against the size storage
 			// observed. A client that lies about size gets corrected
 			// here so the DB row reflects what was actually stored.
-			const storedSize = headOutput.ContentLength ?? size;
+			const storedSize = headOutput.ContentLength;
+			if (
+				typeof storedSize !== "number" ||
+				!Number.isFinite(storedSize) ||
+				storedSize <= 0
+			) {
+				await removeUploadedObject(
+					key,
+					"Failed to remove attachment with invalid storage metadata",
+				);
+				if (admission && quotaContext && quotaReservationId) {
+					await admission
+						.releaseReservation(quotaContext, quotaReservationId)
+						.catch(() => undefined);
+				}
+				set.status = 409;
+				return { error: "Upload size could not be verified" };
+			}
 			if (storedSize > ATTACHMENT_MAX_SIZE_BYTES) {
 				await removeUploadedObject(
 					key,
@@ -783,6 +800,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 
 		// Parse multipart form data
 		let file: File | null;
+		let uploadedObjectPendingPersistence = false;
 		try {
 			const formData = await request.formData();
 			file = formData.get("file") as File | null;
@@ -825,6 +843,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					ContentLength: file.size,
 				}),
 			);
+			uploadedObjectPendingPersistence = true;
 
 			// Defensive integrity check: read the first 8 bytes back from
 			// storage and compare to the source buffer. The current pipeline
@@ -865,6 +884,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
 			}
+			uploadedObjectPendingPersistence = false;
 
 			// Return a stable, same-origin streaming URL instead of a 24h
 			// presigned URL. The presigned URL would expire (breaking images
@@ -880,6 +900,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				url: `/api/attachments/${created.id}/raw`,
 			};
 		} catch (err) {
+			if (uploadedObjectPendingPersistence) {
+				await removeUploadedObject(
+					key,
+					"Failed to remove orphaned attachment after upload error",
+				);
+			}
 			logger.error({ err }, "Failed to upload attachment");
 			set.status = 500;
 			return { error: "Failed to upload attachment" };

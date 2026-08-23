@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { request, setupHarness } from "./_harness";
 
-let app: any;
+let app: Awaited<ReturnType<typeof setupHarness>>["app"];
 
 beforeAll(async () => {
 	app = (await setupHarness()).app;

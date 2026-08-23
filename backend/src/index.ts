@@ -4,10 +4,7 @@ import { swagger } from "@elysiajs/swagger";
 import { Elysia } from "elysia";
 import { authMiddleware } from "./api/middleware/auth";
 import { csrfMiddleware } from "./api/middleware/csrf";
-import {
-	healthRateLimiter,
-	rateLimitHeaders,
-} from "./api/middleware/rate-limit";
+import { healthRateLimiter } from "./api/middleware/rate-limit";
 import { adminRoutes } from "./api/routes/admin";
 import { attachmentRoutes } from "./api/routes/attachments";
 import { authRoutes } from "./api/routes/auth";
@@ -16,6 +13,7 @@ import { collaborationRoutes } from "./api/routes/collaboration";
 import { documentRoutes } from "./api/routes/documents";
 import { folderRoutes } from "./api/routes/folders";
 import { graphRoutes } from "./api/routes/graph";
+import { createHealthRoutes } from "./api/routes/health";
 import { keysRoutes } from "./api/routes/keys";
 import { metricsRoutes } from "./api/routes/metrics";
 import { pluginsRoutes } from "./api/routes/plugins";
@@ -37,7 +35,7 @@ import { configureDocsMintRuntime } from "./lib/runtime-options";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
 import { createPipelineStageDependencies } from "./queue/adapters";
 import { configureOwnerStageLimits } from "./queue/fair-scheduler";
-import { evaluatePipelineHealth, PIPELINE_STAGES } from "./queue/health";
+import { PIPELINE_STAGES } from "./queue/health";
 import { configureDefaultJobOptions } from "./queue/names";
 import {
 	createBullMqRecoveryWriter,
@@ -234,61 +232,31 @@ const app = new Elysia()
 			? swagger(swaggerConfig)
 			: (e: Elysia) => e,
 	)
-	.get("/api/health", async ({ request, set }) => {
-		const ip =
-			request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-			request.headers.get("x-real-ip") ??
-			"unknown";
-		const rl = await healthRateLimiter(ip, request);
-		set.headers = rateLimitHeaders(rl.remaining, rl.retryAfter);
-		if (!rl.allowed) {
-			set.status = 429;
-			return { error: "Too many requests" };
-		}
-
-		const [databaseAvailable, redisAvailable, storageAvailable] =
-			await Promise.all([
+	.use(
+		createHealthRoutes({
+			rateLimiter: healthRateLimiter,
+			databaseAvailable: () =>
 				client`SELECT 1`.then(
 					() => true,
 					() => false,
 				),
+			redisAvailable: () =>
 				redis.ping().then(
 					() => true,
 					() => false,
 				),
+			storageAvailable: () =>
 				storage.send(new ListBucketsCommand({})).then(
 					() => true,
 					() => false,
 				),
-			]);
-		const queueAvailable =
-			pipelineRuntime.workers.size === PIPELINE_STAGES.length &&
-			[...pipelineRuntime.workers.values()].every(
-				(worker) => worker.isRunning?.() === true,
-			);
-		const readiness = evaluatePipelineHealth({
-			databaseAvailable,
-			redisAvailable,
-			storageAvailable,
-			queueAvailable,
-			recoveryAvailable: true,
-			oldestInteractiveWaitMs: 0,
-			interactiveSloMs: Number.POSITIVE_INFINITY,
-			graphAvailable: true,
-		});
-		if (readiness.status === "unhealthy") set.status = 503;
-
-		return {
-			status: readiness.status === "unhealthy" ? "unhealthy" : "ok",
-			service: "hiai-docs",
-			timestamp: new Date().toISOString(),
-			database: databaseAvailable ? "ok" : "error",
-			redis: redisAvailable ? "ok" : "error",
-			storage: storageAvailable ? "ok" : "error",
-			queue: queueAvailable ? "ok" : "error",
-			...(readiness.reasons.length ? { reasons: readiness.reasons } : {}),
-		};
-	})
+			queueAvailable: () =>
+				pipelineRuntime.workers.size === PIPELINE_STAGES.length &&
+				[...pipelineRuntime.workers.values()].every(
+					(worker) => worker.isRunning?.() === true,
+				),
+		}),
+	)
 	// Tenant context is resolved EXPLICITLY in each route handler via
 	// `buildTenantContext(request)` (see `api/middleware/tenant.ts`).
 	// Earlier designs used an Elysia plugin hook with AsyncLocalStorage

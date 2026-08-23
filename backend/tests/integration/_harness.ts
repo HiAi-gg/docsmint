@@ -34,6 +34,7 @@ export interface TestState {
   documentEmbeddings: any[];
   enqueuedEmbeddings: string[];
   calls: Array<{ kind: string; table: string }>;
+  insertFailures: Set<string>;
 }
 
 function uuid4(): string {
@@ -60,6 +61,7 @@ function createState(): TestState {
     documentEmbeddings: [],
     enqueuedEmbeddings: [],
     calls: [],
+    insertFailures: new Set(),
   };
   state.users.set(OWNER_ID, {
     id: OWNER_ID,
@@ -449,6 +451,9 @@ function buildInsertProxy(ctx: InsertCtx): any {
         return () => {
           state.calls.push({ kind: "insert", table: getTableName(ctx.table) });
           const tableName = getTableName(ctx.table);
+          if (state.insertFailures.has(tableName)) {
+            return Promise.reject(new Error(`Simulated ${tableName} insert failure`));
+          }
           const collection = getCollection(tableName);
           const returned: any[] = [];
           for (const row of ctx.values) {
@@ -852,7 +857,7 @@ const storageMockState: {
 	objectSize: number;
   objectContent?: string;
   objectBytes: Map<string, Buffer>;
-  storedSizes: Map<string, number>;
+  storedSizes: Map<string, number | undefined>;
 } = {
   putObjectFailNext: false,
   statObjectNotFoundNext: false,
@@ -911,8 +916,10 @@ mock.module("../../src/lib/storage.js", () => ({
         }
         // Support per-key sizes via storedSizes Map (preferred) and fallback objectSize
         const key = command.input.Key;
-        const size = storageMockState.storedSizes.get(key) ?? storageMockState.objectSize;
-        return { ContentLength: size };
+        const size = storageMockState.storedSizes.has(key)
+          ? storageMockState.storedSizes.get(key)
+          : storageMockState.objectSize;
+        return size === undefined ? {} : { ContentLength: size };
       } else if (cmdName === "GetObjectCommand") {
         storageMockState.getObjectCalls++;
         if (storageMockState.getObjectFailNext) {

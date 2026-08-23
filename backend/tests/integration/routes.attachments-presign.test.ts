@@ -386,6 +386,60 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     expect(getState().attachments.size).toBe(0);
   });
 
+  it("deletes an object when storage omits its content length", async () => {
+    const docId = seedOwnedDocument();
+    const key = `${OWNER_ID}/${docId}/missing-length.png`;
+    const storage = getStorageMockState();
+    storage.storedSizes.set(key, undefined);
+    const removeCallsBefore = storage.removeObjectCalls;
+
+    const res = await request(
+      app,
+      `/api/documents/${docId}/attachments/confirm`,
+      {
+        method: "POST",
+        headers: ownerHeaders(),
+        body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+      },
+    );
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "Upload size could not be verified" });
+    expect(storage.removeObjectCalls).toBe(removeCallsBefore + 1);
+    expect(storage.removedKeys.at(-1)).toBe(key);
+    expect(getState().attachments.size).toBe(0);
+  });
+
+  it("deletes objects with non-finite or non-positive content lengths", async () => {
+    const docId = seedOwnedDocument();
+    const storage = getStorageMockState();
+
+    for (const [label, storedSize] of [
+      ["nan", Number.NaN],
+      ["infinity", Number.POSITIVE_INFINITY],
+      ["zero", 0],
+      ["negative", -1],
+    ] as const) {
+      const key = `${OWNER_ID}/${docId}/${label}.png`;
+      storage.storedSizes.set(key, storedSize);
+
+      const res = await request(
+        app,
+        `/api/documents/${docId}/attachments/confirm`,
+        {
+          method: "POST",
+          headers: ownerHeaders(),
+          body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+        },
+      );
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "Upload size could not be verified" });
+      expect(storage.removedKeys.at(-1)).toBe(key);
+    }
+    expect(getState().attachments.size).toBe(0);
+  });
+
   it("returns 400 when the key prefix doesn't match the user", async () => {
     const docId = seedOwnedDocument();
     const res = await request(
@@ -474,5 +528,34 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
       },
     );
     expect(res.status).toBe(413);
+  });
+});
+
+describe("POST /api/documents/:id/attachments legacy upload", () => {
+  it("deletes the uploaded object when the attachment insert throws", async () => {
+    const docId = seedOwnedDocument();
+    const storage = getStorageMockState();
+    const removeCallsBefore = storage.removeObjectCalls;
+    getState().insertFailures.add("attachments");
+    const form = new FormData();
+    form.set(
+      "file",
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "upload.png", {
+        type: "image/png",
+      }),
+    );
+
+    const res = await request(app, `/api/documents/${docId}/attachments`, {
+      method: "POST",
+      headers: { authorization: ownerHeaders().authorization },
+      body: form,
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: "Failed to upload attachment" });
+    expect(storage.putObjectCalls).toBeGreaterThan(0);
+    expect(storage.removeObjectCalls).toBe(removeCallsBefore + 1);
+    expect(storage.removedKeys.at(-1)).toStartWith(`${OWNER_ID}/${docId}/`);
+    expect(getState().attachments.size).toBe(0);
   });
 });
