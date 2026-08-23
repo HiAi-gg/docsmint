@@ -98,25 +98,30 @@ export async function recoverStalledPipeline(
 	});
 	let recovered = 0;
 	let exhausted = 0;
+	const claimedRuns = new Map<string, boolean>();
 	for (const candidate of jobs) {
-		if (candidate.attempts >= maxAttempts) {
-			await store.markExhausted({
-				runId: candidate.runId,
-				stage: candidate.stage,
-				errorCode: "recovery_attempts_exhausted",
-			});
-			exhausted += 1;
-			continue;
-		}
-		if (
-			!(await store.claimRetry({
+		const claimKey = `${candidate.runId}:${candidate.stage}`;
+		let claimed = claimedRuns.get(claimKey);
+		if (claimed === undefined) {
+			if (candidate.attempts >= maxAttempts) {
+				await store.markExhausted({
+					runId: candidate.runId,
+					stage: candidate.stage,
+					errorCode: "recovery_attempts_exhausted",
+				});
+				exhausted += 1;
+				claimedRuns.set(claimKey, false);
+				continue;
+			}
+			claimed = await store.claimRetry({
 				runId: candidate.runId,
 				stage: candidate.stage,
 				maxAttempts,
 				observedUpdatedAt: candidate.observedUpdatedAt,
-			}))
-		)
-			continue;
+			});
+			claimedRuns.set(claimKey, claimed);
+		}
+		if (!claimed) continue;
 		await queues.add(candidate.stage, candidate.stage, candidate.job, {
 			...DEFAULT_JOB_OPTIONS,
 			jobId: jobId(candidate.job),
@@ -130,6 +135,14 @@ export async function recoverStalledPipeline(
 const admin = adminTenantContext(ZERO_UUID);
 const stalled = ["pending", "processing", "retrying"] as const;
 const active = ["processing", "retrying"] as const;
+
+function readyBatchRecoveryPlan(contextHash: string | null) {
+	return contextHash
+		? { resetAllBatches: false, limit: 1 }
+		: { resetAllBatches: true, limit: null };
+}
+
+export const _readyBatchRecoveryPlanForTests = readyBatchRecoveryPlan;
 
 export function selectRecoveryStage(
 	run: Pick<
@@ -215,7 +228,22 @@ export const postgresRecoveryStore: RecoveryStore = {
 					const activationRetry =
 						run.embedStatus === "ready" &&
 						document?.pendingGenerationId === run.generationId;
-					const batches = await tx
+					const recoveryPlan = activationRetry
+						? readyBatchRecoveryPlan(run.embeddingContextHash)
+						: { resetAllBatches: false, limit: 100 };
+					if (activationRetry && recoveryPlan.resetAllBatches) {
+						await tx
+							.update(documentPipelineBatches)
+							.set({
+								status: "retrying",
+								completedAt: null,
+								updatedAt: new Date(),
+							})
+							.where(
+								eq(documentPipelineBatches.generationId, run.generationId),
+							);
+					}
+					const batchQuery = tx
 						.select()
 						.from(documentPipelineBatches)
 						.where(
@@ -223,12 +251,16 @@ export const postgresRecoveryStore: RecoveryStore = {
 								eq(documentPipelineBatches.generationId, run.generationId),
 								inArray(
 									documentPipelineBatches.status,
-									activationRetry ? ["ready"] : [...active],
+									activationRetry && !recoveryPlan.resetAllBatches
+										? ["ready"]
+										: [...active],
 								),
 							),
 						)
-						.orderBy(desc(documentPipelineBatches.batchIndex))
-						.limit(activationRetry ? 1 : 100);
+						.orderBy(desc(documentPipelineBatches.batchIndex));
+					const batches = recoveryPlan.limit
+						? await batchQuery.limit(recoveryPlan.limit)
+						: await batchQuery;
 					for (const batch of batches)
 						output.push({
 							runId: run.id,

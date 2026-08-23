@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PipelineRunStore } from "../queue/enqueue";
+import * as recovery from "../queue/recovery";
 import {
 	classifyPipelineError,
 	type RecoverablePipelineJob,
@@ -47,6 +48,65 @@ const pendingPrepareCandidate: RecoverablePipelineJob = {
 };
 
 describe("pipeline recovery", () => {
+	test("rebuilds every legacy ready batch under one claimed recovery run", async () => {
+		const recoveryPlan = Reflect.get(
+			recovery,
+			"_readyBatchRecoveryPlanForTests",
+		) as
+			| ((contextHash: string | null) => {
+					resetAllBatches: boolean;
+					limit: number | null;
+			  })
+			| undefined;
+		expect(recoveryPlan).toBeFunction();
+		if (!recoveryPlan) return;
+		expect(recoveryPlan(null)).toEqual({
+			resetAllBatches: true,
+			limit: null,
+		});
+		expect(recoveryPlan("context-v2")).toEqual({
+			resetAllBatches: false,
+			limit: 1,
+		});
+
+		const queued: number[] = [];
+		let claims = 0;
+		const first = {
+			...candidate,
+			runId: "legacy-run",
+			stage: "embed" as const,
+			job: {
+				...candidate.job,
+				stage: "embed" as const,
+				batchIndex: 0,
+				totalBatches: 2,
+				chunkIndexes: [0],
+			},
+		};
+		const second = {
+			...first,
+			job: { ...first.job, batchIndex: 1, chunkIndexes: [1] },
+		};
+		await recoverStalledPipeline(
+			{
+				findStalled: async () => [first, second],
+				claimRetry: async () => {
+					claims += 1;
+					return true;
+				},
+				markExhausted: async () => undefined,
+			},
+			{
+				add: async (_stage, _name, job) => {
+					if (job.stage === "embed") queued.push(job.batchIndex);
+				},
+			},
+		);
+
+		expect(claims).toBe(1);
+		expect(queued).toEqual([0, 1]);
+	});
+
 	test("recovers a ready generation that was not activated", () => {
 		expect(
 			selectRecoveryStage(
