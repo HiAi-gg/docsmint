@@ -228,6 +228,60 @@ describe("prepare pipeline worker", () => {
 });
 
 describe("embed pipeline worker", () => {
+	test("legacy v1 work replaces candidate rows and publishes recomputed context", async () => {
+		const { deps, activationContexts } = harness();
+		let providerCalls = 0;
+		let storedIndexes: number[] = [];
+		deps.loadDocument = async () => ({
+			title: "Languages",
+			content: "English French Portuguese",
+			revision: base.revision,
+			pendingGenerationId: base.generationId,
+			embeddingContextHash: "recomputed-context",
+			candidateChunkIndexes: [0],
+			batchStatus: "ready",
+			profile: { model: "model", profile: "model:1024:v1", dimensions: 1024 },
+		});
+		deps.getEmbedding = async () => {
+			providerCalls += 1;
+			return {
+				ok: true,
+				vector: Array.from({ length: 1024 }, () => 1),
+				model: "model",
+				provider: "primary",
+				dimensions: 1024,
+				profile: "model:1024:v1",
+			};
+		};
+		deps.storeBatch = async ({ rows }) => {
+			storedIndexes = rows.map((row) => row.chunkIndex);
+			return "stored";
+		};
+
+		await processEmbedJob(
+			{
+				data: {
+					schemaVersion: 1,
+					documentId: base.documentId,
+					ownerId: base.ownerId,
+					generationId: base.generationId,
+					revision: base.revision,
+					requestedAt: base.requestedAt,
+					source: base.source,
+					stage: "embed",
+					batchIndex: 0,
+					totalBatches: 1,
+					chunkIndexes: [0],
+				} as unknown as EmbedBatchJob,
+			},
+			deps,
+		);
+
+		expect(providerCalls).toBe(1);
+		expect(storedIndexes).toEqual([0]);
+		expect(activationContexts).toEqual(["recomputed-context"]);
+	});
+
 	test("sends only changed chunks and their neighbors to the provider", async () => {
 		const content = Array.from(
 			{ length: 5 },

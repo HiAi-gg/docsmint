@@ -96,7 +96,9 @@ export async function processEmbedJob(
 		return { status: "stale", activated: false };
 	}
 	const chunks = chunkText(`${document.title}\n\n${document.content}`);
-	const candidateChunkIndexes = new Set(document.candidateChunkIndexes ?? []);
+	const candidateChunkIndexes = new Set(
+		job.refreshMode === "full" ? [] : (document.candidateChunkIndexes ?? []),
+	);
 	const selected = job.chunkIndexes
 		.filter((index) => !candidateChunkIndexes.has(index))
 		.map((index) => ({
@@ -108,7 +110,7 @@ export async function processEmbedJob(
 		return { status: "stale", activated: false };
 	}
 	const results =
-		document.batchStatus === "ready"
+		document.batchStatus === "ready" && job.embeddingContextHash !== undefined
 			? []
 			: await Promise.all(
 					selected.map(async ({ index, chunk }) => {
@@ -142,7 +144,7 @@ export async function processEmbedJob(
 	if (await deps.isCancelled?.(job))
 		return { status: "cancelled", activated: false };
 	const stored =
-		document.batchStatus === "ready"
+		document.batchStatus === "ready" && job.embeddingContextHash !== undefined
 			? ("duplicate" as const)
 			: results.length === 0
 				? ("stored" as const)
@@ -192,7 +194,8 @@ export async function processEmbedJob(
 		generationId: job.generationId,
 		totalChunks: completion.totalChunks,
 		profile,
-		embeddingContextHash: job.embeddingContextHash,
+		embeddingContextHash:
+			job.embeddingContextHash ?? document.embeddingContextHash,
 	});
 	if (await deps.isCancelled?.(job))
 		return { status: "cancelled", activated: false };

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-
+import * as queueAdapters from "../queue/adapters";
 import * as prepareWorker from "../queue/workers/prepare.worker";
 
 type BuildEmbeddingPreparation = (input: {
@@ -97,6 +97,56 @@ test("embedding preparation is stable across tag row order and separates stored 
 	).not.toBe(first.contextHash);
 });
 
+test("ready recovery selects the persisted fallback candidate profile", () => {
+	const selectProfile = Reflect.get(
+		queueAdapters,
+		"_selectCandidateProfileForTests",
+	) as
+		| ((
+				ready: boolean,
+				configured: { model: string; profile: string; dimensions: number },
+				candidate?: { model: string; profile: string; dimensions: number },
+		  ) => { model: string; profile: string; dimensions: number })
+		| undefined;
+	expect(selectProfile).toBeFunction();
+	if (!selectProfile) return;
+	expect(
+		selectProfile(
+			true,
+			{ model: "primary", profile: "primary:1024:v1", dimensions: 1024 },
+			{ model: "fallback", profile: "fallback:1024:v1", dimensions: 1024 },
+		),
+	).toEqual({
+		model: "fallback",
+		profile: "fallback:1024:v1",
+		dimensions: 1024,
+	});
+});
+
+test("workspace metadata uses workspace scope instead of actor ownership", () => {
+	const metadataTenant = Reflect.get(
+		queueAdapters,
+		"_metadataTenantContextForTests",
+	) as
+		| ((job: { ownerId: string; workspaceId?: string }) => {
+				userId: string;
+				source: "personal" | "external";
+				workspaceId?: string;
+		  })
+		| undefined;
+	expect(metadataTenant).toBeFunction();
+	if (!metadataTenant) return;
+	expect(
+		metadataTenant({ ownerId: "actor", workspaceId: "workspace" }),
+	).toEqual(
+		expect.objectContaining({
+			userId: "actor",
+			source: "external",
+			workspaceId: "workspace",
+		}),
+	);
+});
+
 test("reuse planning refreshes a changed chunk and its immediate neighbors", () => {
 	const planEmbeddingReuse = Reflect.get(prepareWorker, "planEmbeddingReuse") as
 		| PlanEmbeddingReuse
@@ -119,6 +169,46 @@ test("reuse planning refreshes a changed chunk and its immediate neighbors", () 
 		embeddingProfile: "model-a:1024:v1",
 		embeddingDimensions: 1024,
 		isValid: true,
+	}));
+	const plan = planEmbeddingReuse({
+		refreshMode: "incremental",
+		contextHash: "context-a",
+		activeContextHash: "context-a",
+		provider: {
+			model: "model-a",
+			profile: "model-a:1024:v1",
+			dimensions: 1024,
+		},
+		chunks,
+		activeRows,
+	});
+
+	expect(plan.refreshMode).toBe("incremental");
+	expect(plan.providerChunkIndexes).toEqual([1, 2, 3]);
+	expect(plan.reusableChunkIndexes).toEqual([0, 4]);
+});
+
+test("reuse planning isolates an invalid row and its immediate neighbors", () => {
+	const planEmbeddingReuse = Reflect.get(prepareWorker, "planEmbeddingReuse") as
+		| PlanEmbeddingReuse
+		| undefined;
+	expect(planEmbeddingReuse).toBeFunction();
+	if (!planEmbeddingReuse) return;
+	const chunks = Array.from({ length: 5 }, (_, index) => ({
+		index,
+		hash: `hash-${index}`,
+		storedChunkText: `chunk-${index}`,
+		charStart: index * 10,
+		charEnd: index * 10 + 7,
+	}));
+	const activeRows = chunks.map((chunk) => ({
+		chunkIndex: chunk.index,
+		chunkHash: chunk.hash,
+		embedding: Array.from({ length: 1024 }, () => 1),
+		embeddingModel: "model-a",
+		embeddingProfile: "model-a:1024:v1",
+		embeddingDimensions: 1024,
+		isValid: chunk.index !== 2,
 	}));
 	const plan = planEmbeddingReuse({
 		refreshMode: "incremental",

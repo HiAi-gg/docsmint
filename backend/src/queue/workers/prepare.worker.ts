@@ -95,22 +95,28 @@ export function planEmbeddingReuse(input: {
 	reusableChunkIndexes: number[];
 } {
 	const allIndexes = input.chunks.map((chunk) => chunk.index);
-	const activeRowsMatchProvider = input.activeRows.every(
-		(row) =>
-			row.isValid &&
-			row.embedding !== null &&
-			row.embedding.length === input.provider.dimensions &&
-			row.embedding.every(Number.isFinite) &&
-			row.embedding.some((value) => value !== 0) &&
-			row.embeddingModel === input.provider.model &&
-			row.embeddingProfile === input.provider.profile &&
-			row.embeddingDimensions === input.provider.dimensions,
-	);
+	const rowIsReusable = (row: ReusableEmbeddingRow | undefined) =>
+		Boolean(
+			row?.isValid &&
+				row.embedding !== null &&
+				row.embedding.length === input.provider.dimensions &&
+				row.embedding.every(Number.isFinite) &&
+				row.embedding.some((value) => value !== 0) &&
+				row.embeddingModel === input.provider.model &&
+				row.embeddingProfile === input.provider.profile &&
+				row.embeddingDimensions === input.provider.dimensions,
+		);
 	const forceFull =
 		input.refreshMode === "full" ||
 		!input.activeContextHash ||
 		input.activeContextHash !== input.contextHash ||
-		!activeRowsMatchProvider;
+		(input.activeRows.length > 0 &&
+			input.activeRows.every(
+				(row) =>
+					row.embeddingModel !== input.provider.model ||
+					row.embeddingProfile !== input.provider.profile ||
+					row.embeddingDimensions !== input.provider.dimensions,
+			));
 	if (forceFull) {
 		return {
 			refreshMode: "full",
@@ -124,7 +130,8 @@ export function planEmbeddingReuse(input: {
 	);
 	const changed = new Set<number>();
 	for (const chunk of input.chunks) {
-		if (rowsByIndex.get(chunk.index)?.chunkHash !== chunk.hash) {
+		const row = rowsByIndex.get(chunk.index);
+		if (!rowIsReusable(row) || row?.chunkHash !== chunk.hash) {
 			changed.add(chunk.index);
 		}
 	}

@@ -14,17 +14,14 @@ import {
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { and, asc, eq, ne, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { activateEmbeddingGeneration } from "../embedding/generation";
 import { getEmbedding } from "../embedding/index";
 import { EMBEDDING_DIMENSIONS } from "../embedding/utils";
 import { embeddingProfileId } from "../embedding/validation";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
-import {
-	resolveFolderEffectiveCategory,
-	tenantOwnerCondition,
-} from "../lib/content-access";
+import { tenantOwnerCondition, tenantOwnerSql } from "../lib/content-access";
 import { deleteDocumentGraphGeneration } from "../lib/graph/delete-document-state";
 import { extractEntities } from "../lib/graph/extract-entities";
 import {
@@ -61,6 +58,34 @@ function jobTenant(job: { ownerId: string; workspaceId?: string }) {
 	};
 }
 
+export const _metadataTenantContextForTests = jobTenant;
+
+async function resolveMetadataFolderCategory(
+	tx: { execute(query: ReturnType<typeof sql>): Promise<unknown> },
+	job: { ownerId: string; workspaceId?: string },
+	folderId: string,
+): Promise<string | null | undefined> {
+	const ctx = jobTenant(job);
+	const rows = (await tx.execute(sql`
+		WITH RECURSIVE ancestors AS (
+			SELECT folders.id, folders.parent_id, folders.category_id
+			FROM folders
+			WHERE folders.id = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
+			UNION ALL
+			SELECT f.id, f.parent_id, f.category_id
+			FROM folders f JOIN ancestors a ON f.id = a.parent_id
+			WHERE ${tenantOwnerSql("f", ctx)}
+		)
+		SELECT category_id FROM ancestors WHERE category_id IS NOT NULL LIMIT 1
+	`)) as Array<{ category_id: string }>;
+	if (rows.length > 0) return rows[0]?.category_id ?? null;
+	const exists = (await tx.execute(sql`
+		SELECT 1 FROM folders
+		WHERE folders.id = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
+	`)) as unknown[];
+	return exists.length > 0 ? null : undefined;
+}
+
 function providerProfile(name: string): ProviderLimiterProfile {
 	return {
 		name,
@@ -94,6 +119,16 @@ function configuredEmbeddingProvider() {
 		}),
 	};
 }
+
+function selectRecoveryProfile(
+	ready: boolean,
+	configured: { model: string; profile: string; dimensions: number },
+	candidate?: { model: string; profile: string; dimensions: number },
+) {
+	return ready && candidate ? candidate : configured;
+}
+
+export const _selectCandidateProfileForTests = selectRecoveryProfile;
 
 async function loadPreparationSource(input: {
 	documentId: string;
@@ -130,14 +165,11 @@ async function loadPreparationSource(input: {
 				.limit(1);
 			if (!doc) return null;
 
+			const metadataCtx = jobTenant(input);
 			const effectiveCategoryId =
 				doc.categoryId ??
 				(doc.folderId
-					? await resolveFolderEffectiveCategory(
-							tx,
-							input.ownerId,
-							doc.folderId,
-						)
+					? await resolveMetadataFolderCategory(tx, input, doc.folderId)
 					: null);
 			const [folderRows, tagRows, categoryRows, activeRows] = await Promise.all(
 				[
@@ -145,20 +177,50 @@ async function loadPreparationSource(input: {
 						? tx
 								.select({ name: folders.name })
 								.from(folders)
-								.where(eq(folders.id, doc.folderId))
+								.where(
+									and(
+										eq(folders.id, doc.folderId),
+										tenantOwnerCondition(
+											folders.ownerId,
+											folders.workspaceId,
+											metadataCtx,
+										),
+									),
+								)
 								.limit(1)
 						: Promise.resolve([]),
 					tx
 						.select({ name: tags.name })
 						.from(documentTags)
 						.innerJoin(tags, eq(tags.id, documentTags.tagId))
-						.where(eq(documentTags.documentId, input.documentId))
+						.where(
+							and(
+								eq(documentTags.documentId, input.documentId),
+								input.workspaceId
+									? eq(documentTags.workspaceId, input.workspaceId)
+									: isNull(documentTags.workspaceId),
+								tenantOwnerCondition(
+									tags.ownerId,
+									tags.workspaceId,
+									metadataCtx,
+								),
+							),
+						)
 						.orderBy(asc(tags.name), asc(tags.id)),
 					effectiveCategoryId
 						? tx
 								.select({ name: categories.name })
 								.from(categories)
-								.where(eq(categories.id, effectiveCategoryId))
+								.where(
+									and(
+										eq(categories.id, effectiveCategoryId),
+										tenantOwnerCondition(
+											categories.ownerId,
+											categories.workspaceId,
+											metadataCtx,
+										),
+									),
+								)
 								.limit(1)
 						: Promise.resolve([]),
 					doc.activeGenerationId
@@ -678,7 +740,12 @@ export function createPipelineStageDependencies(
 							)
 							.limit(1);
 						const candidateRows = await tx
-							.select({ chunkIndex: documentEmbeddings.chunkIndex })
+							.select({
+								chunkIndex: documentEmbeddings.chunkIndex,
+								model: documentEmbeddings.embeddingModel,
+								profile: documentEmbeddings.embeddingProfile,
+								dimensions: documentEmbeddings.embeddingDimensions,
+							})
 							.from(documentEmbeddings)
 							.where(
 								and(
@@ -696,7 +763,11 @@ export function createPipelineStageDependencies(
 							metadataPreamble: preparation.metadataPreamble,
 							candidateChunkIndexes: candidateRows.map((row) => row.chunkIndex),
 							batchStatus: batch?.status === "ready" ? "ready" : "processing",
-							profile: provider,
+							profile: selectRecoveryProfile(
+								batch?.status === "ready",
+								provider,
+								candidateRows[0],
+							),
 						};
 					},
 				);
@@ -728,7 +799,26 @@ export function createPipelineStageDependencies(
 							)
 							.limit(1);
 						if (!batch || run?.status === "cancelled") return "stale" as const;
-						if (batch.status === "ready") return "duplicate" as const;
+						if (
+							batch.status === "ready" &&
+							!(
+								job.refreshMode === "full" &&
+								job.embeddingContextHash === undefined
+							)
+						)
+							return "duplicate" as const;
+						if (rows.length > 0) {
+							await tx.delete(documentEmbeddings).where(
+								and(
+									eq(documentEmbeddings.documentId, job.documentId),
+									eq(documentEmbeddings.generationId, job.generationId),
+									inArray(
+										documentEmbeddings.chunkIndex,
+										rows.map((row) => row.chunkIndex),
+									),
+								),
+							);
+						}
 						await tx
 							.insert(documentEmbeddings)
 							.values(
