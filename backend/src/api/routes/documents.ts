@@ -668,8 +668,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				ctx.workspaceId,
 			);
 			const replay = await withTenant(ctx, async (tx) => {
+				const authorized =
+					and(
+						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						isNull(documents.deletedAt),
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
+							: []),
+					) ?? sql`false`;
 				const [existing] = await tx
-					.select({ document: documents })
+					.select({ document: documents, authorized })
 					.from(documentCreateOperations)
 					.innerJoin(
 						documents,
@@ -680,32 +697,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							eq(documentCreateOperations.workspaceId, workspaceIdentity),
 							eq(documentCreateOperations.actorUserId, userId),
 							eq(documentCreateOperations.idempotencyKey, idempotencyKey),
-							tenantOwnerCondition(
-								documents.ownerId,
-								documents.workspaceId,
-								ctx,
-							),
-							isNull(documents.deletedAt),
-							...(access.restricted
-								? [
-										access.categoryId
-											? effectiveDocumentCategoryCondition(
-													documents.categoryId,
-													documents.folderId,
-													ctx,
-													access.categoryId,
-												)
-											: sql`false`,
-									]
-								: []),
 						),
 					)
 					.limit(1);
-				return existing?.document ?? null;
+				return existing ?? null;
 			});
-			if (replay) {
+			if (replay?.authorized) {
 				set.status = 200;
-				return replay;
+				return replay.document;
+			}
+			if (replay) {
+				set.status = 409;
+				return { error: "Idempotency key is unavailable" };
 			}
 		}
 
@@ -760,8 +763,29 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					await tx.execute(
 						sql`SELECT pg_advisory_xact_lock(hashtext(${`${workspaceIdentity}:${userId}:${idempotencyKey}`}))`,
 					);
+					const authorized =
+						and(
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						) ?? sql`false`;
 					const [existing] = await tx
-						.select({ document: documents })
+						.select({ document: documents, authorized })
 						.from(documentCreateOperations)
 						.innerJoin(
 							documents,
@@ -772,28 +796,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								eq(documentCreateOperations.workspaceId, workspaceIdentity),
 								eq(documentCreateOperations.actorUserId, userId),
 								eq(documentCreateOperations.idempotencyKey, idempotencyKey),
-								tenantOwnerCondition(
-									documents.ownerId,
-									documents.workspaceId,
-									ctx,
-								),
-								isNull(documents.deletedAt),
-								...(access.restricted
-									? [
-											access.categoryId
-												? effectiveDocumentCategoryCondition(
-														documents.categoryId,
-														documents.folderId,
-														ctx,
-														access.categoryId,
-													)
-												: sql`false`,
-										]
-									: []),
 							),
 						)
 						.limit(1);
-					if (existing) return { row: existing.document, replayed: true };
+					if (existing?.authorized) {
+						return { row: existing.document, replayed: true, conflict: false };
+					}
+					if (existing) return { row: null, replayed: false, conflict: true };
 				}
 				const [row] = await tx
 					.insert(documents)
@@ -830,8 +839,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						documentId: row.id,
 					});
 				}
-				return { row, replayed: false };
+				return { row, replayed: false, conflict: false };
 			});
+			if (createdResult.conflict || !createdResult.row) {
+				set.status = 409;
+				return { error: "Idempotency key is unavailable" };
+			}
 			const created = createdResult.row;
 			if (createdResult.replayed) {
 				set.status = 200;

@@ -11,6 +11,7 @@ import {
 	effectiveDocumentCategoryCondition,
 	effectiveFolderCategoryCondition,
 	isAuthorizedCategory,
+	resolveFolderEffectiveCategory,
 } from "../lib/content-access";
 
 const ownerId = "11111111-1111-4111-8111-111111111111";
@@ -178,6 +179,32 @@ describe("content API authorization matrix", () => {
 			}),
 		).toBe(categoryId);
 	});
+});
+
+test("folder resolver renders the recursive relation through its alias", async () => {
+	const dialect = new PgDialect();
+	let renderedSql = "";
+	const executor = {
+		execute: async (query: Parameters<PgDialect["sqlToQuery"]>[0]) => {
+			const rendered = dialect.sqlToQuery(query);
+			renderedSql = rendered.sql;
+			return [{ category_id: categoryId }];
+		},
+	};
+	await expect(
+		resolveFolderEffectiveCategory(
+			executor,
+			{
+				userId: ownerId,
+				workspaceId: "workspace-a",
+				source: "external",
+				role: "user",
+			},
+			crypto.randomUUID(),
+		),
+	).resolves.toBe(categoryId);
+	expect(renderedSql).toContain("a.depth + 1");
+	expect(renderedSql).not.toContain("ancestors.depth + 1");
 });
 
 describe("effective category query predicates", () => {

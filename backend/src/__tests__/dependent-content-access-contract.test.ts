@@ -22,7 +22,7 @@ describe("dependent document route access contracts", () => {
 	test("create replay and patch authorize effective category in SQL", async () => {
 		const source = await routeSource("documents");
 		const replayFences = source.match(
-			/eq\(documentCreateOperations\.idempotencyKey,[\s\S]{0,700}?effectiveDocumentCategoryCondition\(/g,
+			/const authorized\s*=\s*and\([\s\S]{0,700}?effectiveDocumentCategoryCondition\(/g,
 		);
 		const patch = source.slice(source.indexOf("const existingRows = await tx"));
 		expect(replayFences).toHaveLength(2);
@@ -30,6 +30,11 @@ describe("dependent document route access contracts", () => {
 			source.match(/documentCreateOperations\.idempotencyKey/g),
 		).toHaveLength(2);
 		expect(patch).toContain("effectiveDocumentCategoryCondition(");
+		expect(source.match(/authorized/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+		expect(source).toContain('error: "Idempotency key is unavailable"');
+		expect(source.match(/set\.status = 409/g)?.length).toBeGreaterThanOrEqual(
+			2,
+		);
 	});
 
 	test("collaboration and share authorize inherited workspace documents", async () => {

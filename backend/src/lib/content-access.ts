@@ -280,7 +280,7 @@ export async function resolveFolderEffectiveCategory(
 				FROM ${folders}
 				WHERE ${folders.id} = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
 				UNION ALL
-				SELECT f.id, f.parent_id, f.category_id, ancestors.depth + 1
+				SELECT f.id, f.parent_id, f.category_id, a.depth + 1
 				FROM folders f JOIN ancestors a ON f.id = a.parent_id
 				WHERE ${tenantOwnerSql("f", ctx)}
 			)
