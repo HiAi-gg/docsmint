@@ -45,7 +45,7 @@ jobs:
             }
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run lint
 
   # ---------------------------------------------------------------------------
@@ -75,28 +75,16 @@ jobs:
             }
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
-      - run: bun install
+      - run: bun install --frozen-lockfile
       - run: bun run typecheck
 
   # ---------------------------------------------------------------------------
-  # 3. Test — Bun test runner with PostgreSQL + Redis services
+  # 3. Hermetic unit and contract tests — no service URLs or containers
   # ---------------------------------------------------------------------------
-  test:
-    name: Test
+  unit-test:
+    name: Unit & Contract Tests
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis:8-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
-      DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
-      REDIS_URL: redis://localhost:6379
       BETTER_AUTH_SECRET: test-secret-key-minimum-32-chars-long
       BETTER_AUTH_URL: http://localhost:50700
       NODE_ENV: test
@@ -121,7 +109,38 @@ jobs:
             }
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
-      - run: bun install
+      - run: bun install --frozen-lockfile
+      - run: bun run test:unit
+      - run: bun run test:contract
+
+  integration-test:
+    name: Required PostgreSQL Integrations
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RLS_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
+      LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Configure workspaces for CI
+        run: |
+          bun -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.workspaces = pkg.workspaces.filter(w => !w.includes('hiai-ui'));
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          bun -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('frontend/package.json', 'utf8'));
+            if (pkg.dependencies && pkg.dependencies['@hiai-gg/hiai-ui']) {
+              pkg.dependencies['@hiai-gg/hiai-ui'] = '^0.0.8';
+            }
+            fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
+          "
+      - run: bun install --frozen-lockfile
 
       - name: Build custom Postgres image
         run: docker build -t hiai-postgres:18-custom ./postgres
@@ -150,11 +169,28 @@ jobs:
       - run: cd packages/db && bun run db:migrate
         env:
           MIGRATION_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
-      - run: bun run test
+
+      - name: Run required integrations with zero skips
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run test:integration 2>&1 | tee /tmp/docsmint-required-integrations.log
+          for suite in \
+            "pipeline tenant RLS integration" \
+            "lifecycle operation persistence integration" \
+            "re-embed delete parent-row lock integration" \
+            "embedding context migration integration"; do
+            grep --fixed-strings "$suite" /tmp/docsmint-required-integrations.log >/dev/null
+          done
+          if grep -Eq '\(skip\)|[1-9][0-9]* skip' /tmp/docsmint-required-integrations.log; then
+            echo "Required integration suite reported skipped coverage"
+            exit 1
+          fi
+          echo "Required integration suites: 4; skipped: 0"
 
       - name: Stop Postgres
         if: always()
-        run: docker stop postgres && docker rm postgres
+        run: docker rm --force postgres || true
 
   # ---------------------------------------------------------------------------
   # 4. Docker build — validate compose, build both images, security scan
@@ -165,6 +201,17 @@ jobs:
     permissions:
       contents: read
       security-events: write
+    env:
+      DB_PASSWORD: ci-database-password
+      HIAI_APP_PASSWORD: ci-runtime-password
+      BETTER_AUTH_SECRET: ci-better-auth-secret-32-characters
+      CSRF_SECRET: ci-csrf-secret-32-characters-long
+      STORAGE_SECRET_KEY: ci-storage-secret-32-characters-long
+      WEBHOOK_SECRET: ci-webhook-secret-32-characters-long
+      HIAI_DOCS_API_KEY: ci-admin-api-key-non-placeholder
+      API_KEY_ENCRYPTION_SECRET: ci-api-key-encryption-secret-32-chars
+      GRAPH_EXTRACT_ENABLED: 'false'
+      GRAPH_SEARCH_ENABLED: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -189,19 +236,9 @@ jobs:
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
 
-      # Materialise a synthetic .env so `docker compose config` resolves vars
-      - name: Prepare .env for compose validation
-        run: |
-          cp .env.example .env
-          # Replace example secrets with deterministic test values
-           sed -i 's/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=ci-validation-secret-32-chars-long-xxx/' .env
-           sed -i 's/^CSRF_SECRET=.*/CSRF_SECRET=ci-csrf-secret-32-chars-long-yyy/' .env
-           sed -i 's/^STORAGE_SECRET_KEY=.*/STORAGE_SECRET_KEY=ci-storage-secret-32-chars-long-zzz/' .env
-           sed -i 's/^WEBHOOK_SECRET=.*/WEBHOOK_SECRET=ci-webhook-secret-32-chars-long-aaa/' .env
-
       # A) Validate docker-compose.yml — catches bad interpolations & schema errors
       - name: Validate docker compose
-        run: docker compose config --quiet
+        run: docker compose --env-file /dev/null config --quiet
 
       - name: Validate canonical container ports
         run: sh scripts/check-compose-port-contract.sh
@@ -265,30 +302,23 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
-      # E) Smoke test — start the built image and curl its health endpoint
-      - name: Smoke test backend image
-        env:
-          BETTER_AUTH_SECRET: ci-smoke-secret-32-chars-long-bbb
-          CSRF_SECRET: ci-csrf-secret-32-chars-long-ccc
-          STORAGE_SECRET_KEY: ci-storage-secret-32-chars-long-ddd
-          WEBHOOK_SECRET: ci-webhook-secret-32-chars-long-eee
-          DATABASE_URL: postgresql://x:y@127.0.0.1:5432/z
-          REDIS_URL: redis://127.0.0.1:6379
-          API_PORT: 50700
-          NODE_ENV: production
+      # E) Smoke test — require healthy dependencies and a successful health response
+      - name: Smoke test backend image against healthy services
+        shell: bash
         run: |
-          # Quick boot check — image must start, listen, and respond to /api/health
-          docker run --rm -d --name hiai-docs-api-smoke \
-            -e BETTER_AUTH_SECRET -e CSRF_SECRET -e STORAGE_SECRET_KEY \
-            -e WEBHOOK_SECRET -e DATABASE_URL -e REDIS_URL \
-            -e API_PORT -e NODE_ENV \
-            -p 50700:50700 hiai-docs/api:ci-${{ github.sha }}
-          sleep 5
-          # Server is expected to fail DB connection in CI — we only verify the
-          # image boots and the Bun runtime starts. A 5xx on /api/health is OK
-          # as long as the port is open.
-          curl -sS -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:50700/api/health || true
-          docker stop hiai-docs-api-smoke || true
+          set -euo pipefail
+          docker tag hiai-docs/api:ci-${{ github.sha }} docsmint-api:local
+          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs migrate
+          docker compose --env-file /dev/null up --detach --no-build --wait api
+          test "$(docker inspect --format '{{.State.Running}}' "$(docker compose --env-file /dev/null ps --quiet api)")" = "true"
+          curl --fail --silent --show-error http://127.0.0.1:50700/api/health
+
+      - name: Collect smoke logs and stop services
+        if: always()
+        run: |
+          docker compose --env-file /dev/null ps --all || true
+          docker compose --env-file /dev/null logs --no-color api migrate postgres redis seaweedfs || true
+          docker compose --env-file /dev/null down --volumes --remove-orphans || true
 
       # F) Security scan — Trivy (preferred; Docker Scout as fallback)
       - name: Security scan with Trivy
@@ -323,6 +353,28 @@ jobs:
           sarif_file: trivy-web.sarif
           category: trivy-web
 
+      - name: Enforce fixable critical backend vulnerabilities on tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: aquasecurity/trivy-action@v0.24.0
+        with:
+          image-ref: hiai-docs/api:ci-${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+
+      - name: Enforce fixable critical frontend vulnerabilities on tags
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: aquasecurity/trivy-action@v0.24.0
+        with:
+          image-ref: hiai-docs/web:ci-${{ github.sha }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+
       # G) Finalise cache (atomic swap)
       - name: Move cache
         run: |
@@ -334,7 +386,7 @@ jobs:
   # ---------------------------------------------------------------------------
   package-consumer:
     name: Clean npm Consumer
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, unit-test, integration-test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -387,7 +439,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-docker:
     name: Publish Docker Images
-    needs: [lint, typecheck, test, package-consumer, docker-build]
+    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -449,7 +501,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-npm:
     name: Publish NPM Package
-    needs: [lint, typecheck, test, package-consumer, docker-build]
+    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -493,7 +545,7 @@ jobs:
           "
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build SDK
         # The published tarball ships packages/sdk/dist/*. CI uses --ignore-scripts

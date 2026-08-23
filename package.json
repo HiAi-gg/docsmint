@@ -245,7 +245,10 @@
     "build": "docker compose build",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test",
+    "test": "bun run test:unit && bun run test:contract",
+    "test:unit": "bun run --filter '*' test:unit",
+    "test:contract": "bun run --filter '*' test:contract",
+    "test:integration": "bun run --filter '@hiai-docs/db' test:integration",
     "start": "docker compose up -d",
     "stop": "docker compose down",
     "build:sdk": "cd packages/sdk && bun run build",
@@ -266,7 +269,7 @@
     "postgres": "^3.4.9",
     "@aws-sdk/client-s3": "^3.0.0",
     "pino": "^10.0.0",
-    "@sveltejs/kit": "^2.68.0",
+    "@sveltejs/kit": "^2.70.3",
     "svelte": "^5.56.4"
   },
   "peerDependenciesMeta": {

@@ -44,7 +44,8 @@
     "lint": "biome check src/",
     "lint:fix": "biome check --fix src/",
     "typecheck": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && bun test --path-ignore-patterns='*node_modules*' src/"
+    "test": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && bun test --path-ignore-patterns='*node_modules*' src/",
+    "test:unit": "bun run test"
   },
   "dependencies": {
     "@hiai-gg/hiai-ui": "^0.0.8",
@@ -67,7 +68,6 @@
     "better-auth": "^1.6.22",
     "bits-ui": "^2.18.1",
     "clsx": "^2.1.1",
-    "cookie": "^0.6.0",
     "dexie": "^4.4.4",
     "docx": "^9.7.1",
     "lowlight": "^3.3.0",
@@ -96,7 +96,7 @@
     "@inlang/plugin-m-function-matcher": "^2.2.9",
     "@inlang/plugin-message-format": "^4.4.0",
     "@sveltejs/adapter-node": "^5.5.7",
-    "@sveltejs/kit": "^2.68.0",
+    "@sveltejs/kit": "^2.70.3",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.3.1",
     "@types/bun": "^1.3.14",
