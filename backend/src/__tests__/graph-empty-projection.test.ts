@@ -18,12 +18,14 @@ const tx = Object.assign(
 	},
 );
 
-const graphSql = Object.assign(mock(async () => []), {
-	begin: mock(
-		async (callback: (transaction: typeof tx) => Promise<void>) =>
+const graphSql = Object.assign(
+	mock(async () => []),
+	{
+		begin: mock(async (callback: (transaction: typeof tx) => Promise<void>) =>
 			callback(tx),
-	),
-});
+		),
+	},
+);
 
 function applyMocks(): void {
 	mock.module("../lib/config", () => ({
