@@ -57,6 +57,8 @@ describe("graph expand module", () => {
 		expect(cypher).toContain("MATCH (entity)-[:MENTIONS]-(document:Document)");
 		expect(cypher).toContain("QUERY_ENTITY");
 		expect(cypher).toContain("document.generation_id AS generation_id");
+		expect(cypher).toContain("ORDER BY hops ASC, neighbor_id ASC");
+		expect(cypher.indexOf("ORDER BY")).toBeLessThan(cypher.indexOf("LIMIT"));
 		expect(cypher).toContain("LIMIT 10");
 	});
 

@@ -298,15 +298,14 @@ export async function extractEntities(
 		if (!acquired) return { status: "ready", entities: [] };
 	}
 
-	if (!chunkText.trim()) return { status: "ready", entities: [] };
-
+	const isEmptyContent = !chunkText.trim();
 	const sql = await getGraphDb();
 	if (!sql) {
 		await releaseDedupClaim();
 		return { status: "unavailable", warning: "age_unavailable", entities: [] };
 	}
 
-	if (!hasConfiguredGraphProvider(options)) {
+	if (!isEmptyContent && !hasConfiguredGraphProvider(options)) {
 		await releaseDedupClaim();
 		return {
 			status: "unavailable",
@@ -315,16 +314,18 @@ export async function extractEntities(
 		};
 	}
 
-	let entities: ExtractedEntity[] | null;
-	try {
-		entities = await callEntityExtractionLLM(chunkText, options);
-	} catch (err) {
-		await releaseDedupClaim();
-		logger.warn(
-			{ err, documentId },
-			"Entity extraction LLM call failed — skipping",
-		);
-		return { status: "failed", warning: "provider_failed", entities: [] };
+	let entities: ExtractedEntity[] | null = [];
+	if (!isEmptyContent) {
+		try {
+			entities = await callEntityExtractionLLM(chunkText, options);
+		} catch (err) {
+			await releaseDedupClaim();
+			logger.warn(
+				{ err, documentId },
+				"Entity extraction LLM call failed — skipping",
+			);
+			return { status: "failed", warning: "provider_failed", entities: [] };
+		}
 	}
 	if (entities === null) {
 		await releaseDedupClaim();
@@ -738,10 +739,10 @@ function entityUpsertCypher(
 		SET e.created_at = $now, e.last_seen_doc = $docId, e.confidence = $conf
 		RETURN e.name
 	`
-		.replaceAll("$name", JSON.stringify(name))
-		.replaceAll("$now", JSON.stringify(nowIso))
-		.replaceAll("$docId", JSON.stringify(docId))
-		.replaceAll("$conf", confLiteral);
+		.replaceAll("$name", () => JSON.stringify(name))
+		.replaceAll("$now", () => JSON.stringify(nowIso))
+		.replaceAll("$docId", () => JSON.stringify(docId))
+		.replaceAll("$conf", () => confLiteral);
 }
 
 /**
@@ -765,11 +766,11 @@ function documentEntityEdgeCypher(
 		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
-		.replaceAll("$docId", JSON.stringify(docId))
-		.replaceAll("$name", JSON.stringify(name))
-		.replaceAll("$now", JSON.stringify(new Date().toISOString()))
-		.replaceAll("$generationId", JSON.stringify(generationId))
-		.replaceAll("$conf", confLiteral);
+		.replaceAll("$docId", () => JSON.stringify(docId))
+		.replaceAll("$name", () => JSON.stringify(name))
+		.replaceAll("$now", () => JSON.stringify(new Date().toISOString()))
+		.replaceAll("$generationId", () => JSON.stringify(generationId))
+		.replaceAll("$conf", () => confLiteral);
 }
 
 /**
@@ -800,10 +801,10 @@ function entityRelationCypher(
 		SET r.created_at = $now, r.confidence = $conf, r.generation_id = $generationId
 		RETURN r
 	`
-		.replaceAll("$source", JSON.stringify(sourceName))
-		.replaceAll("$target", JSON.stringify(targetName))
-		.replaceAll("$documentId", JSON.stringify(documentId))
-		.replaceAll("$generationId", JSON.stringify(generationId))
-		.replaceAll("$now", JSON.stringify(new Date().toISOString()))
-		.replaceAll("$conf", confLiteral);
+		.replaceAll("$source", () => JSON.stringify(sourceName))
+		.replaceAll("$target", () => JSON.stringify(targetName))
+		.replaceAll("$documentId", () => JSON.stringify(documentId))
+		.replaceAll("$generationId", () => JSON.stringify(generationId))
+		.replaceAll("$now", () => JSON.stringify(new Date().toISOString()))
+		.replaceAll("$conf", () => confLiteral);
 }

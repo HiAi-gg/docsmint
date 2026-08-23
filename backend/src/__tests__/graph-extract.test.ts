@@ -34,7 +34,9 @@ describe("graph extract-entities module", () => {
 			| undefined;
 		expect(buildSql).toBeFunction();
 		if (!buildSql) return;
-		const sql = buildSql("hostile $$ $hiai$ $hiai_x$ entity");
+		const hostileName = "hostile $$ $hiai$ $hiai_x$ entity";
+		const sql = buildSql(hostileName);
+		expect(sql).toContain(JSON.stringify(hostileName));
 		expect(sql).toContain("cypher('docs_graph', $hiai_x_x$");
 		expect(sql.match(/\$hiai_x_x\$/g)).toHaveLength(2);
 	});
@@ -55,23 +57,6 @@ describe("graph extract-entities module", () => {
 			});
 		} finally {
 			config.GRAPH_EXTRACT_ENABLED = prev;
-		}
-	});
-
-	test("extractEntities returns [] when chunk text is empty/whitespace", async () => {
-		const prev = process.env.GRAPH_EXTRACT_ENABLED;
-		process.env.GRAPH_EXTRACT_ENABLED = "true";
-		const { _resetGraphForTests } = await import("../lib/graph/init");
-		_resetGraphForTests();
-		try {
-			const { extractEntities } = await import("../lib/graph/extract-entities");
-			const a = await extractEntities("", "doc-1");
-			expect(a).toEqual({ status: "ready", entities: [] });
-			const b = await extractEntities("   \n\t  ", "doc-1");
-			expect(b).toEqual({ status: "ready", entities: [] });
-		} finally {
-			if (prev === undefined) delete process.env.GRAPH_EXTRACT_ENABLED;
-			else process.env.GRAPH_EXTRACT_ENABLED = prev;
 		}
 	});
 

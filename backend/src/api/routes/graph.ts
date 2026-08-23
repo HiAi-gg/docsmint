@@ -115,7 +115,13 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 					return { error: "Document not found" };
 				}
 				if (!config.GRAPH_SEARCH_ENABLED) return { entities: [] };
-				const entities = await fetchDocumentEntities(parsed.data.docId);
+				const activeGenerations = await loadActiveGenerations(access.ctx, [
+					parsed.data.docId,
+				]);
+				const entities = await fetchDocumentEntities(
+					parsed.data.docId,
+					activeGenerations.get(parsed.data.docId) ?? null,
+				);
 				return { entities };
 			} catch (err) {
 				logger.warn(
@@ -281,13 +287,18 @@ async function applyRateLimit(
  * connected to the given Document via MENTIONS edges. Returns an empty
  * array if AGE is unreachable or the document has no linked entities.
  */
-async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
+async function fetchDocumentEntities(
+	docId: string,
+	expectedGeneration: string | null,
+): Promise<EntityRef[]> {
+	if (!expectedGeneration) return [];
 	const sql = await getGraphDb();
 	if (!sql) return [];
 
 	const cypher = `
 		MATCH (d:Document {id: $docId})-[r:MENTIONS]->(e)
-		RETURN labels(e) AS labels, e.name AS name
+		RETURN labels(e) AS labels, e.name AS name,
+		       d.generation_id AS generation_id
 	`;
 	// AGE's cypher() requires a literal dollar-quoted string constant,
 	// not a bind parameter — see search-expansion.ts and admin.ts for
@@ -295,15 +306,18 @@ async function fetchDocumentEntities(docId: string): Promise<EntityRef[]> {
 	// JSON.stringify, so inlining is safe.
 	const queryStr = buildCypherSql(
 		cypherDocReplace(cypher, docId),
-		"labels agtype, name agtype",
+		"labels agtype, name agtype, generation_id agtype",
 	);
 	const rows = (await sql.unsafe(queryStr)) as Array<{
 		labels: string;
 		name: string;
+		generation_id: string;
 	}>;
 
 	const out: EntityRef[] = [];
 	for (const row of rows) {
+		const generationId = stripQuotes(String(row.generation_id ?? ""));
+		if (generationId !== expectedGeneration) continue;
 		const labels = parseLabels(row.labels);
 		const name = stripQuotes(String(row.name ?? ""));
 		if (!name || labels.length === 0) continue;
@@ -365,9 +379,13 @@ async function graphRagLookup(
 	const seeds = Array.from(new Set(docIds));
 	if (seeds.length === 0) return { entities: [], relatedDocs: [] };
 
+	const seedGenerations = await loadActiveGenerations(ctx, seeds);
 	const entityMap = new Map<string, EntityRef>();
 	for (const seed of seeds) {
-		const entities = await fetchDocumentEntities(seed);
+		const entities = await fetchDocumentEntities(
+			seed,
+			seedGenerations.get(seed) ?? null,
+		);
 		for (const e of entities) {
 			entityMap.set(`${e.type}:${e.name.toLowerCase()}`, e);
 		}

@@ -205,6 +205,7 @@ function buildQuerySeedCypher(terms: string[], limit: number): string {
 		       document.generation_id AS generation_id,
 		       'QUERY_ENTITY' AS relation,
 		       1 AS hops
+		ORDER BY hops ASC, neighbor_id ASC
 		LIMIT ${limit}
 	`;
 }

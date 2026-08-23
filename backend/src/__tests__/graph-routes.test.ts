@@ -94,7 +94,10 @@ describe("graph routes cypher safety (N1)", () => {
 			const mod = await import("../api/routes/graph");
 
 			// Act: call the test-exported function with a known docId
-			await mod._fetchDocumentEntitiesForTests("test-doc-uuid-123");
+			await mod._fetchDocumentEntitiesForTests(
+				"test-doc-uuid-123",
+				"generation-current",
+			);
 
 			// Assert: unsafe() was called (not tagged-template `sql`...)
 			expect(unsafeSpy).toHaveBeenCalledTimes(1);
@@ -116,10 +119,41 @@ describe("graph routes cypher safety (N1)", () => {
 			expect(capturedQuery).toContain("SELECT * FROM cypher");
 			expect(capturedQuery).toContain("labels agtype");
 			expect(capturedQuery).toContain("name agtype");
+			expect(capturedQuery).toContain("generation_id agtype");
 		} finally {
 			if (prev === undefined) delete process.env.GRAPH_SEARCH_ENABLED;
 			else process.env.GRAPH_SEARCH_ENABLED = prev;
 		}
+	});
+
+	test("fetchDocumentEntities returns only rows from the active graph generation", async () => {
+		const unsafeSpy = mock(async () => [
+			{
+				labels: '["Concept"]',
+				name: '"Stale entity"',
+				generation_id: '"generation-old"',
+			},
+			{
+				labels: '["Topic"]',
+				name: '"Current entity"',
+				generation_id: '"generation-current"',
+			},
+		]);
+		const mockSql = { unsafe: unsafeSpy };
+
+		mock.module("../lib/graph/init", () => ({
+			getGraphDb: async () => mockSql,
+			getGraphDbRequired: async () => mockSql,
+			_resetGraphForTests: () => {},
+		}));
+
+		const mod = await import("../api/routes/graph");
+		const result = await mod._fetchDocumentEntitiesForTests(
+			"document-id",
+			"generation-current",
+		);
+
+		expect(result).toEqual([{ name: "Current entity", type: "Topic" }]);
 	});
 
 	test("fetchDocumentEntities returns empty array when AGE is unavailable", async () => {
@@ -131,7 +165,10 @@ describe("graph routes cypher safety (N1)", () => {
 		}));
 
 		const mod = await import("../api/routes/graph");
-		const result = await mod._fetchDocumentEntitiesForTests("some-doc-id");
+		const result = await mod._fetchDocumentEntitiesForTests(
+			"some-doc-id",
+			"generation-current",
+		);
 		expect(result).toEqual([]);
 	});
 
@@ -151,7 +188,10 @@ describe("graph routes cypher safety (N1)", () => {
 
 		const mod = await import("../api/routes/graph");
 
-		await mod._fetchDocumentEntitiesForTests("doc$$payload");
+		await mod._fetchDocumentEntitiesForTests(
+			"doc$$payload",
+			"generation-current",
+		);
 
 		expect(unsafeSpy).toHaveBeenCalled();
 		expect(capturedQuery).toBeDefined();
