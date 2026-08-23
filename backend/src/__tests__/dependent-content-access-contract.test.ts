@@ -13,7 +13,32 @@ describe("dependent document route access contracts", () => {
 		).toHaveLength(3);
 		expect(source).toContain('authorizeDocument(request, params.id, "read")');
 		expect(source).toContain('canAccessContent(access, "read")');
-		expect(source).toContain("effectiveDocumentCategory(row)");
+		expect(source.match(/effectiveDocumentCategoryCondition\(/g)).toHaveLength(
+			4,
+		);
+		expect(source).not.toContain("row.ownerId !== access.userId");
+	});
+
+	test("create replay and patch authorize effective category in SQL", async () => {
+		const source = await routeSource("documents");
+		const replayFences = source.match(
+			/eq\(documentCreateOperations\.idempotencyKey,[\s\S]{0,700}?effectiveDocumentCategoryCondition\(/g,
+		);
+		const patch = source.slice(source.indexOf("const existingRows = await tx"));
+		expect(replayFences).toHaveLength(2);
+		expect(
+			source.match(/documentCreateOperations\.idempotencyKey/g),
+		).toHaveLength(2);
+		expect(patch).toContain("effectiveDocumentCategoryCondition(");
+	});
+
+	test("collaboration and share authorize inherited workspace documents", async () => {
+		const collaboration = await routeSource("collaboration");
+		const share = await routeSource("share");
+		expect(collaboration).toContain("effectiveDocumentCategoryCondition(");
+		expect(share).toContain("effectiveDocumentCategoryCondition(");
+		expect(share).toContain("resolveFolderEffectiveCategory(");
+		expect(share).not.toContain("eq(categories.ownerId, userId)");
 	});
 
 	test("document index status reads and refresh writes use effective category scope", async () => {

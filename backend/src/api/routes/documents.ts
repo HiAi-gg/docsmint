@@ -680,6 +680,24 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							eq(documentCreateOperations.workspaceId, workspaceIdentity),
 							eq(documentCreateOperations.actorUserId, userId),
 							eq(documentCreateOperations.idempotencyKey, idempotencyKey),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.limit(1);
@@ -754,6 +772,24 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								eq(documentCreateOperations.workspaceId, workspaceIdentity),
 								eq(documentCreateOperations.actorUserId, userId),
 								eq(documentCreateOperations.idempotencyKey, idempotencyKey),
+								tenantOwnerCondition(
+									documents.ownerId,
+									documents.workspaceId,
+									ctx,
+								),
+								isNull(documents.deletedAt),
+								...(access.restricted
+									? [
+											access.categoryId
+												? effectiveDocumentCategoryCondition(
+														documents.categoryId,
+														documents.folderId,
+														ctx,
+														access.categoryId,
+													)
+												: sql`false`,
+										]
+									: []),
 							),
 						)
 						.limit(1);
@@ -1406,6 +1442,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.for("update")
@@ -1414,9 +1462,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					return null;
 				}
 				const existing = existingRows[0];
-				if (!existing || !isAuthorizedCategory(access, existing.categoryId)) {
-					return { forbidden: true as const };
-				}
+				if (!existing) return null;
 
 				// Offline-first conflict detection. If the client supplies the
 				// `updatedAt` it based its edit on, reject with 409 when the

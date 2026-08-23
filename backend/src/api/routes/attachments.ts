@@ -12,8 +12,7 @@ import { nanoid } from "nanoid";
 import { config } from "../../lib/config";
 import {
 	canAccessContent,
-	effectiveDocumentCategory,
-	isAuthorizedCategory,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
@@ -62,6 +61,18 @@ async function authorizeDocument(
 						access.ctx,
 					),
 					isNull(documents.deletedAt),
+					...(access.restricted
+						? [
+								access.categoryId
+									? effectiveDocumentCategoryCondition(
+											documents.categoryId,
+											documents.folderId,
+											access.ctx,
+											access.categoryId,
+										)
+									: sql`false`,
+							]
+						: []),
 				),
 			)
 			.limit(1);
@@ -69,8 +80,7 @@ async function authorizeDocument(
 	});
 	return {
 		access,
-		authorized:
-			!!row && isAuthorizedCategory(access, effectiveDocumentCategory(row)),
+		authorized: !!row,
 		row,
 	};
 }
@@ -936,7 +946,15 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				.where(
 					and(
 						eq(documents.id, documentId),
-						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+						...(ctx.source === "external"
+							? [
+									tenantOwnerCondition(
+										documents.ownerId,
+										documents.workspaceId,
+										ctx,
+									),
+								]
+							: []),
 					),
 				)
 				.limit(1);
@@ -1022,7 +1040,33 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				.from(attachments)
 				.innerJoin(documents, eq(documents.id, attachments.documentId))
 				.leftJoin(folders, eq(folders.id, documents.folderId))
-				.where(eq(attachments.id, attachmentId))
+				.where(
+					and(
+						eq(attachments.id, attachmentId),
+						...(ctx.source === "external"
+							? [
+									tenantOwnerCondition(
+										documents.ownerId,
+										documents.workspaceId,
+										ctx,
+									),
+								]
+							: []),
+						isNull(documents.deletedAt),
+						...(access.restricted
+							? [
+									access.categoryId
+										? effectiveDocumentCategoryCondition(
+												documents.categoryId,
+												documents.folderId,
+												ctx,
+												access.categoryId,
+											)
+										: sql`false`,
+								]
+							: []),
+					),
+				)
 				.limit(1);
 			return r ?? null;
 		});
@@ -1031,11 +1075,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 404;
 			return { error: "Attachment not found" };
 		}
-		if (row.ownerId !== userId) {
-			set.status = 403;
-			return { error: "Forbidden" };
-		}
-		if (!isAuthorizedCategory(access, effectiveDocumentCategory(row))) {
+		if (ctx.source !== "external" && row.ownerId !== userId) {
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
@@ -1136,7 +1176,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// not the RLS policy). The owner-vs-anonymous decision is
 			// made after we know who the row belongs to.
 			const lookupCtx =
-				ctx.role === "admin"
+				ctx.source === "external"
 					? ctx
 					: { userId: ctx.userId, role: "admin" as const };
 			const row = await withTenant(lookupCtx, async (tx) => {
@@ -1153,7 +1193,33 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					.from(attachments)
 					.innerJoin(documents, eq(documents.id, attachments.documentId))
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(eq(attachments.id, params.id))
+					.where(
+						and(
+							eq(attachments.id, params.id),
+							isNull(documents.deletedAt),
+							...(ctx.source === "external"
+								? [
+										tenantOwnerCondition(
+											documents.ownerId,
+											documents.workspaceId,
+											ctx,
+										),
+									]
+								: []),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.limit(1);
 				return r ?? null;
 			});
@@ -1166,8 +1232,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			if (ctx.role !== "none") {
 				if (
 					!canAccessContent(access, "read") ||
-					row.ownerId !== ctx.userId ||
-					!isAuthorizedCategory(access, effectiveDocumentCategory(row))
+					(ctx.source !== "external" && row.ownerId !== ctx.userId)
 				) {
 					set.status = 403;
 					return { error: "Forbidden" };
@@ -1279,7 +1344,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Authentication required" };
 			}
 			const lookupCtx =
-				ctx.role === "admin"
+				ctx.source === "external"
 					? ctx
 					: { userId: ctx.userId, role: "admin" as const };
 			const document = await withTenant(lookupCtx, async (tx) => {
@@ -1293,7 +1358,33 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(documents)
 					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.where(eq(documents.id, documentId))
+					.where(
+						and(
+							eq(documents.id, documentId),
+							isNull(documents.deletedAt),
+							...(ctx.source === "external"
+								? [
+										tenantOwnerCondition(
+											documents.ownerId,
+											documents.workspaceId,
+											ctx,
+										),
+									]
+								: []),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.limit(1);
 				return row ?? null;
 			});
@@ -1304,8 +1395,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			if (ctx.role !== "none") {
 				if (
 					!canAccessContent(access, "read") ||
-					document.ownerId !== ctx.userId ||
-					!isAuthorizedCategory(access, effectiveDocumentCategory(document))
+					(ctx.source !== "external" && document.ownerId !== ctx.userId)
 				) {
 					set.status = 403;
 					return { error: "Forbidden" };

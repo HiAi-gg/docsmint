@@ -12,7 +12,7 @@ import { z } from "zod";
 import { recordAuditEvent } from "../../lib/audit";
 import {
 	canAccessContent,
-	effectiveDocumentCategory,
+	effectiveDocumentCategoryCondition,
 	isAuthorizedCategory,
 	resolveContentAccess,
 	resolveFolderEffectiveCategory,
@@ -40,7 +40,7 @@ async function authorizeShareLink(request: Request, shareId: string) {
 				folderId: shareLinks.folderId,
 				shareCategoryId: shareLinks.categoryId,
 				documentCategoryId: documents.categoryId,
-				documentFolderCategoryId: folders.categoryId,
+				documentFolderId: documents.folderId,
 			})
 			.from(shareLinks)
 			.leftJoin(documents, eq(documents.id, shareLinks.documentId))
@@ -49,10 +49,14 @@ async function authorizeShareLink(request: Request, shareId: string) {
 			.limit(1);
 		if (!row) return null;
 		const categoryId = row.documentId
-			? effectiveDocumentCategory({
-					categoryId: row.documentCategoryId,
-					folderCategoryId: row.documentFolderCategoryId,
-				})
+			? (row.documentCategoryId ??
+				(row.documentFolderId
+					? await resolveFolderEffectiveCategory(
+							tx,
+							access.ctx,
+							row.documentFolderId,
+						)
+					: null))
 			: row.folderId
 				? await resolveFolderEffectiveCategory(tx, access.ctx, row.folderId)
 				: row.shareCategoryId;
@@ -251,14 +255,23 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 								ctx,
 							),
 							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
 					.limit(1);
 				if (!doc) {
 					return { notFound: "document" as const };
-				}
-				if (!isAuthorizedCategory(access, effectiveDocumentCategory(doc))) {
-					return { forbidden: true as const };
 				}
 			}
 
@@ -291,7 +304,14 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 					.select({ id: categories.id })
 					.from(categories)
 					.where(
-						and(eq(categories.id, categoryId), eq(categories.ownerId, userId)),
+						and(
+							eq(categories.id, categoryId),
+							tenantOwnerCondition(
+								categories.ownerId,
+								categories.workspaceId,
+								ctx,
+							),
+						),
 					)
 					.limit(1);
 				if (!category) {

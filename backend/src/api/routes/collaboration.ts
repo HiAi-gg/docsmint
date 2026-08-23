@@ -1,5 +1,5 @@
 import { documents, versions } from "@hiai-docs/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
@@ -14,7 +14,7 @@ import { createYjsRoomKey } from "../../lib/collaboration-room-key";
 import { config } from "../../lib/config";
 import {
 	canAccessContent,
-	isAuthorizedCategory,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
@@ -210,12 +210,24 @@ async function authorizeDocument(ws: RawCollabWs, documentId: string) {
 						access.ctx,
 					),
 					isNull(documents.deletedAt),
+					...(access.restricted
+						? [
+								access.categoryId
+									? effectiveDocumentCategoryCondition(
+											documents.categoryId,
+											documents.folderId,
+											access.ctx,
+											access.categoryId,
+										)
+									: sql`false`,
+							]
+						: []),
 				),
 			)
 			.limit(1),
 	);
 	const document = rows[0];
-	if (!document || !isAuthorizedCategory(access, document.categoryId)) {
+	if (!document) {
 		throw new Error("Document not found");
 	}
 	return { access, document };
@@ -261,6 +273,19 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 									documents.workspaceId,
 									access.ctx,
 								),
+								isNull(documents.deletedAt),
+								...(access.restricted
+									? [
+											access.categoryId
+												? effectiveDocumentCategoryCondition(
+														documents.categoryId,
+														documents.folderId,
+														access.ctx,
+														access.categoryId,
+													)
+												: sql`false`,
+										]
+									: []),
 							),
 						);
 				});

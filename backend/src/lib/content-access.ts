@@ -276,15 +276,16 @@ export async function resolveFolderEffectiveCategory(
 		sql`
 			WITH RECURSIVE ancestors AS (
 				SELECT ${folders.id} AS id, ${folders.parentId} AS parent_id,
-					${folders.categoryId} AS category_id
+					${folders.categoryId} AS category_id, 0 AS depth
 				FROM ${folders}
 				WHERE ${folders.id} = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
 				UNION ALL
-				SELECT f.id, f.parent_id, f.category_id
+				SELECT f.id, f.parent_id, f.category_id, ancestors.depth + 1
 				FROM folders f JOIN ancestors a ON f.id = a.parent_id
 				WHERE ${tenantOwnerSql("f", ctx)}
 			)
-			SELECT category_id FROM ancestors WHERE category_id IS NOT NULL LIMIT 1
+			SELECT category_id FROM ancestors
+			WHERE category_id IS NOT NULL ORDER BY depth ASC LIMIT 1
 		`,
 	)) as Array<{ category_id: string }>;
 	// undefined distinguishes a missing/unowned folder from an uncategorized one.
