@@ -51,6 +51,22 @@ async function rejectionMessage(operation: () => Promise<unknown>) {
 	}
 }
 
+async function signedPayload(payload: string): Promise<string> {
+	const key = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(verifyOptions.secret),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const signature = await crypto.subtle.sign(
+		"HMAC",
+		key,
+		new TextEncoder().encode(payload),
+	);
+	return `${payload}.${Buffer.from(signature).toString("base64url")}`;
+}
+
 describe("workspace context assertions", () => {
 	test("verifies a signed assertion and preserves its typed context", async () => {
 		const assertion = await createDocsmintWorkspaceAssertion(context, "secret");
@@ -86,6 +102,7 @@ describe("workspace context assertions", () => {
 	});
 
 	test("matches SDK validation errors for every restricted-scope boundary", async () => {
+		const sparsePermissions = Array(1);
 		const fixtures = [
 			{ ...context, unexpected: true },
 			{
@@ -111,6 +128,13 @@ describe("workspace context assertions", () => {
 				resourceScope: {
 					...scopedContext.resourceScope,
 					permissions: ["read", "delete"],
+				},
+			},
+			{
+				...scopedContext,
+				resourceScope: {
+					...scopedContext.resourceScope,
+					permissions: sparsePermissions,
 				},
 			},
 		] as const;
@@ -141,6 +165,61 @@ describe("workspace context assertions", () => {
 		]);
 		expect(backendExpiry).toBe(sdkExpiry);
 		expect(backendExpiry).toBe("Workspace assertion is expired");
+
+		const sparsePayload = Buffer.from(
+			JSON.stringify({
+				...scopedContext,
+				resourceScope: {
+					...scopedContext.resourceScope,
+					permissions: sparsePermissions,
+				},
+			}),
+		).toString("base64url");
+		const sparseAssertion = await signedPayload(sparsePayload);
+		const [sdkSparseError, backendSparseError] = await Promise.all([
+			rejectionMessage(() =>
+				verifySdkAssertion(sparseAssertion, verifyOptions),
+			),
+			rejectionMessage(() =>
+				verifyDocsmintWorkspaceAssertion(sparseAssertion, verifyOptions),
+			),
+		]);
+		expect(backendSparseError).toBe(sdkSparseError);
+		expect(backendSparseError).toBe("Invalid workspace resource permissions");
+	});
+
+	test("matches SDK signature errors for tampered category and permissions", async () => {
+		const assertion = await createSdkAssertion(
+			scopedContext,
+			verifyOptions.secret,
+		);
+		const [payload, signature] = assertion.split(".");
+		if (!payload || !signature) throw new Error("invalid test assertion");
+		const decoded = JSON.parse(
+			Buffer.from(payload, "base64url").toString("utf8"),
+		);
+		for (const resourceScope of [
+			{
+				...decoded.resourceScope,
+				categoryId: "22222222-2222-4222-8222-222222222222",
+			},
+			{ ...decoded.resourceScope, permissions: ["write"] },
+		]) {
+			const tamperedPayload = Buffer.from(
+				JSON.stringify({ ...decoded, resourceScope }),
+			).toString("base64url");
+			const tamperedAssertion = `${tamperedPayload}.${signature}`;
+			const [sdkError, backendError] = await Promise.all([
+				rejectionMessage(() =>
+					verifySdkAssertion(tamperedAssertion, verifyOptions),
+				),
+				rejectionMessage(() =>
+					verifyDocsmintWorkspaceAssertion(tamperedAssertion, verifyOptions),
+				),
+			]);
+			expect(backendError).toBe(sdkError);
+			expect(backendError).toBe("Invalid workspace assertion signature");
+		}
 	});
 
 	test("carries only the verified signed resource scope into tenant context", async () => {

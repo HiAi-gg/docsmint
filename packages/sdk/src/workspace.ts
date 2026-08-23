@@ -147,7 +147,7 @@ function assertResourceScope(
 	}
 	if (
 		!Array.isArray(scope.permissions) ||
-		scope.permissions.some(
+		Array.from(scope.permissions).some(
 			(permission) =>
 				typeof permission !== "string" ||
 				!RESOURCE_PERMISSIONS.has(permission as WorkspaceResourcePermission),

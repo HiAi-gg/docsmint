@@ -11,6 +11,10 @@
       "import": "./dist/index.js",
       "types": "./src/index.ts"
     },
+    "./workspace": {
+      "import": "./dist/workspace.js",
+      "types": "./src/workspace.ts"
+    },
     "./pipeline-cancellation": {
       "import": "./src/pipeline-cancellation.ts",
       "types": "./src/pipeline-cancellation.ts"

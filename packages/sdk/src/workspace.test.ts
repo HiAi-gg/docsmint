@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-
+import type {
+	WorkspaceAssertionPayload as ConsumerWorkspaceAssertionPayload,
+	WorkspaceResourceScope as ConsumerWorkspaceResourceScope,
+} from "@hiai-docs/sdk/workspace";
 import {
 	createDocsmintWorkspaceAssertion,
 	verifyDocsmintWorkspaceAssertion,
@@ -45,6 +48,28 @@ async function signedPayload(payload: string): Promise<string> {
 }
 
 describe("workspace assertions", () => {
+	test("exposes the server-only workspace contract through the package subpath", async () => {
+		const manifest = (await Bun.file(
+			new URL("../package.json", import.meta.url),
+		).json()) as {
+			exports: Record<string, unknown>;
+		};
+		expect(manifest.exports["./workspace"]).toEqual({
+			import: "./dist/workspace.js",
+			types: "./src/workspace.ts",
+		});
+
+		const resourceScope: ConsumerWorkspaceResourceScope =
+			scopedContext.resourceScope;
+		const payload: ConsumerWorkspaceAssertionPayload = {
+			...scopedContext,
+			resourceScope,
+		};
+		expect(payload.resourceScope?.categoryId).toBe(
+			scopedContext.resourceScope.categoryId,
+		);
+	});
+
 	test("signs and verifies an HMAC assertion", async () => {
 		const assertion = await createDocsmintWorkspaceAssertion(
 			context,
@@ -147,6 +172,38 @@ describe("workspace assertions", () => {
 		await expect(
 			verifyDocsmintWorkspaceAssertion(assertion, options),
 		).resolves.toEqual(emptyPermissions);
+	});
+
+	test("rejects sparse permissions during creation and verification", async () => {
+		const sparsePermissions = Array(1);
+		await expect(
+			createDocsmintWorkspaceAssertion(
+				{
+					...scopedContext,
+					resourceScope: {
+						...scopedContext.resourceScope,
+						permissions: sparsePermissions,
+					},
+				} as never,
+				options.secret,
+			),
+		).rejects.toThrow("Invalid workspace resource permissions");
+
+		const sparsePayload = Buffer.from(
+			JSON.stringify({
+				...scopedContext,
+				resourceScope: {
+					...scopedContext.resourceScope,
+					permissions: sparsePermissions,
+				},
+			}),
+		).toString("base64url");
+		await expect(
+			verifyDocsmintWorkspaceAssertion(
+				await signedPayload(sparsePayload),
+				options,
+			),
+		).rejects.toThrow("Invalid workspace resource permissions");
 	});
 
 	test("authenticates category and permission bytes before validation", async () => {
