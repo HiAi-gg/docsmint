@@ -50,29 +50,39 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [] as string[],
 		};
 		const afterFirst = {
-			journalEntries: 44,
-			schemaFingerprint: "embedding-context-schema",
+			journalEntries: 45,
+			schemaFingerprint: "embedding-context-and-outbox-schema",
 			columns: [
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 				"documents.embedding_context_hash:text:YES:",
+				"metadata_reembed_outbox.created_at:timestamp without time zone:NO:now()",
+				"metadata_reembed_outbox.document_id:uuid:NO:",
+				"metadata_reembed_outbox.id:uuid:NO:",
+				"metadata_reembed_outbox.operation_id:uuid:NO:",
+				"metadata_reembed_outbox.owner_id:uuid:NO:",
+				"metadata_reembed_outbox.revision:text:NO:",
+				"metadata_reembed_outbox.workspace_id:text:YES:",
 			],
 		};
 		const afterSecond = structuredClone(afterFirst);
 
 		expect(
 			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
-		).toEqual({ addedJournalEntries: 1, secondRunNoOp: true });
+		).toEqual({ addedJournalEntries: 2, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
-				journalEntries: 45,
+				journalEntries: 46,
 			}),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
 			verifyAdditiveMigrationReapply(
 				before,
-				{ ...afterFirst, columns: ["wrong", "columns", "only"] },
+				{
+					...afterFirst,
+					columns: ["wrong", ...afterFirst.columns.slice(1)],
+				},
 				afterSecond,
 			),
 		).toThrow("expected additive columns");
@@ -456,12 +466,19 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [],
 		};
 		const migrationAfter = {
-			journalEntries: 44,
+			journalEntries: 45,
 			schemaFingerprint: "after",
 			columns: [
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 				"documents.embedding_context_hash:text:YES:",
+				"metadata_reembed_outbox.created_at:timestamp without time zone:NO:now()",
+				"metadata_reembed_outbox.document_id:uuid:NO:",
+				"metadata_reembed_outbox.id:uuid:NO:",
+				"metadata_reembed_outbox.operation_id:uuid:NO:",
+				"metadata_reembed_outbox.owner_id:uuid:NO:",
+				"metadata_reembed_outbox.revision:text:NO:",
+				"metadata_reembed_outbox.workspace_id:text:YES:",
 			],
 		};
 		const environment = {

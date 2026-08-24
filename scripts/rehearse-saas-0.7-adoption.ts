@@ -112,10 +112,18 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
+const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 2;
 const EXPECTED_ADDITIVE_COLUMNS = [
 	"document_pipeline_runs.embedding_context_hash:text:YES:",
 	"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 	"documents.embedding_context_hash:text:YES:",
+	"metadata_reembed_outbox.created_at:timestamp without time zone:NO:now()",
+	"metadata_reembed_outbox.document_id:uuid:NO:",
+	"metadata_reembed_outbox.id:uuid:NO:",
+	"metadata_reembed_outbox.operation_id:uuid:NO:",
+	"metadata_reembed_outbox.owner_id:uuid:NO:",
+	"metadata_reembed_outbox.revision:text:NO:",
+	"metadata_reembed_outbox.workspace_id:text:YES:",
 ];
 
 export function verifyCandidateProvenance(
@@ -189,9 +197,12 @@ export function verifyAdditiveMigrationReapply(
 	afterSecond: MigrationSnapshot,
 ): { addedJournalEntries: number; secondRunNoOp: true } {
 	const addedJournalEntries = afterFirst.journalEntries - before.journalEntries;
-	if (addedJournalEntries !== 1 || afterFirst.columns.length !== 3) {
+	if (
+		addedJournalEntries !== EXPECTED_ADDITIVE_JOURNAL_ENTRIES ||
+		afterFirst.columns.length !== EXPECTED_ADDITIVE_COLUMNS.length
+	) {
 		throw new Error(
-			"first migration run did not apply exactly one additive journal entry",
+			"first migration run did not apply exactly two additive journal entries",
 		);
 	}
 	if (
@@ -1480,6 +1491,7 @@ async function databaseSnapshot(ownerUrl: string): Promise<MigrationSnapshot> {
 						table_name = 'document_pipeline_runs'
 						AND column_name IN ('embedding_context_hash', 'refresh_mode')
 					)
+					OR table_name = 'metadata_reembed_outbox'
 				)
 			ORDER BY table_name, column_name
 		`;
