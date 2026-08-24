@@ -76,6 +76,7 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"container port contract",
 		"fresh Docker rebuild",
 		"Docker dependency start",
+		"Docker migrations",
 		"SaaS adoption rehearsal",
 		"required PostgreSQL integrations",
 		"required live public surfaces",
@@ -99,6 +100,44 @@ test("SaaS rehearsal uses the freshly rebuilt release dependencies", () => {
 	expect(rehearsal).toBeGreaterThan(dependencyStart);
 });
 
+test("Docker lifecycle separates healthy services from one-shot migrations", () => {
+	if (!releaseGate) return;
+	const steps = releaseGate.releaseGateSteps("v0.7.0") as Array<{
+		name: string;
+		command: string[];
+	}>;
+	const dependencies = steps.find(
+		(step) => step.name === "Docker dependency start",
+	);
+	const migrations = steps.find((step) => step.name === "Docker migrations");
+	const fullStart = steps.find((step) => step.name === "Docker start and health");
+
+	expect(dependencies?.command).toEqual([
+		"docker",
+		"compose",
+		"--env-file",
+		"/dev/null",
+		"up",
+		"--detach",
+		"--wait",
+		"postgres",
+		"redis",
+		"seaweedfs",
+	]);
+	expect(migrations?.command).toEqual([
+		"docker",
+		"compose",
+		"--env-file",
+		"/dev/null",
+		"run",
+		"--rm",
+		"--no-deps",
+		"migrate",
+	]);
+	expect(fullStart?.command.at(-2)).toBe("api");
+	expect(fullStart?.command.at(-1)).toBe("web");
+});
+
 test("full Docker startup preserves the explicit production-safe public storage URL", () => {
 	if (!releaseGate) return;
 	const environmentForStep = (
@@ -116,12 +155,14 @@ test("full Docker startup preserves the explicit production-safe public storage 
 		{ name: "Docker start and health", command: [] },
 		{
 			API_PORT: "51710",
+			DOCSMINT_WORKSPACE_ENABLED: "true",
 			STORAGE_PUBLIC_ENDPOINT_URL: "https://storage.release.invalid",
 		},
 	);
 	expect(environment.STORAGE_PUBLIC_ENDPOINT_URL).toBe(
 		"https://storage.release.invalid",
 	);
+	expect(environment.DOCSMINT_WORKSPACE_ENABLED).toBe("false");
 });
 
 test("hermetic release phases cannot inherit live integration triggers", () => {

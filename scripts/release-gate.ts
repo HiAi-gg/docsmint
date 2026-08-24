@@ -95,6 +95,18 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 				"postgres",
 				"redis",
 				"seaweedfs",
+			],
+		},
+		{
+			name: "Docker migrations",
+			command: [
+				"docker",
+				"compose",
+				"--env-file",
+				"/dev/null",
+				"run",
+				"--rm",
+				"--no-deps",
 				"migrate",
 			],
 		},
@@ -120,6 +132,8 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 				"up",
 				"--detach",
 				"--wait",
+				"api",
+				"web",
 			],
 		},
 		{ name: "service health contract", command: ["sh", "scripts/health-check.sh"] },
@@ -263,6 +277,7 @@ export function environmentForStep(
 		return {
 			...base,
 			BETTER_AUTH_URL: `http://127.0.0.1:${apiPort}`,
+			DOCSMINT_WORKSPACE_ENABLED: "false",
 			REDIS_URL: "redis://redis:6379",
 			STORAGE_INTERNAL_ENDPOINT_URL: "http://seaweedfs:8333",
 		};
