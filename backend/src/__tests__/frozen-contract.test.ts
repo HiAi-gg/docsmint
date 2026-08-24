@@ -77,7 +77,7 @@ test("the complete 0.5.0 exports, extensions, workspace assertion, and routes ma
 	).text();
 
 	expect(snapshot.version).toBe("0.5.0");
-	expect(manifest.version).toMatch(/^0\.(?:5\.\d+|6\.\d+)$/);
+	expect(manifest.version).toMatch(/^0\.(?:5\.\d+|6\.\d+|7\.\d+)$/);
 	for (const [exportPath, exportContract] of Object.entries(
 		snapshot.packageExports,
 	)) {
@@ -101,5 +101,6 @@ test("the complete 0.5.0 exports, extensions, workspace assertion, and routes ma
 	for (const role of snapshot.workspace.actorRoles) {
 		expect(workspaceTypes, role).toContain(`"${role}"`);
 	}
+	expect(workspaceTypes).toContain("resourceScope?: WorkspaceResourceScope");
 	expect(snapshot.webSocketRoutes).toEqual(["WS /api/ws/collab/:documentId"]);
 });

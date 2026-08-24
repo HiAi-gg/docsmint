@@ -2,14 +2,15 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
 const repositoryRoot = new URL('../../../', import.meta.url);
-const releaseVersion = '0.6.8';
+const releaseVersion = '0.7.0';
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), 'utf8'));
 }
 
-test('all published and workspace release metadata reports 0.6.8', async () => {
+test('all published and workspace release metadata reports 0.7.0', async () => {
   for (const path of [
+    'package.json',
     'package.public.json',
     'backend/package.json',
     'frontend/package.json',
@@ -24,7 +25,7 @@ test('all published and workspace release metadata reports 0.6.8', async () => {
   const lockfile = await readFile(new URL('bun.lock', repositoryRoot), 'utf8');
   const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
   expect(workspaceBlock).not.toContain('"version": "0.3.0"');
-  expect(workspaceBlock.match(/"version": "0\.6\.2"/g)).toHaveLength(6);
+  expect(workspaceBlock.match(/"version": "0\.7\.0"/g)).toHaveLength(7);
 
   const frontendManifest = await json('frontend/package.json');
   expect((frontendManifest.dependencies as Record<string, string>)['lucide-svelte']).toBe(
@@ -76,6 +77,9 @@ test('all published and workspace release metadata reports 0.6.8', async () => {
   expect(appShellDeclarationWriter).toContain('options?: DocsmintNavigationOptions');
   const openApi = await json('docs/openapi.json');
   expect((openApi.info as { version: string }).version).toBe(releaseVersion);
+  const registryManifest = await json('server.json');
+  expect(registryManifest.version).toBe(releaseVersion);
+  expect(((registryManifest.packages as Array<{ version: string }>)[0]).version).toBe(releaseVersion);
 
   for (const path of [
     'backend/src/index.ts',
@@ -84,9 +88,16 @@ test('all published and workspace release metadata reports 0.6.8', async () => {
   ]) {
     expect(await readFile(new URL(path, repositoryRoot), 'utf8'), path).toContain(releaseVersion);
   }
+
+  expect(await readFile(new URL('frontend/vite.config.ts', repositoryRoot), 'utf8')).toContain(
+    'docsmint-oss-0.7.0'
+  );
+  expect(await readFile(new URL('docker-compose.yml', repositoryRoot), 'utf8')).toContain(
+    'docsmint-oss-0.7.0'
+  );
 });
 
-test('workspace and public package metadata share the 0.6.8 product identity', async () => {
+test('workspace and public package metadata share the 0.7.0 product identity', async () => {
   const workspaceManifest = await json('package.json');
   const publicManifest = await json('package.public.json');
   const description =

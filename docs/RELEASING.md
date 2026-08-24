@@ -1,14 +1,14 @@
 # Releasing DocsMint
 
-## OSS compatibility policy from 0.6.0
+## OSS compatibility policy from 0.7.0
 
-DocsMint OSS 0.6.0 extends the frozen 0.5.0 contract with reusable,
-product-neutral capabilities: stable document listing, reactive editor
-preferences, a compact editor, additive share creation callbacks, and mobile
-PWA compatibility. The 0.5.0 snapshot remains the compatibility floor in
-`docs/frozen-contract-0.5.0.json`; 0.6.x changes must remain additive.
+DocsMint OSS 0.7.0 extends the frozen 0.5.0 contract with reusable,
+product-neutral category-scoped workspace assertions, effective-category
+authorization, index status and refresh contracts, and PWA compatibility. The
+0.5.0 snapshot remains the compatibility floor in
+`docs/frozen-contract-0.5.0.json`; 0.7.x changes must remain additive.
 
-From 0.6.0:
+From 0.7.0:
 
 - reusable self-hosted capabilities belong in OSS when they are exposed through
   supported API, SDK, or frontend contracts;
@@ -29,6 +29,7 @@ and the GitHub Release, not in this file.
 1. Work from a clean release branch based on the intended `main` revision.
 2. Update `CHANGELOG.md` with user-visible changes and migration notes.
 3. Keep the version synchronized in:
+   - root `package.json` and `bun.lock` workspace snapshots
    - `package.public.json`
    - `backend/package.json`
    - `frontend/package.json`
@@ -39,6 +40,8 @@ and the GitHub Release, not in this file.
    - `server.json`
    - backend Swagger metadata
    - `docs/openapi.json`
+   - CLI and MCP runtime version strings
+   - PWA deployment/cache identity in Vite and Compose
 4. Update `.env.example`, documentation, migrations, and OpenAPI whenever their
    public contracts changed.
 5. Check that no credentials, local environment files, generated reports, or
@@ -52,9 +55,12 @@ Run from the repository root:
 
 ```bash
 bun install --frozen-lockfile
-bun run --filter '*' lint
-bun run --filter '*' typecheck
-bun run --filter '*' test
+bun run test:unit
+bun run test:integration
+bun run test:package
+bun run lint
+bun run typecheck
+bun run test
 bun run --sequential --filter '*' build
 docker compose config --quiet
 COMPOSE_BAKE=false docker compose build
@@ -62,6 +68,7 @@ COMPOSE_BAKE=false docker compose build
 
 Then verify the release-specific contours affected by the change:
 
+- capture zero skipped tests and expected suite names for required integrations;
 - apply the complete migration journal to a fresh database;
 - upgrade a representative database when migrations changed;
 - build API, web, PostgreSQL, and Caddy images;
@@ -86,13 +93,16 @@ Publishing is a separate, explicitly authorized operation.
 1. Create one intentional release commit.
 2. Repeat the clean-consumer smoke from that commit so `git archive HEAD`
    contains the exact package being released.
-3. Create an annotated `v<version>` tag.
-4. Push the commit and tag.
-5. Wait for GitHub Actions to finish successfully.
-6. Create the GitHub Release from the tag using the changelog summary.
-7. Confirm the expected npm package and Docker images exist and report the
+3. Confirm the tag version already matches every manifest, `server.json`,
+   Swagger/OpenAPI, CLI/MCP runtime, and PWA deployment identity; do not rewrite
+   release metadata from the tag.
+4. Create an annotated `v<version>` tag.
+5. Push the commit and tag.
+6. Wait for GitHub Actions to finish successfully.
+7. Create the GitHub Release from the tag using the changelog summary.
+8. Confirm the expected npm package and Docker images exist and report the
    released version.
-8. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
+9. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
 
 The tag workflow publishes `server.json` only after the exact npm version is
 available. It authenticates `mcp-publisher` with GitHub Actions OIDC, so the

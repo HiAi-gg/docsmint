@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
-    "version": "0.6.8",
+    "version": "0.7.0",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -688,6 +688,8 @@
     "/api/documents/{id}/index-status": {
       "get": {
         "operationId": "getApiDocumentsByIdIndexStatus",
+        "summary": "Read document index status",
+        "description": "Returns indexing and knowledge-pipeline status for a document when the caller has read access. A category-scoped workspace assertion is authorized against the document's direct category or its effective category inherited from folder ancestry.",
         "parameters": [
           {
             "schema": { "type": "string", "format": "uuid" },
@@ -710,6 +712,8 @@
     "/api/documents/{id}/index/refresh": {
       "post": {
         "operationId": "postApiDocumentsByIdIndexRefresh",
+        "summary": "Refresh document index",
+        "description": "Requests an idempotent document index refresh when the caller has write access. A category-scoped workspace assertion is authorized against the document's direct category or its effective category inherited from folder ancestry.",
         "parameters": [
           {
             "schema": { "type": "string", "format": "uuid" },
@@ -1445,7 +1449,37 @@
     }
   },
   "components": {
-    "schemas": {},
+    "schemas": {
+      "WorkspaceResourceScope": {
+        "type": "object",
+        "description": "Optional category restriction carried only in a trusted server-to-server signed workspace assertion; it is never a browser secret.",
+        "required": ["kind", "categoryId", "permissions"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": { "const": "category" },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "permissions": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["read", "edit", "write"] }
+          }
+        }
+      },
+      "WorkspaceAssertionPayload": {
+        "type": "object",
+        "description": "Trusted server-to-server signed workspace assertion payload. Clients must not create, alter, or expose this payload in browser code.",
+        "required": ["actorUserId", "workspaceId", "actorRole", "issuedAt", "expiresAt", "issuer"],
+        "additionalProperties": false,
+        "properties": {
+          "actorUserId": { "type": "string", "format": "uuid" },
+          "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "actorRole": { "type": "string", "enum": ["owner", "admin", "editor", "viewer"] },
+          "resourceScope": { "$ref": "#/components/schemas/WorkspaceResourceScope" },
+          "issuedAt": { "type": "number" },
+          "expiresAt": { "type": "number" },
+          "issuer": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "securitySchemes": {
       "BearerAuth": {
         "type": "http",

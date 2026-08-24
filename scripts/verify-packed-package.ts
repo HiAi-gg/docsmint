@@ -258,17 +258,18 @@ if (!packagedFrontendFiles.some(({ source }) => source.includes('from "svelte/in
 
 await writeFile(
   join(packageRoot, 'server-import-smoke.ts'),
-  `import { DocsClient } from "${manifest.name}";
+  `import { DocsClient, createDocsmintWorkspaceAssertion, verifyDocsmintWorkspaceAssertion } from "${manifest.name}";
 import { encodeUserDataExportNdjson } from "${manifest.name}/lifecycle";
 import { createPersistentLifecycleRuntime } from "${manifest.name}/lifecycle/persistent";
 import { createDocsmintMcpServer, registerDocsmintMcpCapabilities } from "${manifest.name}/mcp";
 import { createPersistentLifecycleRuntime as createDurableLifecycleRuntime } from "${manifest.name}/lifecycle/runtime";
-import { verifyDocsmintWorkspaceAssertion } from "${manifest.name}/workspace";
+import { createDocsmintWorkspaceAssertion as createWorkspaceAssertion, verifyDocsmintWorkspaceAssertion as verifyWorkspaceAssertion } from "${manifest.name}/workspace";
 import { launchDocsmintBackend, launchDocsMintApi, resolveDocsmintBackendEntrypoint } from "${manifest.name}/backend/launcher";
 import { createStorageQuotaService, StorageQuotaExceededError, requireAttachmentStorageQuotaAdmission } from "${manifest.name}/storage-quota";
 import { createAccountRuntimeCleanup } from "${manifest.name}/backend/account-runtime-cleanup";
 import { issueApiKey, verifyApiKey } from "${manifest.name}/backend/lib/api-key-facade";
-if (!DocsClient || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !createDurableLifecycleRuntime || !verifyDocsmintWorkspaceAssertion || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission || !createAccountRuntimeCleanup || !issueApiKey || !verifyApiKey || !createDocsmintMcpServer || !registerDocsmintMcpCapabilities) throw new Error("missing server export");
+const docsClient = new DocsClient({ baseUrl: "https://docs.example.test" });
+if (!DocsClient || !createDocsmintWorkspaceAssertion || !verifyDocsmintWorkspaceAssertion || !createWorkspaceAssertion || !verifyWorkspaceAssertion || !docsClient.getDocumentIndexStatus || !docsClient.refreshDocumentIndex || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !createDurableLifecycleRuntime || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission || !createAccountRuntimeCleanup || !issueApiKey || !verifyApiKey || !createDocsmintMcpServer || !registerDocsmintMcpCapabilities) throw new Error("missing server export");
 console.log("server imports: pass");
 `
 );
@@ -351,7 +352,8 @@ await writeFile(
 import type { PurgeUserDataContext, UserDataExportRecord } from "${manifest.name}/lifecycle";
 import type { LifecycleRuntimeAdapters } from "${manifest.name}/lifecycle/persistent";
 import type { LifecycleRuntimeAdapters as DurableLifecycleRuntimeAdapters, LifecycleScopedDatabaseExecutor as DurableLifecycleDatabaseExecutor } from "${manifest.name}/lifecycle/runtime";
-import type { DocsmintWorkspaceContext } from "${manifest.name}/workspace";
+import type { WorkspaceRole, WorkspaceResourcePermission, WorkspaceResourceScope, WorkspaceAssertionPayload, DocsmintWorkspaceContext, WorkspaceAssertionOptions } from "${manifest.name}";
+import type { WorkspaceRole as WorkspaceRoleFromWorkspace, WorkspaceResourcePermission as WorkspaceResourcePermissionFromWorkspace, WorkspaceResourceScope as WorkspaceResourceScopeFromWorkspace, WorkspaceAssertionPayload as WorkspaceAssertionPayloadFromWorkspace, DocsmintWorkspaceContext as DocsmintWorkspaceContextFromWorkspace, WorkspaceAssertionOptions as WorkspaceAssertionOptionsFromWorkspace } from "${manifest.name}/workspace";
 import { launchDocsmintBackend, launchDocsMintApi, type DocsmintBackendHandle, type DocsMintRuntimeOptions } from "${manifest.name}/backend/launcher";
 import { createStorageQuotaService, StorageQuotaExceededError, type AttachmentStorageQuotaAdmission, type AttachmentStorageQuotaContext, type AttachmentStorageQuotaFinalization, type StorageQuotaAdapter, type StorageQuotaReservation } from "${manifest.name}/storage-quota";
 import { createAccountRuntimeCleanup, type AccountRuntimeCleanup } from "${manifest.name}/backend/account-runtime-cleanup";
@@ -385,7 +387,7 @@ import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme, type ThemeMode } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales, type Locale } from "${manifest.name}/frontend/i18n";
 void [DocsClient, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, createAccountRuntimeCleanup, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, uploadAttachment, createShareLink, startCollaboration, CreateSnapshotDialog, DeleteDialog, CategoryDialog, FolderNode, createDocumentDropCoordinator, resolveOfflineIdentity, createDocTabRegistry, registerShortcut, refreshFolders, cn, formatRelativeTime, copyToClipboard, dndzone, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
-type PublicTypes = PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | DocsmintWorkspaceContext | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | AccountRuntimeCleanup | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
+type PublicTypes = PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | WorkspaceRole | WorkspaceResourcePermission | WorkspaceResourceScope | WorkspaceAssertionPayload | DocsmintWorkspaceContext | WorkspaceAssertionOptions | WorkspaceRoleFromWorkspace | WorkspaceResourcePermissionFromWorkspace | WorkspaceResourceScopeFromWorkspace | WorkspaceAssertionPayloadFromWorkspace | DocsmintWorkspaceContextFromWorkspace | WorkspaceAssertionOptionsFromWorkspace | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | AccountRuntimeCleanup | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 `

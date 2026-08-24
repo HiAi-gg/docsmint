@@ -168,7 +168,7 @@ const swaggerConfig = {
 		},
 		info: {
 			title: "DocsMint API",
-			version: "0.6.8",
+			version: "0.7.0",
 			description:
 				"Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
 			contact: { name: "HiAi-gg", url: "https://github.com/HiAi-gg/docsmint" },

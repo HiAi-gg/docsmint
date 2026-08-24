@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 
 interface OpenApiOperation {
 	security?: Array<Record<string, string[]>>;
+	summary?: string;
+	description?: string;
 }
 
 interface OpenApiDocument {
 	info: { version: string };
 	paths: Record<string, Record<string, OpenApiOperation>>;
 	components: {
+		schemas: Record<string, Record<string, unknown>>;
 		securitySchemes: Record<
 			string,
 			{ type: string; in?: string; name?: string }
@@ -85,13 +88,41 @@ describe("OpenAPI external integration contract", () => {
 		expect(new Set(committedInventory).size).toBe(committedInventory.length);
 	});
 	test("tracks the release version and critical SDK, CLI, and MCP routes", () => {
-		expect(spec.info.version).toBe("0.6.8");
+		expect(spec.info.version).toBe("0.7.0");
 		for (const [method, path] of requiredOperations) {
 			expect(
 				spec.paths[path]?.[method],
 				`${method.toUpperCase()} ${path}`,
 			).toBeDefined();
 		}
+	});
+
+	test("documents signed category-scoped workspace assertions and index authorization", () => {
+		const scope = spec.components.schemas.WorkspaceResourceScope;
+		const assertion = spec.components.schemas.WorkspaceAssertionPayload;
+		if (!scope || !assertion) {
+			throw new Error("Workspace assertion schemas must be published");
+		}
+		expect(scope).toMatchObject({
+			type: "object",
+			properties: {
+				kind: { const: "category" },
+				categoryId: { format: "uuid" },
+				permissions: { type: "array" },
+			},
+		});
+		expect(assertion.description).toContain("server-to-server");
+		expect(spec.paths["/api/documents/{id}/index-status"]?.get).toMatchObject({
+			summary: "Read document index status",
+		});
+		expect(spec.paths["/api/documents/{id}/index/refresh"]?.post).toMatchObject(
+			{
+				summary: "Refresh document index",
+			},
+		);
+		expect(
+			spec.paths["/api/documents/{id}/index/refresh"]?.post?.description,
+		).toContain("write");
 	});
 
 	test("matches the exact route fragments mounted by the backend", async () => {

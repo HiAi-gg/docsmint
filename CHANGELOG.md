@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-24
+
+### Added
+
+- Add trusted, signed category-scoped workspace assertions with independent
+  `read`, `edit`, and `write` permissions. Unscoped assertions retain
+  workspace-wide, role-derived compatibility.
+- Apply direct-or-inherited effective-category authorization before count,
+  pagination, index, search, and graph access. Index status requires `read` and
+  refresh requires `write`.
+- Preserve embedding context identity and recovery state across durable pipeline
+  work so stale or legacy work cannot activate an incorrect generation.
+
+### Changed
+
+- Make release metadata, PWA deployment identity, CLI, MCP, Swagger, OpenAPI,
+  and every workspace package consistently report 0.7.0.
+- Keep hermetic unit, required database integration, Docker health, dependency,
+  and release-contract gates fail closed for release preparation.
+
 ## [0.6.8] - 2026-08-21
 
 ### Fixed

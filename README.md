@@ -40,7 +40,20 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.6.8?
+## What's new in DocsMint 0.7.0?
+
+- **Signed workspace assertions.** Trusted server-to-server hosts can restrict
+  an assertion to one category with independent `read`, `edit`, and `write`
+  permissions; an omitted scope remains workspace-wide and role-derived.
+- **Consistent effective-category authorization.** Direct and folder-inherited
+  categories are enforced before counts, pagination, indexing, search, and
+  GraphRAG retrieval. Index status is read-only; refresh requires write.
+- **Release-safe indexing.** Context-aware embedding generations and recovery
+  prevent stale metadata work from becoming active.
+
+This OSS release adds no SaaS RBAC, billing, invitations, or product UI.
+
+DocsMint 0.7.0 includes the 0.6.8 reliability fixes:
 
 - **Workspace-safe recovery.** Explicit operator reindexing carries the
   document's workspace into every durable pipeline stage, including RLS reads.

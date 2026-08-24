@@ -29,15 +29,18 @@ describe('DocsMint MCP protocol discovery', () => {
     const guide = await client.readResource({ uri: 'docsmint://guide/search' });
 
     expect(tools.tools.map((tool) => tool.name)).toEqual([...capabilityCatalog.tools]);
+    expect(tools.tools).toHaveLength(17);
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([
       'organize_workspace',
       'research_workspace',
     ]);
+    expect(prompts.prompts).toHaveLength(2);
     expect(resources.resources.map((resource) => resource.uri)).toEqual([
       'docsmint://guide/editor',
       'docsmint://guide/search',
       'docsmint://workspace/catalog',
     ]);
+    expect(resources.resources).toHaveLength(3);
     expect(prompt.messages[0]?.content).toMatchObject({
       type: 'text',
       text: expect.stringContaining('What changed?'),

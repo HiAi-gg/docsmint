@@ -35,6 +35,8 @@ export type {
 } from "./workspace.js";
 export {
 	createDocsmintWorkspaceAssertion,
+	DOCSMINT_WORKSPACE_ASSERTION_CLOCK_SKEW_SECONDS,
+	DOCSMINT_WORKSPACE_ASSERTION_TTL_SECONDS,
 	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
 	verifyDocsmintWorkspaceAssertion,
 } from "./workspace.js";

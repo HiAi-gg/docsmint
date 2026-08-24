@@ -58,6 +58,27 @@ DocsMint has three separate credential models:
 User API keys use `Authorization: Bearer <key>`. Key lifecycle routes require a
 real Better Auth browser session: API keys cannot issue, list, reveal, or revoke
 other keys.
+
+### Trusted workspace assertions
+
+Hosts may send a signed workspace assertion only from trusted server-to-server
+code. Its optional resource scope has this exact public shape:
+
+```ts
+type WorkspaceResourceScope = {
+  kind: "category";
+  categoryId: string;
+  permissions: readonly ("read" | "edit" | "write")[];
+};
+```
+
+`createDocsmintWorkspaceAssertion` and `verifyDocsmintWorkspaceAssertion` are
+available from both the SDK root and `@hiai-gg/docsmint/workspace`. An assertion
+without `resourceScope` remains compatible with workspace-wide, role-derived
+access. A scoped assertion derives access only from its signed category and
+permission array: an empty array grants no content action, and `read`, `edit`,
+and `write` do not imply one another. Never create, forward, or expose a host
+assertion secret in browser code.
 ### Scope matrix
 | Credential or scope | Boundary | Read | Edit | Write |
 | --- | --- | :---: | :---: | :---: |
@@ -142,8 +163,10 @@ Knowledge-pipeline clients can read the active generation's summary with
 `GET /api/documents/:id/knowledge-summary`, inspect embedding and pipeline
 readiness with `GET /api/documents/:id/index-status`, and request an idempotent
 reindex with `POST /api/documents/:id/index/refresh`. The read endpoints require
-document read access; refresh requires edit access. All three validate UUID
-parameters and are rate limited.
+document read access; refresh requires write access. For category-scoped
+assertions, each operation checks the document's direct category or its
+effective category inherited from folder ancestry before access. All three
+validate UUID parameters and are rate limited.
 ### Search
 ```bash
 curl -G "$HIAI_DOCS_URL/api/search" \

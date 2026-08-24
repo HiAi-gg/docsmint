@@ -3,33 +3,38 @@ import { describe, expect, test } from 'bun:test';
 import { capabilityCatalog } from './capabilities.js';
 
 describe('DocsMint MCP catalog contract', () => {
-  test('publishes document manager, retrieval, graph, and indexing tools', () => {
-    expect(capabilityCatalog.tools).toEqual(
-      expect.arrayContaining([
+  test('publishes the exact document manager, retrieval, graph, and indexing catalog', () => {
+    expect(capabilityCatalog.tools).toEqual([
+        'search_documents',
+        'get_document',
         'create_document',
         'update_document',
         'list_documents',
-        'list_categories',
-        'create_category',
         'list_folders',
         'create_folder',
+        'create_snapshot',
+        'get_version_history',
+        'export_document',
+        'list_categories',
+        'create_category',
         'list_tags',
-        'search_documents',
         'get_related_documents',
         'search_knowledge_graph',
         'get_document_index_status',
         'refresh_document_index',
-      ])
-    );
+    ]);
+    expect(capabilityCatalog.tools).toHaveLength(17);
   });
 
   test('publishes prompts and resources for agent discovery', () => {
     expect(capabilityCatalog.prompts).toEqual(['organize_workspace', 'research_workspace']);
+    expect(capabilityCatalog.prompts).toHaveLength(2);
     expect(capabilityCatalog.resources).toEqual([
       'docsmint://guide/editor',
       'docsmint://guide/search',
       'docsmint://workspace/catalog',
     ]);
+    expect(capabilityCatalog.resources).toHaveLength(3);
   });
 
   test('ships the registry badge, three easy installs, license, and an agent skill', async () => {

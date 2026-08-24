@@ -190,6 +190,16 @@ bypass owner/category authorization with direct database writes.
 
 Authentication resolves to one principal: Better Auth session, static operator credential, global user API key, or category API key. Global keys receive owner-wide content access. Category keys are restricted to one effective category and an explicit set of `read`, `edit`, and `write` permissions; permissions do not imply each other. Effective category is the document's explicit category or, when absent, the category inherited from folder ancestry. This rule is shared by documents, folders, search, graph, versions, attachments, tags, sharing, and visibility.
 
+Trusted hosts can additionally use the public signed workspace assertion
+contract. Its optional `WorkspaceResourceScope` is category-only and carries
+independent `read`, `edit`, and `write` permissions. Omitting the scope keeps
+the established workspace-wide, role-derived compatibility behavior; an empty
+scope permission array grants no content action. The assertion is verified only
+at the server boundary and never turns into a browser credential. Restricted
+queries apply the direct-or-inherited effective-category predicate before SQL
+counting, pagination, retrieval, graph expansion, or index authorization.
+Index status requires `read`; index refresh requires `write`.
+
 API-key issuance, listing, category-secret disclosure, and revocation deliberately bypass the generic Bearer principal resolver and require a Better Auth browser session. Global raw secrets are hash-only and shown once. Category secrets are encrypted at rest so the owning session can recover them. The static operator key is accepted on admin routes through either `x-api-key` or Bearer syntax; an unset operator key fails closed.
 
 DocsMint does not publish outbound document webhooks. The deprecated signed
