@@ -125,17 +125,28 @@ Publishing is a separate, explicitly authorized operation.
    evidence. Both production Docker jobs upload their commit-bound Docker
    lifecycle JSON, sanitized raw log, and checksum manifest with fail-closed
    missing-file handling. Publication cannot begin while any prerequisite is
-   skipped or failed.
+   skipped or failed. After npm publication (including the idempotent path when
+   the exact version already exists), the workflow resolves the exact registry
+   metadata and requires npm `gitHead` to equal the tag commit. It downloads the
+   published tarball, verifies both `dist.integrity` and `dist.shasum`, checks the
+   committed version, advertised runtime and declaration files, and Bun runtime,
+   then runs the clean installed consumer. MCP Registry publication and the
+   GitHub Release depend on this commit-bound provenance job and its uploaded
+   machine evidence.
 8. Create the GitHub Release from the tag using the changelog summary.
 9. Confirm the expected npm package and Docker images exist and report the
    released version.
 10. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
 
-The tag workflow publishes `server.json` only after the exact npm version is
-available. It authenticates `mcp-publisher` with GitHub Actions OIDC, so the
-registry can verify the case-sensitive `io.github.HiAi-gg` namespace without a long-lived
-secret. Keep the `mcp-publisher` version pinned in `.github/workflows/ci.yml` and
-validate the manifest locally before tagging:
+The tag workflow publishes `server.json` only after the exact npm artifact has
+passed the commit and tarball provenance check. It authenticates
+`mcp-publisher` with GitHub Actions OIDC, so the registry can verify the
+case-sensitive `io.github.HiAi-gg` namespace without a long-lived secret. The
+manual MCP workflow additionally requires the exact 40-character release
+commit, checks out that commit, proves that the supplied tag resolves to it, and
+runs the same npm provenance verifier before publishing. Keep the
+`mcp-publisher` version pinned in `.github/workflows/ci.yml` and validate the
+manifest locally before tagging:
 
 ```bash
 mcp-publisher validate server.json

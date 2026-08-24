@@ -3,7 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { validateReleaseWorkflowContract } from "./release-workflow-contract";
+import {
+	validateManualMcpWorkflowContract,
+	validateReleaseWorkflowContract,
+} from "./release-workflow-contract";
 
 const temporaryDirectories: string[] = [];
 const tagReleaseCriticalJobs = [
@@ -20,6 +23,7 @@ const tagReleaseCriticalJobs = [
 	"release-tag-gate",
 	"publish-docker",
 	"publish-npm",
+	"verify-npm-provenance",
 	"publish-mcp-registry",
 	"create-github-release",
 ] as const;
@@ -54,6 +58,22 @@ async function mutatedWorkflowSource(
 	temporaryDirectories.push(directory);
 	const path = join(directory, "ci.yml");
 	await Bun.write(path, mutate(source));
+	return Bun.pathToFileURL(path);
+}
+
+async function mutatedManualWorkflow(
+	mutate: (workflow: Record<string, unknown>) => void,
+): Promise<URL> {
+	const current = Bun.YAML.parse(
+		await Bun.file(
+			new URL("../.github/workflows/publish-mcp-registry.yml", import.meta.url),
+		).text(),
+	) as Record<string, unknown>;
+	mutate(current);
+	const directory = await mkdtemp(join(tmpdir(), "docsmint-manual-workflow-"));
+	temporaryDirectories.push(directory);
+	const path = join(directory, "publish-mcp-registry.yml");
+	await Bun.write(path, JSON.stringify(current));
 	return Bun.pathToFileURL(path);
 }
 
@@ -93,6 +113,89 @@ test("every tag publication transitively depends on the complete release gate", 
 			new URL("../.github/workflows/ci.yml", import.meta.url),
 		),
 	).resolves.toBeUndefined();
+});
+
+test("tag publication requires commit-bound npm provenance after every publish outcome", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		const jobs = workflow.jobs as Record<string, unknown>;
+		delete jobs["verify-npm-provenance"];
+	});
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"Release workflow is missing verify-npm-provenance",
+	);
+});
+
+test("tag publication rejects mismatched npm provenance commit binding", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		workflowJob(workflow, "verify-npm-provenance").env = {
+			RELEASE_COMMIT: "version-only",
+		};
+	});
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"verify-npm-provenance must bind RELEASE_COMMIT to github.sha",
+	);
+});
+
+test("MCP Registry and GitHub Release cannot bypass npm provenance", async () => {
+	for (const [jobName, dependency] of [
+		["publish-mcp-registry", "publish-npm"],
+		["create-github-release", "publish-npm"],
+	] as const) {
+		const path = await mutatedWorkflow((workflow) => {
+			workflowJob(workflow, jobName).needs = [dependency];
+		});
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			`${jobName} must depend on verified npm provenance`,
+		);
+	}
+});
+
+test("already-existing exact npm versions still flow through provenance verification", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		const publish = workflowStep(workflow, "publish-npm", "Publish to npm");
+		publish.run = String(publish.run).replace(
+			'if npm view "@hiai-gg/docsmint@${version}" version >/dev/null 2>&1; then',
+			"if false; then",
+		);
+	});
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"publish-npm must preserve the already-existing exact-version path",
+	);
+});
+
+test("manual MCP publication proves tag SHA and exact npm provenance", async () => {
+	await expect(
+		validateManualMcpWorkflowContract(
+			new URL(
+				"../.github/workflows/publish-mcp-registry.yml",
+				import.meta.url,
+			),
+		),
+	).resolves.toBeUndefined();
+});
+
+test("manual MCP publication rejects removal and mismatch of commit provenance", async () => {
+	for (const mutate of [
+		(workflow: Record<string, unknown>) => {
+			const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+			const publish = jobs.publish;
+			if (!publish) throw new Error("missing publish fixture");
+			publish.steps = (publish.steps as Array<Record<string, unknown>>).filter(
+				(step) => step.name !== "Verify exact tag commit and npm provenance",
+			);
+		},
+		(workflow: Record<string, unknown>) => {
+			const jobs = workflow.jobs as Record<string, Record<string, unknown>>;
+			const publish = jobs.publish;
+			if (!publish) throw new Error("missing publish fixture");
+			publish.env = { RELEASE_COMMIT: "${{ github.sha }}" };
+		},
+	]) {
+		const path = await mutatedManualWorkflow(mutate);
+		await expect(validateManualMcpWorkflowContract(path)).rejects.toThrow(
+			"manual MCP workflow must prove the exact tag SHA and npm provenance",
+		);
+	}
 });
 
 test.each(tagReleaseCriticalJobs)(

@@ -22,6 +22,7 @@ const completeGateJob = "release-tag-gate";
 const publicationJobs = [
 	"publish-docker",
 	"publish-npm",
+	"verify-npm-provenance",
 	"publish-mcp-registry",
 	"create-github-release",
 ] as const;
@@ -348,6 +349,80 @@ function validateErrorSuppression(jobs: Record<string, WorkflowJob>): void {
 	}
 }
 
+function validatePublishedPackageProvenance(
+	jobs: Record<string, WorkflowJob>,
+): void {
+	const provenance = jobs["verify-npm-provenance"];
+	if (!provenance) {
+		throw new Error("Release workflow is missing verify-npm-provenance");
+	}
+	if (provenance.env?.RELEASE_COMMIT !== "${{ github.sha }}") {
+		throw new Error(
+			"verify-npm-provenance must bind RELEASE_COMMIT to github.sha",
+		);
+	}
+	if (provenance.env?.RELEASE_TAG !== "${{ github.ref_name }}") {
+		throw new Error(
+			"verify-npm-provenance must bind RELEASE_TAG to github.ref_name",
+		);
+	}
+	if (!needs(provenance).includes("publish-npm")) {
+		throw new Error("verify-npm-provenance must run after publish-npm");
+	}
+	const verification = provenance.steps?.find(
+		(step) => step.name === "Verify exact tag commit and npm provenance",
+	);
+	const verificationLines = verification?.run
+		?.split("\n")
+		.map((line) => line.trim());
+	if (
+		!verificationLines?.includes("set -euo pipefail") ||
+		!verificationLines.includes(
+			'test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"',
+		) ||
+		!verificationLines.includes(
+			'RELEASE_VERSION="${RELEASE_TAG#v}" bun run scripts/verify-published-package.ts',
+		)
+	) {
+		throw new Error(
+			"verify-npm-provenance must prove the exact tag commit and published package",
+		);
+	}
+	const upload = provenance.steps?.find(
+		(step) => step.name === "Upload commit-bound npm provenance evidence",
+	);
+	if (
+		upload?.uses !== "actions/upload-artifact@v4" ||
+		upload.with?.name !== "release-npm-provenance-${{ github.sha }}" ||
+		upload.with?.path !== "build/release-evidence/npm-provenance/" ||
+		upload.with?.["if-no-files-found"] !== "error"
+	) {
+		throw new Error(
+			"verify-npm-provenance must upload commit-bound machine evidence",
+		);
+	}
+
+	for (const downstream of ["publish-mcp-registry", "create-github-release"]) {
+		const job = jobs[downstream];
+		if (!job || !needs(job).includes("verify-npm-provenance")) {
+			throw new Error(`${downstream} must depend on verified npm provenance`);
+		}
+	}
+
+	const publishNpm = jobs["publish-npm"];
+	if (
+		!jobCommands(publishNpm ?? {}).some((command) =>
+			command.includes(
+				'if npm view "@hiai-gg/docsmint@${version}" version >/dev/null 2>&1; then',
+			),
+		)
+	) {
+		throw new Error(
+			"publish-npm must preserve the already-existing exact-version path",
+		);
+	}
+}
+
 function reachesJob(
 	jobs: Record<string, WorkflowJob>,
 	start: string,
@@ -371,6 +446,7 @@ export function validateReleaseWorkflow(workflow: Workflow): void {
 	validateStorageEndpoints(jobs);
 	validateDockerEvidence(jobs);
 	validateErrorSuppression(jobs);
+	validatePublishedPackageProvenance(jobs);
 
 	for (const [name, commands] of Object.entries(requiredCommands)) {
 		const job = jobs[name];
@@ -418,10 +494,65 @@ export async function validateReleaseWorkflowContract(path: URL): Promise<void> 
 	validateReleaseWorkflow(Bun.YAML.parse(await Bun.file(path).text()) as Workflow);
 }
 
+export function validateManualMcpWorkflow(workflow: Workflow): void {
+	const publish = workflow.jobs?.publish;
+	const verification = publish?.steps?.find(
+		(step) => step.name === "Verify exact tag commit and npm provenance",
+	);
+	const lines = verification?.run
+		?.split("\n")
+		.map((line) => line.trim()) ?? [];
+	const checkout = publish?.steps?.find(
+		(step) => step.uses === "actions/checkout@v4",
+	);
+	const verificationIndex = publish?.steps?.indexOf(verification ?? {}) ?? -1;
+	const publicationIndex =
+		publish?.steps?.findIndex((step) => step.run === "mcp-publisher publish") ?? -1;
+	const upload = publish?.steps?.find(
+		(step) => step.name === "Upload commit-bound npm provenance evidence",
+	);
+	if (
+		!publish ||
+		publish.env?.RELEASE_COMMIT !== "${{ inputs.release_commit }}" ||
+		publish.env?.RELEASE_TAG !== "${{ inputs.release_tag }}" ||
+		checkout?.with?.ref !== "${{ inputs.release_commit }}" ||
+		checkout.with?.["fetch-depth"] !== 0 ||
+		!lines.includes("set -euo pipefail") ||
+		!lines.includes('test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"') ||
+		!lines.includes(
+			'test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"',
+		) ||
+		!lines.includes(
+			'RELEASE_VERSION="${RELEASE_TAG#v}" bun run scripts/verify-published-package.ts',
+		) ||
+		verificationIndex < 0 ||
+		publicationIndex <= verificationIndex ||
+		upload?.uses !== "actions/upload-artifact@v4" ||
+		upload.with?.name !==
+			"manual-mcp-npm-provenance-${{ inputs.release_commit }}" ||
+		upload.with?.["if-no-files-found"] !== "error" ||
+		hasUnsafeErrorSuppression(publish) ||
+		(publish.steps ?? []).some(hasUnsafeErrorSuppression)
+	) {
+		throw new Error(
+			"manual MCP workflow must prove the exact tag SHA and npm provenance",
+		);
+	}
+}
+
+export async function validateManualMcpWorkflowContract(path: URL): Promise<void> {
+	validateManualMcpWorkflow(
+		Bun.YAML.parse(await Bun.file(path).text()) as Workflow,
+	);
+}
+
 if (import.meta.main) {
 	try {
 		await validateReleaseWorkflowContract(
 			new URL("../.github/workflows/ci.yml", import.meta.url),
+		);
+		await validateManualMcpWorkflowContract(
+			new URL("../.github/workflows/publish-mcp-registry.yml", import.meta.url),
 		);
 		console.log("Release workflow contract is valid");
 	} catch (error) {

@@ -111,10 +111,13 @@ describe('DocsMint MCP catalog contract', () => {
     expect(workflow).toContain('release-static-gates:');
     expect(workflow).toContain('run: bun run release:check:contract-evidence');
     expect(workflow).toContain('needs: [publish-npm]');
+		expect(workflow).toContain('verify-npm-provenance:');
+		expect(workflow).toContain('needs: [verify-npm-provenance]');
+		expect(workflow).toContain('bun run scripts/verify-published-package.ts');
     expect(workflow).toContain('mcp-publisher login github-oidc');
     expect(workflow).toContain('mcp-publisher publish');
     expect(workflow).toContain(
-		'needs: [publish-docker, publish-npm, publish-mcp-registry]'
+			'needs: [publish-docker, verify-npm-provenance, publish-mcp-registry]'
     );
     expect(workflow).toContain('release-tag-gate:');
     expect(workflow).toContain('needs: [release-tag-gate]');
