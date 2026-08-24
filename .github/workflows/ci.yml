@@ -231,6 +231,7 @@ jobs:
       WEBHOOK_SECRET: ci-webhook-secret-32-characters-long
       HIAI_DOCS_API_KEY: ci-admin-api-key-non-placeholder
       API_KEY_ENCRYPTION_SECRET: ci-api-key-encryption-secret-32-chars
+      OWNER_ID: 00000000-0000-4000-8000-000000000700
       GRAPH_EXTRACT_ENABLED: 'false'
       GRAPH_SEARCH_ENABLED: 'false'
     steps:
@@ -519,6 +520,7 @@ jobs:
       WEBHOOK_SECRET: ci-browser-webhook-secret-32-characters
       HIAI_DOCS_API_KEY: ci-browser-admin-api-key-non-placeholder
       API_KEY_ENCRYPTION_SECRET: ci-browser-api-key-encryption-secret-32-chars
+      OWNER_ID: 00000000-0000-4000-8000-000000000700
       GRAPH_EXTRACT_ENABLED: 'false'
       GRAPH_SEARCH_ENABLED: 'false'
       AGENT_BROWSER_ENGINE: lightpanda

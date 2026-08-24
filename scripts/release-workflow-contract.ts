@@ -39,6 +39,8 @@ const dependencyStartCommand =
 	"docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs";
 const migrateCommand =
 	"docker compose --env-file /dev/null run --rm --no-deps migrate";
+const uuidPattern =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const applicationStartCommands = {
 	"docker-build":
 		"docker compose --env-file /dev/null up --detach --no-build --wait api",
@@ -168,6 +170,12 @@ function validateStorageEndpoints(jobs: Record<string, WorkflowJob>): void {
 		if (job.env?.STORAGE_INTERNAL_ENDPOINT_URL !== "http://seaweedfs:8333") {
 			throw new Error(
 				`${name} must keep STORAGE_INTERNAL_ENDPOINT_URL on http://seaweedfs:8333`,
+			);
+		}
+		const ownerId = job.env?.OWNER_ID;
+		if (typeof ownerId !== "string" || !uuidPattern.test(ownerId)) {
+			throw new Error(
+				`${name} must set OWNER_ID to a valid UUID test fixture`,
 			);
 		}
 	}

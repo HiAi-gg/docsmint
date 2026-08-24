@@ -241,6 +241,19 @@ test("workflow validation preserves internal SeaweedFS HTTP in production Docker
 	}
 });
 
+test("workflow validation requires a valid deterministic owner in production Docker jobs", async () => {
+	for (const jobName of ["docker-build", "browser-e2e"]) {
+		const path = await mutatedWorkflow((workflow) => {
+			const job = workflowJob(workflow, jobName);
+			job.env = { ...job.env, OWNER_ID: "" };
+		});
+
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			`${jobName} must set OWNER_ID to a valid UUID test fixture`,
+		);
+	}
+});
+
 test("workflow validation preserves scoped-live local public and internal storage equality", async () => {
 	const path = await mutatedWorkflow((workflow) => {
 		const job = workflowJob(workflow, "scoped-live-integration");
