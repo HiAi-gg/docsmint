@@ -152,7 +152,7 @@ export async function verifyPublishedPackage(
 	const registryUrl = options.registryUrl.replace(/\/$/, "");
 	const metadataUrl = `${registryUrl}/${encodeURIComponent(options.packageName)}/${encodeURIComponent(options.releaseVersion)}`;
 	const metadataResponse = await fetch(metadataUrl, {
-		headers: { Accept: "application/vnd.npm.install-v1+json" },
+		headers: { Accept: "application/json" },
 	});
 	if (!metadataResponse.ok) {
 		throw new Error(

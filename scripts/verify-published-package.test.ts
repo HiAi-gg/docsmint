@@ -22,6 +22,7 @@ type FixtureMutation = Readonly<{
 	integrity?: string;
 	manifestVersion?: string;
 	omit?: string;
+	omitGitHead?: boolean;
 	shasum?: string;
 }>;
 
@@ -75,10 +76,17 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 			if (new URL(request.url).pathname.endsWith(".tgz")) {
 				return new Response(bytes);
 			}
+			if (request.headers.get("accept") !== "application/json") {
+				return new Response("full metadata representation required", {
+					status: 406,
+				});
+			}
 			return Response.json({
 				name: "@hiai-gg/docsmint",
 				version: "0.7.0",
-				gitHead: mutation.gitHead ?? releaseCommit,
+				...(mutation.omitGitHead
+					? {}
+					: { gitHead: mutation.gitHead ?? releaseCommit }),
 				dist: {
 					tarball: `${server.url.origin}/docsmint-0.7.0.tgz`,
 					integrity: mutation.integrity ?? actualIntegrity,
@@ -125,6 +133,7 @@ test("verifies exact newly published and already-existing package provenance", a
 });
 
 test.each([
+	["missing gitHead", { omitGitHead: true }, "gitHead"],
 	["gitHead", { gitHead: "f".repeat(40) }, "gitHead"],
 	["integrity", { integrity: "sha512-bad" }, "integrity"],
 	["shasum", { shasum: "0".repeat(40) }, "shasum"],
