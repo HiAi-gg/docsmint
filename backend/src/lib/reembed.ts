@@ -375,7 +375,12 @@ export async function reembedDocsInFolder(
 	workspaceId?: string,
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
-	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
+	const tenant: TenantContext = {
+		userId: ownerId,
+		role: "user",
+		source: workspaceId ? "external" : "personal",
+		workspaceId,
+	};
 	const folderIds = await withTenant(tenant, (tx) =>
 		loadMetadataImpactFolderIds(tx, tenant, { kind: "folder", id: folderId }),
 	);
@@ -542,7 +547,12 @@ export async function reembedDocsInCategory(
 ): Promise<number> {
 	const limit = config.CATEGORY_REEMBED_BATCH_SIZE;
 
-	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
+	const tenant: TenantContext = {
+		userId: ownerId,
+		role: "user",
+		source: workspaceId ? "external" : "personal",
+		workspaceId,
+	};
 	const folderIds = await withTenant(tenant, (tx) =>
 		loadMetadataImpactFolderIds(tx, tenant, {
 			kind: "category",

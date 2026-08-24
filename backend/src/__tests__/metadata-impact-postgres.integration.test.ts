@@ -10,7 +10,11 @@ import {
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
 
-import { snapshotMetadataImpact } from "../lib/reembed";
+import {
+	reembedDocsInCategory,
+	reembedDocsInFolder,
+	snapshotMetadataImpact,
+} from "../lib/reembed";
 
 const databaseUrl = Bun.env.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
 
@@ -47,6 +51,83 @@ async function waitForBlock(
 describe.skipIf(!databaseUrl)(
 	"recursive metadata impact PostgreSQL contract",
 	() => {
+		test("public re-embed helpers keep owner and external-workspace rows in their canonical tenants", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const workspaceId = `metadata-helper-${crypto.randomUUID()}`;
+			const personalFolderId = crypto.randomUUID();
+			const workspaceFolderId = crypto.randomUUID();
+			const workspaceCategoryId = crypto.randomUUID();
+			const personalFolderDocumentId = crypto.randomUUID();
+			const workspaceFolderDocumentId = crypto.randomUUID();
+			const personalCategoryDocumentId = crypto.randomUUID();
+			const workspaceCategoryDocumentId = crypto.randomUUID();
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-helper.invalid`})`;
+				await setup`INSERT INTO public.categories
+					(id, owner_id, workspace_id, name)
+					VALUES (${workspaceCategoryId}::uuid, ${ownerId}::uuid, ${workspaceId}, 'workspace helper')`;
+				await setup`INSERT INTO public.folders
+					(id, owner_id, workspace_id, parent_id, category_id, name)
+					VALUES
+						(${personalFolderId}::uuid, ${ownerId}::uuid, NULL, NULL, NULL, 'personal helper'),
+						(${workspaceFolderId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, NULL, 'workspace helper')`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, workspace_id, folder_id, category_id, title, content)
+					VALUES
+						(${personalFolderDocumentId}::uuid, ${ownerId}::uuid, NULL, ${personalFolderId}::uuid, NULL, 'personal folder', ''),
+						(${workspaceFolderDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${workspaceFolderId}::uuid, NULL, 'workspace folder', ''),
+						(${personalCategoryDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, ${workspaceCategoryId}::uuid, 'personal category mismatch', ''),
+						(${workspaceCategoryDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, ${workspaceCategoryId}::uuid, 'workspace category', '')`;
+
+				const personalFolder = await reembedDocsInFolder(
+					personalFolderId,
+					ownerId,
+				);
+				const workspaceFolder = await reembedDocsInFolder(
+					workspaceFolderId,
+					ownerId,
+					workspaceId,
+				);
+				const workspaceAgainstPersonalFolder = await reembedDocsInFolder(
+					personalFolderId,
+					ownerId,
+					workspaceId,
+				);
+				const workspaceCategory = await reembedDocsInCategory(
+					workspaceCategoryId,
+					ownerId,
+					workspaceId,
+				);
+
+				expect(personalFolder).toBe(1);
+				expect(workspaceFolder).toBe(1);
+				expect(workspaceAgainstPersonalFolder).toBe(0);
+				expect(workspaceCategory).toBe(1);
+				const queued = await setup<{ document_id: string }[]>`
+					SELECT document_id::text
+					FROM public.document_pipeline_runs
+					WHERE document_id IN (
+						${personalFolderDocumentId}::uuid,
+						${workspaceFolderDocumentId}::uuid,
+						${personalCategoryDocumentId}::uuid,
+						${workspaceCategoryDocumentId}::uuid
+					)`;
+				expect(queued.map(({ document_id }) => document_id).sort()).toEqual(
+					[
+						personalFolderDocumentId,
+						workspaceFolderDocumentId,
+						workspaceCategoryDocumentId,
+					].sort(),
+				);
+			} finally {
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup.end();
+			}
+		});
+
 		test("finds direct and two-level effective-category documents in owner and workspace tenants", async () => {
 			const setup = postgres(databaseUrl as string, { max: 1 });
 			const observations: DatabaseQueryObservation[] = [];
