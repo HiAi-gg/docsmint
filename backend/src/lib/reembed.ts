@@ -93,6 +93,11 @@ export type MetadataImpactSnapshot = Readonly<{
 	targetCount: number;
 }>;
 
+export type DocumentMetadataImpactSnapshot = Readonly<{
+	operationId: string;
+	targetCount: number;
+}>;
+
 export type MetadataReembedOutboxTarget = Readonly<{
 	id: string;
 	documentId: string;
@@ -232,6 +237,41 @@ export async function snapshotMetadataImpact(
 		operationId,
 	);
 	return { folderIds, operationId, targetCount };
+}
+
+/** Durably snapshot one metadata-bearing document mutation in its caller's transaction. */
+export async function snapshotDocumentMetadataImpact(
+	tx: TenantTransaction,
+	ctx: TenantContext,
+	documentId: string,
+): Promise<DocumentMetadataImpactSnapshot> {
+	await acquireTenantTopologyLock(tx, ctx);
+	const operationId = crypto.randomUUID();
+	await tx.execute(sql`
+		INSERT INTO public.metadata_reembed_outbox
+			(id, operation_id, document_id, owner_id, workspace_id, revision)
+		SELECT
+			gen_random_uuid(),
+			${operationId}::uuid,
+			${documents.id},
+			${documents.ownerId},
+			${documents.workspaceId},
+			encode(
+				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
+				'hex'
+			)
+		FROM ${documents}
+		WHERE ${and(
+			eq(documents.id, documentId),
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+		)}
+		ON CONFLICT (operation_id, document_id) DO NOTHING
+	`);
+	const [countRow] = await tx
+		.select({ count: sql<number>`count(*)::int` })
+		.from(metadataReembedOutbox)
+		.where(eq(metadataReembedOutbox.operationId, operationId));
+	return { operationId, targetCount: countRow?.count ?? 0 };
 }
 
 type ReembedPageLoader = (
@@ -587,6 +627,20 @@ export function drainMetadataReembedOutbox(
 		loadPage: loadMetadataOutboxPage,
 		dispatch: dispatchMetadataOutboxTarget,
 		acknowledge: acknowledgeMetadataOutbox,
+	});
+}
+
+/** Start one post-commit drain without making a successful mutation depend on Redis. */
+export function dispatchMetadataReembedOutbox(
+	operationId: string | undefined,
+	pageSize: number,
+): void {
+	if (!operationId) return;
+	void drainMetadataReembedOutbox(operationId, pageSize).catch((err) => {
+		logger.warn(
+			{ err, operationId },
+			"Metadata re-embed outbox dispatch deferred to recovery",
+		);
 	});
 }
 

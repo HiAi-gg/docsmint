@@ -221,6 +221,36 @@ describe("PATCH /api/tags/:id", () => {
     expect((getState().tags.get(id) as any).name).toBe("new");
   });
 
+	it("rolls back a rename when its outbox snapshot cannot commit", async () => {
+		const id = "12121212-1212-4212-8212-121212121212";
+		const documentId = "13131313-1313-4313-8313-131313131313";
+		const state = getState();
+		state.tags.set(id, {
+			id,
+			ownerId: OWNER_ID,
+			name: "Before",
+			color: null,
+			createdAt: new Date(),
+		});
+		state.documents.set(documentId, {
+			id: documentId,
+			ownerId: OWNER_ID,
+			title: "Affected",
+			content: "body",
+			folderId: null,
+			categoryId: null,
+		});
+		state.documentTags.push({ documentId, tagId: id });
+		state.outboxInsertShouldThrow = true;
+
+		const response = await authedPatch(`/api/tags/${id}`, { name: "After" });
+
+		expect(response.status).toBe(500);
+		expect(getState().tags.get(id)?.name).toBe("Before");
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
+
   it("paginates every affected document past the tag batch cap", async () => {
     const state = getState();
     const id = "tag-pagination";
@@ -375,6 +405,20 @@ describe("POST /api/documents/:id/tags", () => {
     // state.documentTags. The HTTP response is the contract under test.
   });
 
+	it("rolls back a tag attachment when its outbox snapshot cannot commit", async () => {
+		seed();
+		getState().outboxInsertShouldThrow = true;
+
+		const response = await authedPost(`/api/documents/${docId}/tags`, {
+			tagId,
+		});
+
+		expect(response.status).toBe(500);
+		expect(getState().documentTags).toEqual([]);
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
+
   it("does not add tags to documents owned by other users", async () => {
     const state = getState();
     state.documents.set(docId, {
@@ -442,6 +486,18 @@ describe("DELETE /api/documents/:id/tags/:tagId", () => {
     // `.returning()`, so the mock harness does not mutate state.documentTags.
     // The HTTP response is the contract under test.
   });
+
+	it("rolls back a tag removal when its outbox snapshot cannot commit", async () => {
+		seed();
+		getState().outboxInsertShouldThrow = true;
+
+		const response = await authedDelete(`/api/documents/${docId}/tags/${tagId}`);
+
+		expect(response.status).toBe(500);
+		expect(getState().documentTags).toEqual([{ documentId: docId, tagId }]);
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
 
   it("does not remove tags from documents owned by other users", async () => {
     const state = getState();

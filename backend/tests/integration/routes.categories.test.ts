@@ -325,6 +325,29 @@ describe("PATCH /api/categories/:id", () => {
 			"cat-recursive-nested",
 		]);
 	});
+
+	it("rolls back a rename when its outbox snapshot cannot commit", async () => {
+		const state = getState();
+		seedCategory("cat-atomic-rename", OWNER_ID, "Before");
+		state.documents.set("cat-atomic-doc", {
+			id: "cat-atomic-doc",
+			ownerId: OWNER_ID,
+			title: "Affected",
+			content: "body",
+			folderId: null,
+			categoryId: "cat-atomic-rename",
+		});
+		state.outboxInsertShouldThrow = true;
+
+		const response = await authedPatch("/api/categories/cat-atomic-rename", {
+			name: "After",
+		});
+
+		expect(response.status).toBe(500);
+		expect(getState().categories.get("cat-atomic-rename")?.name).toBe("Before");
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
 });
 
 describe("DELETE /api/categories/:id", () => {
@@ -448,6 +471,7 @@ describe("DELETE /api/categories/:id", () => {
 		});
 
 		const res = await authedDelete("/api/categories/cat-delete-subtree");
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(res.status).toBe(200);
 		const categoryLockIndex = state.calls.findIndex(

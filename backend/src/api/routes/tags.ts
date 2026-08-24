@@ -8,14 +8,12 @@ import {
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
-import { contentHash } from "../../lib/content-hash";
 import { invalidateDocCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import {
-	drainMetadataReembedOutbox,
-	enqueueReembed,
+	dispatchMetadataReembedOutbox,
 	metadataReembedPageSize,
-	reembedDocsByTag,
+	snapshotDocumentMetadataImpact,
 	snapshotTagMetadataImpact,
 } from "../../lib/reembed";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
@@ -196,7 +194,6 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		const userId = ctx.userId;
 		const body = updateTagSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
@@ -218,7 +215,12 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 						),
 					)
 					.returning();
-				return row ?? null;
+				if (!row) return null;
+				const impact =
+					body.data.name !== undefined
+						? await snapshotTagMetadataImpact(tx, ctx, params.id)
+						: undefined;
+				return { row, operationId: impact?.operationId };
 			});
 			if (!updated) {
 				set.status = 404;
@@ -228,16 +230,13 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			// Re-embed every document linked to this tag if its name changed
 			// (the tag name is part of the embedding preamble).
 			if (body.data.name !== undefined) {
-				reembedDocsByTag(params.id, userId, ctx.workspaceId).catch(
-					(err: unknown) =>
-						logger.warn(
-							{ err, tagId: params.id },
-							"Failed to re-embed documents after tag rename",
-						),
+				dispatchMetadataReembedOutbox(
+					updated.operationId,
+					metadataReembedPageSize("tag"),
 				);
 			}
 
-			return updated;
+			return updated.row;
 		} catch (err) {
 			logger.error({ err }, "Failed to update tag");
 			set.status = 500;
@@ -259,7 +258,6 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		const _userId = ctx.userId;
 		try {
 			const result = await withTenant(ctx, async (tx) => {
 				const snapshot = await snapshotTagMetadataImpact(tx, ctx, params.id);
@@ -276,16 +274,10 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 				return snapshot;
 			});
 
-			const drained = await drainMetadataReembedOutbox(
+			dispatchMetadataReembedOutbox(
 				result.operationId,
 				metadataReembedPageSize("tag"),
 			);
-			if (drained.enqueued > 0) {
-				logger.info(
-					{ tagId: params.id, enqueued: drained.enqueued },
-					"Tag deleted - re-embedding affected documents",
-				);
-			}
 
 			return { success: true };
 		} catch (err) {
@@ -314,14 +306,13 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const _userId = ctx.userId;
 		const body = addTagToDocSchema.safeParse(await request.json());
 		if (!body.success) {
 			set.status = 400;
 			return { error: "Invalid input" };
 		}
 		try {
-			const ok = await withTenant(ctx, async (tx) => {
+			const mutation = await withTenant(ctx, async (tx) => {
 				await acquireTenantTopologyLock(tx, ctx);
 				const [doc] = await tx
 					.select({
@@ -365,24 +356,16 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 					documentId: params.id,
 					tagId: body.data.tagId,
 				});
-				return doc;
+				const impact = await snapshotDocumentMetadataImpact(tx, ctx, params.id);
+				return { doc, operationId: impact.operationId };
 			});
-			if (!ok) {
+			if (!mutation) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			// Re-embed so the new tag name appears in the embedding preamble.
-			// enqueueReembed gives us per-doc Redis SET-NX dedup shared
-			// with the rest of the metadata-driven re-embed triggers.
-			enqueueReembed(
-				[
-					{
-						id: params.id,
-						revision: contentHash(ok.title, ok.content ?? ""),
-					},
-				],
-				ctx.workspaceId,
-				{ reason: "metadata", refreshMode: "full" },
+			dispatchMetadataReembedOutbox(
+				mutation.operationId,
+				metadataReembedPageSize("tag"),
 			);
 			invalidateDocCache(params.id);
 			set.status = 201;
@@ -413,9 +396,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const _userId = ctx.userId;
 		try {
-			const ok = await withTenant(ctx, async (tx) => {
+			const mutation = await withTenant(ctx, async (tx) => {
 				await acquireTenantTopologyLock(tx, ctx);
 				const [doc] = await tx
 					.select({
@@ -463,23 +445,16 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 							eq(documentTags.tagId, params.tagId),
 						),
 					);
-				return doc;
+				const impact = await snapshotDocumentMetadataImpact(tx, ctx, params.id);
+				return { doc, operationId: impact.operationId };
 			});
-			if (!ok) {
+			if (!mutation) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
-			// Re-embed so the removed tag is no longer in the preamble.
-			// enqueueReembed gives us per-doc Redis SET-NX dedup.
-			enqueueReembed(
-				[
-					{
-						id: params.id,
-						revision: contentHash(ok.title, ok.content ?? ""),
-					},
-				],
-				ctx.workspaceId,
-				{ reason: "metadata", refreshMode: "full" },
+			dispatchMetadataReembedOutbox(
+				mutation.operationId,
+				metadataReembedPageSize("tag"),
 			);
 			invalidateDocCache(params.id);
 			return { success: true };

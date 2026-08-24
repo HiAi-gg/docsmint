@@ -407,6 +407,37 @@ describe("PATCH /api/folders/:id", () => {
     expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
+	it("rolls back a metadata rename when its outbox snapshot cannot commit", async () => {
+		const id = "45454545-4545-4545-8545-454545454545";
+		const documentId = "46464646-4646-4646-8646-464646464646";
+		const state = getState();
+		state.folders.set(id, {
+			id,
+			ownerId: OWNER_ID,
+			name: "Before",
+			parentId: null,
+			categoryId: null,
+		});
+		state.documents.set(documentId, {
+			id: documentId,
+			ownerId: OWNER_ID,
+			title: "Affected",
+			content: "body",
+			folderId: id,
+			categoryId: null,
+		});
+		state.outboxInsertShouldThrow = true;
+
+		const response = await authedPatch(`/api/folders/${id}`, {
+			name: "After",
+		});
+
+		expect(response.status).toBe(500);
+		expect(getState().folders.get(id)?.name).toBe("Before");
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
+
   it("rejects setting folder as its own parent", async () => {
     const state = getState();
     const id = "55555555-5555-4555-8555-555555555555";
@@ -607,6 +638,7 @@ describe("DELETE /api/folders/:id", () => {
 		});
 
 		const res = await authedDelete("/api/folders/delete-root-c");
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(res.status).toBe(200);
 		const folderLock = state.calls.find(

@@ -43,6 +43,7 @@ export interface TestState {
   calls: Array<{ kind: string; table: string; ids?: string[] }>;
   queries: string[];
   insertFailures: Set<string>;
+  outboxInsertShouldThrow: boolean;
 }
 
 function uuid4(): string {
@@ -73,6 +74,7 @@ function createState(): TestState {
     calls: [],
     queries: [],
     insertFailures: new Set(),
+    outboxInsertShouldThrow: false,
   };
   state.users.set(OWNER_ID, {
     id: OWNER_ID,
@@ -481,8 +483,30 @@ interface InsertCtx {
 }
 
 function buildInsertProxy(ctx: InsertCtx): any {
-  const handler: ProxyHandler<any> = {
-    get(_target, prop) {
+	const applyInsert = () => {
+		state.calls.push({ kind: "insert", table: getTableName(ctx.table) });
+		const tableName = getTableName(ctx.table);
+		if (state.insertFailures.has(tableName)) {
+			throw new Error(`Simulated ${tableName} insert failure`);
+		}
+		const collection = getCollection(tableName);
+		const returned: any[] = [];
+		for (const row of ctx.values) {
+			const newRow: any = { ...row };
+			if (newRow.id == null) newRow.id = uuid4();
+			if (newRow.createdAt == null) newRow.createdAt = new Date();
+			if (newRow.updatedAt == null) newRow.updatedAt = new Date();
+			if (collection instanceof Map) {
+				collection.set(newRow.id, newRow);
+			} else {
+				(collection as any[]).push(newRow);
+			}
+			returned.push(newRow);
+		}
+		return returned;
+	};
+	const handler: ProxyHandler<any> = {
+		get(_target, prop) {
       if (prop === "values")
         return (v: any) => {
           ctx.values = Array.isArray(v) ? v : [v];
@@ -490,29 +514,15 @@ function buildInsertProxy(ctx: InsertCtx): any {
         };
       if (prop === "onConflictDoNothing")
         return (_options?: unknown) => buildInsertProxy(ctx);
-      if (prop === "returning")
-        return () => {
-          state.calls.push({ kind: "insert", table: getTableName(ctx.table) });
-          const tableName = getTableName(ctx.table);
-          if (state.insertFailures.has(tableName)) {
-            return Promise.reject(new Error(`Simulated ${tableName} insert failure`));
-          }
-          const collection = getCollection(tableName);
-          const returned: any[] = [];
-          for (const row of ctx.values) {
-            const newRow: any = { ...row };
-            if (newRow.id == null) newRow.id = uuid4();
-            if (newRow.createdAt == null) newRow.createdAt = new Date();
-            if (newRow.updatedAt == null) newRow.updatedAt = new Date();
-            if (collection instanceof Map) {
-              collection.set(newRow.id, newRow);
-            } else {
-              (collection as any[]).push(newRow);
-            }
-            returned.push(newRow);
-          }
-          return Promise.resolve(returned);
-        };
+		if (prop === "returning") return () => Promise.resolve(applyInsert());
+		if (prop === "then")
+			return (resolve: any, reject: any) => {
+				try {
+					return Promise.resolve(applyInsert()).then(resolve, reject);
+				} catch (error) {
+					return Promise.reject(error).then(resolve, reject);
+				}
+			};
       return undefined;
     },
   };
@@ -796,6 +806,9 @@ function buildMockDb() {
       }
 			if (queryText.includes("insert into public.metadata_reembed_outbox")) {
 				state.calls.push({ kind: "snapshot:outbox", table: "documents" });
+				if (state.outboxInsertShouldThrow) {
+					throw new Error("Simulated metadata outbox insert failure");
+				}
 				const operationId = query.values?.find(
 					(value: unknown) =>
 						typeof value === "string" &&
@@ -863,8 +876,22 @@ function buildMockDb() {
       }
       return Promise.resolve([]);
     },
-    transaction(fn: any) {
-      return fn(this);
+    async transaction(fn: any) {
+      const before = structuredClone(state);
+      state.calls.push({ kind: "transaction:begin", table: "database" });
+      try {
+        const result = await fn(this);
+        state.calls.push({ kind: "transaction:commit", table: "database" });
+        return result;
+      } catch (error) {
+        const observedCalls = state.calls;
+        const outboxInsertShouldThrow = state.outboxInsertShouldThrow;
+        state = before;
+        state.calls = observedCalls;
+        state.outboxInsertShouldThrow = outboxInsertShouldThrow;
+        state.calls.push({ kind: "transaction:rollback", table: "database" });
+        throw error;
+      }
     },
   };
 }

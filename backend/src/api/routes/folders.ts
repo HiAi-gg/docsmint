@@ -17,9 +17,8 @@ import { invalidateDocListCache } from "../../lib/doc-cache";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
 import {
-	drainMetadataReembedOutbox,
+	dispatchMetadataReembedOutbox,
 	metadataReembedPageSize,
-	reembedDocsInFolder,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
@@ -638,7 +637,17 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				if (!updated) {
 					return { notFound: true as const };
 				}
-				return { updated };
+				const metadataChanged =
+					parsed.data.name !== undefined ||
+					parsed.data.parentId !== undefined ||
+					parsed.data.categoryId !== undefined;
+				const impact = metadataChanged
+					? await snapshotMetadataImpact(tx, ctx, {
+							kind: "folder",
+							id: params.id,
+						})
+					: undefined;
+				return { updated, operationId: impact?.operationId };
 			});
 			if ("selfParent" in result) {
 				set.status = 400;
@@ -673,12 +682,9 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				parsed.data.parentId !== undefined ||
 				parsed.data.categoryId !== undefined
 			) {
-				reembedDocsInFolder(params.id, userId, ctx.workspaceId).catch(
-					(err: unknown) =>
-						logger.warn(
-							{ err, folderId: params.id },
-							"Failed to enqueue re-embedding for folder metadata change",
-						),
+				dispatchMetadataReembedOutbox(
+					result.operationId,
+					metadataReembedPageSize("folder"),
 				);
 				invalidateDocListCache(userId);
 			}
@@ -758,7 +764,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble
 			// stops appearing in their embedding context.
-			await drainMetadataReembedOutbox(
+			dispatchMetadataReembedOutbox(
 				deletion.operationId,
 				metadataReembedPageSize("folder"),
 			);

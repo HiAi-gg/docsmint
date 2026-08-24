@@ -12,9 +12,8 @@ import {
 } from "../../lib/content-access";
 import { logger } from "../../lib/logger";
 import {
-	drainMetadataReembedOutbox,
+	dispatchMetadataReembedOutbox,
 	metadataReembedPageSize,
-	reembedDocsInCategory,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
@@ -300,7 +299,6 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Full workspace write access required" };
 		}
-		const userId = ctx.userId;
 		const parsed = updateCategorySchema.safeParse(await request.json());
 		if (!parsed.success) {
 			set.status = 400;
@@ -376,7 +374,14 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						),
 					)
 					.returning();
-				return { row: row ?? null };
+				const impact =
+					row && newName !== undefined
+						? await snapshotMetadataImpact(tx, ctx, {
+								kind: "category",
+								id: params.id,
+							})
+						: undefined;
+				return { row: row ?? null, operationId: impact?.operationId };
 			});
 			if ("conflict" in updated) {
 				set.status = 409;
@@ -392,12 +397,9 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// name is part of the embedding preamble, so a rename leaves the
 			// existing vectors stale until the worker refreshes them.
 			if (parsed.data.name !== undefined) {
-				reembedDocsInCategory(params.id, userId, ctx.workspaceId).catch(
-					(err: unknown) =>
-						logger.warn(
-							{ err, categoryId: params.id },
-							"Failed to re-embed documents after category rename",
-						),
+				dispatchMetadataReembedOutbox(
+					updated.operationId,
+					metadataReembedPageSize("category"),
 				);
 			}
 
@@ -484,7 +486,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// automatically detaches the category from any owned folders/docs.
 			// We re-embed those docs/folders so their preamble no longer mentions
 			// the (now-gone) category name.
-			await drainMetadataReembedOutbox(
+			dispatchMetadataReembedOutbox(
 				deletion.operationId,
 				metadataReembedPageSize("category"),
 			);

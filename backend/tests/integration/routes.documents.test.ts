@@ -639,6 +639,32 @@ describe("PATCH /api/documents/:id", () => {
     expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
+	it("rolls back a placement change when its outbox snapshot cannot commit", async () => {
+		const document = seedDocument({
+			id: "abcdef06-0000-4000-8000-000000000000",
+			folderId: null,
+			categoryId: null,
+		});
+		const folderId = "abcdef07-0000-4000-8000-000000000000";
+		getState().folders.set(folderId, {
+			id: folderId,
+			ownerId: OWNER_ID,
+			name: "Destination",
+			parentId: null,
+			categoryId: null,
+		});
+		getState().outboxInsertShouldThrow = true;
+
+		const response = await authedPatch(`/api/documents/${document.id}`, {
+			folderId,
+		});
+
+		expect(response.status).toBe(500);
+		expect(getState().documents.get(document.id)?.folderId).toBeNull();
+		expect(getState().metadataReembedOutbox.size).toBe(0);
+		expect(getState().calls.at(-1)?.kind).toBe("transaction:rollback");
+	});
+
   it("invalidates the cached list before acknowledging a placement update", async () => {
     const doc = seedDocument({
       id: "abcdef03-0000-4000-8000-000000000000",

@@ -58,7 +58,12 @@ import {
 	rewriteDuplicateAttachmentReferences,
 } from "../../lib/duplicate-attachments";
 import { logger } from "../../lib/logger";
-import { enqueueReembed } from "../../lib/reembed";
+import {
+	dispatchMetadataReembedOutbox,
+	enqueueReembed,
+	metadataReembedPageSize,
+	snapshotDocumentMetadataImpact,
+} from "../../lib/reembed";
 import { BUCKET, storage } from "../../lib/storage";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
@@ -1618,7 +1623,24 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					)
 					.returning();
 
-				return { updated, existing };
+				const folderChanged =
+					body.data.folderId !== undefined &&
+					body.data.folderId !== existing.folderId;
+				const categoryChanged =
+					body.data.categoryId !== undefined &&
+					body.data.categoryId !== existing.categoryId;
+				const impact =
+					updated && (folderChanged || categoryChanged)
+						? await snapshotDocumentMetadataImpact(tx, ctx, params.id)
+						: undefined;
+
+				return {
+					updated,
+					existing,
+					folderChanged,
+					categoryChanged,
+					operationId: impact?.operationId,
+				};
 			});
 
 			if (!result) {
@@ -1638,7 +1660,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					serverVersion: result.serverVersion,
 				};
 			}
-			const { updated, existing } = result;
+			const {
+				updated,
+				existing,
+				folderChanged,
+				categoryChanged,
+				operationId,
+			} = result;
 
 			// Fire-and-forget pruning. We don't await — pruning is a
 			// background GC pass and must not block the user's PATCH
@@ -1652,13 +1680,6 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// field changed. The embedding preamble includes folder/category
 			// names, so changing either invalidates the existing vectors even
 			// when the content text is unchanged.
-			const folderChanged =
-				body.data.folderId !== undefined &&
-				body.data.folderId !== existing?.folderId;
-			const categoryChanged =
-				body.data.categoryId !== undefined &&
-				body.data.categoryId !== existing?.categoryId;
-
 			let shouldReembed = folderChanged || categoryChanged;
 
 			if (
@@ -1676,20 +1697,24 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			if (shouldReembed) {
-				// Use enqueueReembed for Redis SET-NX dedup so rapid PATCHes on the same doc
-				// (auto-save) coalesce into a single worker tick. Direct enqueueEmbedding
-				// would queue the same doc id once per PATCH.
-				const revision = contentHash(
-					updated?.title ?? existing?.title ?? "",
-					updated?.content ?? existing?.content ?? "",
-				);
-				enqueueReembed(
-					[{ id: params.id, revision }],
-					ctx.workspaceId,
-					folderChanged || categoryChanged
-						? { reason: "metadata", refreshMode: "full" }
-						: { reason: "content", refreshMode: "incremental" },
-				);
+				if (folderChanged || categoryChanged) {
+					dispatchMetadataReembedOutbox(
+						operationId,
+						metadataReembedPageSize("folder"),
+					);
+				} else {
+					// Content edits retain the interactive Redis debounce contract. Metadata
+					// placement changes use their transactionally committed outbox event.
+					const revision = contentHash(
+						updated?.title ?? existing?.title ?? "",
+						updated?.content ?? existing?.content ?? "",
+					);
+					enqueueReembed(
+						[{ id: params.id, revision }],
+						ctx.workspaceId,
+						{ reason: "content", refreshMode: "incremental" },
+					);
+				}
 			}
 			// Preserve read-after-write consistency for placement changes. A
 			// fire-and-forget invalidation allowed the sidebar's immediate list
