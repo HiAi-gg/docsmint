@@ -720,6 +720,26 @@ function buildMockDb() {
         state.calls.push({ kind: "lock:topology", table: "tenant" });
         return Promise.resolve([]);
       }
+      if (queryText.includes("with recursive ancestors")) {
+        state.calls.push({ kind: "resolve:folder-category", table: "folders" });
+        const folderId = query.values?.find(
+          (value: unknown) => typeof value === "string",
+        );
+        if (typeof folderId !== "string") return Promise.resolve([]);
+        const visited = new Set<string>();
+        let current = state.folders.get(folderId);
+        while (current && !visited.has(current.id)) {
+          visited.add(current.id);
+          if (current.ownerId !== OWNER_ID) return Promise.resolve([]);
+          if (current.categoryId) {
+            return Promise.resolve([{ category_id: current.categoryId }]);
+          }
+          current = current.parentId
+            ? state.folders.get(current.parentId)
+            : undefined;
+        }
+        return Promise.resolve([]);
+      }
       if (queryText.includes("docsmint:metadata-impact:folder")) {
         const targetId = query.values?.find(
           (value: unknown) => typeof value === "string",

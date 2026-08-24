@@ -27,6 +27,7 @@ import { launchDocsMintApi } from "../../../sdk/dist/backend-launcher.js";
 import { retrieveGraphCandidates } from "../../../../backend/src/search/graph-retriever";
 import { searchDocuments } from "../../../../backend/src/search/orchestrator";
 import { retrieveFastChannels } from "../../../../backend/src/search/retrievers";
+import { tenantTopologyLockKey } from "../../../../backend/src/lib/topology-serialization";
 import { capabilityCatalog } from "../../src/capabilities.js";
 import { createDocsmintMcpServer } from "../../src/server.js";
 import { resolveContractServiceBindings } from "./contract-service-bindings";
@@ -144,6 +145,19 @@ let mcpClient: Client | undefined;
 let closeMcp: (() => Promise<void>) | undefined;
 let embeddingServer: { stop(closeActiveConnections?: boolean): void } | undefined;
 let embeddingRequests = 0;
+
+type Deferred<T> = Readonly<{
+	promise: Promise<T>;
+	resolve: (value: T) => void;
+}>;
+
+function deferred<T>(): Deferred<T> {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((resolvePromise) => {
+		resolve = resolvePromise;
+	});
+	return { promise, resolve };
+}
 
 async function deleteContractObject(key: string): Promise<void> {
 	await contractStorage.send(
@@ -268,6 +282,20 @@ async function waitForHealthyApi(): Promise<void> {
 		await Bun.sleep(100);
 	}
 	throw new Error("Live DocsMint API did not become healthy within 20 seconds");
+}
+
+async function waitForTopologyLockWait(blockerPid: number): Promise<boolean> {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const [row] = await database<{ waiting: number }[]>`
+			SELECT count(*)::int AS waiting
+			FROM pg_locks waiting
+			WHERE waiting.locktype = 'advisory'
+				AND NOT waiting.granted
+				AND ${blockerPid} = ANY(pg_blocking_pids(waiting.pid))`;
+		if ((row?.waiting ?? 0) > 0) return true;
+		await Bun.sleep(10);
+	}
+	return false;
 }
 
 function graphQuery(cypher: string, columns = "result agtype") {
@@ -566,6 +594,193 @@ describe("live category-scoped public surfaces", () => {
 				(await requestWithAssertion("/api/categories", assertion)).status,
 				kind,
 			).toBe(401);
+		}
+	});
+
+	test("serializes attached create category resolution behind topology mutation", async () => {
+		const folderId = crypto.randomUUID();
+		const title = `create topology race ${crypto.randomUUID()}`;
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const ready = deferred<void>();
+		const release = deferred<void>();
+		const key = tenantTopologyLockKey({
+			userId: ids.actorA,
+			role: "user",
+			source: "external",
+			workspaceId: workspaceA,
+		});
+		let mutationTask: Promise<unknown> | undefined;
+		let blockerPid: number | undefined;
+		try {
+			await database`INSERT INTO folders
+				(id, owner_id, workspace_id, category_id, name)
+				VALUES (${folderId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'create race')`;
+			mutationTask = database.begin(async (tx) => {
+				const [connection] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+				blockerPid = connection?.pid;
+				await tx`SELECT pg_advisory_xact_lock(${key})`;
+				await tx`UPDATE folders SET category_id = ${ids.categoryOther}::uuid
+					WHERE id = ${folderId}::uuid`;
+				ready.resolve(undefined);
+				await release.promise;
+			});
+			await ready.promise;
+			const responsePromise = requestWithAssertion(
+				"/api/documents",
+				assertion,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${serviceApiKey}`,
+						"content-type": "application/json",
+						"x-forwarded-for": "198.51.100.41",
+					},
+					body: JSON.stringify({ title, folderId }),
+				},
+			);
+			let blocked = false;
+			try {
+				if (!blockerPid) throw new Error("Missing topology blocker PID");
+				blocked = await waitForTopologyLockWait(blockerPid);
+			} finally {
+				release.resolve(undefined);
+			}
+			const response = await responsePromise;
+			await mutationTask;
+			expect(response.status).toBe(403);
+			expect(blocked).toBe(true);
+			const rows = await database<{ count: number }[]>`SELECT count(*)::int AS count
+				FROM documents WHERE title = ${title}`;
+			expect(rows[0]?.count).toBe(0);
+		} finally {
+			release.resolve(undefined);
+			await mutationTask?.catch(() => undefined);
+			await database`DELETE FROM documents WHERE title = ${title}`;
+			await database`DELETE FROM folders WHERE id = ${folderId}::uuid`;
+		}
+	});
+
+	test("serializes attached import category resolution behind topology mutation", async () => {
+		const folderId = crypto.randomUUID();
+		const title = `import topology race ${crypto.randomUUID()}`;
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const ready = deferred<void>();
+		const release = deferred<void>();
+		const key = tenantTopologyLockKey({
+			userId: ids.actorA,
+			role: "user",
+			source: "external",
+			workspaceId: workspaceA,
+		});
+		let mutationTask: Promise<unknown> | undefined;
+		let blockerPid: number | undefined;
+		try {
+			await database`INSERT INTO folders
+				(id, owner_id, workspace_id, category_id, name)
+				VALUES (${folderId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'import race')`;
+			mutationTask = database.begin(async (tx) => {
+				const [connection] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+				blockerPid = connection?.pid;
+				await tx`SELECT pg_advisory_xact_lock(${key})`;
+				await tx`UPDATE folders SET category_id = ${ids.categoryOther}::uuid
+					WHERE id = ${folderId}::uuid`;
+				ready.resolve(undefined);
+				await release.promise;
+			});
+			await ready.promise;
+			const responsePromise = requestWithAssertion(
+				"/api/documents/import",
+				assertion,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${serviceApiKey}`,
+						"content-type": "application/json",
+						"x-forwarded-for": "198.51.100.42",
+					},
+					body: JSON.stringify({ title, content: "race", folderId }),
+				},
+			);
+			let blocked = false;
+			try {
+				if (!blockerPid) throw new Error("Missing topology blocker PID");
+				blocked = await waitForTopologyLockWait(blockerPid);
+			} finally {
+				release.resolve(undefined);
+			}
+			const response = await responsePromise;
+			await mutationTask;
+			expect(response.status).toBe(403);
+			expect(blocked).toBe(true);
+			const rows = await database<{ count: number }[]>`SELECT count(*)::int AS count
+				FROM documents WHERE title = ${title}`;
+			expect(rows[0]?.count).toBe(0);
+		} finally {
+			release.resolve(undefined);
+			await mutationTask?.catch(() => undefined);
+			await database`DELETE FROM documents WHERE title = ${title}`;
+			await database`DELETE FROM folders WHERE id = ${folderId}::uuid`;
+		}
+	});
+
+	test("serializes duplicate source placement reads behind topology mutation", async () => {
+		const sourceId = crypto.randomUUID();
+		const title = `duplicate topology race ${crypto.randomUUID()}`;
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const ready = deferred<void>();
+		const release = deferred<void>();
+		const key = tenantTopologyLockKey({
+			userId: ids.actorA,
+			role: "user",
+			source: "external",
+			workspaceId: workspaceA,
+		});
+		let mutationTask: Promise<unknown> | undefined;
+		let blockerPid: number | undefined;
+		try {
+			await database`INSERT INTO documents
+				(id, owner_id, workspace_id, category_id, title, content)
+				VALUES (${sourceId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, ${title}, 'race')`;
+			mutationTask = database.begin(async (tx) => {
+				const [connection] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
+				blockerPid = connection?.pid;
+				await tx`SELECT pg_advisory_xact_lock(${key})`;
+				await tx`UPDATE documents SET category_id = ${ids.categoryOther}::uuid
+					WHERE id = ${sourceId}::uuid`;
+				ready.resolve(undefined);
+				await release.promise;
+			});
+			await ready.promise;
+			const responsePromise = requestWithAssertion(
+				`/api/documents/${sourceId}/duplicate`,
+				assertion,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${serviceApiKey}`,
+						"x-forwarded-for": "198.51.100.43",
+					},
+				},
+			);
+			let blocked = false;
+			try {
+				if (!blockerPid) throw new Error("Missing topology blocker PID");
+				blocked = await waitForTopologyLockWait(blockerPid);
+			} finally {
+				release.resolve(undefined);
+			}
+			const response = await responsePromise;
+			await mutationTask;
+			expect(response.status).toBe(404);
+			expect(blocked).toBe(true);
+			const rows = await database<{ count: number }[]>`SELECT count(*)::int AS count
+				FROM documents WHERE title = ${`${title} (Copy)`}`;
+			expect(rows[0]?.count).toBe(0);
+		} finally {
+			release.resolve(undefined);
+			await mutationTask?.catch(() => undefined);
+			await database`DELETE FROM documents
+				WHERE id = ${sourceId}::uuid OR title = ${`${title} (Copy)`}`;
 		}
 	});
 

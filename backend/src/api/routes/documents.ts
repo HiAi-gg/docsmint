@@ -37,7 +37,6 @@ import {
 	resolveContentAccess,
 	resolveFolderEffectiveCategory,
 	tenantOwnerCondition,
-	tenantOwnerSql,
 } from "../../lib/content-access";
 import { contentHash } from "../../lib/content-hash";
 import {
@@ -331,31 +330,6 @@ async function withTags<T extends { id: string }>(
 		byDoc.set(t.documentId, list);
 	}
 	return rows.map((r) => ({ ...r, tags: byDoc.get(r.id) ?? [] }));
-}
-
-async function resolveFolderCategory(
-	ctx: import("../../api/middleware/tenant").TenantContext,
-	folderId: string,
-): Promise<string | null> {
-	const rows = await withTenant(ctx, async (tx) => {
-		return tx.execute(sql`
-			WITH RECURSIVE ancestors AS (
-				SELECT id, parent_id, category_id
-				FROM folders
-				WHERE id = ${folderId} AND ${tenantOwnerSql("folders", ctx)}
-				UNION ALL
-				SELECT f.id, f.parent_id, f.category_id
-				FROM folders f
-				JOIN ancestors a ON f.id = a.parent_id
-				WHERE ${tenantOwnerSql("f", ctx)}
-			)
-			SELECT category_id FROM ancestors
-			WHERE category_id IS NOT NULL
-			LIMIT 1
-		`);
-	});
-	const row = rows[0] as { category_id: string } | undefined;
-	return row?.category_id ?? null;
 }
 
 export const documentRoutes = new Elysia({ prefix: "/api" })
@@ -752,18 +726,36 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const initialHash = contentHash(body.data.title, initialContent);
 			const initialDocJson = null;
 			const folderId = body.data.folderId ?? null;
-			let categoryId = body.data.categoryId ?? null;
-			if (folderId && !categoryId) {
-				categoryId = await resolveFolderCategory(ctx, folderId);
-			}
-			if (!isAuthorizedCategory(access, categoryId)) {
-				set.status = 403;
-				return { error: "Forbidden" };
-			}
+			const requestedCategoryId = body.data.categoryId ?? null;
 
 			const createdResult = await withTenant(ctx, async (tx) => {
-				if (folderId || categoryId) {
+				if (folderId || requestedCategoryId) {
 					await acquireTenantTopologyLock(tx, ctx);
+				}
+				let categoryId = requestedCategoryId;
+				if (folderId && !categoryId) {
+					const resolvedCategoryId = await resolveFolderEffectiveCategory(
+						tx,
+						ctx,
+						folderId,
+					);
+					if (resolvedCategoryId === undefined) {
+						return {
+							row: null,
+							replayed: false,
+							conflict: false,
+							forbidden: true,
+						};
+					}
+					categoryId = resolvedCategoryId;
+				}
+				if (!isAuthorizedCategory(access, categoryId)) {
+					return {
+						row: null,
+						replayed: false,
+						conflict: false,
+						forbidden: true,
+					};
 				}
 				const workspaceIdentity = documentCreateWorkspaceIdentity(
 					userId,
@@ -813,9 +805,21 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						)
 						.limit(1);
 					if (existing?.authorized) {
-						return { row: existing.document, replayed: true, conflict: false };
+						return {
+							row: existing.document,
+							replayed: true,
+							conflict: false,
+							forbidden: false,
+						};
 					}
-					if (existing) return { row: null, replayed: false, conflict: true };
+					if (existing) {
+						return {
+							row: null,
+							replayed: false,
+							conflict: true,
+							forbidden: false,
+						};
+					}
 				}
 				const [row] = await tx
 					.insert(documents)
@@ -852,8 +856,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						documentId: row.id,
 					});
 				}
-				return { row, replayed: false, conflict: false };
+				return { row, replayed: false, conflict: false, forbidden: false };
 			});
+			if (createdResult.forbidden) {
+				set.status = 403;
+				return { error: "Forbidden" };
+			}
 			if (createdResult.conflict || !createdResult.row) {
 				set.status = 409;
 				return { error: "Idempotency key is unavailable" };
@@ -1741,8 +1749,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const userId = ctx.userId;
 		const copiedStorageKeys: string[] = [];
+		const cleanupCopiedStorage = async (): Promise<void> => {
+			await Promise.allSettled(
+				copiedStorageKeys.map((key) =>
+					storage.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key })),
+				),
+			);
+		};
 		try {
 			const sourceBundle = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const sourceRows = await tx
 					.select()
 					.from(documents)
@@ -1816,16 +1832,47 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const copyTitle = `${source.title} (Copy)`;
 			const copyHash = contentHash(copyTitle, rewrittenContent);
 			const copy = await withTenant(ctx, async (tx) => {
-				if (source.folderId || source.categoryId) {
-					await acquireTenantTopologyLock(tx, ctx);
+				await acquireTenantTopologyLock(tx, ctx);
+				const [currentPlacement] = await tx
+					.select({
+						folderId: documents.folderId,
+						categoryId: documents.categoryId,
+					})
+					.from(documents)
+					.where(
+						and(
+							eq(documents.id, params.id),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
+					.limit(1);
+				if (!currentPlacement) {
+					return null;
 				}
 				const [row] = await tx
 					.insert(documents)
 					.values({
 						id: copyId,
 						ownerId: userId,
-						folderId: source.folderId,
-						categoryId: source.categoryId,
+						folderId: currentPlacement.folderId,
+						categoryId: currentPlacement.categoryId,
 						title: copyTitle,
 						content: rewrittenContent,
 						contentHash: copyHash,
@@ -1858,6 +1905,11 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 				return row;
 			});
+			if (!copy) {
+				await cleanupCopiedStorage();
+				set.status = 404;
+				return { error: "Document not found" };
+			}
 
 			void enqueueDocumentPipeline({
 				documentId: copy.id,
@@ -1872,11 +1924,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 201;
 			return copy;
 		} catch (err) {
-			await Promise.allSettled(
-				copiedStorageKeys.map((key) =>
-					storage.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key })),
-				),
-			);
+			await cleanupCopiedStorage();
 			logger.error({ err }, "Failed to duplicate document");
 			set.status = 500;
 			return { error: "Failed to duplicate document" };
@@ -2327,24 +2375,35 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "No importable items supplied" };
 			}
 
-			let resolvedCategoryId: string | null = null;
-			if (folderId) {
-				resolvedCategoryId = await resolveFolderCategory(ctx, folderId);
-			}
-			if (!isAuthorizedCategory(access, resolvedCategoryId)) {
-				set.status = 403;
-				return { error: "Forbidden" };
-			}
-
 			type CreatedEntry = {
 				item: ImportedItem;
-				row: { id: string; title: string; revision: string };
+				row: {
+					id: string;
+					title: string;
+					revision: string;
+					categoryId: string | null;
+				};
 			};
 
 			const persistItem = (item: ImportedItem): Promise<CreatedEntry> =>
 				withTenant(ctx, async (tx) => {
-					if (folderId || resolvedCategoryId) {
+					if (folderId) {
 						await acquireTenantTopologyLock(tx, ctx);
+					}
+					let categoryId: string | null = null;
+					if (folderId) {
+						const resolvedCategoryId = await resolveFolderEffectiveCategory(
+							tx,
+							ctx,
+							folderId,
+						);
+						if (resolvedCategoryId === undefined) {
+							throw new ImportInputError("Forbidden", 403);
+						}
+						categoryId = resolvedCategoryId;
+					}
+					if (!isAuthorizedCategory(access, categoryId)) {
+						throw new ImportInputError("Forbidden", 403);
 					}
 					const revision = contentHash(item.title, item.content);
 					const [row] = await tx
@@ -2355,7 +2414,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							content: item.content,
 							contentHash: revision,
 							folderId,
-							categoryId: resolvedCategoryId,
+							categoryId,
 						})
 						.returning({ id: documents.id, title: documents.title });
 					if (!row) {
@@ -2368,7 +2427,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					});
 					return {
 						item,
-						row: { ...row, revision },
+						row: { ...row, revision, categoryId },
 					};
 				});
 
@@ -2394,7 +2453,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						title: row.title,
 						content: item.content,
 						folderId,
-						categoryId: resolvedCategoryId,
+						categoryId: row.categoryId,
 						createdAt: now,
 						updatedAt: now,
 					},

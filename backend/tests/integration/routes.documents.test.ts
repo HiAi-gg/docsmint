@@ -424,8 +424,15 @@ describe("POST /api/documents", () => {
     expect(getState().enqueuedEmbeddings).toContain(body.id);
   });
 
-  it("locks tenant topology before creating an attached document", async () => {
+  it("locks tenant topology before resolving and creating an attached document", async () => {
     const folderId = "00000000-0000-4000-8000-000000000123";
+    getState().folders.set(folderId, {
+      id: folderId,
+      ownerId: OWNER_ID,
+      parentId: null,
+      categoryId: "00000000-0000-4000-8000-000000000122",
+      name: "Attached folder",
+    });
     const res = await authedPost("/api/documents", {
       title: "Attached",
       folderId,
@@ -435,10 +442,14 @@ describe("POST /api/documents", () => {
     const topologyLockIndex = state.calls.findIndex(
       (call) => call.kind === "lock:topology",
     );
+    const resolveIndex = state.calls.findIndex(
+      (call) => call.kind === "resolve:folder-category",
+    );
     const insertIndex = state.calls.findIndex(
       (call) => call.kind === "insert" && call.table === "documents",
     );
     expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(resolveIndex).toBeGreaterThan(topologyLockIndex);
     expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 
@@ -462,7 +473,7 @@ describe("POST /api/documents", () => {
 });
 
 describe("POST /api/documents/:id/duplicate", () => {
-  it("locks tenant topology before duplicating an attached document", async () => {
+  it("locks tenant topology before reading and duplicating attached source placement", async () => {
     const source = seedDocument({
       id: "00000000-0000-4000-8000-000000000124",
       folderId: "00000000-0000-4000-8000-000000000125",
@@ -475,10 +486,14 @@ describe("POST /api/documents/:id/duplicate", () => {
     const topologyLockIndex = state.calls.findIndex(
       (call) => call.kind === "lock:topology",
     );
+    const sourceReadIndex = state.calls.findIndex(
+      (call) => call.kind === "select" && call.table === "documents",
+    );
     const insertIndex = state.calls.findIndex(
       (call) => call.kind === "insert" && call.table === "documents",
     );
     expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(sourceReadIndex).toBeGreaterThan(topologyLockIndex);
     expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 });

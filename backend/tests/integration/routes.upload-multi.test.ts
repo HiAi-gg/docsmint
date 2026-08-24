@@ -209,6 +209,13 @@ describe("POST /api/documents/import — JSON single-item path", () => {
 
   it("accepts a valid folderId UUID", async () => {
     const folderId = "00000000-0000-4000-8000-000000000abc";
+    getState().folders.set(folderId, {
+      id: folderId,
+      ownerId: "00000000-0000-4000-8000-000000000001",
+      parentId: null,
+      categoryId: "00000000-0000-4000-8000-000000000abd",
+      name: "Import folder",
+    });
     const res = await jsonImport({
       title: "Foldered",
       content: "ok",
@@ -226,10 +233,14 @@ describe("POST /api/documents/import — JSON single-item path", () => {
     const topologyLockIndex = state.calls.findIndex(
       (call) => call.kind === "lock:topology",
     );
+    const resolveIndex = state.calls.findIndex(
+      (call) => call.kind === "resolve:folder-category",
+    );
     const insertIndex = state.calls.findIndex(
       (call) => call.kind === "insert" && call.table === "documents",
     );
     expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(resolveIndex).toBeGreaterThan(topologyLockIndex);
     expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 
