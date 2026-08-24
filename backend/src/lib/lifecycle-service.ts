@@ -24,6 +24,7 @@ import type {
 	UserDataLifecycle,
 } from "@hiai-docs/sdk";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
 
 const LEASE_MS = 60_000;
 
@@ -699,12 +700,20 @@ export function createPersistentLifecycleService(
 					"remove_subject_documents",
 					deletedByDomain,
 					() =>
-						dbDelete((tx) =>
-							tx
-								.delete(documents)
-								.where(eq(documents.ownerId, ctx.actorUserId))
-								.returning({ id: documents.id }),
-						),
+						documentIds.length
+							? dbDelete(async (tx) => {
+									await acquireDocumentPipelineLocks(tx, documentIds);
+									return tx
+										.delete(documents)
+										.where(
+											and(
+												eq(documents.ownerId, ctx.actorUserId),
+												inArray(documents.id, documentIds),
+											),
+										)
+										.returning({ id: documents.id });
+								})
+							: Promise.resolve(0),
 				);
 				await runStep(
 					operation,

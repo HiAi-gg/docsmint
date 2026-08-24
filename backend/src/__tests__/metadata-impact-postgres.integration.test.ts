@@ -8,9 +8,12 @@ import {
 	withTenantDatabase,
 } from "@hiai-docs/db/with-tenant";
 import { sql } from "drizzle-orm";
+import { Elysia } from "elysia";
 import postgres from "postgres";
+import { documentRoutes } from "../api/routes/documents";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
+import { createPersistentLifecycleService } from "../lib/lifecycle-service";
 import {
 	drainMetadataReembedOutbox,
 	reembedDocsByTag,
@@ -585,6 +588,236 @@ describe.skipIf(!databaseUrl)(
 					worker.end(),
 					observer.end(),
 					snapshotClient.client.end(),
+				]);
+			}
+		});
+
+		test("serializes hard purge before its document-to-pipeline cascade", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const worker = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const documentId = crypto.randomUUID();
+			const generationId = crypto.randomUUID();
+			const workerReady = deferred<number>();
+			const releaseWorker = deferred<void>();
+			const app = new Elysia().use(documentRoutes);
+			let workerTransaction: Promise<unknown> | undefined;
+			let purgeRequest: Promise<Response> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${config.OWNER_ID}::uuid, ${`${config.OWNER_ID}@purge-lock.invalid`})
+					ON CONFLICT (id) DO NOTHING`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, deleted_at)
+					VALUES (
+						${documentId}::uuid,
+						${config.OWNER_ID}::uuid,
+						'purge lock regression',
+						'',
+						now()
+					)`;
+				await setup`INSERT INTO public.document_pipeline_runs
+					(document_id, owner_id, generation_id, revision, source)
+					VALUES (
+						${documentId}::uuid,
+						${config.OWNER_ID}::uuid,
+						${generationId}::uuid,
+						'purge-lock-revision',
+						'interactive'
+					)`;
+
+				workerTransaction = worker.begin(async (tx) => {
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					if (!session?.pid) throw new Error("worker session has no pid");
+					await tx`SELECT pg_advisory_xact_lock(
+						${expectedDocumentPipelineLockKey(documentId).toString()}::bigint
+					)`;
+					await tx`SELECT id
+						FROM public.document_pipeline_runs
+						WHERE document_id = ${documentId}::uuid
+						FOR UPDATE`;
+					workerReady.resolve(session.pid);
+					await releaseWorker.promise;
+					const locked = await tx<{ id: string }[]>`SELECT id::text
+						FROM public.documents
+						WHERE id = ${documentId}::uuid
+						FOR UPDATE`;
+					expect(locked[0]?.id).toBe(documentId);
+				});
+				const workerPid = await workerReady.promise;
+
+				purgeRequest = app.handle(
+					new Request(`http://localhost/api/trash/documents/${documentId}`, {
+						method: "DELETE",
+						headers: {
+							authorization: `Bearer ${config.HIAI_DOCS_API_KEY}`,
+						},
+					}),
+				);
+				const purgePid = await waitForSessionBlockedBy(observer, workerPid);
+				const [blocked] = await observer<{ query: string }[]>`
+					SELECT query
+					FROM pg_stat_activity
+					WHERE pid = ${purgePid}`;
+
+				releaseWorker.resolve(undefined);
+				const [workerResult, purgeResult] = await Promise.allSettled([
+					workerTransaction,
+					purgeRequest,
+				]);
+				expect(blocked?.query).toContain("docsmint:document-pipeline-lock");
+				expect(workerResult.status).toBe("fulfilled");
+				expect(purgeResult.status).toBe("fulfilled");
+				if (purgeResult.status !== "fulfilled") throw purgeResult.reason;
+				expect(purgeResult.value.status).toBe(200);
+				expect(await purgeResult.value.json()).toEqual({ success: true });
+				const remaining = await setup<{ documents: number; runs: number }[]>`
+					SELECT
+						(SELECT count(*)::int FROM public.documents
+						 WHERE id = ${documentId}::uuid) AS documents,
+						(SELECT count(*)::int FROM public.document_pipeline_runs
+						 WHERE document_id = ${documentId}::uuid) AS runs`;
+				expect(remaining[0]).toEqual({ documents: 0, runs: 0 });
+			} finally {
+				releaseWorker.resolve(undefined);
+				await Promise.allSettled(
+					[workerTransaction, purgeRequest].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.document_pipeline_runs
+					WHERE document_id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await Promise.all([setup.end(), worker.end(), observer.end()]);
+			}
+		});
+
+		test("serializes lifecycle document purge before pipeline cascades", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const worker = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const lifecycleClient = createDatabaseClient(databaseUrl as string, {
+				max: 2,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const generationId = crypto.randomUUID();
+			const workerReady = deferred<number>();
+			const releaseWorker = deferred<void>();
+			let workerTransaction: Promise<unknown> | undefined;
+			let purgeOperation: Promise<unknown> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@lifecycle-purge-lock.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, deleted_at)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						'lifecycle purge lock regression',
+						'',
+						now()
+					)`;
+				await setup`INSERT INTO public.document_pipeline_runs
+					(document_id, owner_id, generation_id, revision, source)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						${generationId}::uuid,
+						'lifecycle-purge-lock-revision',
+						'interactive'
+					)`;
+
+				workerTransaction = worker.begin(async (tx) => {
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					if (!session?.pid) throw new Error("worker session has no pid");
+					await tx`SELECT pg_advisory_xact_lock(
+						${expectedDocumentPipelineLockKey(documentId).toString()}::bigint
+					)`;
+					await tx`SELECT id
+						FROM public.document_pipeline_runs
+						WHERE document_id = ${documentId}::uuid
+						FOR UPDATE`;
+					workerReady.resolve(session.pid);
+					await releaseWorker.promise;
+					const locked = await tx<{ id: string }[]>`SELECT id::text
+						FROM public.documents
+						WHERE id = ${documentId}::uuid
+						FOR UPDATE`;
+					expect(locked[0]?.id).toBe(documentId);
+				});
+				const workerPid = await workerReady.promise;
+
+				const lifecycle = createPersistentLifecycleService(
+					{
+						verifyPurgeFence: async () => {},
+						deleteObjects: async (keys) => keys.length,
+						cancelAccountJobs: async () => 0,
+						clearAccountRedisState: async () => 0,
+						removeCollaborationState: async () => 0,
+						removeGraphState: async (documentIds) => documentIds.length,
+					},
+					{
+						withActorTransaction: (actorUserId, operation) =>
+							withTenantDatabase(
+								lifecycleClient.db,
+								{
+									userId: actorUserId,
+									role: "user",
+									source: "personal",
+								},
+								operation,
+							),
+					},
+					[],
+				);
+				purgeOperation = lifecycle.purgeUserData(
+					{
+						actorUserId: ownerId,
+						requestId: crypto.randomUUID(),
+						idempotencyKey: `purge-lock-${crypto.randomUUID()}`,
+						reason: "account_deletion",
+					},
+					{ fenceToken: "purge-lock-fence" },
+				);
+				const purgePid = await waitForSessionBlockedBy(observer, workerPid);
+				const [blocked] = await observer<{ query: string }[]>`
+					SELECT query
+					FROM pg_stat_activity
+					WHERE pid = ${purgePid}`;
+
+				releaseWorker.resolve(undefined);
+				const [workerResult, purgeResult] = await Promise.allSettled([
+					workerTransaction,
+					purgeOperation,
+				]);
+				expect(blocked?.query).toContain("docsmint:document-pipeline-lock");
+				expect(workerResult.status).toBe("fulfilled");
+				expect(purgeResult.status).toBe("fulfilled");
+				if (purgeResult.status !== "fulfilled") throw purgeResult.reason;
+				expect(purgeResult.value).toMatchObject({ status: "completed" });
+				const remaining = await setup<{ documents: number; runs: number }[]>`
+					SELECT
+						(SELECT count(*)::int FROM public.documents
+						 WHERE id = ${documentId}::uuid) AS documents,
+						(SELECT count(*)::int FROM public.document_pipeline_runs
+						 WHERE document_id = ${documentId}::uuid) AS runs`;
+				expect(remaining[0]).toEqual({ documents: 0, runs: 0 });
+			} finally {
+				releaseWorker.resolve(undefined);
+				await Promise.allSettled(
+					[workerTransaction, purgeOperation].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([
+					setup.end(),
+					worker.end(),
+					observer.end(),
+					lifecycleClient.client.end(),
 				]);
 			}
 		});

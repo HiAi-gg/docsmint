@@ -145,7 +145,9 @@ background. Staging mutates only embedding lifecycle fields: document content
 revision and `updatedAt` remain owned by the user mutation that created them.
 Bulk staging and every worker transaction that locks both a document and its
 pipeline run first acquire the same per-document transaction advisory lock;
-multi-document pages acquire those locks in deterministic order. The
+hard document purges and other executable document cascade-deletion paths join
+the same protocol before deletion. Multi-document operations acquire those
+locks in deterministic order. The
 `*_REEMBED_BATCH_SIZE` settings control page memory, not total coverage. A
 configured value of `0` falls back to the safe domain default.
 

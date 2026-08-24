@@ -46,6 +46,8 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   metadata refreshes, make completed outbox retries document-state no-ops, and
   serialize bulk staging with worker document/run row locks to prevent inverse
   lock-order deadlocks.
+- Serialize hard document purges and account/benchmark cascade deletion with
+  pipeline workers before PostgreSQL locks document pipeline child rows.
 
 ## [0.6.8] - 2026-08-21
 

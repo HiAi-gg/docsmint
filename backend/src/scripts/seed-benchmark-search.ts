@@ -25,6 +25,7 @@ import {
 import { eq } from "drizzle-orm";
 import { embeddingProfileId } from "../embedding/validation";
 import { config } from "../lib/config";
+import { acquireDocumentPipelineLocks } from "../lib/document-pipeline-serialization";
 
 const FIXTURE_VERSION = "search-relevance-v1";
 const OUTPUT_DEFAULT = "/tmp/hiai-docs-benchmark";
@@ -175,8 +176,17 @@ async function main(): Promise<void> {
 				.from(users)
 				.where(eq(users.email, email))
 				.limit(1);
-			if (existing[0])
+			if (existing[0]) {
+				const ownedDocuments = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(eq(documents.ownerId, existing[0].id));
+				await acquireDocumentPipelineLocks(
+					tx,
+					ownedDocuments.map(({ id }) => id),
+				);
 				await tx.delete(users).where(eq(users.id, existing[0].id));
+			}
 		}
 		for (const alias of OWNER_ALIASES) {
 			const [user] = await tx

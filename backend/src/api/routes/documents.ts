@@ -51,6 +51,7 @@ import {
 	documentCreateIdempotencyKey,
 	documentCreateWorkspaceIdentity,
 } from "../../lib/document-create-idempotency";
+import { acquireDocumentPipelineLock } from "../../lib/document-pipeline-serialization";
 import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import {
 	encodeS3CopySource,
@@ -2070,6 +2071,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Forbidden" };
 		}
 		const purged = await withTenant(ctx, async (tx) => {
+			await acquireDocumentPipelineLock(tx, params.id);
 			const result = await tx
 				.delete(documents)
 				.where(
