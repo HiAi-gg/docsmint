@@ -214,7 +214,7 @@ function logName(index: number, name: string): string {
 		.replace(/^-|-$/g, "")}.log`;
 }
 
-function environmentForStep(
+export function environmentForStep(
 	step: ReleaseGateStep,
 	base: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
@@ -227,13 +227,11 @@ function environmentForStep(
 	}
 	if (step.name === "Docker start and health") {
 		const apiPort = Bun.env.API_PORT ?? "50700";
-		const storagePort = Bun.env.STORAGE_PORT ?? "50702";
 		return {
 			...base,
 			BETTER_AUTH_URL: `http://127.0.0.1:${apiPort}`,
 			REDIS_URL: "redis://redis:6379",
 			STORAGE_INTERNAL_ENDPOINT_URL: "http://seaweedfs:8333",
-			STORAGE_PUBLIC_ENDPOINT_URL: `http://127.0.0.1:${storagePort}`,
 		};
 	}
 	return base;

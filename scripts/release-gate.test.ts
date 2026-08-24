@@ -84,3 +84,28 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"Lightpanda desktop/mobile E2E",
 	]);
 });
+
+test("full Docker startup preserves the explicit production-safe public storage URL", () => {
+	if (!releaseGate) return;
+	const environmentForStep = (
+		releaseGate as unknown as {
+			environmentForStep?: (
+				step: { name: string; command: readonly string[] },
+				environment: Record<string, string | undefined>,
+			) => Record<string, string | undefined>;
+		}
+	).environmentForStep;
+	expect(typeof environmentForStep).toBe("function");
+	if (!environmentForStep) return;
+
+	const environment = environmentForStep(
+		{ name: "Docker start and health", command: [] },
+		{
+			API_PORT: "51710",
+			STORAGE_PUBLIC_ENDPOINT_URL: "https://storage.release.invalid",
+		},
+	);
+	expect(environment.STORAGE_PUBLIC_ENDPOINT_URL).toBe(
+		"https://storage.release.invalid",
+	);
+});
