@@ -82,6 +82,7 @@ process.exit(92);
 
 async function runSmoke(
 	overrides: Record<string, string> = {},
+	staleEvidence?: string,
 ): Promise<{
 	directory: string;
 	evidenceDirectory: string;
@@ -96,6 +97,10 @@ async function runSmoke(
 	const evidenceDirectory = join(directory, "evidence");
 	const statePath = join(directory, "docker-state.json");
 	await mkdir(bin, { recursive: true });
+	if (staleEvidence !== undefined) {
+		await mkdir(evidenceDirectory, { recursive: true });
+		await Bun.write(join(evidenceDirectory, "docker-smoke.json"), staleEvidence);
+	}
 	await Bun.write(join(bin, "git"), fakeGit);
 	await Bun.write(join(bin, "docker"), fakeDocker);
 	await Promise.all([chmod(join(bin, "git"), 0o755), chmod(join(bin, "docker"), 0o755)]);
@@ -178,6 +183,22 @@ test("Docker smoke fails before Docker when RELEASE_COMMIT does not match HEAD",
 	expect(result.exitCode).not.toBe(0);
 	expect(result.stderr).toContain("Release Docker smoke commit mismatch");
 	expect(await Bun.file(result.statePath).exists()).toBe(false);
+});
+
+test("Docker smoke removes stale success JSON before a failing rerun", async () => {
+	const result = await runSmoke(
+		{ FAKE_GIT_HEAD: "0".repeat(40) },
+		`${JSON.stringify({ commit: releaseCommit, services: ["stale-success"] })}\n`,
+	);
+
+	expect(result.exitCode).toBe(1);
+	expect(
+		await Bun.file(join(result.evidenceDirectory, "docker-smoke.json")).exists(),
+	).toBe(false);
+	const checksumManifest = await Bun.file(
+		join(result.evidenceDirectory, "docker-smoke.sha256"),
+	).text();
+	expect(checksumManifest).not.toContain("docker-smoke.json");
 });
 
 test("Docker smoke fails closed on a non-zero standalone migration", async () => {

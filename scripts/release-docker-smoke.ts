@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 type CommandResult = Readonly<{
@@ -240,6 +240,7 @@ const evidenceDirectory = resolve(
 		"build/release-evidence/docker-smoke",
 );
 await mkdir(evidenceDirectory, { recursive: true });
+await rm(join(evidenceDirectory, "docker-smoke.json"), { force: true });
 const logs: string[] = [];
 const sanitize = sanitizer(secretValues(environment));
 let evidenceText: string | undefined;

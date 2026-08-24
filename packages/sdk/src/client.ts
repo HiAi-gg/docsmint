@@ -1134,35 +1134,50 @@ export class DocsClient {
 			const signal = requestContext?.signal
 				? AbortSignal.any([requestContext.signal, timeoutController.signal])
 				: timeoutController.signal;
+			let response: Response | undefined;
+			let requestError: unknown;
 			try {
-				const res = await this.config.fetch(url, { ...init, signal });
-				if (this.shouldRetryStatus(res.status) && attempt < maxAttempts - 1) {
-					await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
-					continue;
-				}
-				return res;
+				response = await this.config.fetch(url, { ...init, signal });
 			} catch (err) {
-				lastError = err;
-				// A caller cancellation is authoritative. Do not retry it and do
-				// not turn it into a timeout merely because the internal timeout
-				// signal is also part of AbortSignal.any(). Preserving the original
-				// error keeps standard AbortController semantics for hosts.
-				if (requestContext?.signal?.aborted) {
-					throw requestContext.signal.reason ?? err;
-				}
-				if (!this.isRetryableError(err) || attempt === maxAttempts - 1) {
-					if (this.isTimeoutError(err)) {
-						throw new DocsTimeoutError(timeoutMs, {
-							cause: err,
-							requestId: requestContext?.requestId,
-						});
-					}
-					throw this.wrapNetworkError(err, requestContext?.requestId);
-				}
-				await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
+				requestError = err;
 			} finally {
 				clearTimeout(timeoutTimer);
 			}
+
+			// A per-attempt deadline only governs fetch. Release it before any
+			// retry backoff so dormant timers cannot accumulate between attempts.
+			if (response) {
+				if (
+					this.shouldRetryStatus(response.status) &&
+					attempt < maxAttempts - 1
+				) {
+					await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
+					continue;
+				}
+				return response;
+			}
+
+			lastError = requestError;
+			// A caller cancellation is authoritative. Do not retry it and do
+			// not turn it into a timeout merely because the internal timeout
+			// signal is also part of AbortSignal.any(). Preserving the original
+			// error keeps standard AbortController semantics for hosts.
+			if (requestContext?.signal?.aborted) {
+				throw requestContext.signal.reason ?? requestError;
+			}
+			if (
+				!this.isRetryableError(requestError) ||
+				attempt === maxAttempts - 1
+			) {
+				if (this.isTimeoutError(requestError)) {
+					throw new DocsTimeoutError(timeoutMs, {
+						cause: requestError,
+						requestId: requestContext?.requestId,
+					});
+				}
+				throw this.wrapNetworkError(requestError, requestContext?.requestId);
+			}
+			await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
 		}
 
 		// Should be unreachable — the loop above either returns or throws.

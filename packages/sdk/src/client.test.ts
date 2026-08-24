@@ -541,6 +541,63 @@ describe("DocsClient public contract", () => {
 		expect(attempts).toBe(2);
 	});
 
+	it("clears each fetch timeout before waiting for retry backoff", async () => {
+		const nativeSetTimeout = globalThis.setTimeout;
+		const nativeClearTimeout = globalThis.clearTimeout;
+		const activeDelays = new Map<ReturnType<typeof setTimeout>, number>();
+		globalThis.setTimeout = ((
+			handler: TimerHandler,
+			delay?: number,
+			...args: unknown[]
+		) => {
+			let timer: ReturnType<typeof setTimeout>;
+			timer = nativeSetTimeout(
+				(...callbackArgs: unknown[]) => {
+					activeDelays.delete(timer);
+					if (typeof handler === "function") handler(...callbackArgs);
+				},
+				delay,
+				...args,
+			);
+			activeDelays.set(timer, delay ?? 0);
+			return timer;
+		}) as typeof setTimeout;
+		globalThis.clearTimeout = ((timer?: ReturnType<typeof setTimeout>) => {
+			if (timer) activeDelays.delete(timer);
+			return nativeClearTimeout(timer);
+		}) as typeof clearTimeout;
+
+		let attempts = 0;
+		let fetchTimeoutActiveDuringBackoff = false;
+		try {
+			const docs = client(
+				async () => {
+					attempts += 1;
+					return attempts === 1
+						? jsonResponse({ error: "busy" }, 503)
+						: jsonResponse({
+								status: "ok",
+								service: "hiai-docs",
+								timestamp: "now",
+							});
+				},
+				{ retries: 2, retryBackoffMs: 20, timeout: 10_000 },
+			);
+			const response = docs.health();
+			for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+			fetchTimeoutActiveDuringBackoff = [...activeDelays.values()].includes(
+				10_000,
+			);
+			await response;
+		} finally {
+			for (const timer of activeDelays.keys()) nativeClearTimeout(timer);
+			globalThis.setTimeout = nativeSetTimeout;
+			globalThis.clearTimeout = nativeClearTimeout;
+		}
+
+		expect(fetchTimeoutActiveDuringBackoff).toBe(false);
+	});
+
 	it("exposes a timeout-specific error contract", async () => {
 		const docs = client(
 			async (_input, init) => {

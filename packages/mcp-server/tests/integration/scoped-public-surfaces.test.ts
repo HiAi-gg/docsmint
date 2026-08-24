@@ -84,7 +84,10 @@ const ids = {
 	docOther: crypto.randomUUID(),
 	docForeign: crypto.randomUUID(),
 	docDeleted: crypto.randomUUID(),
+	docPersonalVisible: crypto.randomUUID(),
+	docPersonalDeleted: crypto.randomUUID(),
 	docCacheProbe: crypto.randomUUID(),
+	personalApiKey: crypto.randomUUID(),
 	tagA: crypto.randomUUID(),
 	tagOther: crypto.randomUUID(),
 	tagForeign: crypto.randomUUID(),
@@ -102,6 +105,8 @@ const workspaceA = `task2-workspace-a-${suffix}`;
 const workspaceB = `task2-workspace-b-${suffix}`;
 const lexicalNeedle = `scopealpha${suffix.replaceAll("-", "")}`;
 const graphEntity = `ContractEntity${suffix.replaceAll("-", "")}`;
+const personalVisibleTitle = `Personal visible ${suffix}`;
+const personalDeletedTitle = `Personal deleted ${suffix}`;
 const database = postgres(databaseUrl, { max: 2 });
 const queryObservations: DatabaseQueryObservation[] = [];
 const observedDatabase = createDatabaseClient(databaseUrl, {
@@ -217,6 +222,12 @@ async function seedFixtures(): Promise<void> {
 			(${ids.categoryA}::uuid, ${ids.actorA}::uuid, ${workspaceA}, 'Scoped category', 1),
 			(${ids.categoryOther}::uuid, ${ids.actorA}::uuid, ${workspaceA}, 'Other category', 2),
 			(${ids.categoryForeign}::uuid, ${ids.actorB}::uuid, ${workspaceB}, 'Foreign category', 1)`;
+	const personalApiKeyHash = new Bun.CryptoHasher("sha256")
+		.update(ids.personalApiKey)
+		.digest("hex");
+	await database`INSERT INTO api_keys
+		(owner_id, name, key_hash, prefix, scopes)
+		VALUES (${ids.actorA}::uuid, 'Task 2 personal suggest key', ${personalApiKeyHash}, ${ids.personalApiKey.slice(0, 8)}, '["global"]'::jsonb)`;
 	await database`INSERT INTO folders (id, owner_id, workspace_id, parent_id, category_id, name, "order")
 		VALUES
 			(${ids.folderRootA}::uuid, ${ids.actorA}::uuid, ${workspaceA}, NULL, ${ids.categoryA}::uuid, 'Scoped root', 1),
@@ -239,6 +250,11 @@ async function seedFixtures(): Promise<void> {
 			(id, owner_id, workspace_id, folder_id, category_id, title, content, deleted_at, created_at, updated_at, embedding_status, active_embedding_generation, embedding_profile)
 			VALUES (${row[0]}::uuid, ${row[1]}::uuid, ${row[2]}, ${row[3]}::uuid, ${row[4]}::uuid, ${row[5]}, ${row[6]}, ${row[7]}::timestamptz, ${row[8]}::timestamptz, ${row[8]}::timestamptz, 'ready', ${row[9]}::uuid, ${embeddingProfile})`;
 	}
+	await database`INSERT INTO documents
+		(id, owner_id, workspace_id, folder_id, category_id, title, content, deleted_at, created_at, updated_at)
+		VALUES
+			(${ids.docPersonalVisible}::uuid, ${ids.actorA}::uuid, NULL, NULL, NULL, ${personalVisibleTitle}, 'personal visible', NULL, '2026-08-24T08:08:00Z', '2026-08-24T08:08:00Z'),
+			(${ids.docPersonalDeleted}::uuid, ${ids.actorA}::uuid, NULL, NULL, NULL, ${personalDeletedTitle}, 'personal deleted', '2026-08-24T09:00:00Z', '2026-08-24T08:09:00Z', '2026-08-24T08:09:00Z')`;
 
 	await database`INSERT INTO tags (id, owner_id, workspace_id, name, color)
 		VALUES
@@ -362,6 +378,39 @@ afterAll(async () => {
 });
 
 describe("live category-scoped public surfaces", () => {
+	test("excludes soft-deleted suggestions for personal, legacy workspace, and category assertions", async () => {
+		const personal = new DocsClient({
+			baseUrl,
+			apiKey: ids.personalApiKey,
+			retries: 1,
+		});
+		const personalVisible = await personal.suggest(personalVisibleTitle);
+		const personalDeleted = await personal.suggest(personalDeletedTitle);
+		expect(personalVisible.map(({ id }) => id)).toContain(ids.docPersonalVisible);
+		expect(personalDeleted.map(({ id }) => id)).not.toContain(
+			ids.docPersonalDeleted,
+		);
+
+		const legacy = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: { workspaceAssertion: await createAssertion() },
+		});
+		const scoped = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertion(["read"]),
+			},
+		});
+		for (const client of [legacy, scoped]) {
+			const suggestions = await client.suggest("Deleted scoped");
+			expect(suggestions.map(({ id }) => id)).not.toContain(ids.docDeleted);
+		}
+	});
+
 	test("enforces assertion status and independent permission behavior through REST", async () => {
 		const readAssertion = await createAssertion(["read"]);
 		const editAssertion = await createAssertion(["edit"]);
@@ -779,27 +828,34 @@ describe("live category-scoped public surfaces", () => {
 			contentType: "image/png",
 			size: bytes.byteLength,
 		});
-		expect(new URL(presigned.url).origin).toBe(new URL(storageUrl).origin);
-		const upload = await fetch(presigned.url, {
-			method: "PUT",
-			headers: { "content-type": "image/png" },
-			body: bytes,
-		});
-		expect(upload.status).toBe(200);
-		const attachment = await docs.confirmAttachment(ids.docDirectA, {
-			key: presigned.key,
-			filename,
-			contentType: "image/png",
-			size: bytes.byteLength,
-			quotaReservationId: presigned.quotaReservationId,
-		});
-		const raw = await requestWithAssertion(attachment.url, assertion);
-		expect(raw.status).toBe(200);
-		expect(new Uint8Array(await raw.arrayBuffer())).toEqual(bytes);
-		await docs.deleteAttachment(attachment.id);
-		expect(
-			(await docs.listAttachments(ids.docDirectA)).items.map(({ id }) => id),
-		).not.toContain(attachment.id);
+		let attachmentId: string | undefined;
+		try {
+			expect(new URL(presigned.url).origin).toBe(new URL(storageUrl).origin);
+			const upload = await fetch(presigned.url, {
+				method: "PUT",
+				headers: { "content-type": "image/png" },
+				body: bytes,
+			});
+			expect(upload.status).toBe(200);
+			const attachment = await docs.confirmAttachment(ids.docDirectA, {
+				key: presigned.key,
+				filename,
+				contentType: "image/png",
+				size: bytes.byteLength,
+				quotaReservationId: presigned.quotaReservationId,
+			});
+			attachmentId = attachment.id;
+			const raw = await requestWithAssertion(attachment.url, assertion);
+			expect(raw.status).toBe(200);
+			expect(new Uint8Array(await raw.arrayBuffer())).toEqual(bytes);
+		} finally {
+			if (attachmentId) await docs.deleteAttachment(attachmentId);
+		}
+		if (attachmentId) {
+			expect(
+				(await docs.listAttachments(ids.docDirectA)).items.map(({ id }) => id),
+			).not.toContain(attachmentId);
+		}
 	});
 
 	test("executes all 17 MCP tools through one sanitized assertion-bound public client", async () => {
@@ -944,6 +1000,7 @@ describe("live category-scoped public surfaces", () => {
 					type: "DocsApiError",
 					status: tool.error.status,
 					code: tool.error.code,
+					message: "Full workspace write access required",
 					body: { error: "Full workspace write access required" },
 				});
 			} else {
