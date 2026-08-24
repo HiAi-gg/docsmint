@@ -1,0 +1,1846 @@
+import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
+import postgres from "postgres";
+
+export interface MigrationSnapshot {
+	journalEntries: number;
+	schemaFingerprint: string;
+	columns: string[];
+}
+
+export interface EnvironmentProbe {
+	accepted: boolean;
+	requiredKeys: string[];
+	issues?: string[];
+}
+
+export interface AtomicAdoptionEvidence {
+	adoptionCommit: string;
+	candidateCommit: string;
+	packageVersions: Record<string, string>;
+	lockfileVersion: string;
+	localTarballResolved: boolean;
+	submoduleCommit: string;
+	commitFiles: string[];
+}
+
+export interface RuntimeSmokeEvidence {
+	version: string;
+	health: boolean;
+	crud: {
+		create: boolean;
+		read: boolean;
+		update: boolean;
+		delete: boolean;
+	};
+	search: boolean;
+	assertionScope?: {
+		allowedDocumentVisible: boolean;
+		foreignDocumentHidden: boolean;
+	};
+}
+
+export interface PreparedRehearsal {
+	root: string;
+}
+
+export interface RehearsalWorkflowOperations<
+	TPrepared extends PreparedRehearsal,
+> {
+	assertRealCheckoutClean(phase: "before" | "after"): Promise<void>;
+	prepare(): Promise<TPrepared>;
+	packAndAdopt(prepared: TPrepared): Promise<AtomicAdoptionEvidence>;
+	migrate(prepared: TPrepared): Promise<{
+		before: MigrationSnapshot;
+		afterFirst: MigrationSnapshot;
+		afterSecond: MigrationSnapshot;
+	}>;
+	probeEnvironment(prepared: TPrepared): Promise<{
+		baseline: EnvironmentProbe;
+		candidate: EnvironmentProbe;
+	}>;
+	smoke070(prepared: TPrepared): Promise<RuntimeSmokeEvidence>;
+	smoke068(prepared: TPrepared): Promise<RuntimeSmokeEvidence>;
+	cleanup(prepared: TPrepared): Promise<void>;
+}
+
+export interface RehearsalWorkflowReport {
+	adoption: AtomicAdoptionEvidence;
+	migration: ReturnType<typeof verifyAdditiveMigrationReapply>;
+	environment: ReturnType<typeof verifyNoNewRequiredEnvironment>;
+	runtime070: RuntimeSmokeEvidence;
+	runtime068: RuntimeSmokeEvidence;
+}
+
+const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
+const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
+const EXPECTED_ADDITIVE_COLUMNS = [
+	"document_pipeline_runs.embedding_context_hash:text:YES:",
+	"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
+	"documents.embedding_context_hash:text:YES:",
+];
+
+export function validateTemporaryRoot(path: string): string {
+	const normalized = resolve(path);
+	if (normalized !== path || !TEMPORARY_ROOT_PATTERN.test(normalized)) {
+		throw new Error("rehearsal requires a unique validated /tmp root");
+	}
+	return normalized;
+}
+
+export function redactSecrets(
+	output: string,
+	secrets: readonly string[],
+): string {
+	return [...new Set(secrets)]
+		.filter((secret) => secret.length > 0)
+		.sort((left, right) => right.length - left.length)
+		.reduce(
+			(redacted, secret) => redacted.replaceAll(secret, "[REDACTED]"),
+			output,
+		);
+}
+
+export function verifyAdditiveMigrationReapply(
+	before: MigrationSnapshot,
+	afterFirst: MigrationSnapshot,
+	afterSecond: MigrationSnapshot,
+): { addedJournalEntries: number; secondRunNoOp: true } {
+	const addedJournalEntries = afterFirst.journalEntries - before.journalEntries;
+	if (addedJournalEntries !== 1 || afterFirst.columns.length !== 3) {
+		throw new Error(
+			"first migration run did not apply exactly one additive journal entry",
+		);
+	}
+	if (
+		JSON.stringify(afterFirst.columns) !==
+		JSON.stringify(EXPECTED_ADDITIVE_COLUMNS)
+	) {
+		throw new Error(
+			"first migration run did not create the expected additive columns",
+		);
+	}
+	if (
+		afterFirst.journalEntries !== afterSecond.journalEntries ||
+		afterFirst.schemaFingerprint !== afterSecond.schemaFingerprint ||
+		JSON.stringify(afterFirst.columns) !== JSON.stringify(afterSecond.columns)
+	) {
+		throw new Error("second migration run changed the journal or schema");
+	}
+	return { addedJournalEntries, secondRunNoOp: true };
+}
+
+export function verifyNoNewRequiredEnvironment(
+	baseline: EnvironmentProbe,
+	candidate: EnvironmentProbe,
+): {
+	baselineRequiredKeys: string[];
+	candidateRequiredKeys: string[];
+	newRequiredKeys: string[];
+} {
+	if (!baseline.accepted || !candidate.accepted) {
+		throw new Error(
+			`environment contract probe rejected the shared 0.6.8 input (baseline: ${(baseline.issues ?? []).join("; ") || "accepted"}; candidate: ${(candidate.issues ?? []).join("; ") || "accepted"})`,
+		);
+	}
+	const baselineRequiredKeys = [...new Set(baseline.requiredKeys)].sort();
+	const candidateRequiredKeys = [...new Set(candidate.requiredKeys)].sort();
+	const baselineSet = new Set(baselineRequiredKeys);
+	const newRequiredKeys = candidateRequiredKeys.filter(
+		(key) => !baselineSet.has(key),
+	);
+	if (newRequiredKeys.length > 0) {
+		throw new Error(
+			`0.7 requires new environment variables: ${newRequiredKeys.join(", ")}`,
+		);
+	}
+	return { baselineRequiredKeys, candidateRequiredKeys, newRequiredKeys };
+}
+
+export function verifyAtomicAdoption(
+	evidence: AtomicAdoptionEvidence,
+	expected: { candidateCommit: string; packageManifests: string[] },
+): { adoptionCommit: string; version: "0.7.0" } {
+	if (!COMMIT_PATTERN.test(evidence.adoptionCommit)) {
+		throw new Error("atomic adoption commit is not a full Git SHA");
+	}
+	if (
+		!COMMIT_PATTERN.test(expected.candidateCommit) ||
+		evidence.candidateCommit !== expected.candidateCommit ||
+		evidence.submoduleCommit !== expected.candidateCommit
+	) {
+		throw new Error(
+			"atomic adoption submodule does not match the OSS candidate commit",
+		);
+	}
+	for (const manifest of expected.packageManifests) {
+		if (evidence.packageVersions[manifest] !== "0.7.0") {
+			throw new Error(`atomic adoption did not pin ${manifest} to 0.7.0`);
+		}
+		if (!evidence.commitFiles.includes(manifest)) {
+			throw new Error(`atomic adoption commit is missing ${manifest}`);
+		}
+	}
+	for (const path of ["bun.lock", "docsmint-oss"]) {
+		if (!evidence.commitFiles.includes(path)) {
+			throw new Error(`atomic adoption commit is missing ${path}`);
+		}
+	}
+	if (evidence.lockfileVersion !== "0.7.0") {
+		throw new Error("atomic adoption lockfile does not resolve 0.7.0");
+	}
+	if (!evidence.localTarballResolved) {
+		throw new Error(
+			"atomic adoption did not resolve the local packed OSS candidate",
+		);
+	}
+	return { adoptionCommit: evidence.adoptionCommit, version: "0.7.0" };
+}
+
+export function verifyRuntimeSmoke(
+	evidence: RuntimeSmokeEvidence,
+	options: { requireAssertionScope: boolean },
+): { version: string; passed: true } {
+	const failed = [
+		...[evidence.health ? undefined : "health"],
+		...[evidence.crud.create ? undefined : "create"],
+		...[evidence.crud.read ? undefined : "read"],
+		...[evidence.crud.update ? undefined : "update"],
+		...[evidence.crud.delete ? undefined : "delete"],
+		...[evidence.search ? undefined : "search"],
+	].filter((value): value is string => value !== undefined);
+	if (failed.length > 0) {
+		throw new Error(
+			`${evidence.version} runtime smoke failed: ${failed.join(", ")}`,
+		);
+	}
+	if (
+		options.requireAssertionScope &&
+		(!evidence.assertionScope?.allowedDocumentVisible ||
+			!evidence.assertionScope.foreignDocumentHidden)
+	) {
+		throw new Error(`${evidence.version} assertion scope smoke failed`);
+	}
+	return { version: evidence.version, passed: true };
+}
+
+export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
+	operations: RehearsalWorkflowOperations<TPrepared>,
+	expectedAdoption: { candidateCommit: string; packageManifests: string[] },
+): Promise<RehearsalWorkflowReport> {
+	await operations.assertRealCheckoutClean("before");
+	let prepared: TPrepared | undefined;
+	try {
+		prepared = await operations.prepare();
+		validateTemporaryRoot(prepared.root);
+		const adoption = await operations.packAndAdopt(prepared);
+		verifyAtomicAdoption(adoption, expectedAdoption);
+		const snapshots = await operations.migrate(prepared);
+		const migration = verifyAdditiveMigrationReapply(
+			snapshots.before,
+			snapshots.afterFirst,
+			snapshots.afterSecond,
+		);
+		const probes = await operations.probeEnvironment(prepared);
+		const environment = verifyNoNewRequiredEnvironment(
+			probes.baseline,
+			probes.candidate,
+		);
+		const runtime070 = await operations.smoke070(prepared);
+		verifyRuntimeSmoke(runtime070, { requireAssertionScope: true });
+		const runtime068 = await operations.smoke068(prepared);
+		verifyRuntimeSmoke(runtime068, { requireAssertionScope: false });
+		return { adoption, migration, environment, runtime070, runtime068 };
+	} finally {
+		try {
+			if (prepared) await operations.cleanup(prepared);
+		} finally {
+			await operations.assertRealCheckoutClean("after");
+		}
+	}
+}
+
+const REPOSITORY_ROOT = resolve(import.meta.dir, "..");
+const SAAS_SOURCE_ROOT = "/mnt/data/projects/docsmint";
+const OSS_REPOSITORY_ROOT = "/mnt/data/projects/docsmint-oss";
+const BASELINE_OSS_COMMIT = "ea83e5380596567434545ac2a34f65d241a9e75b";
+const PACKAGE_MANIFESTS = [
+	"package.json",
+	"apps/api/package.json",
+	"apps/web/package.json",
+	"packages/cli/package.json",
+	"packages/mcp/package.json",
+];
+const POSTGRES_CONTAINER = "docsmint_oss_e2e-postgres-1";
+const POSTGRES_ADMIN_ROLE = "aiuser";
+const POSTGRES_HOST_PORT = 5437;
+const REDIS_HOST_PORT = 6384;
+const STORAGE_HOST_PORT = 50702;
+const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
+const CONTAINER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+interface CommandResult {
+	exitCode: number;
+	stdout: string;
+	stderr: string;
+}
+
+interface CommandOptions {
+	cwd?: string;
+	env?: Record<string, string>;
+	stdin?: string;
+	allowFailure?: boolean;
+}
+
+const REGISTERED_SECRETS = new Set<string>();
+
+class SafeCommandRunner {
+	readonly secrets = REGISTERED_SECRETS;
+
+	addSecrets(...values: string[]): void {
+		for (const value of values) if (value) this.secrets.add(value);
+	}
+
+	redact(value: string): string {
+		return redactSecrets(value, [...this.secrets]);
+	}
+
+	async run(
+		command: string[],
+		options: CommandOptions = {},
+	): Promise<CommandResult> {
+		const child = Bun.spawn(command, {
+			...(options.cwd ? { cwd: options.cwd } : {}),
+			...(options.env ? { env: options.env } : {}),
+			stdin: options.stdin === undefined ? "ignore" : "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		if (
+			options.stdin !== undefined &&
+			child.stdin &&
+			typeof child.stdin !== "number"
+		) {
+			child.stdin.write(options.stdin);
+			child.stdin.end();
+		}
+		const [exitCode, stdout, stderr] = await Promise.all([
+			child.exited,
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+		]);
+		const result = {
+			exitCode,
+			stdout: this.redact(stdout),
+			stderr: this.redact(stderr),
+		};
+		if (exitCode !== 0 && !options.allowFailure) {
+			throw new Error(
+				`command failed (${command.map((part) => this.redact(part)).join(" ")}):\n${result.stdout}${result.stderr}`,
+			);
+		}
+		return result;
+	}
+}
+
+interface ActiveRuntime {
+	version: string;
+	child: ReturnType<typeof Bun.spawn>;
+	stdout: Promise<string>;
+	stderr: Promise<string>;
+}
+
+interface ActualPreparedRehearsal extends PreparedRehearsal {
+	token: string;
+	candidateCommit: string;
+	saasRoot: string;
+	baselineRoot: string;
+	stageRoot: string;
+	tarballRoot: string;
+	cacheRoot: string;
+	databaseName: string;
+	ownerRole: string;
+	runtimeRole: string;
+	ownerUrl: string;
+	runtimeUrl: string;
+	redisDatabase: number;
+	redisUrl: string;
+	storageBucket: string;
+	userId: string;
+	workspaceId: string;
+	categoryA: string;
+	categoryB: string;
+	assertionSecret: string;
+	issuer: string;
+	apiKey: string;
+	storageAccessKey: string;
+	storageSecret: string;
+	betterAuthSecret: string;
+	csrfSecret: string;
+	webhookSecret: string;
+	apiKeyEncryptionSecret: string;
+	tarball?: string;
+	rollbackDocumentId?: string;
+	activeRuntime?: ActiveRuntime;
+	embeddingServer: ReturnType<typeof Bun.serve>;
+	postgresCreated: boolean;
+	storageBucketCreated: boolean;
+	redisReserved: boolean;
+}
+
+function safeEnvironment(
+	extra: Record<string, string> = {},
+): Record<string, string> {
+	const environment: Record<string, string> = {
+		PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
+		LANG: "C.UTF-8",
+		LC_ALL: "C.UTF-8",
+		...extra,
+	};
+	return environment;
+}
+
+function assertIdentifier(value: string, label: string): string {
+	if (!IDENTIFIER_PATTERN.test(value)) throw new Error(`invalid ${label}`);
+	return value;
+}
+
+function assertContainedPath(root: string, path: string): string {
+	const validatedRoot = validateTemporaryRoot(root);
+	const normalized = resolve(path);
+	if (
+		normalized !== validatedRoot &&
+		!normalized.startsWith(`${validatedRoot}${sep}`)
+	) {
+		throw new Error(`temporary path escapes rehearsal root: ${path}`);
+	}
+	return normalized;
+}
+
+function randomHex(bytes = 24): string {
+	const output = new Uint8Array(bytes);
+	crypto.getRandomValues(output);
+	return Array.from(output, (byte) => byte.toString(16).padStart(2, "0")).join(
+		"",
+	);
+}
+
+function connectionUrl(
+	role: string,
+	password: string,
+	database: string,
+): string {
+	return `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(password)}@127.0.0.1:${POSTGRES_HOST_PORT}/${encodeURIComponent(database)}`;
+}
+
+async function localSeaweedCredentials(
+	runner: SafeCommandRunner,
+): Promise<{ accessKey: string; secretKey: string }> {
+	const inspected = await runner.run(
+		[
+			"docker",
+			"inspect",
+			"--format",
+			"{{json .Config.Env}}",
+			"docsmint_oss_e2e-seaweedfs-1",
+		],
+		{ env: safeEnvironment() },
+	);
+	const entries = JSON.parse(inspected.stdout) as string[];
+	const configured = entries.find((entry) =>
+		entry.startsWith("SEAWEEDFS_S3_CONFIG="),
+	);
+	if (!configured)
+		throw new Error("local SeaweedFS identity configuration is unavailable");
+	const value = JSON.parse(configured.slice(configured.indexOf("=") + 1)) as {
+		identities?: Array<{
+			credentials?: Array<{ accessKey?: string; secretKey?: string }>;
+		}>;
+	};
+	const credential = value.identities?.flatMap(
+		(identity) => identity.credentials ?? [],
+	)[0];
+	if (!credential?.accessKey || !credential.secretKey) {
+		throw new Error("local SeaweedFS identity has no usable credential");
+	}
+	runner.addSecrets(credential.accessKey, credential.secretKey);
+	return { accessKey: credential.accessKey, secretKey: credential.secretKey };
+}
+
+async function reserveRedisDatabase(
+	runner: SafeCommandRunner,
+	token: string,
+): Promise<{ database: number; url: string }> {
+	const start = Number.parseInt(token.slice(0, 2), 16) % 8;
+	for (let offset = 0; offset < 8; offset += 1) {
+		const database = 8 + ((start + offset) % 8);
+		const base = [
+			"redis-cli",
+			"-h",
+			"127.0.0.1",
+			"-p",
+			String(REDIS_HOST_PORT),
+			"-n",
+			String(database),
+		];
+		const lock = await runner.run(
+			[
+				...base,
+				"SET",
+				"docsmint:rehearsal:exclusive",
+				token,
+				"NX",
+				"EX",
+				"900",
+			],
+			{ env: safeEnvironment() },
+		);
+		if (lock.stdout.trim() !== "OK") continue;
+		const size = await runner.run([...base, "DBSIZE"], {
+			env: safeEnvironment(),
+		});
+		if (size.stdout.trim() === "1") {
+			return {
+				database,
+				url: `redis://127.0.0.1:${REDIS_HOST_PORT}/${database}`,
+			};
+		}
+		await runner.run([...base, "DEL", "docsmint:rehearsal:exclusive"], {
+			env: safeEnvironment(),
+		});
+	}
+	throw new Error(
+		"no empty isolated Redis database is available for rehearsal",
+	);
+}
+
+async function dockerPostgres(
+	runner: SafeCommandRunner,
+	sql: string,
+	allowFailure = false,
+): Promise<CommandResult> {
+	if (!CONTAINER_PATTERN.test(POSTGRES_CONTAINER)) {
+		throw new Error("invalid PostgreSQL container name");
+	}
+	assertIdentifier(POSTGRES_ADMIN_ROLE, "PostgreSQL admin role");
+	return runner.run(
+		[
+			"docker",
+			"exec",
+			"-i",
+			POSTGRES_CONTAINER,
+			"psql",
+			"-X",
+			"-v",
+			"ON_ERROR_STOP=1",
+			"-U",
+			POSTGRES_ADMIN_ROLE,
+			"-d",
+			"postgres",
+		],
+		{ env: safeEnvironment(), stdin: sql, allowFailure },
+	);
+}
+
+async function cloneSubmodule(
+	runner: SafeCommandRunner,
+	saasRoot: string,
+	commit: string,
+): Promise<void> {
+	if (!COMMIT_PATTERN.test(commit)) throw new Error("invalid submodule commit");
+	const destination = join(saasRoot, "docsmint-oss");
+	await runner.run(
+		[
+			"git",
+			"clone",
+			"--local",
+			"--no-hardlinks",
+			OSS_REPOSITORY_ROOT,
+			destination,
+		],
+		{ cwd: saasRoot, env: safeEnvironment() },
+	);
+	await runner.run(["git", "checkout", "--detach", commit], {
+		cwd: destination,
+		env: safeEnvironment(),
+	});
+}
+
+async function runUpstreamMigrations(
+	runner: SafeCommandRunner,
+	submoduleRoot: string,
+	ownerUrl: string,
+): Promise<void> {
+	const source = [
+		'import { runMigrations } from "./scripts/migrate.ts";',
+		"const url = Bun.env.REHEARSAL_DATABASE_URL;",
+		'if (!url) throw new Error("REHEARSAL_DATABASE_URL is required");',
+		"await runMigrations(url);",
+	].join("\n");
+	await runner.run(["bun", "-e", source], {
+		cwd: join(submoduleRoot, "packages/db"),
+		env: safeEnvironment({ REHEARSAL_DATABASE_URL: ownerUrl }),
+	});
+}
+
+async function runBaselineSaasMigrations(
+	runner: SafeCommandRunner,
+	baselineRoot: string,
+	ownerUrl: string,
+): Promise<void> {
+	const environment = safeEnvironment({ MIGRATION_DATABASE_URL: ownerUrl });
+	await runner.run(
+		["bun", "run", "packages/db/scripts/ensure-product-schema.ts"],
+		{
+			cwd: baselineRoot,
+			env: environment,
+		},
+	);
+	await runner.run(["bun", "run", "packages/db/scripts/migrate-overlay.ts"], {
+		cwd: baselineRoot,
+		env: environment,
+	});
+}
+
+async function prepareActualRehearsal(
+	runner: SafeCommandRunner,
+	candidateCommit: string,
+): Promise<ActualPreparedRehearsal> {
+	const storageCredential = await localSeaweedCredentials(runner);
+	const root = validateTemporaryRoot(
+		`/tmp/docsmint-saas-adoption-${randomHex(12)}`,
+	);
+	await mkdir(root);
+	const token = basename(root).slice("docsmint-saas-adoption-".length);
+	if (!/^[0-9A-Za-z]{6,64}$/.test(token)) {
+		await rm(root, { recursive: true, force: true });
+		throw new Error("temporary root did not contain a unique token");
+	}
+	const normalizedToken = new Bun.CryptoHasher("sha256")
+		.update(token)
+		.digest("hex")
+		.slice(0, 12);
+	const databaseName = assertIdentifier(
+		`dm_rehearsal_${normalizedToken}`,
+		"database name",
+	);
+	const ownerRole = assertIdentifier(
+		`dm_owner_${normalizedToken}`,
+		"owner role",
+	);
+	const runtimeRole = assertIdentifier(
+		`dm_runtime_${normalizedToken}`,
+		"runtime role",
+	);
+	const ownerPassword = randomHex();
+	const runtimePassword = randomHex();
+	const assertionSecret = randomHex(32);
+	const apiKey = randomHex(32);
+	const storageSecret = storageCredential.secretKey;
+	const betterAuthSecret = randomHex(32);
+	const csrfSecret = randomHex(32);
+	const webhookSecret = randomHex(32);
+	const apiKeyEncryptionSecret = randomHex(32);
+	runner.addSecrets(
+		ownerPassword,
+		runtimePassword,
+		assertionSecret,
+		apiKey,
+		storageCredential.accessKey,
+		storageSecret,
+		betterAuthSecret,
+		csrfSecret,
+		webhookSecret,
+		apiKeyEncryptionSecret,
+	);
+	const embeddingServer = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch(request) {
+			if (new URL(request.url).pathname !== "/v1/embeddings") {
+				return new Response("Not found", { status: 404 });
+			}
+			const embedding = Array.from({ length: 1024 }, (_, index) =>
+				index === 0 ? 1 : 0,
+			);
+			return Response.json({ data: [{ embedding }], model: "rehearsal-1024" });
+		},
+	});
+	const prepared: ActualPreparedRehearsal = {
+		root,
+		token: normalizedToken,
+		candidateCommit,
+		saasRoot: assertContainedPath(root, join(root, "saas-070")),
+		baselineRoot: assertContainedPath(root, join(root, "saas-068")),
+		stageRoot: assertContainedPath(root, join(root, "candidate-stage")),
+		tarballRoot: assertContainedPath(root, join(root, "tarballs")),
+		cacheRoot: assertContainedPath(root, join(root, "bun-cache")),
+		databaseName,
+		ownerRole,
+		runtimeRole,
+		ownerUrl: connectionUrl(ownerRole, ownerPassword, databaseName),
+		runtimeUrl: connectionUrl(runtimeRole, runtimePassword, databaseName),
+		redisDatabase: -1,
+		redisUrl: "",
+		storageBucket: `dm-rehearsal-${normalizedToken}`,
+		userId: crypto.randomUUID(),
+		workspaceId: `rehearsal-${normalizedToken}`,
+		categoryA: crypto.randomUUID(),
+		categoryB: crypto.randomUUID(),
+		assertionSecret,
+		issuer: `dm-rehearsal-${normalizedToken}`,
+		apiKey,
+		storageAccessKey: storageCredential.accessKey,
+		storageSecret,
+		betterAuthSecret,
+		csrfSecret,
+		webhookSecret,
+		apiKeyEncryptionSecret,
+		embeddingServer,
+		postgresCreated: false,
+		storageBucketCreated: false,
+		redisReserved: false,
+	};
+	runner.addSecrets(prepared.ownerUrl, prepared.runtimeUrl);
+	try {
+		const redis = await reserveRedisDatabase(runner, normalizedToken);
+		prepared.redisDatabase = redis.database;
+		prepared.redisUrl = redis.url;
+		prepared.redisReserved = true;
+		await mkdir(prepared.cacheRoot, { recursive: true });
+		await runner.run(
+			[
+				"git",
+				"clone",
+				"--local",
+				"--no-hardlinks",
+				SAAS_SOURCE_ROOT,
+				prepared.saasRoot,
+			],
+			{ cwd: root, env: safeEnvironment() },
+		);
+		await runner.run(
+			["git", "worktree", "add", "--detach", prepared.baselineRoot, "HEAD"],
+			{ cwd: prepared.saasRoot, env: safeEnvironment() },
+		);
+		await cloneSubmodule(runner, prepared.saasRoot, BASELINE_OSS_COMMIT);
+		await cloneSubmodule(runner, prepared.baselineRoot, BASELINE_OSS_COMMIT);
+		await runner.run(
+			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
+			{
+				cwd: prepared.baselineRoot,
+				env: safeEnvironment({
+					BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
+					TMPDIR: root,
+				}),
+			},
+		);
+		await runner.run(
+			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
+			{
+				cwd: join(prepared.baselineRoot, "docsmint-oss"),
+				env: safeEnvironment({
+					BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
+					TMPDIR: root,
+				}),
+			},
+		);
+		prepared.postgresCreated = true;
+		await dockerPostgres(
+			runner,
+			[
+				`CREATE ROLE ${ownerRole} WITH LOGIN SUPERUSER PASSWORD '${ownerPassword}';`,
+				`CREATE ROLE ${runtimeRole} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT PASSWORD '${runtimePassword}';`,
+				`CREATE DATABASE ${databaseName} OWNER ${ownerRole};`,
+			].join("\n"),
+		);
+		const bootstrap = postgres(prepared.ownerUrl, { max: 1 });
+		try {
+			await bootstrap.unsafe("CREATE EXTENSION IF NOT EXISTS age CASCADE");
+		} finally {
+			await bootstrap.end();
+		}
+		const { CreateBucketCommand, S3Client } = await import(
+			"@aws-sdk/client-s3"
+		);
+		const storageClient = new S3Client({
+			endpoint: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
+			region: "us-east-1",
+			credentials: {
+				accessKeyId: prepared.storageAccessKey,
+				secretAccessKey: prepared.storageSecret,
+			},
+			forcePathStyle: true,
+		});
+		try {
+			prepared.storageBucketCreated = true;
+			await storageClient.send(
+				new CreateBucketCommand({ Bucket: prepared.storageBucket }),
+			);
+		} finally {
+			storageClient.destroy();
+		}
+		await runUpstreamMigrations(
+			runner,
+			join(prepared.baselineRoot, "docsmint-oss"),
+			prepared.ownerUrl,
+		);
+		await runBaselineSaasMigrations(
+			runner,
+			prepared.baselineRoot,
+			prepared.ownerUrl,
+		);
+		const owner = postgres(prepared.ownerUrl, { max: 1 });
+		try {
+			await owner.unsafe(`GRANT hiai_app TO ${runtimeRole}`);
+			await owner`
+				INSERT INTO public.users (id, email, name)
+				VALUES (${prepared.userId}::uuid, ${`${normalizedToken}@rehearsal.invalid`}, 'Rehearsal User')`;
+			await owner`
+				INSERT INTO public.categories (id, owner_id, workspace_id, name)
+				VALUES
+					(${prepared.categoryA}::uuid, ${prepared.userId}::uuid, ${prepared.workspaceId}, 'Rehearsal A'),
+					(${prepared.categoryB}::uuid, ${prepared.userId}::uuid, ${prepared.workspaceId}, 'Rehearsal B')`;
+		} finally {
+			await owner.end();
+		}
+		return prepared;
+	} catch (error) {
+		await cleanupActualRehearsal(runner, prepared).catch(() => undefined);
+		throw error;
+	}
+}
+
+async function stopRuntime(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<void> {
+	const runtime = prepared.activeRuntime;
+	if (!runtime) return;
+	prepared.activeRuntime = undefined;
+	runtime.child.kill("SIGTERM");
+	const exited = await Promise.race([
+		runtime.child.exited.then(() => true),
+		Bun.sleep(5_000).then(() => false),
+	]);
+	if (!exited) runtime.child.kill("SIGKILL");
+	await runtime.child.exited;
+	const [stdout, stderr] = await Promise.all([runtime.stdout, runtime.stderr]);
+	if (stderr.includes("[REDACTED]") || stdout.includes("[REDACTED]")) {
+		throw new Error(`${runtime.version} runtime emitted a registered secret`);
+	}
+	runner.redact(stdout);
+	runner.redact(stderr);
+}
+
+async function cleanupActualRehearsal(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<void> {
+	const failures: string[] = [];
+	try {
+		await stopRuntime(runner, prepared);
+	} catch (error) {
+		failures.push(error instanceof Error ? error.message : String(error));
+	}
+	try {
+		prepared.embeddingServer.stop(true);
+	} catch (error) {
+		failures.push(error instanceof Error ? error.message : String(error));
+	}
+	if (prepared.storageBucketCreated) {
+		try {
+			const { DeleteBucketCommand, S3Client } = await import(
+				"@aws-sdk/client-s3"
+			);
+			const storageClient = new S3Client({
+				endpoint: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
+				region: "us-east-1",
+				credentials: {
+					accessKeyId: prepared.storageAccessKey,
+					secretAccessKey: prepared.storageSecret,
+				},
+				forcePathStyle: true,
+			});
+			try {
+				try {
+					await storageClient.send(
+						new DeleteBucketCommand({ Bucket: prepared.storageBucket }),
+					);
+				} catch (error) {
+					const status =
+						error && typeof error === "object" && "$metadata" in error
+							? (error.$metadata as { httpStatusCode?: number }).httpStatusCode
+							: undefined;
+					if (status !== 404) throw error;
+				}
+			} finally {
+				storageClient.destroy();
+			}
+		} catch (error) {
+			failures.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	if (prepared.redisReserved) {
+		try {
+			await runner.run(["redis-cli", "-u", prepared.redisUrl, "FLUSHDB"], {
+				env: safeEnvironment(),
+			});
+		} catch (error) {
+			failures.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	if (prepared.postgresCreated) {
+		try {
+			assertIdentifier(prepared.databaseName, "cleanup database name");
+			assertIdentifier(prepared.runtimeRole, "cleanup runtime role");
+			assertIdentifier(prepared.ownerRole, "cleanup owner role");
+			await dockerPostgres(
+				runner,
+				[
+					`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${prepared.databaseName}' AND pid <> pg_backend_pid();`,
+					`DROP DATABASE IF EXISTS ${prepared.databaseName};`,
+					`DROP ROLE IF EXISTS ${prepared.runtimeRole};`,
+					`DROP ROLE IF EXISTS ${prepared.ownerRole};`,
+				].join("\n"),
+			);
+		} catch (error) {
+			failures.push(error instanceof Error ? error.message : String(error));
+		}
+	}
+	try {
+		const root = validateTemporaryRoot(prepared.root);
+		await rm(root, { recursive: true, force: true });
+	} catch (error) {
+		failures.push(error instanceof Error ? error.message : String(error));
+	}
+	if (failures.length > 0) {
+		throw new Error(
+			`rehearsal cleanup failed: ${runner.redact(failures.join("; "))}`,
+		);
+	}
+}
+
+async function stageCandidateTarball(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<string> {
+	await runner.run(["bun", "run", "build:sdk"], {
+		cwd: REPOSITORY_ROOT,
+		env: safeEnvironment({ TMPDIR: prepared.root }),
+	});
+	const publicManifest = JSON.parse(
+		await readFile(join(REPOSITORY_ROOT, "package.public.json"), "utf8"),
+	) as { name: string; version: string; files: string[] };
+	if (
+		publicManifest.name !== "@hiai-gg/docsmint" ||
+		publicManifest.version !== "0.7.0" ||
+		!Array.isArray(publicManifest.files)
+	) {
+		throw new Error("candidate public manifest is not @hiai-gg/docsmint@0.7.0");
+	}
+	await mkdir(prepared.stageRoot, { recursive: true });
+	await mkdir(prepared.tarballRoot, { recursive: true });
+	await writeFile(
+		join(prepared.stageRoot, "package.json"),
+		`${JSON.stringify(publicManifest, null, 2)}\n`,
+	);
+	for (const entry of publicManifest.files) {
+		if (!entry || isAbsolute(entry) || entry.split(/[\\/]/).includes("..")) {
+			throw new Error(`unsafe public package file entry: ${entry}`);
+		}
+		const source =
+			entry === "dist"
+				? join(REPOSITORY_ROOT, "packages/sdk/dist")
+				: join(REPOSITORY_ROOT, entry);
+		await cp(source, join(prepared.stageRoot, entry), { recursive: true });
+	}
+	const pack = await runner.run(
+		[
+			"bun",
+			"pm",
+			"pack",
+			"--ignore-scripts",
+			"--destination",
+			prepared.tarballRoot,
+			"--quiet",
+		],
+		{
+			cwd: prepared.stageRoot,
+			env: safeEnvironment({ TMPDIR: prepared.root }),
+		},
+	);
+	const outputPath = pack.stdout.trim().split("\n").at(-1);
+	if (!outputPath) throw new Error("candidate pack did not report a tarball");
+	const tarball = assertContainedPath(
+		prepared.root,
+		isAbsolute(outputPath) ? outputPath : join(prepared.stageRoot, outputPath),
+	);
+	const canonicalTarball = await realpath(tarball);
+	assertContainedPath(prepared.root, canonicalTarball);
+	prepared.tarball = canonicalTarball;
+	return canonicalTarball;
+}
+
+async function updatePackageVersion(path: string): Promise<void> {
+	const manifest = JSON.parse(await readFile(path, "utf8")) as {
+		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+		overrides?: Record<string, string>;
+	};
+	const field = manifest.dependencies?.["@hiai-gg/docsmint"]
+		? "dependencies"
+		: manifest.devDependencies?.["@hiai-gg/docsmint"]
+			? "devDependencies"
+			: undefined;
+	if (!field) throw new Error(`${path} has no @hiai-gg/docsmint dependency`);
+	(manifest[field] as Record<string, string>)["@hiai-gg/docsmint"] = "0.7.0";
+	await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
+}
+
+async function packAndAdoptActual(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<AtomicAdoptionEvidence> {
+	const tarball = await stageCandidateTarball(runner, prepared);
+	for (const manifest of PACKAGE_MANIFESTS) {
+		await updatePackageVersion(join(prepared.saasRoot, manifest));
+	}
+	const rootManifestPath = join(prepared.saasRoot, "package.json");
+	const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8")) as {
+		overrides?: Record<string, string>;
+	};
+	rootManifest.overrides = {
+		...rootManifest.overrides,
+		"@hiai-gg/docsmint": `file:${tarball}`,
+	};
+	await writeFile(
+		rootManifestPath,
+		`${JSON.stringify(rootManifest, null, 2)}\n`,
+	);
+	const quotaPath = join(
+		prepared.saasRoot,
+		"apps/api/src/lib/oss-034-quota-launcher.ts",
+	);
+	const oldQuota = await readFile(quotaPath, "utf8");
+	if (!oldQuota.includes("0.6.8")) {
+		throw new Error(
+			"disposable quota launcher is not pinned to baseline 0.6.8",
+		);
+	}
+	await writeFile(quotaPath, oldQuota.replaceAll("0.6.8", "0.7.0"));
+	await runner.run(["git", "checkout", "--detach", prepared.candidateCommit], {
+		cwd: join(prepared.saasRoot, "docsmint-oss"),
+		env: safeEnvironment(),
+	});
+	await runner.run(
+		["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
+		{
+			cwd: join(prepared.saasRoot, "docsmint-oss"),
+			env: safeEnvironment({
+				BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
+				TMPDIR: prepared.root,
+			}),
+		},
+	);
+	await runner.run(["bun", "install", "--ignore-scripts"], {
+		cwd: prepared.saasRoot,
+		env: safeEnvironment({
+			BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
+			TMPDIR: prepared.root,
+		}),
+	});
+	const status = await runner.run(
+		["git", "status", "--porcelain=v1", "--untracked-files=all"],
+		{ cwd: prepared.saasRoot, env: safeEnvironment() },
+	);
+	const changed = status.stdout
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => line.slice(3));
+	const expectedChanges = new Set([
+		...PACKAGE_MANIFESTS,
+		"bun.lock",
+		"docsmint-oss",
+		"apps/api/src/lib/oss-034-quota-launcher.ts",
+	]);
+	const unexpected = changed.filter((path) => !expectedChanges.has(path));
+	if (unexpected.length > 0) {
+		throw new Error(
+			`disposable adoption changed unexpected files: ${unexpected.join(", ")}`,
+		);
+	}
+	for (const required of expectedChanges) {
+		if (!changed.includes(required)) {
+			throw new Error(`disposable adoption did not change ${required}`);
+		}
+	}
+	const installedManifest = JSON.parse(
+		await readFile(
+			join(prepared.saasRoot, "node_modules/@hiai-gg/docsmint/package.json"),
+			"utf8",
+		),
+	) as { version?: string };
+	const lockfile = await readFile(join(prepared.saasRoot, "bun.lock"), "utf8");
+	const localTarballResolved =
+		installedManifest.version === "0.7.0" &&
+		lockfile.includes(basename(tarball));
+	await runner.run(["git", "add", "--", ...expectedChanges], {
+		cwd: prepared.saasRoot,
+		env: safeEnvironment(),
+	});
+	await runner.run(
+		[
+			"git",
+			"-c",
+			"user.name=DocsMint Rehearsal",
+			"-c",
+			"user.email=rehearsal@invalid",
+			"commit",
+			"-m",
+			"test: adopt local OSS candidate for rehearsal",
+		],
+		{ cwd: prepared.saasRoot, env: safeEnvironment() },
+	);
+	const adoptionCommit = (
+		await runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: prepared.saasRoot,
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	const submoduleCommit = (
+		await runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: join(prepared.saasRoot, "docsmint-oss"),
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	const commitFiles = (
+		await runner.run(
+			["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+			{ cwd: prepared.saasRoot, env: safeEnvironment() },
+		)
+	).stdout
+		.trim()
+		.split("\n")
+		.filter(Boolean);
+	const packageVersions: Record<string, string> = {};
+	for (const manifest of PACKAGE_MANIFESTS) {
+		const value = JSON.parse(
+			await readFile(join(prepared.saasRoot, manifest), "utf8"),
+		) as {
+			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
+		};
+		packageVersions[manifest] =
+			value.dependencies?.["@hiai-gg/docsmint"] ??
+			value.devDependencies?.["@hiai-gg/docsmint"] ??
+			"";
+	}
+	return {
+		adoptionCommit,
+		candidateCommit: prepared.candidateCommit,
+		packageVersions,
+		lockfileVersion: installedManifest.version ?? "",
+		localTarballResolved,
+		submoduleCommit,
+		commitFiles,
+	};
+}
+
+async function databaseSnapshot(ownerUrl: string): Promise<MigrationSnapshot> {
+	const client = postgres(ownerUrl, { max: 1 });
+	try {
+		const [journal] = await client<[{ count: string }]>`
+			SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations
+		`;
+		const columns = await client<
+			Array<{
+				table_name: string;
+				column_name: string;
+				data_type: string;
+				is_nullable: string;
+				column_default: string | null;
+			}>
+		>`
+			SELECT table_name, column_name, data_type, is_nullable, column_default
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+				AND (
+					(table_name = 'documents' AND column_name = 'embedding_context_hash')
+					OR (
+						table_name = 'document_pipeline_runs'
+						AND column_name IN ('embedding_context_hash', 'refresh_mode')
+					)
+				)
+			ORDER BY table_name, column_name
+		`;
+		const normalized = columns.map(
+			(column) =>
+				`${column.table_name}.${column.column_name}:${column.data_type}:${column.is_nullable}:${column.column_default ?? ""}`,
+		);
+		const schemaFingerprint = new Bun.CryptoHasher("sha256")
+			.update(JSON.stringify(normalized))
+			.digest("hex");
+		return {
+			journalEntries: Number.parseInt(journal?.count ?? "0", 10),
+			schemaFingerprint,
+			columns: normalized,
+		};
+	} finally {
+		await client.end();
+	}
+}
+
+async function migrateActual(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<{
+	before: MigrationSnapshot;
+	afterFirst: MigrationSnapshot;
+	afterSecond: MigrationSnapshot;
+}> {
+	const before = await databaseSnapshot(prepared.ownerUrl);
+	const submoduleRoot = join(prepared.saasRoot, "docsmint-oss");
+	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
+	const afterFirst = await databaseSnapshot(prepared.ownerUrl);
+	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
+	const afterSecond = await databaseSnapshot(prepared.ownerUrl);
+	return { before, afterFirst, afterSecond };
+}
+
+const ENVIRONMENT_PROBE_SOURCE = [
+	'import { envSchema } from "./backend/src/lib/config-schema.ts";',
+	"const raw = Bun.env.REHEARSAL_ENV_INPUT;",
+	'if (!raw) throw new Error("REHEARSAL_ENV_INPUT is required");',
+	"const input = JSON.parse(raw);",
+	"const parsed = envSchema.safeParse(input);",
+	'const issues = parsed.success ? [] : parsed.error.issues.map((issue) => issue.path.join(".") + ": " + issue.message);',
+	"const requiredKeys = [];",
+	"for (const key of Object.keys(input).sort()) {",
+	"  const candidate = { ...input };",
+	"  delete candidate[key];",
+	"  if (!envSchema.safeParse(candidate).success) requiredKeys.push(key);",
+	"}",
+	"console.log(JSON.stringify({ accepted: parsed.success, requiredKeys, issues }));",
+].join("\n");
+
+function sharedEnvironmentInput(
+	prepared: ActualPreparedRehearsal,
+): Record<string, string> {
+	return {
+		NODE_ENV: "production",
+		DATABASE_URL: prepared.runtimeUrl,
+		REDIS_URL: prepared.redisUrl,
+		AI_PROVIDER: "ollama",
+		EMBEDDING_BASE_URL: `http://127.0.0.1:${prepared.embeddingServer.port}/v1`,
+		EMBEDDING_MODEL: "rehearsal-1024",
+		STORAGE_ENDPOINT: "127.0.0.1",
+		STORAGE_PORT: String(STORAGE_HOST_PORT),
+		STORAGE_PUBLIC_ENDPOINT: "127.0.0.1",
+		STORAGE_PUBLIC_PORT: String(STORAGE_HOST_PORT),
+		STORAGE_ACCESS_KEY: prepared.storageAccessKey,
+		STORAGE_SECRET_KEY: prepared.storageSecret,
+		STORAGE_BUCKET: prepared.storageBucket,
+		STORAGE_FORCE_PATH_STYLE: "true",
+		STORAGE_PUBLIC_ENDPOINT_URL: "https://storage.rehearsal.invalid",
+		BETTER_AUTH_SECRET: prepared.betterAuthSecret,
+		CSRF_SECRET: prepared.csrfSecret,
+		WEBHOOK_SECRET: prepared.webhookSecret,
+		HIAI_DOCS_API_KEY: prepared.apiKey,
+		API_KEY_ENCRYPTION_SECRET: prepared.apiKeyEncryptionSecret,
+		DOCSMINT_WORKSPACE_ENABLED: "true",
+		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
+		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
+		GRAPH_EXTRACT_ENABLED: "false",
+		GRAPH_SEARCH_ENABLED: "false",
+		SEARCH_EXPANSION_ENABLED: "false",
+	};
+}
+
+async function runEnvironmentProbe(
+	runner: SafeCommandRunner,
+	root: string,
+	input: Record<string, string>,
+): Promise<EnvironmentProbe> {
+	const result = await runner.run(["bun", "-e", ENVIRONMENT_PROBE_SOURCE], {
+		cwd: root,
+		env: safeEnvironment({
+			NODE_ENV: "production",
+			REHEARSAL_ENV_INPUT: JSON.stringify(input),
+		}),
+	});
+	const probe = JSON.parse(result.stdout.trim()) as EnvironmentProbe;
+	if (
+		typeof probe.accepted !== "boolean" ||
+		!Array.isArray(probe.requiredKeys) ||
+		probe.requiredKeys.some((value) => typeof value !== "string")
+	) {
+		throw new Error("environment probe produced malformed evidence");
+	}
+	return probe;
+}
+
+async function probeEnvironmentActual(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<{ baseline: EnvironmentProbe; candidate: EnvironmentProbe }> {
+	const input = sharedEnvironmentInput(prepared);
+	const [baseline, candidate] = await Promise.all([
+		runEnvironmentProbe(
+			runner,
+			join(prepared.baselineRoot, "docsmint-oss"),
+			input,
+		),
+		runEnvironmentProbe(runner, join(prepared.saasRoot, "docsmint-oss"), input),
+	]);
+	return { baseline, candidate };
+}
+
+async function freePort(): Promise<number> {
+	const server = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch: () => new Response(),
+	});
+	const port = server.port;
+	server.stop(true);
+	if (!port) throw new Error("failed to reserve a local runtime port");
+	return port;
+}
+
+function runtimeEnvironment(
+	prepared: ActualPreparedRehearsal,
+	port: number,
+): Record<string, string> {
+	return safeEnvironment({
+		NODE_ENV: "test",
+		LOG_LEVEL: "error",
+		API_PORT: String(port),
+		DATABASE_URL: prepared.runtimeUrl,
+		REDIS_URL: prepared.redisUrl,
+		AI_PROVIDER: "ollama",
+		EMBEDDING_BASE_URL: `http://127.0.0.1:${prepared.embeddingServer.port}/v1`,
+		EMBEDDING_MODEL: "rehearsal-1024",
+		EMBEDDING_API_KEY: "rehearsal-local-provider",
+		STORAGE_ENDPOINT: "127.0.0.1",
+		STORAGE_PORT: String(STORAGE_HOST_PORT),
+		STORAGE_PUBLIC_ENDPOINT: "127.0.0.1",
+		STORAGE_PUBLIC_PORT: String(STORAGE_HOST_PORT),
+		STORAGE_ACCESS_KEY: prepared.storageAccessKey,
+		STORAGE_SECRET_KEY: prepared.storageSecret,
+		STORAGE_BUCKET: prepared.storageBucket,
+		STORAGE_FORCE_PATH_STYLE: "true",
+		STORAGE_PUBLIC_ENDPOINT_URL: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
+		BETTER_AUTH_SECRET: prepared.betterAuthSecret,
+		CSRF_SECRET: prepared.csrfSecret,
+		WEBHOOK_SECRET: prepared.webhookSecret,
+		HIAI_DOCS_API_KEY: prepared.apiKey,
+		API_KEY_ENCRYPTION_SECRET: prepared.apiKeyEncryptionSecret,
+		DOCSMINT_WORKSPACE_ENABLED: "true",
+		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
+		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
+		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED: "true",
+		GRAPH_EXTRACT_ENABLED: "false",
+		GRAPH_SEARCH_ENABLED: "false",
+		SEARCH_EXPANSION_ENABLED: "false",
+	});
+}
+
+async function launchRuntime(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+	root: string,
+	version: string,
+): Promise<{ baseUrl: string; logs: ActiveRuntime }> {
+	const port = await freePort();
+	const child = Bun.spawn(["bun", "apps/api/src/oss-runtime.ts"], {
+		cwd: root,
+		env: runtimeEnvironment(prepared, port),
+		stdin: "ignore",
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	const logs: ActiveRuntime = {
+		version,
+		child,
+		stdout: new Response(child.stdout).text(),
+		stderr: new Response(child.stderr).text(),
+	};
+	prepared.activeRuntime = logs;
+	const baseUrl = `http://127.0.0.1:${port}`;
+	let lastStatus = "unreachable";
+	for (let attempt = 0; attempt < 120; attempt += 1) {
+		if (
+			await Promise.race([
+				child.exited.then(() => true),
+				Bun.sleep(0).then(() => false),
+			])
+		) {
+			const [stdout, stderr] = await Promise.all([logs.stdout, logs.stderr]);
+			prepared.activeRuntime = undefined;
+			throw new Error(
+				`BLOCKED: exact ${version} runtime exited before health: ${runner.redact(stdout + stderr)}`,
+			);
+		}
+		try {
+			const response = await fetch(`${baseUrl}/api/health`);
+			lastStatus = String(response.status);
+			if (response.ok) return { baseUrl, logs };
+		} catch {
+			lastStatus = "unreachable";
+		}
+		await Bun.sleep(250);
+	}
+	await stopRuntime(runner, prepared);
+	throw new Error(`BLOCKED: exact ${version} runtime health was ${lastStatus}`);
+}
+
+interface AssertionPayload {
+	actorUserId: string;
+	workspaceId: string;
+	actorRole: "owner";
+	resourceScope?: {
+		kind: "category";
+		categoryId: string;
+		permissions: Array<"read" | "edit" | "write">;
+	};
+	issuedAt: number;
+	expiresAt: number;
+	issuer: string;
+}
+
+async function signAssertion(
+	prepared: ActualPreparedRehearsal,
+	resourceScope?: AssertionPayload["resourceScope"],
+): Promise<string> {
+	const issuedAt = Math.floor(Date.now() / 1000);
+	const payload: AssertionPayload = {
+		actorUserId: prepared.userId,
+		workspaceId: prepared.workspaceId,
+		actorRole: "owner",
+		...(resourceScope ? { resourceScope } : {}),
+		issuedAt,
+		expiresAt: issuedAt + 60,
+		issuer: prepared.issuer,
+	};
+	const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString(
+		"base64url",
+	);
+	const key = await crypto.subtle.importKey(
+		"raw",
+		new TextEncoder().encode(prepared.assertionSecret),
+		{ name: "HMAC", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const signature = Buffer.from(
+		await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(encoded)),
+	).toString("base64url");
+	return `${encoded}.${signature}`;
+}
+
+function assertionHeaders(assertion: string, apiKey: string): HeadersInit {
+	return {
+		"content-type": "application/json",
+		authorization: `Bearer ${apiKey}`,
+		"x-docsmint-workspace-context": assertion,
+		"x-docsmint-graph-search": "disabled",
+	};
+}
+
+async function apiRequest(
+	baseUrl: string,
+	apiKey: string,
+	assertion: string,
+	path: string,
+	init: RequestInit = {},
+): Promise<{ status: number; body: unknown }> {
+	const response = await fetch(`${baseUrl}${path}`, {
+		...init,
+		headers: {
+			...assertionHeaders(assertion, apiKey),
+			...(init.headers ?? {}),
+		},
+	});
+	const text = await response.text();
+	let body: unknown;
+	if (text) {
+		try {
+			body = JSON.parse(text);
+		} catch {
+			body = text;
+		}
+	}
+	return { status: response.status, body };
+}
+
+function objectBody(value: unknown, label: string): Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		throw new Error(`${label} returned a non-object body`);
+	}
+	return value as Record<string, unknown>;
+}
+
+function documentIds(value: unknown): string[] {
+	const body = objectBody(value, "document collection");
+	const items = body.items;
+	if (!Array.isArray(items)) return [];
+	return items.flatMap((item) => {
+		if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+		const id = (item as Record<string, unknown>).id;
+		return typeof id === "string" ? [id] : [];
+	});
+}
+
+async function assertStatus(
+	request: Promise<{ status: number; body: unknown }>,
+	expected: number | number[],
+	label: string,
+): Promise<{ status: number; body: unknown }> {
+	const result = await request;
+	const statuses = Array.isArray(expected) ? expected : [expected];
+	if (!statuses.includes(result.status)) {
+		throw new Error(
+			`${label} returned HTTP ${result.status}: ${JSON.stringify(result.body)}`,
+		);
+	}
+	return result;
+}
+
+async function searchForDocument(
+	baseUrl: string,
+	apiKey: string,
+	assertion: string,
+	token: string,
+	documentId: string,
+): Promise<{ found: boolean; ids: string[] }> {
+	let ids: string[] = [];
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const result = await assertStatus(
+			apiRequest(
+				baseUrl,
+				apiKey,
+				assertion,
+				`/api/search/?q=${encodeURIComponent(token)}&limit=100`,
+			),
+			200,
+			"search",
+		);
+		ids = documentIds(result.body);
+		if (ids.includes(documentId)) return { found: true, ids };
+		await Bun.sleep(250);
+	}
+	return { found: false, ids };
+}
+
+async function createDocument(
+	baseUrl: string,
+	apiKey: string,
+	assertion: string,
+	input: { title: string; content: string; categoryId: string },
+): Promise<string> {
+	const response = await assertStatus(
+		apiRequest(baseUrl, apiKey, assertion, "/api/documents", {
+			method: "POST",
+			body: JSON.stringify(input),
+		}),
+		201,
+		"create document",
+	);
+	const id = objectBody(response.body, "create document").id;
+	if (typeof id !== "string")
+		throw new Error("create document did not return an id");
+	return id;
+}
+
+async function smoke070Actual(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<RuntimeSmokeEvidence> {
+	const { baseUrl } = await launchRuntime(
+		runner,
+		prepared,
+		prepared.saasRoot,
+		"0.7.0",
+	);
+	try {
+		const unscoped = await signAssertion(prepared);
+		const commonToken = `scope-${prepared.token}`;
+		const allowedId = await createDocument(baseUrl, prepared.apiKey, unscoped, {
+			title: `${commonToken} allowed`,
+			content: `${commonToken} allowed body`,
+			categoryId: prepared.categoryA,
+		});
+		const foreignId = await createDocument(baseUrl, prepared.apiKey, unscoped, {
+			title: `${commonToken} foreign`,
+			content: `${commonToken} foreign body`,
+			categoryId: prepared.categoryB,
+		});
+		prepared.rollbackDocumentId = foreignId;
+		await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				unscoped,
+				`/api/documents/${allowedId}`,
+			),
+			200,
+			"0.7 read",
+		);
+		await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				unscoped,
+				`/api/documents/${allowedId}`,
+				{
+					method: "PATCH",
+					body: JSON.stringify({ title: `${commonToken} allowed updated` }),
+				},
+			),
+			200,
+			"0.7 update",
+		);
+		const scoped = await signAssertion(prepared, {
+			kind: "category",
+			categoryId: prepared.categoryA,
+			permissions: ["read", "edit", "write"],
+		});
+		const list = await assertStatus(
+			apiRequest(baseUrl, prepared.apiKey, scoped, "/api/documents?limit=100"),
+			200,
+			"0.7 scoped list",
+		);
+		const listedIds = documentIds(list.body);
+		const allowedDocumentVisible = listedIds.includes(allowedId);
+		const directForeign = await apiRequest(
+			baseUrl,
+			prepared.apiKey,
+			scoped,
+			`/api/documents/${foreignId}`,
+		);
+		const scopedSearch = await searchForDocument(
+			baseUrl,
+			prepared.apiKey,
+			scoped,
+			commonToken,
+			allowedId,
+		);
+		const foreignDocumentHidden =
+			!listedIds.includes(foreignId) &&
+			directForeign.status === 404 &&
+			!scopedSearch.ids.includes(foreignId);
+		await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				scoped,
+				`/api/documents/${allowedId}`,
+				{
+					method: "DELETE",
+				},
+			),
+			[200, 204],
+			"0.7 delete",
+		);
+		const deleted = await apiRequest(
+			baseUrl,
+			prepared.apiKey,
+			scoped,
+			`/api/documents/${allowedId}`,
+		);
+		return {
+			version: "0.7.0",
+			health: true,
+			crud: {
+				create: true,
+				read: true,
+				update: true,
+				delete: deleted.status === 404,
+			},
+			search: scopedSearch.found,
+			assertionScope: { allowedDocumentVisible, foreignDocumentHidden },
+		};
+	} finally {
+		await stopRuntime(runner, prepared);
+	}
+}
+
+async function smoke068Actual(
+	runner: SafeCommandRunner,
+	prepared: ActualPreparedRehearsal,
+): Promise<RuntimeSmokeEvidence> {
+	if (!prepared.rollbackDocumentId) {
+		throw new Error("0.7 smoke did not retain a rollback read fixture");
+	}
+	const { baseUrl } = await launchRuntime(
+		runner,
+		prepared,
+		prepared.baselineRoot,
+		"0.6.8",
+	);
+	try {
+		const assertion = await signAssertion(prepared);
+		await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				assertion,
+				`/api/documents/${prepared.rollbackDocumentId}`,
+			),
+			200,
+			"0.6.8 read 0.7 document",
+		);
+		const token = `rollback-${prepared.token}`;
+		const id = await createDocument(baseUrl, prepared.apiKey, assertion, {
+			title: `${token} created by 0.6.8`,
+			content: `${token} body`,
+			categoryId: prepared.categoryA,
+		});
+		await assertStatus(
+			apiRequest(baseUrl, prepared.apiKey, assertion, `/api/documents/${id}`),
+			200,
+			"0.6.8 read",
+		);
+		await assertStatus(
+			apiRequest(baseUrl, prepared.apiKey, assertion, `/api/documents/${id}`, {
+				method: "PATCH",
+				body: JSON.stringify({ title: `${token} updated by 0.6.8` }),
+			}),
+			200,
+			"0.6.8 update",
+		);
+		const search = await searchForDocument(
+			baseUrl,
+			prepared.apiKey,
+			assertion,
+			token,
+			id,
+		);
+		await assertStatus(
+			apiRequest(baseUrl, prepared.apiKey, assertion, `/api/documents/${id}`, {
+				method: "DELETE",
+			}),
+			[200, 204],
+			"0.6.8 delete",
+		);
+		const deleted = await apiRequest(
+			baseUrl,
+			prepared.apiKey,
+			assertion,
+			`/api/documents/${id}`,
+		);
+		return {
+			version: "0.6.8",
+			health: true,
+			crud: {
+				create: true,
+				read: true,
+				update: true,
+				delete: deleted.status === 404,
+			},
+			search: search.found,
+		};
+	} finally {
+		await stopRuntime(runner, prepared);
+	}
+}
+
+async function main(): Promise<void> {
+	const runner = new SafeCommandRunner();
+	const candidateCommit = (
+		await runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: REPOSITORY_ROOT,
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	if (!COMMIT_PATTERN.test(candidateCommit))
+		throw new Error("candidate is not a full Git SHA");
+	let initialSiblingStatus: string | undefined;
+	let preparedForSummary: ActualPreparedRehearsal | undefined;
+	const report = await runRehearsalWorkflow<ActualPreparedRehearsal>(
+		{
+			async assertRealCheckoutClean(phase) {
+				const status = (
+					await runner.run(
+						[
+							"git",
+							"status",
+							"--porcelain=v1",
+							"--untracked-files=all",
+							"--ignore-submodules=none",
+						],
+						{ cwd: SAAS_SOURCE_ROOT, env: safeEnvironment() },
+					)
+				).stdout;
+				if (status.trim())
+					throw new Error(`real SaaS checkout is dirty ${phase}`);
+				if (phase === "before") initialSiblingStatus = status;
+				if (phase === "after" && status !== initialSiblingStatus) {
+					throw new Error("real SaaS checkout status changed during rehearsal");
+				}
+			},
+			async prepare() {
+				preparedForSummary = await prepareActualRehearsal(
+					runner,
+					candidateCommit,
+				);
+				return preparedForSummary;
+			},
+			packAndAdopt: (prepared) => packAndAdoptActual(runner, prepared),
+			migrate: (prepared) => migrateActual(runner, prepared),
+			probeEnvironment: (prepared) => probeEnvironmentActual(runner, prepared),
+			smoke070: (prepared) => smoke070Actual(runner, prepared),
+			smoke068: (prepared) => smoke068Actual(runner, prepared),
+			cleanup: (prepared) => cleanupActualRehearsal(runner, prepared),
+		},
+		{ candidateCommit, packageManifests: PACKAGE_MANIFESTS },
+	);
+	console.log(
+		JSON.stringify(
+			{
+				status: "PASS",
+				candidateCommit,
+				adoptionCommit: report.adoption.adoptionCommit,
+				migration: report.migration,
+				newRequiredEnvironmentKeys: report.environment.newRequiredKeys,
+				runtimes: [report.runtime070.version, report.runtime068.version],
+				realSaasCheckoutClean: true,
+				resources: preparedForSummary
+					? {
+							temporaryRoot: preparedForSummary.root,
+							databaseName: preparedForSummary.databaseName,
+							ownerRole: preparedForSummary.ownerRole,
+							runtimeRole: preparedForSummary.runtimeRole,
+							redisDatabase: preparedForSummary.redisDatabase,
+							storageBucket: preparedForSummary.storageBucket,
+						}
+					: undefined,
+				cleanup: {
+					temporaryRootRemoved: Boolean(preparedForSummary),
+					databaseDropped: Boolean(preparedForSummary?.postgresCreated),
+					rolesDropped: Boolean(preparedForSummary?.postgresCreated),
+					redisNamespaceCleared: Boolean(preparedForSummary?.redisReserved),
+					storageBucketDeleted: Boolean(
+						preparedForSummary?.storageBucketCreated,
+					),
+				},
+			},
+			null,
+			2,
+		),
+	);
+}
+
+if (import.meta.main) {
+	main().catch((error) => {
+		const message = redactSecrets(
+			error instanceof Error ? error.message : String(error),
+			[...REGISTERED_SECRETS],
+		);
+		console.error(
+			message.startsWith("BLOCKED:") ? message : `BLOCKED: ${message}`,
+		);
+		process.exitCode = 1;
+	});
+}

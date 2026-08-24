@@ -232,13 +232,13 @@ describe("0.7.0 contract evidence validator", () => {
 		for (const reference of Object.values(futureTask3Evidence)) {
 			expect(resolvedReferences).toContain(reference);
 		}
-		const unresolvedRepositoryArtifacts = await runValidator(
+		const resolvedRepositoryArtifacts = await runValidator(
 			complete,
 			"prepublish",
 		);
-		expect(unresolvedRepositoryArtifacts.exitCode).toBe(1);
-		expect(unresolvedRepositoryArtifacts.stderr).toContain(
-			"evidence path does not exist: scripts/rehearse-saas-0.7-adoption.test.ts",
+		expect(resolvedRepositoryArtifacts.exitCode).toBe(0);
+		expect(resolvedRepositoryArtifacts.stdout).toContain(
+			"Contract evidence valid for prepublish: 84 proven, 5 pending_publish, 0 pending_task_3, 0 not_applicable_oss",
 		);
 
 		for (const category of Object.keys(futureTask3Evidence)) {
