@@ -130,6 +130,15 @@ heartbeats, and idempotency. Redis/BullMQ carries executable jobs; it is not the
 canonical document store. Queue-state tables never store document bodies or
 model output.
 
+Metadata changes use the same durability rule. Folder, category, and tag
+mutations insert an exact document/revision snapshot into
+`metadata_reembed_outbox` while holding the tenant-scoped topology advisory
+lock. The transaction commits before Redis or BullMQ I/O begins. Dispatch reads
+and acknowledges bounded keyset pages; failed rows remain durable and startup
+recovery retries their deterministic generation and job IDs. The
+`*_REEMBED_BATCH_SIZE` settings control page memory, not total coverage. A
+configured value of `0` falls back to the safe domain default.
+
 Embedding work is split into bounded batches (five chunks by default). A large
 document therefore cannot occupy the entire ready queue: only the configured
 number of unfinished batches for that document is scheduled at once. A batch
@@ -175,6 +184,9 @@ Search queries run exact/title, language-neutral lexical, fuzzy, and active-gene
 
 - **Data isolation**: personal queries use `ownerId`; trusted external requests
   use the verified opaque `workspaceId` boundary and PostgreSQL RLS
+- **Workspace child rows**: document tags, attachments, versions, embeddings,
+  pipeline batches, and metadata outbox rows derive access from their parent
+  document/run and require a matching nullable workspace value
 - **Auth**: Better Auth session cookies (7-day expiry)
 - **Sharing**: token-based links with optional password + expiry
 - **Rate limiting**: public share resolution allows 60 req/min per IP; share

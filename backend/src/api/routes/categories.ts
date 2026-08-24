@@ -12,7 +12,8 @@ import {
 } from "../../lib/content-access";
 import { logger } from "../../lib/logger";
 import {
-	enqueueReembed,
+	drainMetadataReembedOutbox,
+	metadataReembedPageSize,
 	reembedDocsInCategory,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
@@ -449,7 +450,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 					.for("update")
 					.limit(1);
 				if (lockedCategory.length === 0) {
-					return { deleted: null, affectedDocs: [] };
+					return { deleted: null, operationId: undefined };
 				}
 				const impact = await snapshotMetadataImpact(
 					tx,
@@ -470,7 +471,10 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						),
 					)
 					.returning({ id: categories.id });
-				return { deleted: row ?? null, affectedDocs: impact.documents };
+				return {
+					deleted: row ?? null,
+					operationId: impact.operationId,
+				};
 			});
 			if (!deletion.deleted) {
 				set.status = 404;
@@ -480,10 +484,10 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// automatically detaches the category from any owned folders/docs.
 			// We re-embed those docs/folders so their preamble no longer mentions
 			// the (now-gone) category name.
-			await enqueueReembed(deletion.affectedDocs, ctx.workspaceId, {
-				reason: "metadata",
-				refreshMode: "full",
-			});
+			await drainMetadataReembedOutbox(
+				deletion.operationId,
+				metadataReembedPageSize("category"),
+			);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete category");

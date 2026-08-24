@@ -26,6 +26,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   and every workspace package consistently report 0.7.0.
 - Keep hermetic unit, required database integration, Docker health, dependency,
   and release-contract gates fail closed for release preparation.
+- Snapshot metadata-driven re-embed targets into a durable PostgreSQL outbox
+  while holding the tenant topology lock, then dispatch bounded pages only
+  after commit. Retained rows recover on startup with deterministic pipeline
+  generations when Redis or queue admission fails.
+
+### Fixed
+
+- Allow document tags, attachments, versions, and embeddings to follow their
+  parent document across actors in the same verified workspace while retaining
+  personal-owner and foreign-workspace isolation under forced RLS.
+- Copy attachment rows and SeaweedFS objects when one workspace actor duplicates
+  another actor's document, and repair nullable personal pipeline-batch checks.
+- Keep folder, category, and tag metadata snapshots bounded in application
+  memory; `*_REEMBED_BATCH_SIZE=0` now selects the safe domain page size rather
+  than materializing an unbounded result.
 
 ## [0.6.8] - 2026-08-21
 

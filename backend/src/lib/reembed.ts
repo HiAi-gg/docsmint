@@ -20,11 +20,10 @@
  * edits, document creates, and admin reindex - paths where dedup-by-id
  * is not desirable.
  *
- * All functions here are best-effort:
- *   - They never throw. Redis or DB errors are logged and silently
- *     swallowed. A mutation route that calls us should NOT fail because
- *     the embedding enqueue did not go through - the user's data is
- *     already persisted and the embedding pipeline is enrichment.
+ * Snapshot functions are deliberately transactional and may throw so the
+ * metadata mutation rolls back rather than committing without durable work.
+ * Dispatch happens after commit: failed rows remain in the durable outbox for
+ * immediate or startup recovery instead of failing the metadata mutation.
  *   - A per-document Redis SET-NX slot (5s TTL) prevents rapid PATCH /
  *     toggle storms from queueing the same doc more than once in that
  *     window. The worker itself dedupes via `contentHash`, but the slot
@@ -34,7 +33,13 @@
  * of the public route-integration contract is kept module-private.
  */
 
-import { documents, documentTags, folders } from "@hiai-docs/db/schema";
+import {
+	documents,
+	documentTags,
+	folders,
+	metadataReembedOutbox,
+	tags,
+} from "@hiai-docs/db/schema";
 import {
 	adminTenantContext,
 	type TenantContext,
@@ -67,6 +72,7 @@ export type ReembedRefreshMode = "incremental" | "full";
 export type ReembedTarget = Readonly<{
 	id: string;
 	revision: string;
+	generationId?: string;
 }>;
 
 type ReembedTargetInput = string | ReembedTarget | null | undefined;
@@ -83,7 +89,16 @@ export type MetadataImpactTarget =
 
 export type MetadataImpactSnapshot = Readonly<{
 	folderIds: readonly string[];
-	documents: readonly ReembedTarget[];
+	operationId: string;
+	targetCount: number;
+}>;
+
+export type MetadataReembedOutboxTarget = Readonly<{
+	id: string;
+	documentId: string;
+	ownerId: string;
+	workspaceId?: string;
+	revision: string;
 }>;
 
 async function loadMetadataImpactFolderIds(
@@ -151,33 +166,42 @@ function metadataImpactDocumentCondition(
 		: eq(documents.categoryId, target.id);
 }
 
-function loadMetadataImpactDocumentPage(
+async function insertMetadataImpactOutbox(
 	tx: TenantTransaction,
 	ctx: TenantContext,
 	target: MetadataImpactTarget,
 	folderIds: readonly string[],
-	cursor: string | undefined,
-	limit: number,
-): Promise<readonly ReembedDocumentRow[]> {
-	const query = tx
-		.select({
-			id: documents.id,
-			title: documents.title,
-			content: documents.content,
-		})
-		.from(documents)
-		.where(
-			and(
-				metadataImpactDocumentCondition(target, folderIds),
-				...(cursor ? [gt(documents.id, cursor)] : []),
-				tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
-			),
-		)
-		.orderBy(asc(documents.id));
-	return limit > 0 ? query.limit(limit) : query;
+	operationId: string,
+): Promise<number> {
+	if (target.kind === "folder" && folderIds.length === 0) return 0;
+	await tx.execute(sql`
+		INSERT INTO public.metadata_reembed_outbox
+			(id, operation_id, document_id, owner_id, workspace_id, revision)
+		SELECT
+			gen_random_uuid(),
+			${operationId}::uuid,
+			${documents.id},
+			${documents.ownerId},
+			${documents.workspaceId},
+			encode(
+				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
+				'hex'
+			)
+		FROM ${documents}
+		WHERE ${and(
+			metadataImpactDocumentCondition(target, folderIds),
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+		)}
+		ON CONFLICT (operation_id, document_id) DO NOTHING
+	`);
+	const [countRow] = await tx
+		.select({ count: sql<number>`count(*)::int` })
+		.from(metadataReembedOutbox)
+		.where(eq(metadataReembedOutbox.operationId, operationId));
+	return countRow?.count ?? 0;
 }
 
-/** Resolve, optionally lock, and snapshot one metadata-impact domain. */
+/** Resolve, optionally lock, and durably snapshot one metadata-impact domain. */
 export async function snapshotMetadataImpact(
 	tx: TenantTransaction,
 	ctx: TenantContext,
@@ -199,15 +223,15 @@ export async function snapshotMetadataImpact(
 			.orderBy(asc(folders.id))
 			.for("update");
 	}
-	const impactDocuments = await loadMetadataImpactDocumentPage(
+	const operationId = crypto.randomUUID();
+	const targetCount = await insertMetadataImpactOutbox(
 		tx,
 		ctx,
 		target,
 		folderIds,
-		undefined,
-		0,
+		operationId,
 	);
-	return { folderIds, documents: impactDocuments.map(toReembedTarget) };
+	return { folderIds, operationId, targetCount };
 }
 
 type ReembedPageLoader = (
@@ -220,28 +244,6 @@ function toReembedTarget(row: ReembedDocumentRow): ReembedTarget {
 		id: row.id,
 		revision: contentHash(row.title, row.content ?? ""),
 	};
-}
-
-async function loadReembedPages(
-	loadPage: ReembedPageLoader,
-	limit: number,
-): Promise<ReembedTarget[]> {
-	let cursor: string | undefined;
-	const targets: ReembedTarget[] = [];
-	let hasNextPage = true;
-	while (hasNextPage) {
-		const rows = await loadPage(cursor, limit);
-		if (rows.length === 0) return targets;
-		targets.push(...rows.map(toReembedTarget));
-		const nextCursor = rows.at(-1)?.id;
-		hasNextPage =
-			limit > 0 &&
-			rows.length >= limit &&
-			typeof nextCursor === "string" &&
-			nextCursor !== cursor;
-		cursor = nextCursor;
-	}
-	return targets;
 }
 
 async function enqueueReembedPages(
@@ -342,20 +344,25 @@ export async function enqueueReembed(
 ): Promise<number> {
 	const refreshMode = options.refreshMode ?? "incremental";
 	const reason = options.reason ?? "content";
-	const unique = new Map<string, { id: string; revision?: string }>();
+	const unique = new Map<
+		string,
+		{ id: string; revision?: string; generationId?: string }
+	>();
 	for (const target of docIds) {
 		const id = typeof target === "string" ? target : target?.id;
 		if (typeof id !== "string" || id.trim().length === 0) continue;
 		const revision = typeof target === "string" ? undefined : target?.revision;
+		const generationId =
+			typeof target === "string" ? undefined : target?.generationId;
 		if (revision !== undefined && revision.trim().length === 0) continue;
 		const identity = revision
 			? `${id}\u0000${revision}\u0000${refreshMode}\u0000${reason}`
 			: id;
-		unique.set(identity, { id, revision });
+		unique.set(identity, { id, revision, generationId });
 	}
 
 	let pushed = 0;
-	for (const { id, revision } of unique.values()) {
+	for (const { id, revision, generationId } of unique.values()) {
 		if (
 			options.bypassDedup ||
 			(await claimEnqueueSlot(
@@ -375,6 +382,8 @@ export async function enqueueReembed(
 					forceNewGeneration:
 						options.forceNewGeneration ?? refreshMode === "full",
 					refreshMode,
+					...(revision ? { revision } : {}),
+					...(generationId ? { generationId } : {}),
 				},
 			);
 			if (queued) pushed += 1;
@@ -383,11 +392,227 @@ export async function enqueueReembed(
 	return pushed;
 }
 
+type MetadataOutboxDispatchResult = "enqueued" | "deduplicated" | "failed";
+
+type MetadataOutboxDrainDependencies = Readonly<{
+	loadPage: (
+		operationId: string | undefined,
+		cursor: string | undefined,
+		limit: number,
+	) => Promise<readonly MetadataReembedOutboxTarget[]>;
+	dispatch: (
+		target: MetadataReembedOutboxTarget,
+	) => Promise<MetadataOutboxDispatchResult>;
+	acknowledge: (ids: readonly string[]) => Promise<void>;
+}>;
+
+/** @internal Deterministic bounded-memory seam for outbox dispatch tests. */
+export async function drainMetadataReembedOutboxPagesWith(
+	operationId: string | undefined,
+	pageSize: number,
+	dependencies: MetadataOutboxDrainDependencies,
+): Promise<{ enqueued: number; completed: number; failed: number }> {
+	const boundedPageSize = Math.max(1, pageSize);
+	let cursor: string | undefined;
+	let enqueued = 0;
+	let completed = 0;
+	let failed = 0;
+	while (true) {
+		const rows = await dependencies.loadPage(
+			operationId,
+			cursor,
+			boundedPageSize,
+		);
+		if (rows.length === 0) break;
+		const acknowledged: string[] = [];
+		for (const row of rows) {
+			let result: MetadataOutboxDispatchResult;
+			try {
+				result = await dependencies.dispatch(row);
+			} catch (err) {
+				logger.warn(
+					{ err, outboxId: row.id, documentId: row.documentId },
+					"Metadata re-embed outbox dispatch failed",
+				);
+				result = "failed";
+			}
+			if (result === "failed") {
+				failed += 1;
+				continue;
+			}
+			if (result === "enqueued") enqueued += 1;
+			completed += 1;
+			acknowledged.push(row.id);
+		}
+		if (acknowledged.length > 0) {
+			await dependencies.acknowledge(acknowledged);
+		}
+		const nextCursor = rows.at(-1)?.id;
+		if (
+			rows.length < boundedPageSize ||
+			typeof nextCursor !== "string" ||
+			nextCursor === cursor
+		) {
+			break;
+		}
+		cursor = nextCursor;
+	}
+	return { enqueued, completed, failed };
+}
+
+const METADATA_OUTBOX_DEDUP_PREFIX = "hiai-docs:reembed:outbox:";
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function metadataOutboxDedupKey(target: MetadataReembedOutboxTarget): string {
+	const scope = target.workspaceId
+		? encodeURIComponent(target.workspaceId)
+		: `personal:${target.ownerId}`;
+	return `${METADATA_OUTBOX_DEDUP_PREFIX}${scope}:${encodeURIComponent(target.documentId)}:${encodeURIComponent(target.revision)}`;
+}
+
+async function releaseMetadataOutboxSlot(
+	key: string,
+	generationId: string,
+): Promise<void> {
+	try {
+		await redis.eval(
+			"if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+			1,
+			key,
+			generationId,
+		);
+	} catch (err) {
+		logger.warn(
+			{ err, key },
+			"Failed to release metadata outbox dedup slot after enqueue failure",
+		);
+	}
+}
+
+async function dispatchMetadataOutboxTarget(
+	target: MetadataReembedOutboxTarget,
+): Promise<MetadataOutboxDispatchResult> {
+	const key = metadataOutboxDedupKey(target);
+	let generationId = target.id;
+	let claimed = false;
+	let reused = false;
+	try {
+		const result = await redis.set(
+			key,
+			target.id,
+			"EX",
+			DEDUP_TTL_SECONDS,
+			"NX",
+		);
+		claimed = result === "OK";
+		if (!claimed) {
+			const existingGeneration = await redis.get(key);
+			if (existingGeneration && UUID_PATTERN.test(existingGeneration)) {
+				generationId = existingGeneration;
+				reused = existingGeneration !== target.id;
+			}
+		}
+	} catch (err) {
+		logger.warn(
+			{ err, documentId: target.documentId },
+			"Metadata outbox Redis dedup failed - using durable generation",
+		);
+	}
+
+	const queued = await enqueueEmbedding(
+		target.documentId,
+		"interactive",
+		target.workspaceId,
+		{
+			forceNewGeneration: true,
+			refreshMode: "full",
+			revision: target.revision,
+			generationId,
+		},
+	);
+	if (!queued) {
+		if (claimed) await releaseMetadataOutboxSlot(key, generationId);
+		return "failed";
+	}
+	return reused ? "deduplicated" : "enqueued";
+}
+
+async function loadMetadataOutboxPage(
+	operationId: string | undefined,
+	cursor: string | undefined,
+	limit: number,
+): Promise<readonly MetadataReembedOutboxTarget[]> {
+	const rows = await withTenant(REEMBED_ADMIN_TENANT, (tx) => {
+		const conditions = [
+			...(operationId
+				? [eq(metadataReembedOutbox.operationId, operationId)]
+				: []),
+			...(cursor ? [gt(metadataReembedOutbox.id, cursor)] : []),
+		];
+		const query = tx
+			.select({
+				id: metadataReembedOutbox.id,
+				documentId: metadataReembedOutbox.documentId,
+				ownerId: metadataReembedOutbox.ownerId,
+				workspaceId: metadataReembedOutbox.workspaceId,
+				revision: metadataReembedOutbox.revision,
+			})
+			.from(metadataReembedOutbox)
+			.where(conditions.length > 0 ? and(...conditions) : undefined)
+			.orderBy(asc(metadataReembedOutbox.id))
+			.limit(limit);
+		return query;
+	});
+	return rows.map((row) => ({
+		...row,
+		workspaceId: row.workspaceId ?? undefined,
+	}));
+}
+
+function acknowledgeMetadataOutbox(ids: readonly string[]): Promise<void> {
+	return withTenant(REEMBED_ADMIN_TENANT, async (tx) => {
+		await tx
+			.delete(metadataReembedOutbox)
+			.where(inArray(metadataReembedOutbox.id, [...ids]));
+	});
+}
+
+/** Drain one committed snapshot, or every retained snapshot during startup. */
+export function drainMetadataReembedOutbox(
+	operationId?: string,
+	pageSize = 100,
+): Promise<{ enqueued: number; completed: number; failed: number }> {
+	return drainMetadataReembedOutboxPagesWith(operationId, pageSize, {
+		loadPage: loadMetadataOutboxPage,
+		dispatch: dispatchMetadataOutboxTarget,
+		acknowledge: acknowledgeMetadataOutbox,
+	});
+}
+
+function safeReembedPageSize(configured: number, fallback: number): number {
+	return configured > 0 ? configured : fallback;
+}
+
+export type MetadataReembedScope = "folder" | "category" | "tag";
+
+/** @internal Resolve the configured bounded page size for one metadata domain. */
+export function metadataReembedPageSize(scope: MetadataReembedScope): number {
+	switch (scope) {
+		case "folder":
+			return safeReembedPageSize(config.FOLDER_REEMBED_BATCH_SIZE, 100);
+		case "category":
+			return safeReembedPageSize(config.CATEGORY_REEMBED_BATCH_SIZE, 100);
+		case "tag":
+			return safeReembedPageSize(config.TAG_REEMBED_BATCH_SIZE, 500);
+	}
+}
+
 /**
  * Look up all documents attached to a folder and enqueue them for
  * re-embedding. `FOLDER_REEMBED_BATCH_SIZE` bounds each keyset page; the
- * helper continues until every matching document has been enqueued. Set the
- * env var to `0` to load the complete result in one page.
+ * helper continues until every matching document has been enqueued. A
+ * configured `0` uses the safe default page size instead of an unbounded page.
  *
  * Used by `PATCH /api/folders/:id` (rename) and `DELETE /api/folders/:id`.
  *
@@ -398,39 +623,23 @@ export async function reembedDocsInFolder(
 	ownerId: string,
 	workspaceId?: string,
 ): Promise<number> {
-	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
+	const limit = metadataReembedPageSize("folder");
 	const tenant: TenantContext = {
 		userId: ownerId,
 		role: "user",
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const targets = await withTenant(tenant, async (tx) => {
-		await acquireTenantTopologyLock(tx, tenant);
-		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
-			kind: "folder",
-			id: folderId,
-		});
-		return loadReembedPages(
-			(cursor, pageLimit) =>
-				loadMetadataImpactDocumentPage(
-					tx,
-					tenant,
-					{ kind: "folder", id: folderId },
-					folderIds,
-					cursor,
-					pageLimit,
-				),
-			limit,
-		);
-	});
-	const enqueued = await enqueueReembed(targets, workspaceId, {
-		reason: "metadata",
-		refreshMode: "full",
-	});
+	const snapshot = await withTenant(tenant, (tx) =>
+		snapshotMetadataImpact(tx, tenant, { kind: "folder", id: folderId }),
+	);
+	const { enqueued, failed } = await drainMetadataReembedOutbox(
+		snapshot.operationId,
+		limit,
+	);
 	if (enqueued > 0) {
 		logger.info(
-			{ folderId, enqueued, limit },
+			{ folderId, enqueued, failed, limit, targetCount: snapshot.targetCount },
 			"Re-embedding documents after folder change",
 		);
 	}
@@ -534,7 +743,7 @@ export async function reembedDocsInFolderAdminWith(
 	folderId: string,
 	loadRows: AdminFolderDocumentLoader,
 ): Promise<number> {
-	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
+	const limit = metadataReembedPageSize("folder");
 	const enqueued = await enqueueReembedPages(
 		(cursor, pageLimit) => loadRows(folderId, cursor, pageLimit),
 		limit,
@@ -573,7 +782,7 @@ export async function reembedDocsInCategory(
 	ownerId: string,
 	workspaceId?: string,
 ): Promise<number> {
-	const limit = config.CATEGORY_REEMBED_BATCH_SIZE;
+	const limit = metadataReembedPageSize("category");
 
 	const tenant: TenantContext = {
 		userId: ownerId,
@@ -581,38 +790,26 @@ export async function reembedDocsInCategory(
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const { targets, folderCount } = await withTenant(tenant, async (tx) => {
-		await acquireTenantTopologyLock(tx, tenant);
-		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
+	const snapshot = await withTenant(tenant, (tx) =>
+		snapshotMetadataImpact(tx, tenant, {
 			kind: "category",
 			id: categoryId,
-		});
-		const targets = await loadReembedPages(
-			(cursor, pageLimit) =>
-				loadMetadataImpactDocumentPage(
-					tx,
-					tenant,
-					{ kind: "category", id: categoryId },
-					folderIds,
-					cursor,
-					pageLimit,
-				),
-			limit,
-		);
-		return { targets, folderCount: folderIds.length };
-	});
-	const enqueued = await enqueueReembed(targets, workspaceId, {
-		reason: "metadata",
-		refreshMode: "full",
-	});
+		}),
+	);
+	const { enqueued, failed } = await drainMetadataReembedOutbox(
+		snapshot.operationId,
+		limit,
+	);
 
 	if (enqueued > 0) {
 		logger.info(
 			{
 				categoryId,
 				enqueued,
+				failed,
 				limit,
-				folderCount,
+				folderCount: snapshot.folderIds.length,
+				targetCount: snapshot.targetCount,
 			},
 			"Re-embedding documents after category change",
 		);
@@ -631,78 +828,81 @@ export async function reembedDocsInCategory(
  *
  * @internal
  */
+export async function snapshotTagMetadataImpact(
+	tx: TenantTransaction,
+	ctx: TenantContext,
+	tagId: string,
+): Promise<Readonly<{ operationId: string; targetCount: number }>> {
+	await acquireTenantTopologyLock(tx, ctx);
+	const operationId = crypto.randomUUID();
+	await tx.execute(sql`
+		INSERT INTO public.metadata_reembed_outbox
+			(id, operation_id, document_id, owner_id, workspace_id, revision)
+		SELECT
+			gen_random_uuid(),
+			${operationId}::uuid,
+			${documents.id},
+			${documents.ownerId},
+			${documents.workspaceId},
+			encode(
+				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
+				'hex'
+			)
+		FROM ${documentTags}
+		JOIN ${documents} ON ${documents.id} = ${documentTags.documentId}
+		WHERE ${and(
+			eq(documentTags.tagId, tagId),
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+		)}
+		ON CONFLICT (operation_id, document_id) DO NOTHING
+	`);
+	const [countRow] = await tx
+		.select({ count: sql<number>`count(*)::int` })
+		.from(metadataReembedOutbox)
+		.where(eq(metadataReembedOutbox.operationId, operationId));
+	return { operationId, targetCount: countRow?.count ?? 0 };
+}
+
 export async function reembedDocsByTag(
 	tagId: string,
 	ownerId?: string,
 	workspaceId?: string,
 ): Promise<number> {
-	const limit = config.TAG_REEMBED_BATCH_SIZE;
-	const tenant: TenantContext = ownerId
-		? {
-				userId: ownerId,
-				role: "user",
-				source: workspaceId ? "external" : "personal",
-				workspaceId,
-			}
-		: REEMBED_ADMIN_TENANT;
-	const enqueued = await enqueueReembedPages(
-		(cursor, pageLimit) =>
-			withTenant(tenant, async (tx) => {
-				const linkQuery = tx
-					.selectDistinct({ documentId: documentTags.documentId })
-					.from(documentTags)
-					.where(
-						and(
-							eq(documentTags.tagId, tagId),
-							...(ownerId
-								? [
-										workspaceId
-											? eq(documentTags.workspaceId, workspaceId)
-											: isNull(documentTags.workspaceId),
-									]
-								: []),
-							...(cursor ? [gt(documentTags.documentId, cursor)] : []),
-						),
-					)
-					.orderBy(asc(documentTags.documentId));
-				const links =
-					pageLimit > 0 ? await linkQuery.limit(pageLimit) : await linkQuery;
-				if (links.length === 0) return [];
-				const ids = links.map((row) => row.documentId);
-				const rows = await tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: documents.content,
-					})
-					.from(documents)
-					.where(
-						and(
-							inArray(documents.id, ids),
-							...(ownerId
-								? [
-										tenantOwnerCondition(
-											documents.ownerId,
-											documents.workspaceId,
-											tenant,
-										),
-									]
-								: []),
-						),
-					);
-				const byId = new Map(rows.map((row) => [row.id, row]));
-				return ids.flatMap((id) => {
-					const row = byId.get(id);
-					return row ? [row] : [];
-				});
-			}),
+	const limit = metadataReembedPageSize("tag");
+	let tenant: TenantContext;
+	if (ownerId) {
+		tenant = {
+			userId: ownerId,
+			role: "user",
+			source: workspaceId ? "external" : "personal",
+			workspaceId,
+		};
+	} else {
+		const [tag] = await withTenant(REEMBED_ADMIN_TENANT, (tx) =>
+			tx
+				.select({ ownerId: tags.ownerId, workspaceId: tags.workspaceId })
+				.from(tags)
+				.where(eq(tags.id, tagId))
+				.limit(1),
+		);
+		if (!tag) return 0;
+		tenant = {
+			userId: tag.ownerId,
+			role: "user",
+			source: tag.workspaceId ? "external" : "personal",
+			workspaceId: tag.workspaceId ?? undefined,
+		};
+	}
+	const snapshot = await withTenant(tenant, (tx) =>
+		snapshotTagMetadataImpact(tx, tenant, tagId),
+	);
+	const { enqueued, failed } = await drainMetadataReembedOutbox(
+		snapshot.operationId,
 		limit,
-		workspaceId,
-		{ reason: "metadata", refreshMode: "full" },
 	);
 	if (enqueued > 0) {
 		logger.info(
-			{ tagId, enqueued, limit },
+			{ tagId, enqueued, failed, limit, targetCount: snapshot.targetCount },
 			"Re-embedding documents after tag change",
 		);
 	}

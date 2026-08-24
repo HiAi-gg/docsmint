@@ -132,6 +132,7 @@ export const enqueueDocumentPipelineSchema = z.object({
 	documentId: z.uuid(),
 	ownerId: z.uuid(),
 	workspaceId: z.string().min(1).optional(),
+	generationId: z.uuid().optional(),
 	revision: z.string().min(1),
 	source: pipelineSourceSchema,
 	requestedAt: z.iso.datetime().optional(),

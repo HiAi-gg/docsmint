@@ -11,7 +11,10 @@ import {
 } from "./contracts";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
 
-type ActiveRun = { generationId: string };
+type ActiveRun = Pick<
+	typeof documentPipelineRuns.$inferSelect,
+	"generationId" | "status" | "prepareStatus"
+>;
 
 export interface PipelineRunStore {
 	isCancelled(input: {
@@ -104,6 +107,22 @@ const postgresRunStore: PipelineRunStore = {
 					.where(and(eq(documents.id, input.documentId), ownerBoundary))
 					.limit(1);
 				if (!document) throw new Error("Document not found for pipeline owner");
+				const [exactGeneration] = await tx
+					.select({
+						generationId: documentPipelineRuns.generationId,
+						status: documentPipelineRuns.status,
+						prepareStatus: documentPipelineRuns.prepareStatus,
+					})
+					.from(documentPipelineRuns)
+					.where(
+						and(
+							eq(documentPipelineRuns.documentId, input.documentId),
+							runBoundary,
+							eq(documentPipelineRuns.generationId, input.generationId),
+						),
+					)
+					.limit(1);
+				if (exactGeneration) return { run: exactGeneration, created: false };
 				if (input.forceNewGeneration) {
 					await tx
 						.update(documentPipelineRuns)
@@ -124,7 +143,11 @@ const postgresRunStore: PipelineRunStore = {
 				const [existing] = input.forceNewGeneration
 					? []
 					: await tx
-							.select({ generationId: documentPipelineRuns.generationId })
+							.select({
+								generationId: documentPipelineRuns.generationId,
+								status: documentPipelineRuns.status,
+								prepareStatus: documentPipelineRuns.prepareStatus,
+							})
 							.from(documentPipelineRuns)
 							.where(
 								and(
@@ -149,7 +172,11 @@ const postgresRunStore: PipelineRunStore = {
 						requestedAt: input.requestedAt,
 						workspaceId: input.workspaceId,
 					})
-					.returning({ generationId: documentPipelineRuns.generationId });
+					.returning({
+						generationId: documentPipelineRuns.generationId,
+						status: documentPipelineRuns.status,
+						prepareStatus: documentPipelineRuns.prepareStatus,
+					});
 				if (!created) throw new Error("Failed to create document pipeline run");
 				return { run: created, created: true };
 			},
@@ -174,7 +201,7 @@ export async function enqueueDocumentPipeline(
 ): Promise<{ generationId: string; deduplicated: boolean }> {
 	const parsed = enqueueDocumentPipelineSchema.parse(input);
 	const requestedAt = new Date(parsed.requestedAt ?? new Date().toISOString());
-	const proposedGenerationId = crypto.randomUUID();
+	const proposedGenerationId = parsed.generationId ?? crypto.randomUUID();
 	const deps = dependencies ?? (await defaultDependencies());
 	const refreshMode = parsed.refreshMode ?? "incremental";
 	const { run, created } = await deps.runs.findOrCreate({
@@ -184,7 +211,12 @@ export async function enqueueDocumentPipeline(
 		generationId: proposedGenerationId,
 		forceNewGeneration: parsed.forceNewGeneration,
 	});
-	if (created) {
+	const shouldQueuePrepare =
+		created ||
+		(parsed.generationId !== undefined &&
+			run.status === "pending" &&
+			run.prepareStatus === "pending");
+	if (shouldQueuePrepare) {
 		const job: PrepareJob = {
 			schemaVersion: PIPELINE_SCHEMA_VERSION,
 			stage: "prepare",

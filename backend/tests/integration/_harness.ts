@@ -32,6 +32,7 @@ export interface TestState {
   versions: any[];
   attachments: Map<string, any>;
   documentEmbeddings: any[];
+  metadataReembedOutbox: Map<string, any>;
   enqueuedEmbeddings: string[];
   enqueuedEmbeddingRequests: Array<{
     id: string;
@@ -66,6 +67,7 @@ function createState(): TestState {
     versions: [],
     attachments: new Map(),
     documentEmbeddings: [],
+    metadataReembedOutbox: new Map(),
     enqueuedEmbeddings: [],
     enqueuedEmbeddingRequests: [],
     calls: [],
@@ -251,6 +253,8 @@ function getCollection(name: string): any[] | Map<string, any> {
       return state.attachments;
     case "document_embeddings":
       return state.documentEmbeddings;
+    case "metadata_reembed_outbox":
+      return state.metadataReembedOutbox;
     default:
       throw new Error(`Unknown table in mock DB: ${name}`);
   }
@@ -790,6 +794,54 @@ function buildMockDb() {
             .sort((left, right) => left.id.localeCompare(right.id)),
         );
       }
+			if (queryText.includes("insert into public.metadata_reembed_outbox")) {
+				state.calls.push({ kind: "snapshot:outbox", table: "documents" });
+				const operationId = query.values?.find(
+					(value: unknown) =>
+						typeof value === "string" &&
+						/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value),
+				);
+				if (typeof operationId !== "string") return Promise.resolve([]);
+				const condition = query.values?.find(
+					(value: any) => value?.[TAG_AND] === true,
+				);
+				const tagJoin = query.values?.some(
+					(value: any) => getTableName(value) === "document_tags",
+				);
+				let impacted = [...state.documents.values()];
+				if (tagJoin) {
+					const tagCondition = condition?.values?.find(
+						(value: any) =>
+							value?.[TAG_EQ] === true &&
+							getColumnName(value.col) === "tagId",
+					);
+					const documentIds = new Set(
+						state.documentTags
+							.filter((link) => link.tagId === tagCondition?.val)
+							.map((link) => link.documentId),
+					);
+					impacted = impacted.filter((document) =>
+						documentIds.has(document.id),
+					);
+				} else if (condition) {
+					impacted = impacted.filter((document) =>
+						evaluateCondition(document, condition),
+					);
+				}
+				for (const document of impacted) {
+					const id = uuid4();
+					state.metadataReembedOutbox.set(id, {
+						id,
+						operationId,
+						documentId: document.id,
+						ownerId: document.ownerId,
+						workspaceId: document.workspaceId ?? null,
+						revision: `test-revision:${document.id}`,
+						createdAt: new Date(),
+					});
+				}
+				return Promise.resolve([]);
+			}
       if (queryText.includes("select id, title, similarity(title")) {
         const q = query.values?.find((value: unknown) => typeof value === "string");
         const normalized = typeof q === "string" ? q.trim().toLowerCase() : "";

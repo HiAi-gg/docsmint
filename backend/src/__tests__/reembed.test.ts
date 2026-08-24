@@ -79,12 +79,42 @@ mock.module("../lib/redis", () => ({ redis: fakeRedis }));
 mock.module("../lib/embedding-queue", () => ({
 	enqueueEmbedding: fakeEnqueue,
 }));
+type DrainMetadataReembedOutboxPages = (
+	operationId: string | undefined,
+	pageSize: number,
+	dependencies: {
+		loadPage: (
+			operationId: string | undefined,
+			cursor: string | undefined,
+			limit: number,
+		) => Promise<
+			Array<{
+				id: string;
+				documentId: string;
+				ownerId: string;
+				workspaceId?: string;
+				revision: string;
+			}>
+		>;
+		dispatch: (
+			target: Readonly<{ id: string }>,
+		) => Promise<"enqueued" | "deduplicated" | "failed">;
+		acknowledge: (ids: readonly string[]) => Promise<void>;
+	},
+) => Promise<{ enqueued: number; completed: number; failed: number }>;
+type ReembedOutboxTestModule = typeof import("../lib/reembed") & {
+	drainMetadataReembedOutboxPagesWith: DrainMetadataReembedOutboxPages;
+};
 // Now safe to import the module under test.
+const reembedModule = (await import(
+	"../lib/reembed"
+)) as ReembedOutboxTestModule;
 const {
+	drainMetadataReembedOutboxPagesWith,
 	enqueueReembed,
 	reembedDocumentAdminWith,
 	reembedDocsInFolderAdminWith,
-} = await import("../lib/reembed");
+} = reembedModule;
 
 afterEach(() => {
 	fakeRedis.setCalls.length = 0;
@@ -182,6 +212,7 @@ describe("enqueueReembed Redis SET-NX dedup", () => {
 			{
 				forceNewGeneration: true,
 				refreshMode: "full",
+				revision: "same-revision",
 			},
 		]);
 	});
@@ -248,6 +279,56 @@ describe("enqueueReembed best-effort on Redis failure", () => {
 		// rather than silently dropping re-embed work on a transient Redis blip.
 		expect(pushed).toBe(2);
 		expect(fakeEnqueue.mock.calls.length).toBe(2);
+	});
+});
+
+describe("durable metadata re-embed outbox paging", () => {
+	test("never buffers more than one configured page and retains failed rows", async () => {
+		const targetCount = 10_003;
+		const pageSize = 37;
+		const observedPageSizes: number[] = [];
+		const acknowledged: string[] = [];
+		const result = await drainMetadataReembedOutboxPagesWith(
+			"operation",
+			pageSize,
+			{
+				loadPage: async (_operationId, cursor, limit) => {
+					const start = cursor ? Number(cursor.slice("outbox-".length)) + 1 : 0;
+					const page = Array.from(
+						{ length: Math.min(limit, targetCount - start) },
+						(_, offset) => {
+							const index = start + offset;
+							return {
+								id: `outbox-${index}`,
+								documentId: `doc-${index}`,
+								ownerId: "owner",
+								revision: `revision-${index}`,
+							};
+						},
+					);
+					observedPageSizes.push(page.length);
+					return page;
+				},
+				dispatch: async ({ id }) => {
+					if (id === "outbox-2") return "failed";
+					if (id === "outbox-4") return "deduplicated";
+					return "enqueued";
+				},
+				acknowledge: async (ids) => {
+					acknowledged.push(...ids);
+				},
+			},
+		);
+
+		expect(Math.max(...observedPageSizes)).toBe(pageSize);
+		expect(observedPageSizes).toHaveLength(Math.ceil(targetCount / pageSize));
+		expect(result).toEqual({
+			enqueued: targetCount - 2,
+			completed: targetCount - 1,
+			failed: 1,
+		});
+		expect(acknowledged).not.toContain("outbox-2");
+		expect(acknowledged).toContain("outbox-4");
 	});
 });
 

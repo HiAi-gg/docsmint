@@ -21,6 +21,8 @@ export async function enqueueEmbedding(
 	options: {
 		forceNewGeneration?: boolean;
 		refreshMode?: PipelineRefreshMode;
+		revision?: string;
+		generationId?: string;
 	} = {},
 ): Promise<boolean> {
 	let pipelineInput:
@@ -42,8 +44,15 @@ export async function enqueueEmbedding(
 					.limit(1);
 				const document = rows[0];
 				if (!document) return;
-				const revision = contentHash(document.title, document.content ?? "");
-				pipelineInput = { ownerId: document.ownerId, revision, workspaceId };
+				const currentRevision = contentHash(
+					document.title,
+					document.content ?? "",
+				);
+				pipelineInput = {
+					ownerId: document.ownerId,
+					revision: options.revision ?? currentRevision,
+					workspaceId,
+				};
 				const activeGeneration = document.active;
 				if (activeGeneration) {
 					await tx
@@ -51,7 +60,7 @@ export async function enqueueEmbedding(
 						.set({
 							embeddingStatus: "stale",
 							embeddingErrorCode: null,
-							contentHash: revision,
+							contentHash: currentRevision,
 						})
 						.where(
 							and(
@@ -62,7 +71,7 @@ export async function enqueueEmbedding(
 				} else {
 					await tx
 						.update(documents)
-						.set({ contentHash: revision })
+						.set({ contentHash: currentRevision })
 						.where(eq(documents.id, documentId));
 				}
 			},
@@ -82,6 +91,7 @@ export async function enqueueEmbedding(
 			documentId,
 			ownerId: pipelineInput.ownerId,
 			workspaceId: pipelineInput.workspaceId,
+			generationId: options.generationId,
 			revision: pipelineInput.revision,
 			source,
 			forceNewGeneration: options.forceNewGeneration,

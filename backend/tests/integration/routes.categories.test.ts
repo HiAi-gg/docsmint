@@ -407,7 +407,9 @@ describe("DELETE /api/categories/:id", () => {
     );
     const documentSnapshotIndex = state.calls.findIndex(
       (call, index) =>
-        index > lockIndex && call.kind === "select" && call.table === "documents",
+				index > lockIndex &&
+				call.kind === "snapshot:outbox" &&
+				call.table === "documents",
     );
     const deleteIndex = state.calls.findIndex(
       (call, index) =>
@@ -461,7 +463,7 @@ describe("DELETE /api/categories/:id", () => {
 		const documentSnapshotIndex = state.calls.findIndex(
 			(call, index) =>
 				index > folderLockIndex &&
-				call.kind === "select" &&
+				call.kind === "snapshot:outbox" &&
 				call.table === "documents",
 		);
 		expect(folderLock?.ids).toEqual(["folder-a", "folder-b", "folder-c"]);

@@ -59,7 +59,9 @@ describe.skipIf(!databaseUrl)(
 		test("public re-embed helpers keep owner and external-workspace rows in their canonical tenants", async () => {
 			const setup = postgres(databaseUrl as string, { max: 1 });
 			const ownerId = crypto.randomUUID();
+			const peerOwnerId = crypto.randomUUID();
 			const workspaceId = `metadata-helper-${crypto.randomUUID()}`;
+			const foreignWorkspaceId = `metadata-helper-foreign-${crypto.randomUUID()}`;
 			const personalFolderId = crypto.randomUUID();
 			const workspaceFolderId = crypto.randomUUID();
 			const personalCategoryId = crypto.randomUUID();
@@ -72,10 +74,19 @@ describe.skipIf(!databaseUrl)(
 			const workspaceCategoryDocumentId = crypto.randomUUID();
 			const personalTagDocumentId = crypto.randomUUID();
 			const workspaceTagDocumentId = crypto.randomUUID();
+			const peerWorkspaceFolderDocumentId = crypto.randomUUID();
+			const peerWorkspaceCategoryDocumentId = crypto.randomUUID();
+			const peerWorkspaceTagDocumentId = crypto.randomUUID();
+			const peerPersonalFolderDocumentId = crypto.randomUUID();
+			const peerPersonalCategoryDocumentId = crypto.randomUUID();
+			const peerPersonalTagDocumentId = crypto.randomUUID();
+			const foreignWorkspaceTagDocumentId = crypto.randomUUID();
 
 			try {
 				await setup`INSERT INTO public.users (id, email)
-					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-helper.invalid`})`;
+					VALUES
+						(${ownerId}::uuid, ${`${ownerId}@metadata-helper.invalid`}),
+						(${peerOwnerId}::uuid, ${`${peerOwnerId}@metadata-helper.invalid`})`;
 				await setup`INSERT INTO public.categories
 					(id, owner_id, workspace_id, name)
 					VALUES
@@ -99,12 +110,22 @@ describe.skipIf(!databaseUrl)(
 						(${personalCategoryDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, ${personalCategoryId}::uuid, 'personal category', ''),
 						(${workspaceCategoryDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, ${workspaceCategoryId}::uuid, 'workspace category', ''),
 						(${personalTagDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, NULL, 'personal tag', ''),
-						(${workspaceTagDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, NULL, 'workspace tag', '')`;
+						(${workspaceTagDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, NULL, 'workspace tag', ''),
+						(${peerWorkspaceFolderDocumentId}::uuid, ${peerOwnerId}::uuid, ${workspaceId}, ${workspaceFolderId}::uuid, NULL, 'peer workspace folder', ''),
+						(${peerWorkspaceCategoryDocumentId}::uuid, ${peerOwnerId}::uuid, ${workspaceId}, NULL, ${workspaceCategoryId}::uuid, 'peer workspace category', ''),
+						(${peerWorkspaceTagDocumentId}::uuid, ${peerOwnerId}::uuid, ${workspaceId}, NULL, NULL, 'peer workspace tag', ''),
+						(${peerPersonalFolderDocumentId}::uuid, ${peerOwnerId}::uuid, NULL, ${personalFolderId}::uuid, NULL, 'peer personal folder', ''),
+						(${peerPersonalCategoryDocumentId}::uuid, ${peerOwnerId}::uuid, NULL, NULL, ${personalCategoryId}::uuid, 'peer personal category', ''),
+						(${peerPersonalTagDocumentId}::uuid, ${peerOwnerId}::uuid, NULL, NULL, NULL, 'peer personal tag', ''),
+						(${foreignWorkspaceTagDocumentId}::uuid, ${peerOwnerId}::uuid, ${foreignWorkspaceId}, NULL, NULL, 'foreign workspace tag', '')`;
 				await setup`INSERT INTO public.document_tags
 					(workspace_id, document_id, tag_id)
 					VALUES
 						(NULL, ${personalTagDocumentId}::uuid, ${personalTagId}::uuid),
-						(${workspaceId}, ${workspaceTagDocumentId}::uuid, ${workspaceTagId}::uuid)`;
+						(NULL, ${peerPersonalTagDocumentId}::uuid, ${personalTagId}::uuid),
+						(${workspaceId}, ${workspaceTagDocumentId}::uuid, ${workspaceTagId}::uuid),
+						(${workspaceId}, ${peerWorkspaceTagDocumentId}::uuid, ${workspaceTagId}::uuid),
+						(${foreignWorkspaceId}, ${foreignWorkspaceTagDocumentId}::uuid, ${workspaceTagId}::uuid)`;
 
 				const personalFolder = await reembedDocsInFolder(
 					personalFolderId,
@@ -137,12 +158,12 @@ describe.skipIf(!databaseUrl)(
 				);
 
 				expect(personalFolder).toBe(1);
-				expect(workspaceFolder).toBe(1);
+				expect(workspaceFolder).toBe(2);
 				expect(workspaceAgainstPersonalFolder).toBe(0);
 				expect(personalCategory).toBe(1);
-				expect(workspaceCategory).toBe(1);
+				expect(workspaceCategory).toBe(2);
 				expect(personalTag).toBe(1);
-				expect(workspaceTag).toBe(1);
+				expect(workspaceTag).toBe(2);
 				const queued = await setup<{ document_id: string }[]>`
 					SELECT document_id::text
 					FROM public.document_pipeline_runs
@@ -152,7 +173,14 @@ describe.skipIf(!databaseUrl)(
 						${personalCategoryDocumentId}::uuid,
 						${workspaceCategoryDocumentId}::uuid,
 						${personalTagDocumentId}::uuid,
-						${workspaceTagDocumentId}::uuid
+						${workspaceTagDocumentId}::uuid,
+						${peerWorkspaceFolderDocumentId}::uuid,
+						${peerWorkspaceCategoryDocumentId}::uuid,
+						${peerWorkspaceTagDocumentId}::uuid,
+						${peerPersonalFolderDocumentId}::uuid,
+						${peerPersonalCategoryDocumentId}::uuid,
+						${peerPersonalTagDocumentId}::uuid,
+						${foreignWorkspaceTagDocumentId}::uuid
 					)`;
 				expect(queued.map(({ document_id }) => document_id).sort()).toEqual(
 					[
@@ -162,10 +190,14 @@ describe.skipIf(!databaseUrl)(
 						workspaceCategoryDocumentId,
 						personalTagDocumentId,
 						workspaceTagDocumentId,
+						peerWorkspaceFolderDocumentId,
+						peerWorkspaceCategoryDocumentId,
+						peerWorkspaceTagDocumentId,
 					].sort(),
 				);
 			} finally {
-				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup`DELETE FROM public.users
+					WHERE id IN (${ownerId}::uuid, ${peerOwnerId}::uuid)`;
 				await setup.end();
 			}
 		});
@@ -323,21 +355,33 @@ describe.skipIf(!databaseUrl)(
 							id: workspaceFolders[0],
 						}),
 				);
+				const [personalOutbox, workspaceOutbox, folderOutbox] =
+					await Promise.all([
+						setup<{ document_id: string }[]>`
+							SELECT document_id::text FROM public.metadata_reembed_outbox
+							WHERE operation_id = ${personal.operationId}::uuid`,
+						setup<{ document_id: string }[]>`
+							SELECT document_id::text FROM public.metadata_reembed_outbox
+							WHERE operation_id = ${workspace.operationId}::uuid`,
+						setup<{ document_id: string }[]>`
+							SELECT document_id::text FROM public.metadata_reembed_outbox
+							WHERE operation_id = ${folder.operationId}::uuid`,
+					]);
 
 				expect(personal.folderIds).toEqual([...personalFolders].sort());
-				expect(personal.documents.map(({ id }) => id).sort()).toEqual(
-					[personalDirect, personalNested].sort(),
-				);
+				expect(
+					personalOutbox.map(({ document_id }) => document_id).sort(),
+				).toEqual([personalDirect, personalNested].sort());
 				expect(workspace.folderIds).toEqual([...workspaceFolders].sort());
-				expect(workspace.documents.map(({ id }) => id).sort()).toEqual(
-					[workspaceDirect, workspaceNested].sort(),
-				);
-				expect(folder.documents.map(({ id }) => id).sort()).toEqual(
-					[workspaceNested].sort(),
-				);
-				expect(workspace.documents.map(({ id }) => id)).not.toContain(
-					foreignDocument,
-				);
+				expect(
+					workspaceOutbox.map(({ document_id }) => document_id).sort(),
+				).toEqual([workspaceDirect, workspaceNested].sort());
+				expect(
+					folderOutbox.map(({ document_id }) => document_id).sort(),
+				).toEqual([workspaceNested].sort());
+				expect(
+					workspaceOutbox.map(({ document_id }) => document_id),
+				).not.toContain(foreignDocument);
 
 				const normalized = observations.map(({ query }) =>
 					query.replaceAll(/\s+/g, " ").trim().toLowerCase(),
@@ -371,7 +415,7 @@ describe.skipIf(!databaseUrl)(
 			const detachedDocumentId = crypto.randomUUID();
 			const snapshotReady = deferred<{
 				blockerPid: number;
-				documentIds: string[];
+				targetCount: number;
 			}>();
 			const releaseLocks = deferred<void>();
 			const attachPid = deferred<number>();
@@ -400,7 +444,7 @@ describe.skipIf(!databaseUrl)(
 					);
 					snapshotReady.resolve({
 						blockerPid: backendRows[0]?.pid ?? -1,
-						documentIds: snapshot.documents.map(({ id }) => id),
+						targetCount: snapshot.targetCount,
 					});
 					await releaseLocks.promise;
 				});
@@ -424,7 +468,7 @@ describe.skipIf(!databaseUrl)(
 				} finally {
 					releaseLocks.resolve();
 				}
-				expect(snapshot.documentIds).toEqual([]);
+				expect(snapshot.targetCount).toBe(0);
 				await Promise.all([lockTask, attachTask]);
 				if (blockError) throw blockError;
 			} finally {
@@ -543,12 +587,7 @@ describe.skipIf(!databaseUrl)(
 				const snapshot = await snapshotTask;
 				await Promise.all([blockerTask, mutationTask]);
 
-				expect(snapshot.documents.map(({ id }) => id)).not.toContain(
-					detachedDocumentId,
-				);
-				expect(snapshot.documents.map(({ id }) => id)).not.toContain(
-					attachDocumentId,
-				);
+				expect(snapshot.targetCount).toBe(0);
 				const [reparented] = await setup<{ parent_id: string }[]>`
 						SELECT parent_id::text FROM public.folders
 						WHERE id = ${detachedRootId}::uuid`;

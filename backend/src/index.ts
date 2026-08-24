@@ -30,6 +30,7 @@ import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { DocsmintWorkspaceContextError } from "./lib/external-tenant-context";
 import { logger } from "./lib/logger";
 import { redis } from "./lib/redis";
+import { drainMetadataReembedOutbox } from "./lib/reembed";
 import { startReembedCron } from "./lib/reembed-cron";
 import { configureDocsMintRuntime } from "./lib/runtime-options";
 import { BUCKET, ensureBucket, storage } from "./lib/storage";
@@ -78,6 +79,7 @@ const pipelineRuntime = await startRegisteredPipelineWorkers({
 	},
 	shutdownGraceMs: config.QUEUE_SHUTDOWN_GRACE_MS,
 	recover: async () => {
+		const metadataOutbox = await drainMetadataReembedOutbox();
 		const legacy = await drainLegacyEmbeddingQueue();
 		const recovery = await recoverStalledPipeline(
 			postgresRecoveryStore,
@@ -87,7 +89,10 @@ const pipelineRuntime = await startRegisteredPipelineWorkers({
 				maxAttempts: config.QUEUE_JOB_ATTEMPTS,
 			},
 		);
-		logger.info({ legacy, recovery }, "Pipeline recovery completed");
+		logger.info(
+			{ metadataOutbox, legacy, recovery },
+			"Pipeline recovery completed",
+		);
 	},
 });
 const reembedCronRuntime = startReembedCron();

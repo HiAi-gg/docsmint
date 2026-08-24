@@ -184,7 +184,14 @@ describe("pipeline recovery", () => {
 			},
 			async findOrCreate(input) {
 				committed = input;
-				return { run: { generationId: input.generationId }, created: true };
+				return {
+					run: {
+						generationId: input.generationId,
+						status: "pending",
+						prepareStatus: "pending",
+					},
+					created: true,
+				};
 			},
 		};
 		await expect(

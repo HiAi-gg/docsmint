@@ -1,5 +1,5 @@
 import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
-import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -11,7 +11,14 @@ import {
 import { contentHash } from "../../lib/content-hash";
 import { invalidateDocCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
-import { enqueueReembed, reembedDocsByTag } from "../../lib/reembed";
+import {
+	drainMetadataReembedOutbox,
+	enqueueReembed,
+	metadataReembedPageSize,
+	reembedDocsByTag,
+	snapshotTagMetadataImpact,
+} from "../../lib/reembed";
+import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 import { buildTenantContext } from "../middleware/tenant";
@@ -197,6 +204,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const updated = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const [row] = await tx
 					.update(tags)
 					.set({
@@ -254,28 +262,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 		const _userId = ctx.userId;
 		try {
 			const result = await withTenant(ctx, async (tx) => {
-				// Resolve affected doc ids BEFORE the tag is deleted. We re-embed
-				// after a successful delete so the removed tag stops appearing in
-				// the embedding preamble of every document it was on.
-				const affectedLinks = await tx
-					.select({ documentId: documentTags.documentId })
-					.from(documentTags)
-					.where(eq(documentTags.tagId, params.id));
-
-				const affectedIds = Array.from(
-					new Set(affectedLinks.map((row) => row.documentId)),
-				);
-				const affectedDocs =
-					affectedIds.length > 0
-						? await tx
-								.select({
-									id: documents.id,
-									title: documents.title,
-									content: documents.content,
-								})
-								.from(documents)
-								.where(inArray(documents.id, affectedIds))
-						: [];
+				const snapshot = await snapshotTagMetadataImpact(tx, ctx, params.id);
 
 				await tx
 					.delete(tags)
@@ -286,24 +273,18 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 						),
 					);
 
-				return { affectedDocs };
+				return snapshot;
 			});
 
-			{
-				const enqueued = await enqueueReembed(
-					result.affectedDocs.map((document) => ({
-						id: document.id,
-						revision: contentHash(document.title, document.content ?? ""),
-					})),
-					ctx.workspaceId,
-					{ reason: "metadata", refreshMode: "full" },
+			const drained = await drainMetadataReembedOutbox(
+				result.operationId,
+				metadataReembedPageSize("tag"),
+			);
+			if (drained.enqueued > 0) {
+				logger.info(
+					{ tagId: params.id, enqueued: drained.enqueued },
+					"Tag deleted - re-embedding affected documents",
 				);
-				if (enqueued > 0) {
-					logger.info(
-						{ tagId: params.id, enqueued },
-						"Tag deleted - re-embedding affected documents",
-					);
-				}
 			}
 
 			return { success: true };
@@ -341,6 +322,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const ok = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const [doc] = await tx
 					.select({
 						id: documents.id,
@@ -434,6 +416,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 		const _userId = ctx.userId;
 		try {
 			const ok = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const [doc] = await tx
 					.select({
 						id: documents.id,

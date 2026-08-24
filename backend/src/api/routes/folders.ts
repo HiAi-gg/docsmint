@@ -17,7 +17,8 @@ import { invalidateDocListCache } from "../../lib/doc-cache";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
 import {
-	enqueueReembed,
+	drainMetadataReembedOutbox,
+	metadataReembedPageSize,
 	reembedDocsInFolder,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
@@ -730,7 +731,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					{ lockFolders: true },
 				);
 				if (impact.folderIds.length === 0) {
-					return { deleted: false as const, affectedDocs: [] };
+					return { deleted: false as const, operationId: undefined };
 				}
 				await tx
 					.delete(folders)
@@ -740,7 +741,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 						),
 					);
-				return { deleted: true as const, affectedDocs: impact.documents };
+				return {
+					deleted: true as const,
+					operationId: impact.operationId,
+				};
 			});
 			if (deletion === "forbidden") {
 				set.status = 403;
@@ -754,10 +758,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble
 			// stops appearing in their embedding context.
-			await enqueueReembed(deletion.affectedDocs, ctx.workspaceId, {
-				reason: "metadata",
-				refreshMode: "full",
-			});
+			await drainMetadataReembedOutbox(
+				deletion.operationId,
+				metadataReembedPageSize("folder"),
+			);
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete folder");
