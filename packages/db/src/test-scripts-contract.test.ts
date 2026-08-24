@@ -49,6 +49,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 			"bun run --filter '@hiai-docs/db' test:integration &&",
 			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
+			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",
 			"backend/src/__tests__/graph-routes.test.ts",
 			"packages/db/scripts/query-observer.integration.test.ts",
 		].join(" "),

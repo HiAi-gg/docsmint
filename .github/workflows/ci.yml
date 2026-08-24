@@ -185,6 +185,8 @@ jobs:
             "recursive folder category resolution executes on PostgreSQL" \
             "occupied replay keys distinguish authorized replay from a non-disclosing conflict" \
             "authorizes grandparent-inherited category documents and excludes foreign graph IDs" \
+            "finds direct and two-level effective-category documents in owner and workspace tenants" \
+            "holds deterministic descendant locks through the document snapshot" \
             "keeps concurrent observers isolated and preserves client ownership" \
             "contains observer failures and never exposes query parameters" \
             "does not install PostgreSQL debug instrumentation unless requested"; do
@@ -194,7 +196,7 @@ jobs:
             echo "Required integration suite reported skipped coverage"
             exit 1
           fi
-          echo "Required integration behavior cases: 16; skipped: 0"
+          echo "Required integration behavior cases: 18; skipped: 0"
 
       - name: Stop Postgres
         if: always()

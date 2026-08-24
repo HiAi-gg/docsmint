@@ -19,6 +19,8 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 		"recursive folder category resolution executes on PostgreSQL",
 		"occupied replay keys distinguish authorized replay from a non-disclosing conflict",
 		"authorizes grandparent-inherited category documents and excludes foreign graph IDs",
+		"finds direct and two-level effective-category documents in owner and workspace tenants",
+		"holds deterministic descendant locks through the document snapshot",
 		"keeps concurrent observers isolated and preserves client ownership",
 		"contains observer failures and never exposes query parameters",
 		"does not install PostgreSQL debug instrumentation unless requested",
@@ -26,16 +28,14 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 		expect(workflow).toContain(suite);
 	}
 	expect(workflow).toContain(
-		"Required integration behavior cases: 16; skipped: 0",
+		"Required integration behavior cases: 18; skipped: 0",
 	);
 });
 
 test("CI smoke and vulnerability gates fail closed without repository env files", () => {
 	expect(workflow).not.toContain("cp .env.example .env");
 	expect(workflow).not.toMatch(/sed -i .*\.env/);
-	expect(workflow).toContain(
-		"docker compose --env-file /dev/null up --detach --no-build --wait api",
-	);
+	expect(workflow).toContain("bun run release:check:docker-smoke");
 	expect(workflow).toContain(
 		"curl --fail --silent --show-error http://127.0.0.1:50700/api/health",
 	);
@@ -54,7 +54,12 @@ test("every release publication path validates committed version metadata", asyn
 
 	expect(workflow.match(new RegExp(validator, "g"))).toHaveLength(4);
 	expect(manualRegistryWorkflow).toContain(validator);
-	expect(manualRegistryWorkflow).toContain('npm view "@hiai-gg/docsmint@${VERSION}"');
+	expect(manualRegistryWorkflow).toContain(
+		"bun run scripts/verify-published-package.ts",
+	);
+	expect(manualRegistryWorkflow).toContain(
+		'test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"',
+	);
 	expect(releaseHelper).toContain("scripts/release-version-validator.ts");
 	expect(workflow).not.toContain("PUBLIC_DEPLOYMENT_ID=${{ github.ref_name }}");
 	expect(workflow).not.toContain("pkg.version = '${CLEAN_VERSION}'");
