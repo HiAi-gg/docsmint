@@ -209,6 +209,40 @@ test("workflow validation requires API and web startup after browser migrations"
 	);
 });
 
+test("workflow validation forbids application startup from traversing migrate dependencies", async () => {
+	for (const [jobName, stepName, run, services] of [
+		[
+			"docker-build",
+			"Smoke test backend image against healthy services",
+			[
+				"docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs",
+				"docker compose --env-file /dev/null run --rm --no-deps migrate",
+				"docker compose --env-file /dev/null up --detach --no-build --wait api",
+			].join("\n"),
+			"API",
+		],
+		[
+			"browser-e2e",
+			"Rebuild and start the complete release stack",
+			[
+				"docker compose --env-file /dev/null build",
+				"docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs",
+				"docker compose --env-file /dev/null run --rm --no-deps migrate",
+				"docker compose --env-file /dev/null up --detach --wait api web",
+			].join("\n"),
+			"API and web",
+		],
+	] as const) {
+		const path = await mutatedWorkflow((workflow) => {
+			workflowStep(workflow, jobName, stepName).run = run;
+		});
+
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			`${jobName} must start ${services} with --no-deps after standalone migrate`,
+		);
+	}
+});
+
 test("workflow validation requires HTTPS public storage in production Docker jobs", async () => {
 	for (const jobName of ["docker-build", "browser-e2e"]) {
 		const path = await mutatedWorkflow((workflow) => {

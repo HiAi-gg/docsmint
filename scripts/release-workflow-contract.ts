@@ -43,9 +43,9 @@ const uuidPattern =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const applicationStartCommands = {
 	"docker-build":
-		"docker compose --env-file /dev/null up --detach --no-build --wait api",
+		"docker compose --env-file /dev/null up --detach --no-build --no-deps --wait api",
 	"browser-e2e":
-		"docker compose --env-file /dev/null up --detach --wait api web",
+		"docker compose --env-file /dev/null up --detach --no-deps --wait api web",
 } as const;
 const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	lint: ["bun run lint"],
@@ -150,6 +150,17 @@ function validateDockerLifecycle(jobs: Record<string, WorkflowJob>): void {
 		const applicationStart = lines.indexOf(command);
 		if (applicationStart < 0 || applicationStart < migrate) {
 			const services = name === "browser-e2e" ? "API and web" : "API";
+			const serviceTokens = name === "browser-e2e" ? ["api", "web"] : ["api"];
+			const traversesDependencies = lines.some((line) => {
+				if (!isComposeUpWait(line)) return false;
+				const tokens = line.split(/\s+/);
+				return serviceTokens.every((service) => tokens.includes(service));
+			});
+			if (traversesDependencies) {
+				throw new Error(
+					`${name} must start ${services} with --no-deps after standalone migrate`,
+				);
+			}
 			throw new Error(
 				`${name} must start ${services} after standalone migrate`,
 			);

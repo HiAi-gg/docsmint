@@ -332,7 +332,7 @@ jobs:
           docker tag hiai-docs/api:ci-${{ github.sha }} docsmint-api:local
           docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
           docker compose --env-file /dev/null run --rm --no-deps migrate
-          docker compose --env-file /dev/null up --detach --no-build --wait api
+          docker compose --env-file /dev/null up --detach --no-build --no-deps --wait api
           test "$(docker inspect --format '{{.State.Running}}' "$(docker compose --env-file /dev/null ps --quiet api)")" = "true"
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
 
@@ -549,7 +549,7 @@ jobs:
           docker compose --env-file /dev/null build
           docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
           docker compose --env-file /dev/null run --rm --no-deps migrate
-          docker compose --env-file /dev/null up --detach --wait api web
+          docker compose --env-file /dev/null up --detach --no-deps --wait api web
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
           curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
       - run: bun run release:check:browser
