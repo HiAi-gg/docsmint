@@ -2,7 +2,11 @@ import { existsSync } from "node:fs";
 import { resolve, sep } from "node:path";
 
 type ValidationPhase = "task2" | "prepublish" | "postpublish";
-type EvidenceStatus = "proven" | "pending_publish" | "not_applicable_oss";
+type EvidenceStatus =
+	| "proven"
+	| "pending_publish"
+	| "pending_task_3"
+	| "not_applicable_oss";
 
 interface EvidenceQuestion {
 	id: number;
@@ -15,7 +19,7 @@ interface EvidenceQuestion {
 interface MigrationTransition {
 	status: "pending_task_3" | "complete" | string;
 	value: boolean | null;
-	evidence?: string[];
+	evidence?: unknown;
 	explanation?: string;
 }
 
@@ -29,6 +33,7 @@ interface ContractEvidenceManifest {
 const allowedStatuses = new Set<EvidenceStatus>([
 	"proven",
 	"pending_publish",
+	"pending_task_3",
 	"not_applicable_oss",
 ]);
 
@@ -40,6 +45,36 @@ const allowedPostpublishMetadata = new Set([
 	"postpublish:npm.dist.shasum",
 	"postpublish:origin.tag-release-artifact-commit",
 ]);
+
+const task3MigrationEvidenceContract = {
+	additiveIdempotentReapply:
+		"test:scripts/rehearse-saas-0.7-adoption.test.ts#reapplies the additive migration as an idempotent no-op",
+	noNewRequiredEnvironment:
+		"test:scripts/rehearse-saas-0.7-adoption.test.ts#requires no new environment variables relative to 0.6.8",
+	atomicPackageAndSubmoduleAdoption:
+		"test:scripts/rehearse-saas-0.7-adoption.test.ts#adopts the package and submodule atomically in a disposable SaaS copy",
+	runtime070Smoke:
+		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.7 runtime against the upgraded disposable database",
+	rollback068RuntimeSmoke:
+		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.6.8 runtime against the upgraded disposable database",
+	rehearsalCommand: "command:bun run scripts/rehearse-saas-0.7-adoption.ts",
+} as const;
+
+const task3QuestionEvidence = new Map<number, string>([
+	[71, task3MigrationEvidenceContract.additiveIdempotentReapply],
+	[73, task3MigrationEvidenceContract.noNewRequiredEnvironment],
+	[75, task3MigrationEvidenceContract.atomicPackageAndSubmoduleAdoption],
+	[76, task3MigrationEvidenceContract.rollback068RuntimeSmoke],
+]);
+
+export type EvidenceReferenceResolver = (
+	reference: string,
+) => Promise<string | undefined>;
+
+export interface ContractEvidenceValidationOptions {
+	/** Test seam for an isolated future-artifact resolver. CLI validation never injects it. */
+	resolveEvidenceReference?: EvidenceReferenceResolver;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -135,7 +170,9 @@ async function validateCommandEvidence(command: string): Promise<string | undefi
 	return "command evidence must be a repository bun target or exact git diff";
 }
 
-async function invalidEvidenceReason(reference: string): Promise<string | undefined> {
+async function resolveRepositoryEvidenceReference(
+	reference: string,
+): Promise<string | undefined> {
 	const separator = reference.indexOf(":");
 	if (separator <= 0) return "evidence reference requires a supported kind";
 	const kind = reference.slice(0, separator);
@@ -156,20 +193,59 @@ async function validateEvidenceReferences(
 	references: string[],
 	label: string,
 	errors: string[],
+	resolveEvidenceReference: EvidenceReferenceResolver,
 ): Promise<void> {
 	for (const reference of references) {
-		const reason = await invalidEvidenceReason(reference);
+		const reason = await resolveEvidenceReference(reference);
 		if (reason) {
 			errors.push(`${label} has invalid evidence reference ${reference}: ${reason}`);
 		}
 	}
 }
 
+function validateTask3MigrationEvidence(
+	value: unknown,
+	errors: string[],
+): string[] {
+	if (!isRecord(value)) {
+		errors.push(
+			"requiresSaasMigration evidence must use the exact Task 3 category contract",
+		);
+		return [];
+	}
+
+	const expected = task3MigrationEvidenceContract as Readonly<
+		Record<string, string>
+	>;
+	for (const category of Object.keys(value)) {
+		if (!(category in expected)) {
+			errors.push(
+				`requiresSaasMigration evidence has unknown category ${category}`,
+			);
+		}
+	}
+
+	const references: string[] = [];
+	for (const [category, reference] of Object.entries(expected)) {
+		if (value[category] !== reference) {
+			errors.push(
+				`requiresSaasMigration evidence ${category} must equal ${reference}`,
+			);
+			continue;
+		}
+		references.push(reference);
+	}
+	return references;
+}
+
 export async function validateContractEvidence(
 	value: unknown,
 	phase: ValidationPhase,
+	options: ContractEvidenceValidationOptions = {},
 ): Promise<{ manifest?: ContractEvidenceManifest; errors: string[] }> {
 	const errors: string[] = [];
+	const resolveEvidenceReference =
+		options.resolveEvidenceReference ?? resolveRepositoryEvidenceReference;
 	if (!isRecord(value)) return { errors: ["manifest must be a JSON object"] };
 	if (value.schemaVersion !== 1) errors.push("schemaVersion must be 1");
 	if (value.release !== "0.7.0") errors.push("release must be exactly 0.7.0");
@@ -190,19 +266,20 @@ export async function validateContractEvidence(
 		) {
 			errors.push("pending Task 3 requiresSaasMigration needs an explanation");
 		}
-	} else if (
-		migration.status !== "complete" ||
-		migration.value !== true ||
-		!nonEmptyStrings(migration.evidence)
-	) {
+	} else if (migration.status !== "complete" || migration.value !== true) {
 		errors.push(
-			"requiresSaasMigration must be complete with value true and executable evidence",
+			"requiresSaasMigration must be complete with value true and exact Task 3 evidence",
 		);
 	} else {
+		const migrationReferences = validateTask3MigrationEvidence(
+			migration.evidence,
+			errors,
+		);
 		await validateEvidenceReferences(
-			migration.evidence as string[],
+			migrationReferences,
 			"requiresSaasMigration",
 			errors,
+			resolveEvidenceReference,
 		);
 	}
 
@@ -244,16 +321,53 @@ export async function validateContractEvidence(
 		if (status === "pending_publish" && (id < 1 || id > 5)) {
 			errors.push("only questions 1-5 may be pending_publish");
 		}
+		const requiredTask3Reference = task3QuestionEvidence.get(id);
+		if (status === "pending_task_3") {
+			if (!requiredTask3Reference) {
+				errors.push(
+					`question ${id} cannot use pending_task_3 outside the migration rehearsal rows`,
+				);
+			}
+			if (phase !== "task2") {
+				errors.push(`question ${id} is still pending Task 3`);
+			}
+			if (
+				typeof rawQuestion.explanation !== "string" ||
+				rawQuestion.explanation.trim().length === 0
+			) {
+				errors.push(`question ${id} pending_task_3 requires an explanation`);
+			}
+		}
 		if (phase === "postpublish" && status === "pending_publish") {
 			errors.push("postpublish evidence cannot contain pending_publish");
 		}
 		if (!nonEmptyStrings(rawQuestion.evidence)) {
 			errors.push(`question ${id} requires evidence`);
+		} else if (status === "pending_task_3") {
+			if (
+				!requiredTask3Reference ||
+				rawQuestion.evidence.length !== 1 ||
+				rawQuestion.evidence[0] !== requiredTask3Reference
+			) {
+				errors.push(
+					`question ${id} pending_task_3 must name its exact future Task 3 selector`,
+				);
+			}
 		} else {
+			if (
+				requiredTask3Reference &&
+				(rawQuestion.evidence.length !== 1 ||
+					rawQuestion.evidence[0] !== requiredTask3Reference)
+			) {
+				errors.push(
+					`question ${id} proven migration evidence must equal ${requiredTask3Reference}`,
+				);
+			}
 			await validateEvidenceReferences(
 				rawQuestion.evidence,
 				`question ${id}`,
 				errors,
+				resolveEvidenceReference,
 			);
 		}
 		if (
@@ -313,7 +427,7 @@ if (import.meta.main) {
 		const count = (status: EvidenceStatus) =>
 			questions.filter((question) => question.status === status).length;
 		console.log(
-			`Contract evidence valid for ${phase}: ${count("proven")} proven, ${count("pending_publish")} pending_publish, ${count("not_applicable_oss")} not_applicable_oss`,
+			`Contract evidence valid for ${phase}: ${count("proven")} proven, ${count("pending_publish")} pending_publish, ${count("pending_task_3")} pending_task_3, ${count("not_applicable_oss")} not_applicable_oss`,
 		);
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));

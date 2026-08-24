@@ -104,7 +104,12 @@ Publishing is a separate, explicitly authorized operation.
    release metadata from the tag.
 4. Run `bun run release:check:contract-evidence`. This canonical prepublish gate
    rejects the Task 2 `pending_task_3` transition: Task 3 must first record its
-   completed migration rehearsal with verifiable repository evidence.
+   completed migration rehearsal with the exact closed evidence categories for
+   additive/idempotent reapply, no new required environment, atomic package and
+   submodule adoption in a disposable SaaS copy, the 0.7 runtime smoke, and the
+   0.6.8 rollback-runtime smoke on the same upgraded database. The completion
+   also names the exact `bun run scripts/rehearse-saas-0.7-adoption.ts` command;
+   generic tests and validator self-references are rejected.
 5. Create an annotated `v<version>` tag.
 6. Push the commit and tag.
 7. Wait for GitHub Actions to finish successfully. Every tag publication job
