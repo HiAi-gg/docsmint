@@ -1070,7 +1070,7 @@ export class DocsClient {
 			headers.delete("Authorization");
 			headers.delete("Cookie");
 		}
-		if (this.config.apiKey) {
+		if (this.config.apiKey && (hasWorkspaceAssertion || !headers.has("Authorization"))) {
 			headers.set("Authorization", `Bearer ${this.config.apiKey}`);
 		}
 		if (!hasWorkspaceAssertion && requestContext?.authorization)

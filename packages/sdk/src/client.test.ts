@@ -66,6 +66,26 @@ describe("DocsClient public contract", () => {
 		expect(new Headers(seen?.init.headers).get("x-tenant-id")).toBe("tenant-a");
 	});
 
+	it("preserves an arbitrary Authorization header without a workspace assertion", async () => {
+		let seenHeaders: Headers | undefined;
+		const docs = client(async (_input, init) => {
+			seenHeaders = new Headers(init?.headers);
+			return jsonResponse({
+				status: "ok",
+				service: "hiai-docs",
+				timestamp: "now",
+			});
+		});
+
+		await docs.health({
+			headers: { Authorization: "Bearer caller-header-token" },
+		});
+
+		expect(seenHeaders?.get("authorization")).toBe(
+			"Bearer caller-header-token",
+		);
+	});
+
 	it("merges default request context with per-call context", async () => {
 		let seenHeaders: Headers | undefined;
 		const docs = client(
