@@ -31,6 +31,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		[
 			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
 			"scripts/pipeline-rls.integration.test.ts",
+			"scripts/workspace-child-rls.integration.test.ts",
 			"scripts/lifecycle-operations.integration.test.ts",
 			"scripts/reembed-delete-lock.integration.test.ts",
 			"scripts/embedding-context-migration.integration.test.ts",

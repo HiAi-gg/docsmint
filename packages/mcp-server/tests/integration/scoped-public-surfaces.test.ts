@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import {
 	DeleteObjectCommand,
 	HeadObjectCommand,
+	PutObjectCommand,
 	S3Client,
 } from "@aws-sdk/client-s3";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
@@ -55,6 +56,8 @@ for (const name of requiredEnvironment) requiredEnvironmentValue(name);
 
 const bindings = resolveContractServiceBindings(process.env);
 const { databaseUrl, baseUrl, redisUrl, storageUrl } = bindings;
+const setupDatabaseUrl =
+	process.env.PIPELINE_RLS_TEST_DATABASE_URL?.trim() ?? databaseUrl;
 const workspaceSecret = requiredEnvironmentValue("DOCSMINT_WORKSPACE_SECRET");
 const workspaceIssuer = requiredEnvironmentValue("DOCSMINT_WORKSPACE_ISSUER");
 const serviceApiKey = requiredEnvironmentValue("HIAI_DOCS_API_KEY");
@@ -117,7 +120,11 @@ const lexicalNeedle = `scopealpha${suffix.replaceAll("-", "")}`;
 const graphEntity = `ContractEntity${suffix.replaceAll("-", "")}`;
 const personalVisibleTitle = `Personal visible ${suffix}`;
 const personalDeletedTitle = `Personal deleted ${suffix}`;
-const database = postgres(databaseUrl, { max: 2 });
+// The fixture owner is separate from the API runtime connection so the public
+// surface runs through hiai_app and FORCE RLS instead of inheriting a
+// superuser false-green. PIPELINE_RLS_TEST_DATABASE_URL is already required by
+// the canonical release gate; standalone invocations may keep one URL.
+const database = postgres(setupDatabaseUrl, { max: 2 });
 const queryObservations: DatabaseQueryObservation[] = [];
 const observedDatabase = createDatabaseClient(databaseUrl, {
 	max: 4,
@@ -1141,6 +1148,93 @@ describe("live category-scoped public surfaces", () => {
 		}
 		if (uploadedObjectKey) {
 			expect(await contractObjectExists(uploadedObjectKey)).toBe(false);
+		}
+	});
+
+	test("duplicates another workspace actor's attachment and object without crossing tenant boundaries", async () => {
+		const sourceDocumentId = crypto.randomUUID();
+		const sourceAttachmentId = crypto.randomUUID();
+		const sourceObjectKey = `${workspaceA}/${ids.actorB}/${sourceDocumentId}/${sourceAttachmentId}.txt`;
+		const bytes = new TextEncoder().encode(`cross-actor attachment ${suffix}`);
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: { workspaceAssertion: assertion },
+		});
+		let copyId: string | undefined;
+		let copiedObjectKey: string | undefined;
+
+		try {
+			await database`INSERT INTO documents
+				(id, owner_id, workspace_id, category_id, title, content)
+				VALUES (
+					${sourceDocumentId}::uuid,
+					${ids.actorB}::uuid,
+					${workspaceA},
+					${ids.categoryA}::uuid,
+					'Cross-actor attachment source',
+					${`[fixture](/api/attachments/${sourceAttachmentId}/raw)`}
+				)`;
+			await contractStorage.send(
+				new PutObjectCommand({
+					Bucket: storageBucket,
+					Key: sourceObjectKey,
+					Body: bytes,
+					ContentType: "text/plain",
+				}),
+			);
+			orphanedObjectKeys.add(sourceObjectKey);
+			await database`INSERT INTO attachments
+				(id, document_id, workspace_id, filename, mime_type, size, storage_key)
+				VALUES (
+					${sourceAttachmentId}::uuid,
+					${sourceDocumentId}::uuid,
+					${workspaceA},
+					'fixture.txt',
+					'text/plain',
+					${bytes.byteLength},
+					${sourceObjectKey}
+				)`;
+
+			const copy = await docs.duplicateDoc(sourceDocumentId);
+			copyId = copy.id;
+			const copiedAttachments = await docs.listAttachments(copy.id);
+			expect(copiedAttachments.items).toHaveLength(1);
+			const copiedAttachment = copiedAttachments.items[0];
+			expect(copiedAttachment?.id).not.toBe(sourceAttachmentId);
+			expect(copy.content).toContain(
+				`/api/attachments/${copiedAttachment?.id}/raw`,
+			);
+			const [copiedRow] = await database<{ storage_key: string }[]>`
+				SELECT storage_key FROM attachments
+				WHERE id = ${copiedAttachment?.id}::uuid`;
+			copiedObjectKey = copiedRow?.storage_key;
+			expect(copiedObjectKey).toBeString();
+			expect(copiedObjectKey).not.toBe(sourceObjectKey);
+			expect(await contractObjectExists(copiedObjectKey as string)).toBe(true);
+			const raw = await requestWithAssertion(
+				copiedAttachment?.url ?? "",
+				assertion,
+			);
+			expect(raw.status).toBe(200);
+			expect(new Uint8Array(await raw.arrayBuffer())).toEqual(bytes);
+
+			await expect(docs.duplicateDoc(ids.docForeign)).rejects.toMatchObject({
+				status: 404,
+				code: "http_404",
+			});
+		} finally {
+			for (const key of [copiedObjectKey, sourceObjectKey]) {
+				if (!key) continue;
+				await deleteContractObject(key).catch(() => undefined);
+				orphanedObjectKeys.delete(key);
+			}
+			await database`DELETE FROM documents WHERE id IN (
+				${sourceDocumentId}::uuid,
+				${copyId ?? crypto.randomUUID()}::uuid
+			)`;
 		}
 	});
 

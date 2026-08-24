@@ -21,7 +21,7 @@
     "test": "bun run test:unit && bun run test:contract",
     "test:unit": "bun --no-env-file test --path-ignore-patterns='*node_modules*' ./src/*.test.ts",
     "test:contract": "bun --no-env-file test --path-ignore-patterns='*node_modules*' scripts/migrate.test.ts scripts/migration-owner-sql.test.ts",
-    "test:integration": "bun --no-env-file test --path-ignore-patterns='*node_modules*' scripts/pipeline-rls.integration.test.ts scripts/lifecycle-operations.integration.test.ts scripts/reembed-delete-lock.integration.test.ts scripts/embedding-context-migration.integration.test.ts",
+    "test:integration": "bun --no-env-file test --path-ignore-patterns='*node_modules*' scripts/pipeline-rls.integration.test.ts scripts/workspace-child-rls.integration.test.ts scripts/lifecycle-operations.integration.test.ts scripts/reembed-delete-lock.integration.test.ts scripts/embedding-context-migration.integration.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

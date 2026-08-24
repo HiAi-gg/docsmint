@@ -14,8 +14,10 @@ test("the embedding context migration is registered in the migration journal", a
 		await readFile(new URL("./migrations/meta/_journal.json", import.meta.url), "utf8"),
 	) as { entries: Array<{ tag: string }> };
 
-	expect(journal.entries.at(-1)?.tag).toBe(
-		"20260823120000_embedding_context/migration",
+	expect(journal.entries).toContainEqual(
+		expect.objectContaining({
+			tag: "20260823120000_embedding_context/migration",
+		}),
 	);
 });
 

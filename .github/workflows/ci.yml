@@ -464,8 +464,8 @@ jobs:
     env:
       DB_PASSWORD: ci-live-db-password
       HIAI_APP_PASSWORD: ci-live-runtime-password
-      DATABASE_URL: postgresql://aiuser:ci-live-db-password@127.0.0.1:5437/hiai_docs
-      DOCSMINT_CONTRACT_DATABASE_URL: postgresql://aiuser:ci-live-db-password@127.0.0.1:5437/hiai_docs
+      DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs
+      DOCSMINT_CONTRACT_DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs
       PIPELINE_RLS_TEST_DATABASE_URL: postgresql://aiuser:ci-live-db-password@127.0.0.1:5437/hiai_docs
       LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:ci-live-db-password@127.0.0.1:5437/hiai_docs
       API_PORT: '50710'

@@ -362,6 +362,41 @@ export const documentPipelineBatches = pgTable(
 );
 
 // ============================================
+// metadata_reembed_outbox -- exact metadata-impact snapshots
+// ============================================
+export const metadataReembedOutbox = pgTable(
+  "metadata_reembed_outbox",
+  {
+    // The outbox row id is also the deterministic pipeline generation id.
+    id: uuid("id").primaryKey(),
+    operationId: uuid("operation_id").notNull(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id"),
+    revision: text("revision").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("metadata_reembed_outbox_operation_document_idx").on(
+      table.operationId,
+      table.documentId,
+    ),
+    index("metadata_reembed_outbox_operation_id_idx").on(
+      table.operationId,
+      table.id,
+    ),
+    index("metadata_reembed_outbox_created_id_idx").on(
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
+
+// ============================================
 // document_knowledge_summaries — generation-scoped retrieval metadata
 // ============================================
 export const documentKnowledgeSummaries = pgTable(
