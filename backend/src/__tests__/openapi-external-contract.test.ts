@@ -4,6 +4,7 @@ interface OpenApiOperation {
 	security?: Array<Record<string, string[]>>;
 	summary?: string;
 	description?: string;
+	responses?: Record<string, unknown>;
 }
 
 interface OpenApiDocument {
@@ -106,14 +107,32 @@ describe("OpenAPI external integration contract", () => {
 		expect(scope).toMatchObject({
 			type: "object",
 			properties: {
-				kind: { const: "category" },
+				kind: { type: "string", enum: ["category"] },
 				categoryId: { format: "uuid" },
 				permissions: { type: "array" },
 			},
 		});
 		expect(assertion.description).toContain("server-to-server");
+		expect(assertion.properties).toMatchObject({
+			workspaceId: {
+				type: "string",
+				minLength: 1,
+				maxLength: 128,
+				pattern: "^\\S(?:.*\\S)?$",
+			},
+		});
 		expect(spec.paths["/api/documents/{id}/index-status"]?.get).toMatchObject({
 			summary: "Read document index status",
+		});
+		expect(
+			spec.paths["/api/documents/{id}/index-status"]?.get?.responses?.["200"],
+		).toMatchObject({
+			description: "Document index status.",
+			content: {
+				"application/json": {
+					schema: { $ref: "#/components/schemas/DocsDocumentIndexStatus" },
+				},
+			},
 		});
 		expect(spec.paths["/api/documents/{id}/index/refresh"]?.post).toMatchObject(
 			{
@@ -123,6 +142,34 @@ describe("OpenAPI external integration contract", () => {
 		expect(
 			spec.paths["/api/documents/{id}/index/refresh"]?.post?.description,
 		).toContain("write");
+		expect(
+			spec.paths["/api/documents/{id}/index/refresh"]?.post?.responses?.["202"],
+		).toMatchObject({
+			description: "Document index refresh accepted.",
+			content: {
+				"application/json": {
+					schema: { $ref: "#/components/schemas/DocsDocumentIndexRefresh" },
+				},
+			},
+		});
+		expect(spec.components.schemas.DocsDocumentIndexStatus).toMatchObject({
+			type: "object",
+			required: [
+				"documentId",
+				"embeddingStatus",
+				"activeGenerationId",
+				"pendingGenerationId",
+				"embeddingProfile",
+				"embeddingErrorCode",
+				"embeddingUpdatedAt",
+				"searchable",
+				"pipeline",
+			],
+		});
+		expect(spec.components.schemas.DocsDocumentIndexRefresh).toMatchObject({
+			type: "object",
+			required: ["documentId", "generationId", "deduplicated"],
+		});
 	});
 
 	test("matches the exact route fragments mounted by the backend", async () => {

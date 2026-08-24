@@ -32,3 +32,20 @@ test("CI smoke and vulnerability gates fail closed without repository env files"
 	expect(workflow.match(/exit-code: '1'/g)).toHaveLength(2);
 	expect(workflow.match(/severity: 'CRITICAL'/g)).toHaveLength(2);
 });
+
+test("every release publication path validates committed version metadata", async () => {
+	const manualRegistryWorkflow = await Bun.file(
+		new URL("../../../.github/workflows/publish-mcp-registry.yml", import.meta.url),
+	).text();
+	const releaseHelper = await Bun.file(
+		new URL("../../../scripts/release.sh", import.meta.url),
+	).text();
+	const validator = "bun run scripts/release-version-validator.ts";
+
+	expect(workflow.match(new RegExp(validator, "g"))).toHaveLength(3);
+	expect(manualRegistryWorkflow).toContain(validator);
+	expect(manualRegistryWorkflow).toContain('npm view "@hiai-gg/docsmint@${VERSION}"');
+	expect(releaseHelper).toContain("scripts/release-version-validator.ts");
+	expect(workflow).not.toContain("PUBLIC_DEPLOYMENT_ID=${{ github.ref_name }}");
+	expect(workflow).not.toContain("pkg.version = '${CLEAN_VERSION}'");
+});

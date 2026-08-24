@@ -699,7 +699,14 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Document index status.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DocsDocumentIndexStatus" }
+              }
+            }
+          },
           "400": {},
           "401": {},
           "403": {},
@@ -723,7 +730,14 @@
           }
         ],
         "responses": {
-          "202": {},
+          "202": {
+            "description": "Document index refresh accepted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DocsDocumentIndexRefresh" }
+              }
+            }
+          },
           "400": {},
           "401": {},
           "403": {},
@@ -1456,7 +1470,7 @@
         "required": ["kind", "categoryId", "permissions"],
         "additionalProperties": false,
         "properties": {
-          "kind": { "const": "category" },
+          "kind": { "type": "string", "enum": ["category"] },
           "categoryId": { "type": "string", "format": "uuid" },
           "permissions": {
             "type": "array",
@@ -1471,12 +1485,71 @@
         "additionalProperties": false,
         "properties": {
           "actorUserId": { "type": "string", "format": "uuid" },
-          "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^\\S(?:.*\\S)?$" },
           "actorRole": { "type": "string", "enum": ["owner", "admin", "editor", "viewer"] },
           "resourceScope": { "$ref": "#/components/schemas/WorkspaceResourceScope" },
           "issuedAt": { "type": "number" },
           "expiresAt": { "type": "number" },
           "issuer": { "type": "string", "minLength": 1 }
+        }
+      },
+      "DocsPipelineStatus": {
+        "type": "string",
+        "enum": ["pending", "processing", "ready", "retrying", "failed", "ready_with_warnings", "skipped", "cancelled"]
+      },
+      "DocsDocumentPipeline": {
+        "type": "object",
+        "required": ["documentId", "generationId", "status", "revision", "stages", "batches", "updatedAt"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "generationId": { "type": "string", "format": "uuid" },
+          "status": { "$ref": "#/components/schemas/DocsPipelineStatus" },
+          "revision": { "type": "string" },
+          "stages": {
+            "type": "object",
+            "required": ["prepare", "embed", "graph", "summarize", "finalize"],
+            "properties": {
+              "prepare": { "$ref": "#/components/schemas/DocsPipelineStatus" },
+              "embed": { "$ref": "#/components/schemas/DocsPipelineStatus" },
+              "graph": { "$ref": "#/components/schemas/DocsPipelineStatus" },
+              "summarize": { "$ref": "#/components/schemas/DocsPipelineStatus" },
+              "finalize": { "$ref": "#/components/schemas/DocsPipelineStatus" }
+            }
+          },
+          "batches": {
+            "type": "object",
+            "required": ["total", "completed", "failed"],
+            "properties": {
+              "total": { "type": "integer" },
+              "completed": { "type": "integer" },
+              "failed": { "type": "integer" }
+            }
+          },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DocsDocumentIndexStatus": {
+        "type": "object",
+        "required": ["documentId", "embeddingStatus", "activeGenerationId", "pendingGenerationId", "embeddingProfile", "embeddingErrorCode", "embeddingUpdatedAt", "searchable", "pipeline"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "embeddingStatus": { "type": "string", "enum": ["pending", "processing", "ready", "failed", "stale"] },
+          "activeGenerationId": { "type": "string", "format": "uuid", "nullable": true },
+          "pendingGenerationId": { "type": "string", "format": "uuid", "nullable": true },
+          "embeddingProfile": { "type": "string", "nullable": true },
+          "embeddingErrorCode": { "type": "string", "nullable": true },
+          "embeddingUpdatedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "searchable": { "type": "boolean" },
+          "pipeline": { "$ref": "#/components/schemas/DocsDocumentPipeline", "nullable": true }
+        }
+      },
+      "DocsDocumentIndexRefresh": {
+        "type": "object",
+        "required": ["documentId", "generationId", "deduplicated"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "generationId": { "type": "string", "format": "uuid" },
+          "deduplicated": { "type": "boolean" }
         }
       }
     },

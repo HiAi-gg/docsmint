@@ -1,23 +1,30 @@
 #!/bin/bash
-# hiai-docs release script
+# DocsMint local release-image helper
 # Usage: ./scripts/release.sh [version]
-#   version: semver-style tag (default: timestamp YYYYMMDD.HHMM)
+#   version: committed semver release version (default: package.public.json)
 #
 # Environment:
 #   REGISTRY  container registry (default: ghcr.io/hiai-gg)
-#   PUSH      if set to "1", also push images after tagging
 #
 # Example:
-#   ./scripts/release.sh v0.1.0
-#   PUSH=1 ./scripts/release.sh v0.1.0
+#   ./scripts/release.sh v0.7.0
 
 set -euo pipefail
 
-VERSION="${1:-$(date +%Y%m%d.%H%M)}"
+if ! command -v bun >/dev/null 2>&1; then
+	echo "❌ Bun is required to validate committed release metadata."
+	exit 1
+fi
+
+VERSION="${1:-$(bun -e 'console.log((await Bun.file("package.public.json").json()).version)')}"
 VERSION="${VERSION#v}"
 REGISTRY="${REGISTRY:-ghcr.io/hiai-gg}"
 IMAGE_NAME="${IMAGE_NAME:-docsmint}"
-PUSH="${PUSH:-0}"
+
+if [ "${PUSH:-0}" = "1" ]; then
+	echo "PUSH is not supported by this local helper. Publish only through the validated CI release workflow."
+	exit 1
+fi
 
 # Sanity: must be run from project root (where docker-compose.yml lives)
 if [ ! -f "docker-compose.yml" ]; then
@@ -25,6 +32,8 @@ if [ ! -f "docker-compose.yml" ]; then
   echo "   Run this script from the hiai-docs project root."
   exit 1
 fi
+
+bun run scripts/release-version-validator.ts "v${VERSION}"
 
 # Sanity: docker must be available
 if ! command -v docker >/dev/null 2>&1; then
@@ -68,19 +77,4 @@ docker images --format "  {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}
   || true
 
 echo ""
-echo "==> Done. Push with:"
-for role in api web caddy; do
-  echo "  docker push ${REGISTRY}/${IMAGE_NAME}-${role}:${VERSION}"
-  echo "  docker push ${REGISTRY}/${IMAGE_NAME}-${role}:latest"
-done
-
-# Optional: push immediately if PUSH=1
-if [ "${PUSH}" = "1" ]; then
-  echo ""
-  echo "==> PUSH=1 set — pushing images to ${REGISTRY}..."
-  for role in api web caddy; do
-    docker push "${REGISTRY}/${IMAGE_NAME}-${role}:${VERSION}"
-    docker push "${REGISTRY}/${IMAGE_NAME}-${role}:latest"
-  done
-  echo "==> Push complete."
-fi
+echo "==> Local images only. The helper never pushes images."

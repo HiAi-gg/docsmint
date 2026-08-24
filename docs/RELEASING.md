@@ -56,13 +56,17 @@ Run from the repository root:
 ```bash
 bun install --frozen-lockfile
 bun run test:unit
+PIPELINE_RLS_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
+LIFECYCLE_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
 bun run test:integration
 bun run test:package
 bun run lint
 bun run typecheck
 bun run test
 bun run --sequential --filter '*' build
+bun audit --production
 docker compose config --quiet
+sh scripts/check-compose-port-contract.sh
 COMPOSE_BAKE=false docker compose build
 ```
 
