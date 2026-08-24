@@ -61,8 +61,8 @@ describe('DocsMint MCP catalog contract', () => {
     expect(publishedPackage.mcpName).toBe('io.github.HiAi-gg/docsmint');
     expect(publishedPackage.files).toContain('server.json');
     expect(publishedPackage.exports['./mcp']).toEqual({
-      import: './packages/mcp-server/src/server.ts',
-      types: './packages/mcp-server/src/server.ts',
+      import: './dist/mcp-server.js',
+      types: './dist/mcp-server.d.ts',
     });
     expect(registryManifest).toMatchObject({
       $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',

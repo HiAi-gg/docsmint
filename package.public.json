@@ -59,8 +59,8 @@
       "types": "./dist/index.d.ts"
     },
     "./mcp": {
-      "import": "./packages/mcp-server/src/server.ts",
-      "types": "./packages/mcp-server/src/server.ts"
+      "import": "./dist/mcp-server.js",
+      "types": "./dist/mcp-server.d.ts"
     },
     "./lifecycle": {
       "browser": "./dist/server-only-browser-entry.js",
@@ -339,9 +339,9 @@
   },
   "bin": {
     "docsmint": "./packages/cli/src/index.ts",
-    "docsmint-mcp": "./packages/mcp-server/src/index.ts",
+    "docsmint-mcp": "./dist/mcp-cli.js",
     "hiai-docs": "./packages/cli/src/index.ts",
-    "hiai-docs-mcp": "./packages/mcp-server/src/index.ts"
+    "hiai-docs-mcp": "./dist/mcp-cli.js"
   },
   "files": [
     "dist",
@@ -353,12 +353,6 @@
     "packages/cli/src/config.ts",
     "packages/cli/src/format.ts",
     "packages/cli/src/commands",
-    "packages/mcp-server/src/client.ts",
-    "packages/mcp-server/src/index.ts",
-    "packages/mcp-server/src/server.ts",
-    "packages/mcp-server/src/capabilities.ts",
-    "packages/mcp-server/src/types.ts",
-    "packages/mcp-server/src/tools",
     "skills",
     "backend/src/lib/redis-factory.ts",
     "backend/src/lib/storage-factory.ts",

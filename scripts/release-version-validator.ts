@@ -14,6 +14,15 @@ const manifestPaths = [
 	"packages/sdk/package.json",
 ] as const;
 
+const workspaceLockPaths = [
+	"backend",
+	"frontend",
+	"packages/cli",
+	"packages/db",
+	"packages/mcp-server",
+	"packages/sdk",
+] as const;
+
 const runtimeVersionSources = [
 	{ path: "backend/src/index.ts", pattern: /version:\s*"([^"]+)"/ },
 	{ path: "packages/cli/src/index.ts", pattern: /VERSION\s*=\s*'([^']+)'/ },
@@ -53,16 +62,29 @@ export async function validateReleaseVersion({
 		recordMismatch(mismatches, path, (await readJson(new URL(path, root))).version, expected);
 	}
 
-	const lockfile = await Bun.file(new URL("bun.lock", root)).text();
-	const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
-	const workspaceVersions = [
-		...workspaceBlock.matchAll(/^\s*"version": "([^"]+)"/gm),
-	].map((match) => match[1]);
-	if (workspaceVersions.length !== 7) {
-		mismatches.push(`bun.lock workspace versions=${workspaceVersions.length}`);
-	}
-	for (const version of workspaceVersions) {
-		recordMismatch(mismatches, "bun.lock workspace", version, expected);
+	const lockfile = Bun.JSONC.parse(
+		await Bun.file(new URL("bun.lock", root)).text(),
+	) as unknown;
+	const lockWorkspaces =
+		lockfile && typeof lockfile === "object" && !Array.isArray(lockfile)
+			? (lockfile as Record<string, unknown>).workspaces
+			: undefined;
+	if (!lockWorkspaces || typeof lockWorkspaces !== "object" || Array.isArray(lockWorkspaces)) {
+		mismatches.push("bun.lock workspaces");
+	} else {
+		for (const path of workspaceLockPaths) {
+			const workspace = (lockWorkspaces as Record<string, unknown>)[path];
+			if (!workspace || typeof workspace !== "object" || Array.isArray(workspace)) {
+				mismatches.push(`bun.lock workspace ${path}`);
+				continue;
+			}
+			recordMismatch(
+				mismatches,
+				`bun.lock workspace ${path}`,
+				(workspace as Record<string, unknown>).version,
+				expected,
+			);
+		}
 	}
 
 	const server = await readJson(new URL("server.json", root));

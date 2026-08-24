@@ -22,10 +22,19 @@ test('all published and workspace release metadata reports 0.7.0', async () => {
     expect((await json(path)).version, path).toBe(releaseVersion);
   }
 
-  const lockfile = await readFile(new URL('bun.lock', repositoryRoot), 'utf8');
-  const workspaceBlock = lockfile.slice(0, lockfile.indexOf('  "packages": {'));
-  expect(workspaceBlock).not.toContain('"version": "0.3.0"');
-  expect(workspaceBlock.match(/"version": "0\.7\.0"/g)).toHaveLength(7);
+  const lockfile = Bun.JSONC.parse(
+    await readFile(new URL('bun.lock', repositoryRoot), 'utf8')
+  ) as { workspaces: Record<string, { version?: string }> };
+  for (const path of [
+    'backend',
+    'frontend',
+    'packages/cli',
+    'packages/db',
+    'packages/mcp-server',
+    'packages/sdk',
+  ]) {
+    expect(lockfile.workspaces[path]?.version, `bun.lock workspace ${path}`).toBe(releaseVersion);
+  }
 
   const frontendManifest = await json('frontend/package.json');
   expect((frontendManifest.dependencies as Record<string, string>)['lucide-svelte']).toBe(
@@ -35,6 +44,16 @@ test('all published and workspace release metadata reports 0.7.0', async () => {
   const publicManifest = await json('package.public.json');
   expect(publicManifest.name).toBe('@hiai-gg/docsmint');
   const publicExports = publicManifest.exports as Record<string, Record<string, string>>;
+  expect(publicExports['./mcp']).toEqual({
+    import: './dist/mcp-server.js',
+    types: './dist/mcp-server.d.ts',
+  });
+  expect((publicManifest.bin as Record<string, string>)['docsmint-mcp']).toBe(
+    './dist/mcp-cli.js'
+  );
+  expect((publicManifest.bin as Record<string, string>)['hiai-docs-mcp']).toBe(
+    './dist/mcp-cli.js'
+  );
   expect(publicExports['./backend/launcher']).toEqual({
     browser: './dist/server-only-browser-entry.js',
     import: './dist/backend-launcher.js',

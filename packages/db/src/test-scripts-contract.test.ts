@@ -42,3 +42,29 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		"bun run --filter '@hiai-docs/db' test:integration",
 	);
 });
+
+test("the canonical local release gate blocks production dependency advisories", async () => {
+	const root = await scripts("package.json");
+
+	expect(root["release:check:audit"]).toBe("bun audit --production");
+	expect(root["release:check:secrets"]).toBe("bun run scripts/secret-scan.ts");
+	expect(root["test:release"]?.split(" && ")).toContain(
+		"bun run release:check:audit",
+	);
+	expect(root["test:release"]?.split(" && ")).toContain(
+		"bun run release:check:secrets",
+	);
+});
+
+test("the clean public-package consumer uses Bun for packing and installation", async () => {
+	const consumerScript = await readFile(
+		new URL("scripts/test-public-package-consumer.sh", repositoryRoot),
+		"utf8",
+	);
+
+	expect(consumerScript).toContain("bun pm pack");
+	expect(consumerScript).toContain("bun add --ignore-scripts");
+	expect(consumerScript).not.toContain("npm pack");
+	expect(consumerScript).not.toContain("npm install");
+	expect(consumerScript).not.toContain("node -e");
+});

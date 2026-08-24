@@ -136,12 +136,12 @@ const ssrComponentSubpaths = [
 
 const requiredTarEntries = [
   'package/server.json',
-  'package/packages/mcp-server/src/index.ts',
-  'package/packages/mcp-server/src/server.ts',
-  'package/packages/mcp-server/src/capabilities.ts',
   'package/skills/docsmint-document-manager/SKILL.md',
   'package/dist/index.js',
   'package/dist/index.d.ts',
+  'package/dist/mcp-server.js',
+  'package/dist/mcp-server.d.ts',
+  'package/dist/mcp-cli.js',
   'package/dist/lifecycle.js',
   'package/dist/lifecycle.d.ts',
   'package/dist/lifecycle-persistent.js',
@@ -232,6 +232,7 @@ for (const file of await walk(join(packageRoot, 'dist'))) {
     if (
       specifier === '$lib' ||
       specifier.startsWith('$lib/') ||
+      specifier === '@hiai-docs/sdk' ||
       specifier.includes('frontend/src/') ||
       specifier.includes('packages/sdk/frontend-entries') ||
       specifier.includes('src/lib/paraglide')
