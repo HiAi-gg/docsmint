@@ -9,13 +9,17 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-
+import { redis } from "../lib/redis";
 import {
+	reembedDocsByTag,
 	reembedDocsInCategory,
 	reembedDocsInFolder,
 	snapshotMetadataImpact,
 } from "../lib/reembed";
-import { acquireTenantTopologyLock } from "../lib/topology-serialization";
+import {
+	acquireTenantTopologyLock,
+	tenantTopologyLockKey,
+} from "../lib/topology-serialization";
 
 const databaseUrl = Bun.env.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
 
@@ -58,18 +62,30 @@ describe.skipIf(!databaseUrl)(
 			const workspaceId = `metadata-helper-${crypto.randomUUID()}`;
 			const personalFolderId = crypto.randomUUID();
 			const workspaceFolderId = crypto.randomUUID();
+			const personalCategoryId = crypto.randomUUID();
 			const workspaceCategoryId = crypto.randomUUID();
+			const personalTagId = crypto.randomUUID();
+			const workspaceTagId = crypto.randomUUID();
 			const personalFolderDocumentId = crypto.randomUUID();
 			const workspaceFolderDocumentId = crypto.randomUUID();
 			const personalCategoryDocumentId = crypto.randomUUID();
 			const workspaceCategoryDocumentId = crypto.randomUUID();
+			const personalTagDocumentId = crypto.randomUUID();
+			const workspaceTagDocumentId = crypto.randomUUID();
 
 			try {
 				await setup`INSERT INTO public.users (id, email)
 					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-helper.invalid`})`;
 				await setup`INSERT INTO public.categories
 					(id, owner_id, workspace_id, name)
-					VALUES (${workspaceCategoryId}::uuid, ${ownerId}::uuid, ${workspaceId}, 'workspace helper')`;
+					VALUES
+						(${personalCategoryId}::uuid, ${ownerId}::uuid, NULL, 'personal helper'),
+						(${workspaceCategoryId}::uuid, ${ownerId}::uuid, ${workspaceId}, 'workspace helper')`;
+				await setup`INSERT INTO public.tags
+					(id, owner_id, workspace_id, name)
+					VALUES
+						(${personalTagId}::uuid, ${ownerId}::uuid, NULL, 'personal helper'),
+						(${workspaceTagId}::uuid, ${ownerId}::uuid, ${workspaceId}, 'workspace helper')`;
 				await setup`INSERT INTO public.folders
 					(id, owner_id, workspace_id, parent_id, category_id, name)
 					VALUES
@@ -80,8 +96,15 @@ describe.skipIf(!databaseUrl)(
 					VALUES
 						(${personalFolderDocumentId}::uuid, ${ownerId}::uuid, NULL, ${personalFolderId}::uuid, NULL, 'personal folder', ''),
 						(${workspaceFolderDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${workspaceFolderId}::uuid, NULL, 'workspace folder', ''),
-						(${personalCategoryDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, ${workspaceCategoryId}::uuid, 'personal category mismatch', ''),
-						(${workspaceCategoryDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, ${workspaceCategoryId}::uuid, 'workspace category', '')`;
+						(${personalCategoryDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, ${personalCategoryId}::uuid, 'personal category', ''),
+						(${workspaceCategoryDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, ${workspaceCategoryId}::uuid, 'workspace category', ''),
+						(${personalTagDocumentId}::uuid, ${ownerId}::uuid, NULL, NULL, NULL, 'personal tag', ''),
+						(${workspaceTagDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, NULL, 'workspace tag', '')`;
+				await setup`INSERT INTO public.document_tags
+					(workspace_id, document_id, tag_id)
+					VALUES
+						(NULL, ${personalTagDocumentId}::uuid, ${personalTagId}::uuid),
+						(${workspaceId}, ${workspaceTagDocumentId}::uuid, ${workspaceTagId}::uuid)`;
 
 				const personalFolder = await reembedDocsInFolder(
 					personalFolderId,
@@ -97,8 +120,18 @@ describe.skipIf(!databaseUrl)(
 					ownerId,
 					workspaceId,
 				);
+				const personalCategory = await reembedDocsInCategory(
+					personalCategoryId,
+					ownerId,
+				);
 				const workspaceCategory = await reembedDocsInCategory(
 					workspaceCategoryId,
+					ownerId,
+					workspaceId,
+				);
+				const personalTag = await reembedDocsByTag(personalTagId, ownerId);
+				const workspaceTag = await reembedDocsByTag(
+					workspaceTagId,
 					ownerId,
 					workspaceId,
 				);
@@ -106,7 +139,10 @@ describe.skipIf(!databaseUrl)(
 				expect(personalFolder).toBe(1);
 				expect(workspaceFolder).toBe(1);
 				expect(workspaceAgainstPersonalFolder).toBe(0);
+				expect(personalCategory).toBe(1);
 				expect(workspaceCategory).toBe(1);
+				expect(personalTag).toBe(1);
+				expect(workspaceTag).toBe(1);
 				const queued = await setup<{ document_id: string }[]>`
 					SELECT document_id::text
 					FROM public.document_pipeline_runs
@@ -114,18 +150,80 @@ describe.skipIf(!databaseUrl)(
 						${personalFolderDocumentId}::uuid,
 						${workspaceFolderDocumentId}::uuid,
 						${personalCategoryDocumentId}::uuid,
-						${workspaceCategoryDocumentId}::uuid
+						${workspaceCategoryDocumentId}::uuid,
+						${personalTagDocumentId}::uuid,
+						${workspaceTagDocumentId}::uuid
 					)`;
 				expect(queued.map(({ document_id }) => document_id).sort()).toEqual(
 					[
 						personalFolderDocumentId,
 						workspaceFolderDocumentId,
+						personalCategoryDocumentId,
 						workspaceCategoryDocumentId,
+						personalTagDocumentId,
+						workspaceTagDocumentId,
 					].sort(),
 				);
 			} finally {
 				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
 				await setup.end();
+			}
+		});
+
+		test("releases the topology transaction before Redis and durable enqueue I/O", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const contender = postgres(databaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const folderId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const enqueueEntered = deferred<void>();
+			const releaseEnqueue = deferred<void>();
+			type RedisSet = (...args: unknown[]) => Promise<unknown>;
+			const redisTarget = redis as unknown as { set: RedisSet };
+			const originalSet = redisTarget.set;
+			let helperTask: Promise<number> | undefined;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-release.invalid`})`;
+				await setup`INSERT INTO public.folders (id, owner_id, name)
+					VALUES (${folderId}::uuid, ${ownerId}::uuid, 'release probe')`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, folder_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, ${folderId}::uuid, 'release probe', '')`;
+
+				redisTarget.set = async (...args: unknown[]) => {
+					enqueueEntered.resolve();
+					await releaseEnqueue.promise;
+					return Reflect.apply(originalSet, redis, args) as Promise<unknown>;
+				};
+				helperTask = reembedDocsInFolder(folderId, ownerId);
+				await Promise.race([
+					enqueueEntered.promise,
+					Bun.sleep(2_000).then(() => {
+						throw new Error("re-embed helper did not reach Redis enqueue");
+					}),
+				]);
+
+				const key = tenantTopologyLockKey({
+					userId: ownerId,
+					role: "user",
+					source: "personal",
+				});
+				const probeRows = await contender`
+					SELECT pg_try_advisory_lock(${key.toString()}::bigint) AS acquired`;
+				const probe = probeRows[0] as { acquired: boolean } | undefined;
+				expect(probe?.acquired).toBe(true);
+				if (probe?.acquired) {
+					await contender`
+						SELECT pg_advisory_unlock(${key.toString()}::bigint)`;
+				}
+			} finally {
+				releaseEnqueue.resolve();
+				await helperTask?.catch(() => undefined);
+				redisTarget.set = originalSet;
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), contender.end()]);
 			}
 		});
 

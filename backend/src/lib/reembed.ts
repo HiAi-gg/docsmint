@@ -222,6 +222,28 @@ function toReembedTarget(row: ReembedDocumentRow): ReembedTarget {
 	};
 }
 
+async function loadReembedPages(
+	loadPage: ReembedPageLoader,
+	limit: number,
+): Promise<ReembedTarget[]> {
+	let cursor: string | undefined;
+	const targets: ReembedTarget[] = [];
+	let hasNextPage = true;
+	while (hasNextPage) {
+		const rows = await loadPage(cursor, limit);
+		if (rows.length === 0) return targets;
+		targets.push(...rows.map(toReembedTarget));
+		const nextCursor = rows.at(-1)?.id;
+		hasNextPage =
+			limit > 0 &&
+			rows.length >= limit &&
+			typeof nextCursor === "string" &&
+			nextCursor !== cursor;
+		cursor = nextCursor;
+	}
+	return targets;
+}
+
 async function enqueueReembedPages(
 	loadPage: ReembedPageLoader,
 	limit: number,
@@ -383,13 +405,13 @@ export async function reembedDocsInFolder(
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const enqueued = await withTenant(tenant, async (tx) => {
+	const targets = await withTenant(tenant, async (tx) => {
 		await acquireTenantTopologyLock(tx, tenant);
 		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
 			kind: "folder",
 			id: folderId,
 		});
-		return enqueueReembedPages(
+		return loadReembedPages(
 			(cursor, pageLimit) =>
 				loadMetadataImpactDocumentPage(
 					tx,
@@ -400,9 +422,11 @@ export async function reembedDocsInFolder(
 					pageLimit,
 				),
 			limit,
-			workspaceId,
-			{ reason: "metadata", refreshMode: "full" },
 		);
+	});
+	const enqueued = await enqueueReembed(targets, workspaceId, {
+		reason: "metadata",
+		refreshMode: "full",
 	});
 	if (enqueued > 0) {
 		logger.info(
@@ -557,13 +581,13 @@ export async function reembedDocsInCategory(
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const { enqueued, folderCount } = await withTenant(tenant, async (tx) => {
+	const { targets, folderCount } = await withTenant(tenant, async (tx) => {
 		await acquireTenantTopologyLock(tx, tenant);
 		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
 			kind: "category",
 			id: categoryId,
 		});
-		const enqueued = await enqueueReembedPages(
+		const targets = await loadReembedPages(
 			(cursor, pageLimit) =>
 				loadMetadataImpactDocumentPage(
 					tx,
@@ -574,10 +598,12 @@ export async function reembedDocsInCategory(
 					pageLimit,
 				),
 			limit,
-			workspaceId,
-			{ reason: "metadata", refreshMode: "full" },
 		);
-		return { enqueued, folderCount: folderIds.length };
+		return { targets, folderCount: folderIds.length };
+	});
+	const enqueued = await enqueueReembed(targets, workspaceId, {
+		reason: "metadata",
+		refreshMode: "full",
 	});
 
 	if (enqueued > 0) {
@@ -611,8 +637,13 @@ export async function reembedDocsByTag(
 	workspaceId?: string,
 ): Promise<number> {
 	const limit = config.TAG_REEMBED_BATCH_SIZE;
-	const tenant = ownerId
-		? { userId: ownerId, role: "user" as const, workspaceId }
+	const tenant: TenantContext = ownerId
+		? {
+				userId: ownerId,
+				role: "user",
+				source: workspaceId ? "external" : "personal",
+				workspaceId,
+			}
 		: REEMBED_ADMIN_TENANT;
 	const enqueued = await enqueueReembedPages(
 		(cursor, pageLimit) =>
@@ -623,6 +654,13 @@ export async function reembedDocsByTag(
 					.where(
 						and(
 							eq(documentTags.tagId, tagId),
+							...(ownerId
+								? [
+										workspaceId
+											? eq(documentTags.workspaceId, workspaceId)
+											: isNull(documentTags.workspaceId),
+									]
+								: []),
 							...(cursor ? [gt(documentTags.documentId, cursor)] : []),
 						),
 					)
@@ -638,7 +676,20 @@ export async function reembedDocsByTag(
 						content: documents.content,
 					})
 					.from(documents)
-					.where(inArray(documents.id, ids));
+					.where(
+						and(
+							inArray(documents.id, ids),
+							...(ownerId
+								? [
+										tenantOwnerCondition(
+											documents.ownerId,
+											documents.workspaceId,
+											tenant,
+										),
+									]
+								: []),
+						),
+					);
 				const byId = new Map(rows.map((row) => [row.id, row]));
 				return ids.flatMap((id) => {
 					const row = byId.get(id);
