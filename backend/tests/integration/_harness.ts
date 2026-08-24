@@ -39,7 +39,8 @@ export interface TestState {
     workspaceId: string | undefined;
     options: unknown;
   }>;
-  calls: Array<{ kind: string; table: string }>;
+  calls: Array<{ kind: string; table: string; ids?: string[] }>;
+  queries: string[];
   insertFailures: Set<string>;
 }
 
@@ -68,6 +69,7 @@ function createState(): TestState {
     enqueuedEmbeddings: [],
     enqueuedEmbeddingRequests: [],
     calls: [],
+    queries: [],
     insertFailures: new Set(),
   };
   state.users.set(OWNER_ID, {
@@ -160,11 +162,18 @@ const markLt = (col: any, val: any) => ({ [TAG_LT]: true, col, val });
 const markGte = (col: any, val: any) => ({ [TAG_GTE]: true, col, val });
 const markLte = (col: any, val: any) => ({ [TAG_LTE]: true, col, val });
 
-const sql: any = () => ({
+const sql: any = (strings: TemplateStringsArray, ...values: any[]) => ({
   [TAG_SQL]: true,
+  strings: [...strings],
+  values,
   as: (name: string) => ({ name }),
 });
 sql.raw = () => "RAW";
+sql.join = (values: any[], separator: any) => ({
+  [TAG_SQL]: true,
+  strings: ["join"],
+  values: [values, separator],
+});
 
 const OVERRIDES: Record<string, any> = {
   eq: markEq,
@@ -361,9 +370,26 @@ function buildSelectProxy(ctx: SelectCtx): any {
       // production uses FOR UPDATE on the same transaction connection.
       if (prop === "for")
         return (lock: string) => {
+          let rows = getRows(ctx.from);
+          if (ctx.where) rows = rows.filter((row) => evaluateCondition(row, ctx.where));
+          if (ctx.orderBy.length > 0) {
+            rows = [...rows].sort((left, right) => {
+              for (const ordering of ctx.orderBy) {
+                const isDesc = ordering[TAG_DESC] === true;
+                const column = getColumnName(ordering.col ?? ordering);
+                if (left[column] === right[column]) continue;
+                const comparison = left[column] < right[column] ? -1 : 1;
+                return isDesc ? -comparison : comparison;
+              }
+              return 0;
+            });
+          }
           state.calls.push({
             kind: `lock:${lock}`,
             table: getTableName(ctx.from),
+            ids: rows
+              .map((row) => row.id)
+              .filter((id): id is string => typeof id === "string"),
           });
           return buildSelectProxy(ctx);
         };
@@ -685,7 +711,80 @@ function buildMockDb() {
     delete(table: any) {
       return buildDeleteProxy({ type: "delete", table, where: null });
     },
-    execute(_sql: any) {
+    execute(query: any) {
+      const queryText = Array.isArray(query?.strings)
+        ? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
+        : "";
+      state.queries.push(queryText);
+      if (queryText.includes("docsmint:metadata-impact:folder")) {
+        const targetId = query.values?.find(
+          (value: unknown) => typeof value === "string",
+        );
+        if (typeof targetId !== "string") return Promise.resolve([]);
+        const ids = new Set<string>();
+        const pending = [targetId];
+        while (pending.length > 0) {
+          const id = pending.shift();
+          if (!id || ids.has(id)) continue;
+          const folder = state.folders.get(id);
+          if (!folder || folder.ownerId !== OWNER_ID) continue;
+          ids.add(id);
+          for (const child of state.folders.values()) {
+            if (child.ownerId === OWNER_ID && child.parentId === id) {
+              pending.push(child.id);
+            }
+          }
+        }
+        return Promise.resolve([...ids].sort().map((id) => ({ id })));
+      }
+      if (queryText.includes("docsmint:metadata-impact:category")) {
+        const targetId = query.values?.find(
+          (value: unknown) => typeof value === "string",
+        );
+        if (typeof targetId !== "string") return Promise.resolve([]);
+        const effectiveCategory = (folderId: string): string | null => {
+          const visited = new Set<string>();
+          let current = state.folders.get(folderId);
+          while (current && !visited.has(current.id)) {
+            visited.add(current.id);
+            if (current.ownerId !== OWNER_ID) return null;
+            if (current.categoryId) return current.categoryId;
+            current = current.parentId
+              ? state.folders.get(current.parentId)
+              : undefined;
+          }
+          return null;
+        };
+        return Promise.resolve(
+          [...state.folders.values()]
+            .filter(
+              (folder) =>
+                folder.ownerId === OWNER_ID &&
+                effectiveCategory(folder.id) === targetId,
+            )
+            .map(({ id }) => ({ id }))
+            .sort((left, right) => left.id.localeCompare(right.id)),
+        );
+      }
+      if (queryText.includes("select id, title, similarity(title")) {
+        const q = query.values?.find((value: unknown) => typeof value === "string");
+        const normalized = typeof q === "string" ? q.trim().toLowerCase() : "";
+        const excludesDeleted = queryText.includes("deleted_at is null");
+        return Promise.resolve(
+          [...state.documents.values()]
+            .filter((document) => document.ownerId === OWNER_ID)
+            .filter((document) => !excludesDeleted || document.deletedAt == null)
+            .filter((document) =>
+              String(document.title ?? "").toLowerCase().includes(normalized),
+            )
+            .slice(0, 5)
+            .map((document) => ({
+              id: document.id,
+              title: document.title,
+              score: 1,
+            })),
+        );
+      }
       return Promise.resolve([]);
     },
     transaction(fn: any) {

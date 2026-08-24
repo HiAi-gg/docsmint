@@ -560,6 +560,52 @@ describe("DELETE /api/folders/:id", () => {
     expect(deleteIndex).toBeGreaterThan(snapshotIndex);
   });
 
+	it("locks the complete subtree in ID order and re-embeds a grandchild document on ancestor delete", async () => {
+		const state = getState();
+		for (const [id, parentId] of [
+			["delete-root-c", null],
+			["delete-child-a", "delete-root-c"],
+			["delete-grandchild-b", "delete-child-a"],
+		] as const) {
+			state.folders.set(id, {
+				id,
+				ownerId: OWNER_ID,
+				name: id,
+				parentId,
+				categoryId: null,
+			});
+		}
+		state.documents.set("delete-grandchild-doc", {
+			id: "delete-grandchild-doc",
+			ownerId: OWNER_ID,
+			title: "Nested",
+			content: "body",
+			folderId: "delete-grandchild-b",
+			categoryId: null,
+		});
+
+		const res = await authedDelete("/api/folders/delete-root-c");
+
+		expect(res.status).toBe(200);
+		const folderLock = state.calls.find(
+			(call) => call.kind === "lock:update" && call.table === "folders",
+		);
+		const folderLockIndex = state.calls.indexOf(folderLock!);
+		const snapshotIndex = state.calls.findIndex(
+			(call, index) =>
+				index > folderLockIndex &&
+				call.kind === "select" &&
+				call.table === "documents",
+		);
+		expect(folderLock?.ids).toEqual([
+			"delete-child-a",
+			"delete-grandchild-b",
+			"delete-root-c",
+		]);
+		expect(snapshotIndex).toBeGreaterThan(folderLockIndex);
+		expect(state.enqueuedEmbeddings).toContain("delete-grandchild-doc");
+	});
+
   it("does not delete a folder owned by another user", async () => {
     const state = getState();
     const id = "77777777-7777-4777-8777-777777777777";
@@ -608,6 +654,44 @@ describe("folder metadata re-embed pagination", () => {
       "page-doc-3",
     ]);
   });
+
+	it("re-embeds a grandchild document when an ancestor folder moves", async () => {
+		const state = getState();
+		const rootId = "10000000-0000-4000-8000-000000000001";
+		const childId = "10000000-0000-4000-8000-000000000002";
+		const grandchildId = "10000000-0000-4000-8000-000000000003";
+		const destinationId = "10000000-0000-4000-8000-000000000004";
+		for (const [id, parentId] of [
+			[rootId, null],
+			[childId, rootId],
+			[grandchildId, childId],
+			[destinationId, null],
+		] as const) {
+			state.folders.set(id, {
+				id,
+				ownerId: OWNER_ID,
+				name: id,
+				parentId,
+				categoryId: null,
+			});
+		}
+		state.documents.set("move-grandchild-doc", {
+			id: "move-grandchild-doc",
+			ownerId: OWNER_ID,
+			title: "Nested",
+			content: "body",
+			folderId: grandchildId,
+			categoryId: null,
+		});
+
+		const res = await authedPatch(`/api/folders/${rootId}`, {
+			parentId: destinationId,
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(res.status).toBe(200);
+		expect(state.enqueuedEmbeddings).toContain("move-grandchild-doc");
+	});
 });
 
 describe("Folder API auth integration", () => {

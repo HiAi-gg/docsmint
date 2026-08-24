@@ -37,12 +37,14 @@
 import { documents, documentTags, folders } from "@hiai-docs/db/schema";
 import {
 	adminTenantContext,
+	type TenantContext,
+	type TenantTransaction,
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { and, asc, eq, gt, inArray, or } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { config } from "./config";
-import { tenantOwnerCondition } from "./content-access";
+import { tenantOwnerCondition, tenantOwnerSql } from "./content-access";
 import { contentHash } from "./content-hash";
 import { enqueueEmbedding } from "./embedding-queue";
 import { logger } from "./logger";
@@ -73,6 +75,138 @@ type ReembedDocumentRow = Readonly<{
 	title: string;
 	content: string | null;
 }>;
+
+export type MetadataImpactTarget =
+	| Readonly<{ kind: "folder"; id: string }>
+	| Readonly<{ kind: "category"; id: string }>;
+
+export type MetadataImpactSnapshot = Readonly<{
+	folderIds: readonly string[];
+	documents: readonly ReembedTarget[];
+}>;
+
+async function loadMetadataImpactFolderIds(
+	tx: TenantTransaction,
+	ctx: TenantContext,
+	target: MetadataImpactTarget,
+): Promise<string[]> {
+	const rows =
+		target.kind === "folder"
+			? ((await tx.execute(sql`
+				/* docsmint:metadata-impact:folder */
+				WITH RECURSIVE affected_folders AS (
+					SELECT f.id
+					FROM folders f
+					WHERE f.id = ${target.id}
+						AND ${tenantOwnerSql("f", ctx)}
+					UNION ALL
+					SELECT child.id
+					FROM folders child
+					JOIN affected_folders parent ON child.parent_id = parent.id
+					WHERE ${tenantOwnerSql("child", ctx)}
+				)
+				SELECT id FROM affected_folders ORDER BY id
+			`)) as unknown as Array<{ id: string }>)
+			: ((await tx.execute(sql`
+				/* docsmint:metadata-impact:category */
+				WITH RECURSIVE resolved_folders AS (
+					SELECT f.id, f.parent_id, f.category_id,
+						f.category_id AS effective_category_id
+					FROM folders f
+					WHERE f.parent_id IS NULL
+						AND ${tenantOwnerSql("f", ctx)}
+					UNION ALL
+					SELECT child.id, child.parent_id, child.category_id,
+						coalesce(child.category_id, parent.effective_category_id)
+					FROM folders child
+					JOIN resolved_folders parent ON child.parent_id = parent.id
+					WHERE ${tenantOwnerSql("child", ctx)}
+				)
+				SELECT id
+				FROM resolved_folders
+				WHERE effective_category_id = ${target.id}
+				ORDER BY id
+			`)) as unknown as Array<{ id: string }>);
+	return rows.map((row) => row.id);
+}
+
+function metadataImpactDocumentCondition(
+	target: MetadataImpactTarget,
+	folderIds: readonly string[],
+) {
+	if (target.kind === "folder") {
+		return folderIds.length > 0
+			? inArray(documents.folderId, [...folderIds])
+			: sql`false`;
+	}
+	return folderIds.length > 0
+		? or(
+				eq(documents.categoryId, target.id),
+				and(
+					isNull(documents.categoryId),
+					inArray(documents.folderId, [...folderIds]),
+				),
+			)
+		: eq(documents.categoryId, target.id);
+}
+
+function loadMetadataImpactDocumentPage(
+	tx: TenantTransaction,
+	ctx: TenantContext,
+	target: MetadataImpactTarget,
+	folderIds: readonly string[],
+	cursor: string | undefined,
+	limit: number,
+): Promise<readonly ReembedDocumentRow[]> {
+	const query = tx
+		.select({
+			id: documents.id,
+			title: documents.title,
+			content: documents.content,
+		})
+		.from(documents)
+		.where(
+			and(
+				metadataImpactDocumentCondition(target, folderIds),
+				...(cursor ? [gt(documents.id, cursor)] : []),
+				tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+			),
+		)
+		.orderBy(asc(documents.id));
+	return limit > 0 ? query.limit(limit) : query;
+}
+
+/** Resolve, optionally lock, and snapshot one metadata-impact domain. */
+export async function snapshotMetadataImpact(
+	tx: TenantTransaction,
+	ctx: TenantContext,
+	target: MetadataImpactTarget,
+	options: Readonly<{ lockFolders?: boolean }> = {},
+): Promise<MetadataImpactSnapshot> {
+	const folderIds = await loadMetadataImpactFolderIds(tx, ctx, target);
+	if (options.lockFolders && folderIds.length > 0) {
+		await tx
+			.select({ id: folders.id })
+			.from(folders)
+			.where(
+				and(
+					inArray(folders.id, folderIds),
+					tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+				),
+			)
+			.orderBy(asc(folders.id))
+			.for("update");
+	}
+	const impactDocuments = await loadMetadataImpactDocumentPage(
+		tx,
+		ctx,
+		target,
+		folderIds,
+		undefined,
+		0,
+	);
+	return { folderIds, documents: impactDocuments.map(toReembedTarget) };
+}
 
 type ReembedPageLoader = (
 	cursor: string | undefined,
@@ -242,30 +376,21 @@ export async function reembedDocsInFolder(
 ): Promise<number> {
 	const limit = config.FOLDER_REEMBED_BATCH_SIZE;
 	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
+	const folderIds = await withTenant(tenant, (tx) =>
+		loadMetadataImpactFolderIds(tx, tenant, { kind: "folder", id: folderId }),
+	);
 	const enqueued = await enqueueReembedPages(
 		(cursor, pageLimit) =>
-			withTenant(tenant, (tx) => {
-				const query = tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: documents.content,
-					})
-					.from(documents)
-					.where(
-						and(
-							eq(documents.folderId, folderId),
-							...(cursor ? [gt(documents.id, cursor)] : []),
-							tenantOwnerCondition(
-								documents.ownerId,
-								documents.workspaceId,
-								tenant,
-							),
-						),
-					)
-					.orderBy(asc(documents.id));
-				return pageLimit > 0 ? query.limit(pageLimit) : query;
-			}),
+			withTenant(tenant, (tx) =>
+				loadMetadataImpactDocumentPage(
+					tx,
+					tenant,
+					{ kind: "folder", id: folderId },
+					folderIds,
+					cursor,
+					pageLimit,
+				),
+			),
 		limit,
 		workspaceId,
 		{ reason: "metadata", refreshMode: "full" },
@@ -418,53 +543,24 @@ export async function reembedDocsInCategory(
 	const limit = config.CATEGORY_REEMBED_BATCH_SIZE;
 
 	const tenant = { userId: ownerId, role: "user" as const, workspaceId };
-	const folderIds = await withTenant(tenant, async (tx) => {
-		const folderRows = await tx
-			.select({ id: folders.id })
-			.from(folders)
-			.where(
-				and(
-					eq(folders.categoryId, categoryId),
-					tenantOwnerCondition(folders.ownerId, folders.workspaceId, {
-						userId: ownerId,
-						role: "user",
-						workspaceId,
-					}),
-				),
-			);
-		return folderRows.map((row) => row.id);
-	});
+	const folderIds = await withTenant(tenant, (tx) =>
+		loadMetadataImpactFolderIds(tx, tenant, {
+			kind: "category",
+			id: categoryId,
+		}),
+	);
 	const enqueued = await enqueueReembedPages(
 		(cursor, pageLimit) =>
-			withTenant(tenant, (tx) => {
-				const categoryMatch =
-					folderIds.length > 0
-						? or(
-								eq(documents.categoryId, categoryId),
-								inArray(documents.folderId, folderIds),
-							)
-						: eq(documents.categoryId, categoryId);
-				const query = tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: documents.content,
-					})
-					.from(documents)
-					.where(
-						and(
-							categoryMatch,
-							...(cursor ? [gt(documents.id, cursor)] : []),
-							tenantOwnerCondition(
-								documents.ownerId,
-								documents.workspaceId,
-								tenant,
-							),
-						),
-					)
-					.orderBy(asc(documents.id));
-				return pageLimit > 0 ? query.limit(pageLimit) : query;
-			}),
+			withTenant(tenant, (tx) =>
+				loadMetadataImpactDocumentPage(
+					tx,
+					tenant,
+					{ kind: "category", id: categoryId },
+					folderIds,
+					cursor,
+					pageLimit,
+				),
+			),
 		limit,
 		workspaceId,
 		{ reason: "metadata", refreshMode: "full" },

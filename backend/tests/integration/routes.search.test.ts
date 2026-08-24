@@ -301,6 +301,36 @@ describe("GET /api/search/suggest — prefix", () => {
 		expect(res.body).toEqual([]);
 	});
 
+	it("excludes a soft-deleted personal document in the executed suggestion SQL", async () => {
+		const state = getState();
+		state.documents.set("suggest-visible", {
+			id: "suggest-visible",
+			ownerId: "00000000-0000-4000-8000-000000000001",
+			title: "Exact suggestion visible",
+			content: "",
+			folderId: null,
+			categoryId: null,
+			deletedAt: null,
+		});
+		state.documents.set("suggest-deleted", {
+			id: "suggest-deleted",
+			ownerId: "00000000-0000-4000-8000-000000000001",
+			title: "Exact suggestion deleted",
+			content: "",
+			folderId: null,
+			categoryId: null,
+			deletedAt: new Date("2026-08-24T09:00:00Z"),
+		});
+
+		const res = await authedGet("/api/search/suggest?q=Exact%20suggestion");
+
+		expect(res.status).toBe(200);
+		expect((res.body as Array<{ id: string }>).map(({ id }) => id)).toEqual([
+			"suggest-visible",
+		]);
+		expect(state.queries.at(-1)).toContain("deleted_at is null");
+	});
+
 	it("accepts a longer prefix query", async () => {
 		const res = await authedGet("/api/search/suggest?q=helloworld");
 		expect(res.status).toBe(200);

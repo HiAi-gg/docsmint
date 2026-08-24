@@ -346,6 +346,7 @@ export function createSearchRoutes(
 					SELECT id, title, similarity(title, ${q}) as score
 					FROM documents
 					WHERE ${tenantOwnerSql("documents", ctx)}
+						AND deleted_at IS NULL
 						${
 							scopedIds
 								? sql`AND id IN (${sql.join(

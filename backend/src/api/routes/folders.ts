@@ -13,11 +13,14 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
-import { contentHash } from "../../lib/content-hash";
 import { invalidateDocListCache } from "../../lib/doc-cache";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
-import { enqueueReembed, reembedDocsInFolder } from "../../lib/reembed";
+import {
+	enqueueReembed,
+	reembedDocsInFolder,
+	snapshotMetadataImpact,
+} from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -653,9 +656,8 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			}
 
 			// Folder name and placement both affect the metadata preamble. Re-embed
-			// the first batch of documents in this folder (max 100 per call)
-			// to bound the cost spike from a rename or move. Subsequent batches can
-			// be flushed by an explicit reindex job or a follow-up edit.
+			// every document in the recursive subtree, paging by the configured
+			// batch size so one rename or move never creates an unbounded DB read.
 			if (
 				parsed.data.name !== undefined ||
 				parsed.data.parentId !== undefined ||
@@ -711,37 +713,15 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				// Hold the parent row through the child snapshot and delete. PostgreSQL
 				// FK attach checks take a conflicting key-share lock, so a concurrent
 				// document cannot attach after the snapshot and be silently detached.
-				const existing = await tx
-					.select({ id: folders.id })
-					.from(folders)
-					.where(
-						and(
-							eq(folders.id, params.id),
-							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
-						),
-					)
-					.for("update")
-					.limit(1);
-				if (existing.length === 0) {
+				const impact = await snapshotMetadataImpact(
+					tx,
+					ctx,
+					{ kind: "folder", id: params.id },
+					{ lockFolders: true },
+				);
+				if (impact.folderIds.length === 0) {
 					return { deleted: false as const, affectedDocs: [] };
 				}
-				const affectedDocs = await tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: documents.content,
-					})
-					.from(documents)
-					.where(
-						and(
-							eq(documents.folderId, params.id),
-							tenantOwnerCondition(
-								documents.ownerId,
-								documents.workspaceId,
-								ctx,
-							),
-						),
-					);
 				await tx
 					.delete(folders)
 					.where(
@@ -750,7 +730,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 						),
 					);
-				return { deleted: true as const, affectedDocs };
+				return { deleted: true as const, affectedDocs: impact.documents };
 			});
 			if (deletion === "forbidden") {
 				set.status = 403;
@@ -765,10 +745,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// Re-embed affected docs so the "Folder: <old-name>" preamble
 			// stops appearing in their embedding context.
 			await enqueueReembed(
-				deletion.affectedDocs.map((document) => ({
-					id: document.id,
-					revision: contentHash(document.title, document.content ?? ""),
-				})),
+				deletion.affectedDocs,
 				ctx.workspaceId,
 				{ reason: "metadata", refreshMode: "full" },
 			);

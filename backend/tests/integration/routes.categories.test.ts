@@ -266,6 +266,56 @@ describe("PATCH /api/categories/:id", () => {
 			apiPermissionWrite: true,
 		});
 	});
+
+	it("re-embeds direct and two-level inherited-category documents after rename", async () => {
+		const state = getState();
+		seedCategory("cat-recursive-rename", OWNER_ID, "Before");
+		state.folders.set("cat-recursive-root", {
+			id: "cat-recursive-root",
+			ownerId: OWNER_ID,
+			name: "Root",
+			categoryId: "cat-recursive-rename",
+			parentId: null,
+		});
+		state.folders.set("cat-recursive-child", {
+			id: "cat-recursive-child",
+			ownerId: OWNER_ID,
+			name: "Child",
+			categoryId: null,
+			parentId: "cat-recursive-root",
+		});
+		state.folders.set("cat-recursive-grandchild", {
+			id: "cat-recursive-grandchild",
+			ownerId: OWNER_ID,
+			name: "Grandchild",
+			categoryId: null,
+			parentId: "cat-recursive-child",
+		});
+		for (const [id, folderId, categoryId] of [
+			["cat-recursive-direct", null, "cat-recursive-rename"],
+			["cat-recursive-nested", "cat-recursive-grandchild", null],
+		] as const) {
+			state.documents.set(id, {
+				id,
+				ownerId: OWNER_ID,
+				title: id,
+				content: "body",
+				folderId,
+				categoryId,
+			});
+		}
+
+		const res = await authedPatch("/api/categories/cat-recursive-rename", {
+			name: "After",
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		expect(res.status).toBe(200);
+		expect(state.enqueuedEmbeddings.sort()).toEqual([
+			"cat-recursive-direct",
+			"cat-recursive-nested",
+		]);
+	});
 });
 
 describe("DELETE /api/categories/:id", () => {
@@ -356,6 +406,55 @@ describe("DELETE /api/categories/:id", () => {
     expect(documentSnapshotIndex).toBeGreaterThan(folderSnapshotIndex);
     expect(deleteIndex).toBeGreaterThan(documentSnapshotIndex);
   });
+
+	it("locks the complete category subtree in ID order before snapshotting nested documents", async () => {
+		const state = getState();
+		seedCategory("cat-delete-subtree", OWNER_ID, "Delete subtree");
+		for (const [id, parentId] of [
+			["folder-c", null],
+			["folder-a", "folder-c"],
+			["folder-b", "folder-a"],
+		] as const) {
+			state.folders.set(id, {
+				id,
+				ownerId: OWNER_ID,
+				name: id,
+				categoryId: parentId === null ? "cat-delete-subtree" : null,
+				parentId,
+			});
+		}
+		state.documents.set("cat-delete-subtree-doc", {
+			id: "cat-delete-subtree-doc",
+			ownerId: OWNER_ID,
+			title: "Nested",
+			content: "body",
+			folderId: "folder-b",
+			categoryId: null,
+		});
+
+		const res = await authedDelete("/api/categories/cat-delete-subtree");
+
+		expect(res.status).toBe(200);
+		const categoryLockIndex = state.calls.findIndex(
+			(call) => call.kind === "lock:update" && call.table === "categories",
+		);
+		const folderLockIndex = state.calls.findIndex(
+			(call, index) =>
+				index > categoryLockIndex &&
+				call.kind === "lock:update" &&
+				call.table === "folders",
+		);
+		const folderLock = state.calls[folderLockIndex];
+		const documentSnapshotIndex = state.calls.findIndex(
+			(call, index) =>
+				index > folderLockIndex &&
+				call.kind === "select" &&
+				call.table === "documents",
+		);
+		expect(folderLock?.ids).toEqual(["folder-a", "folder-b", "folder-c"]);
+		expect(documentSnapshotIndex).toBeGreaterThan(folderLockIndex);
+		expect(state.enqueuedEmbeddings).toContain("cat-delete-subtree-doc");
+	});
 
   it("returns 404 when the id is unknown", async () => {
     const res = await authedDelete("/api/categories/missing");

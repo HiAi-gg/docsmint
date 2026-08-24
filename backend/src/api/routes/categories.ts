@@ -10,9 +10,12 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
-import { contentHash } from "../../lib/content-hash";
 import { logger } from "../../lib/logger";
-import { enqueueReembed, reembedDocsInCategory } from "../../lib/reembed";
+import {
+	enqueueReembed,
+	reembedDocsInCategory,
+	snapshotMetadataImpact,
+} from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -445,40 +448,12 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 				if (lockedCategory.length === 0) {
 					return { deleted: null, affectedDocs: [] };
 				}
-				const folderRows = await tx
-					.select({ id: folders.id })
-					.from(folders)
-					.where(
-						and(
-							eq(folders.categoryId, params.id),
-							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
-						),
-					);
-				const folderIds = folderRows.map((folder) => folder.id);
-				const categoryMatch =
-					folderIds.length > 0
-						? or(
-								eq(documents.categoryId, params.id),
-								inArray(documents.folderId, folderIds),
-							)
-						: eq(documents.categoryId, params.id);
-				const affectedDocs = await tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: documents.content,
-					})
-					.from(documents)
-					.where(
-						and(
-							categoryMatch,
-							tenantOwnerCondition(
-								documents.ownerId,
-								documents.workspaceId,
-								ctx,
-							),
-						),
-					);
+				const impact = await snapshotMetadataImpact(
+					tx,
+					ctx,
+					{ kind: "category", id: params.id },
+					{ lockFolders: true },
+				);
 				const [row] = await tx
 					.delete(categories)
 					.where(
@@ -492,7 +467,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						),
 					)
 					.returning({ id: categories.id });
-				return { deleted: row ?? null, affectedDocs };
+				return { deleted: row ?? null, affectedDocs: impact.documents };
 			});
 			if (!deletion.deleted) {
 				set.status = 404;
@@ -503,10 +478,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// We re-embed those docs/folders so their preamble no longer mentions
 			// the (now-gone) category name.
 			await enqueueReembed(
-				deletion.affectedDocs.map((document) => ({
-					id: document.id,
-					revision: contentHash(document.title, document.content ?? ""),
-				})),
+				deletion.affectedDocs,
 				ctx.workspaceId,
 				{ reason: "metadata", refreshMode: "full" },
 			);
