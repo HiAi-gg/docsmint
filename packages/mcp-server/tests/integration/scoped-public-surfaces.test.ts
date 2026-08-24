@@ -6,27 +6,32 @@ import {
 	createDocsmintWorkspaceAssertion,
 	type WorkspaceResourcePermission,
 } from "@hiai-docs/sdk";
+import {
+	createDatabaseClient,
+	type DatabaseQueryObservation,
+} from "../../../db/src/client";
+import {
+	type TenantContext,
+	withTenantDatabase,
+} from "../../../db/src/with-tenant";
+import type { SQL } from "drizzle-orm";
+import Redis from "ioredis";
 import postgres from "postgres";
 
 import { launchDocsMintApi } from "../../../sdk/dist/backend-launcher.js";
+import { retrieveGraphCandidates } from "../../../../backend/src/search/graph-retriever";
+import { searchDocuments } from "../../../../backend/src/search/orchestrator";
+import { retrieveFastChannels } from "../../../../backend/src/search/retrievers";
 import { capabilityCatalog } from "../../src/capabilities.js";
 import { createDocsmintMcpServer } from "../../src/server.js";
-
-const QUERY_OBSERVER_SYMBOL = Symbol.for(
-	"@hiai-gg/docsmint/contract-query-observer",
-);
-
-type QueryObservation = Readonly<{
-	query: string;
-	parameters: readonly unknown[];
-}>;
+import { resolveContractServiceBindings } from "./contract-service-bindings";
 
 const requiredEnvironment = [
-	"DOCSMINT_CONTRACT_DATABASE_URL",
-	"DOCSMINT_CONTRACT_BASE_URL",
 	"DOCSMINT_WORKSPACE_SECRET",
 	"DOCSMINT_WORKSPACE_ISSUER",
 	"HIAI_DOCS_API_KEY",
+	"DOCSMINT_CONTRACT_EMBEDDING_URL",
+	"EMBEDDING_BASE_URL",
 ] as const;
 
 function requiredEnvironmentValue(
@@ -39,14 +44,27 @@ function requiredEnvironmentValue(
 
 for (const name of requiredEnvironment) requiredEnvironmentValue(name);
 
-const databaseUrl = requiredEnvironmentValue("DOCSMINT_CONTRACT_DATABASE_URL");
-const baseUrl = requiredEnvironmentValue("DOCSMINT_CONTRACT_BASE_URL").replace(
-	/\/$/,
-	"",
-);
+const bindings = resolveContractServiceBindings(process.env);
+const { databaseUrl, baseUrl, redisUrl, storageUrl } = bindings;
 const workspaceSecret = requiredEnvironmentValue("DOCSMINT_WORKSPACE_SECRET");
 const workspaceIssuer = requiredEnvironmentValue("DOCSMINT_WORKSPACE_ISSUER");
 const serviceApiKey = requiredEnvironmentValue("HIAI_DOCS_API_KEY");
+const embeddingUrl = requiredEnvironmentValue(
+	"DOCSMINT_CONTRACT_EMBEDDING_URL",
+).replace(/\/$/, "");
+if (
+	new URL(embeddingUrl).href !==
+	new URL(requiredEnvironmentValue("EMBEDDING_BASE_URL")).href
+) {
+	throw new Error(
+		"Live contract service binding mismatch: embedding fixture and runtime URLs differ",
+	);
+}
+
+const embeddingModel = "task2-contract-embedding";
+const embeddingProfile = `${embeddingModel}:1024:v1`;
+const embeddingVector = [1, ...Array.from({ length: 1023 }, () => 0)];
+const embeddingVectorLiteral = `[${embeddingVector.join(",")}]`;
 
 const suffix = crypto.randomUUID();
 const ids = {
@@ -66,6 +84,7 @@ const ids = {
 	docOther: crypto.randomUUID(),
 	docForeign: crypto.randomUUID(),
 	docDeleted: crypto.randomUUID(),
+	docCacheProbe: crypto.randomUUID(),
 	tagA: crypto.randomUUID(),
 	tagOther: crypto.randomUUID(),
 	tagForeign: crypto.randomUUID(),
@@ -74,6 +93,8 @@ const ids = {
 	generationDirect: crypto.randomUUID(),
 	generationNested: crypto.randomUUID(),
 	generationForeign: crypto.randomUUID(),
+	generationOther: crypto.randomUUID(),
+	generationDeleted: crypto.randomUUID(),
 	pipelineRun: crypto.randomUUID(),
 } as const;
 
@@ -82,12 +103,21 @@ const workspaceB = `task2-workspace-b-${suffix}`;
 const lexicalNeedle = `scopealpha${suffix.replaceAll("-", "")}`;
 const graphEntity = `ContractEntity${suffix.replaceAll("-", "")}`;
 const database = postgres(databaseUrl, { max: 2 });
-const queryObservations: QueryObservation[] = [];
-const globals = globalThis as Record<PropertyKey, unknown>;
+const queryObservations: DatabaseQueryObservation[] = [];
+const observedDatabase = createDatabaseClient(databaseUrl, {
+	max: 4,
+	queryObserver: (observation) => queryObservations.push(observation),
+});
+const contractRedis = new Redis(redisUrl, {
+	lazyConnect: true,
+	maxRetriesPerRequest: 1,
+});
 
 let apiHandle: Awaited<ReturnType<typeof launchDocsMintApi>> | undefined;
 let mcpClient: Client | undefined;
 let closeMcp: (() => Promise<void>) | undefined;
+let embeddingServer: { stop(closeActiveConnections?: boolean): void } | undefined;
+let embeddingRequests = 0;
 
 function assertionPayload(
 	workspaceId: string,
@@ -199,14 +229,15 @@ async function seedFixtures(): Promise<void> {
 		[ids.docNestedA, ids.actorA, workspaceA, ids.folderNestedA, null, "Scoped nested", "graph neighbor body", null, "2026-08-24T08:01:00Z", ids.generationNested],
 		[ids.docPageA1, ids.actorA, workspaceA, ids.folderNestedA, null, "Scoped page one", `${lexicalNeedle} page one`, null, "2026-08-24T08:02:00Z", null],
 		[ids.docPageA2, ids.actorA, workspaceA, null, ids.categoryA, "Scoped page two", `${lexicalNeedle} page two`, null, "2026-08-24T08:03:00Z", null],
-		[ids.docOther, ids.actorA, workspaceA, ids.folderOther, null, "Other category", `${lexicalNeedle} other`, null, "2026-08-24T08:04:00Z", null],
+		[ids.docOther, ids.actorA, workspaceA, ids.folderOther, null, "Other category", `${lexicalNeedle} other`, null, "2026-08-24T08:04:00Z", ids.generationOther],
 		[ids.docForeign, ids.actorB, workspaceB, ids.folderForeign, null, "Foreign workspace", `${lexicalNeedle} foreign`, null, "2026-08-24T08:05:00Z", ids.generationForeign],
-		[ids.docDeleted, ids.actorA, workspaceA, null, ids.categoryA, "Deleted scoped", `${lexicalNeedle} deleted`, "2026-08-24T09:00:00Z", "2026-08-24T08:06:00Z", null],
+		[ids.docDeleted, ids.actorA, workspaceA, null, ids.categoryA, "Deleted scoped", `${lexicalNeedle} deleted`, "2026-08-24T09:00:00Z", "2026-08-24T08:06:00Z", ids.generationDeleted],
+		[ids.docCacheProbe, ids.actorA, workspaceA, null, ids.categoryOther, "Negative cache probe", "moves after the first miss", null, "2026-08-24T08:07:00Z", null],
 	] as const;
 	for (const row of insertedAt) {
 		await database`INSERT INTO documents
 			(id, owner_id, workspace_id, folder_id, category_id, title, content, deleted_at, created_at, updated_at, embedding_status, active_embedding_generation, embedding_profile)
-			VALUES (${row[0]}::uuid, ${row[1]}::uuid, ${row[2]}, ${row[3]}::uuid, ${row[4]}::uuid, ${row[5]}, ${row[6]}, ${row[7]}::timestamptz, ${row[8]}::timestamptz, ${row[8]}::timestamptz, 'ready', ${row[9]}::uuid, 'contract')`;
+			VALUES (${row[0]}::uuid, ${row[1]}::uuid, ${row[2]}, ${row[3]}::uuid, ${row[4]}::uuid, ${row[5]}, ${row[6]}, ${row[7]}::timestamptz, ${row[8]}::timestamptz, ${row[8]}::timestamptz, 'ready', ${row[9]}::uuid, ${embeddingProfile})`;
 	}
 
 	await database`INSERT INTO tags (id, owner_id, workspace_id, name, color)
@@ -228,9 +259,16 @@ async function seedFixtures(): Promise<void> {
 	await database`INSERT INTO document_pipeline_runs
 		(id, document_id, owner_id, workspace_id, generation_id, revision, source, refresh_mode, status, prepare_status, embed_status, graph_status, summarize_status, finalize_status, total_batches, completed_batches, failed_batches)
 		VALUES (${ids.pipelineRun}::uuid, ${ids.docDirectA}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.generationDirect}::uuid, 'fixture-revision', 'contract', 'full', 'ready', 'ready', 'ready', 'ready', 'ready', 'ready', 1, 1, 0)`;
-	await database`INSERT INTO document_embeddings
-		(document_id, workspace_id, chunk_index, chunk_text, generation_id, embedding_dimensions, embedding_profile, is_valid)
-		VALUES (${ids.docDirectA}::uuid, ${workspaceA}, 0, 'fixture chunk', ${ids.generationDirect}::uuid, 1024, 'contract', true)`;
+	for (const [documentId, workspaceId, generationId] of [
+		[ids.docDirectA, workspaceA, ids.generationDirect],
+		[ids.docOther, workspaceA, ids.generationOther],
+		[ids.docForeign, workspaceB, ids.generationForeign],
+		[ids.docDeleted, workspaceA, ids.generationDeleted],
+	] as const) {
+		await database`INSERT INTO document_embeddings
+			(document_id, workspace_id, chunk_index, chunk_text, generation_id, embedding, embedding_model, embedding_dimensions, embedding_profile, is_valid)
+			VALUES (${documentId}::uuid, ${workspaceId}, 0, 'fixture vector chunk', ${generationId}::uuid, ${embeddingVectorLiteral}::vector, ${embeddingModel}, 1024, ${embeddingProfile}, true)`;
+	}
 
 	await database.unsafe("LOAD 'age'");
 	await database.unsafe("SET search_path = ag_catalog, public");
@@ -274,9 +312,30 @@ async function cleanupFixtures(): Promise<void> {
 }
 
 beforeAll(async () => {
-	globals[QUERY_OBSERVER_SYMBOL] = (observation: QueryObservation) => {
-		queryObservations.push(observation);
-	};
+	const embeddingEndpoint = new URL(embeddingUrl);
+	if (
+		!['127.0.0.1', 'localhost'].includes(embeddingEndpoint.hostname) ||
+		!embeddingEndpoint.port
+	) {
+		throw new Error(
+			"DOCSMINT_CONTRACT_EMBEDDING_URL must use an explicit loopback port",
+		);
+	}
+	embeddingServer = Bun.serve({
+		hostname: embeddingEndpoint.hostname,
+		port: Number(embeddingEndpoint.port),
+		fetch(request) {
+			if (
+				request.method !== "POST" ||
+				new URL(request.url).pathname !== `${embeddingEndpoint.pathname.replace(/\/$/, "")}/embeddings`
+			) {
+				return new Response("Not found", { status: 404 });
+			}
+			embeddingRequests += 1;
+			return Response.json({ data: [{ embedding: embeddingVector }] });
+		},
+	});
+	await contractRedis.connect();
 	await cleanupFixtures().catch(() => undefined);
 	await seedFixtures();
 	apiHandle = await launchDocsMintApi({
@@ -297,7 +356,9 @@ afterAll(async () => {
 	await apiHandle?.stop();
 	await cleanupFixtures();
 	await database.end();
-	delete globals[QUERY_OBSERVER_SYMBOL];
+	await observedDatabase.client.end();
+	await contractRedis.quit();
+	embeddingServer?.stop(true);
 });
 
 describe("live category-scoped public surfaces", () => {
@@ -394,15 +455,40 @@ describe("live category-scoped public surfaces", () => {
 		}
 	});
 
-	test("keeps scoped direct-ID masks as 404 across cache hits", async () => {
+	test("replays a scoped cached 404 without a second database lookup", async () => {
 		const assertion = await createAssertion(["read"]);
-		for (let attempt = 0; attempt < 2; attempt += 1) {
+		const cacheKey = `hiai-docs:cache:docs:single:${ids.actorA}:w:${workspaceA}:${ids.docCacheProbe}:scope:${ids.categoryA}`;
+		await contractRedis.del(cacheKey);
+		try {
 			expect(
 				(await requestWithAssertion(
-					`/api/documents/${ids.docOther}`,
+					`/api/documents/${ids.docCacheProbe}`,
 					assertion,
 				)).status,
 			).toBe(404);
+			await database`UPDATE documents
+				SET category_id = ${ids.categoryA}::uuid, updated_at = NOW()
+				WHERE id = ${ids.docCacheProbe}::uuid`;
+
+			const cachedMiss = await requestWithAssertion(
+				`/api/documents/${ids.docCacheProbe}`,
+				assertion,
+			);
+			expect(cachedMiss.status).toBe(404);
+			expect(await cachedMiss.json()).toEqual({ error: "Document not found" });
+
+			await contractRedis.del(cacheKey);
+			expect(
+				(await requestWithAssertion(
+					`/api/documents/${ids.docCacheProbe}`,
+					assertion,
+				)).status,
+			).toBe(200);
+		} finally {
+			await database`UPDATE documents
+				SET category_id = ${ids.categoryOther}::uuid, updated_at = NOW()
+				WHERE id = ${ids.docCacheProbe}::uuid`;
+			await contractRedis.del(cacheKey);
 		}
 	});
 
@@ -469,6 +555,10 @@ describe("live category-scoped public surfaces", () => {
 		expect(search.items.map(({ id }) => id)).not.toContain(ids.docOther);
 		expect(search.items.map(({ id }) => id)).not.toContain(ids.docForeign);
 		expect(search.items.map(({ id }) => id)).not.toContain(ids.docDeleted);
+		expect(search.diagnostics?.fastChannels).toContain("vector");
+		expect(search.diagnostics?.channelErrors).not.toHaveProperty("vector");
+		expect(search.diagnostics?.graphAttempted).toBe(true);
+		expect(search.diagnostics?.graphContribution).toBe(true);
 
 		const related = await docs.getRelatedDocuments(ids.docDirectA);
 		expect(related.related.map(({ docId }) => docId)).toEqual([ids.docNestedA]);
@@ -518,51 +608,198 @@ describe("live category-scoped public surfaces", () => {
 		).rejects.toMatchObject({ status: 403 });
 	});
 
-	test("observes scope in emitted SQL before count and pagination with one batched tag query", async () => {
-		const assertion = await createAssertion(["read"]);
+	test("authorizes vector and GraphRAG candidates before normal-search fusion", async () => {
+		const ctx: TenantContext = {
+			userId: ids.actorA,
+			role: "user",
+			workspaceId: workspaceA,
+			source: "external",
+			resourceScope: {
+				kind: "category",
+				categoryId: ids.categoryA,
+				permissions: ["read"],
+			},
+		};
+		const authorizedDocumentIds = [
+			ids.docDirectA,
+			ids.docNestedA,
+			ids.docPageA1,
+			ids.docPageA2,
+		];
+		const execute = async (
+			_channel: string,
+			tenantContext: TenantContext,
+			query: unknown,
+		): Promise<unknown[]> =>
+			withTenantDatabase(observedDatabase.db, tenantContext, async (tx) => {
+				const rows = await tx.execute(query as SQL);
+				return rows as unknown as unknown[];
+			});
+		queryObservations.length = 0;
+		const embeddingRequestsBefore = embeddingRequests;
+		const domain = await searchDocuments(
+			ctx,
+			{
+				query: lexicalNeedle,
+				limit: 20,
+				graphEnabled: true,
+				documentIds: authorizedDocumentIds,
+				authorizedCategoryId: ids.categoryA,
+				visibilityScope: {
+					kind: "share",
+					ownerId: ids.actorA,
+					allowedDocumentIds: authorizedDocumentIds,
+				},
+			},
+			{
+				retrieveFast: (tenantContext, plan, options) =>
+					retrieveFastChannels(tenantContext, plan, {
+						...options,
+						execute,
+					}),
+				retrieveGraph: (tenantContext, request) =>
+					retrieveGraphCandidates(tenantContext, request, {
+						withTenant: (transactionContext, operation) =>
+							withTenantDatabase(
+								observedDatabase.db,
+								transactionContext,
+								operation,
+							),
+					}),
+			},
+		);
+
+		expect(embeddingRequests).toBeGreaterThan(embeddingRequestsBefore);
+		expect(domain.diagnostics.fastChannels).toContain("vector");
+		expect(domain.diagnostics.channelErrors).not.toHaveProperty("vector");
+		expect(domain.diagnostics.graphAttempted).toBe(true);
+		expect(domain.diagnostics.graphFailed).toBe(false);
+		expect(domain.diagnostics.graphContribution).toBe(true);
+		expect(domain.items.find(({ documentId }) => documentId === ids.docDirectA)?.channels).toContain("vector");
+		expect(domain.items.find(({ documentId }) => documentId === ids.docNestedA)?.channels).toContain("graph");
+		for (const hostileId of [ids.docOther, ids.docForeign, ids.docDeleted]) {
+			expect(domain.items.map(({ documentId }) => documentId)).not.toContain(
+				hostileId,
+			);
+		}
+
+		const normalized = queryObservations.map(({ query }) =>
+			query.replaceAll(/\s+/g, " ").trim().toLowerCase(),
+		);
+		const vectorQueries = normalized.filter((query) =>
+			query.includes("from document_embeddings"),
+		);
+		const graphVisibilityQueries = normalized.filter(
+			(query) =>
+				query.includes('from "documents"') &&
+				query.includes('"active_embedding_generation"'),
+		);
+		expect(vectorQueries).toHaveLength(1);
+		expect(graphVisibilityQueries.length).toBeGreaterThanOrEqual(2);
+		for (const query of [...vectorQueries, ...graphVisibilityQueries]) {
+			expect(query).toContain("deleted_at");
+			expect(query).toContain("with recursive ancestors");
+			expect(query).toContain("coalesce");
+		}
+		expect(vectorQueries[0]?.indexOf("coalesce")).toBeLessThan(
+			vectorQueries[0]?.lastIndexOf(" limit ") ?? -1,
+		);
+	});
+
+	test("preserves index error statuses and never enqueues foreign dependent IDs", async () => {
+		const assertion = await createAssertion(["read", "edit", "write"]);
 		const docs = new DocsClient({
 			baseUrl,
 			apiKey: serviceApiKey,
 			retries: 1,
 			requestContext: { workspaceAssertion: assertion },
 		});
-		queryObservations.length = 0;
-		const result = await docs.listDocs({ tag: ids.tagA, page: 2, limit: 1 });
-		expect(result).toMatchObject({ total: 2 });
-		expect([ids.docDirectA, ids.docNestedA]).toContain(
-			result.items[0]?.id,
-		);
+		const hostileIds = [ids.docOther, ids.docForeign, ids.docDeleted];
+		const beforeRows = await database<{ count: string }[]>`SELECT count(*)::text AS count
+			FROM document_pipeline_runs
+			WHERE document_id IN (${ids.docOther}::uuid, ${ids.docForeign}::uuid, ${ids.docDeleted}::uuid)`;
 
-		const normalized = queryObservations.map(({ query }) =>
-			query.replaceAll(/\s+/g, " ").trim().toLowerCase(),
-		);
-		const countQueries = normalized.filter(
-			(query) => query.includes("count(") && query.includes('from "documents"'),
-		);
-		const pageQueries = normalized.filter(
-			(query) =>
-				query.includes('from "documents"') &&
-				query.includes(" limit ") &&
-				query.includes(" offset "),
-		);
-		const batchedTagQueries = normalized.filter(
-			(query) =>
-				query.includes('select "document_tags"."document_id"') &&
-				query.includes('from "document_tags"') &&
-				query.includes('"tags"'),
-		);
-		expect(countQueries).toHaveLength(1);
-		expect(pageQueries).toHaveLength(1);
-		expect(batchedTagQueries).toHaveLength(1);
-		for (const query of [...countQueries, ...pageQueries]) {
-			expect(query).toContain('"documents"."workspace_id" =');
-			expect(query).toContain('"documents"."deleted_at" is null');
-			expect(query).toContain("with recursive ancestors");
-			expect(query).toContain("coalesce");
+		for (const documentId of hostileIds) {
+			await expect(docs.listVersions(documentId)).rejects.toMatchObject({
+				status: 404,
+				code: "http_404",
+			});
+			await expect(docs.exportDoc(documentId)).rejects.toMatchObject({
+				status: 404,
+				code: "http_404",
+			});
+			await expect(docs.getDocumentIndexStatus(documentId)).rejects.toMatchObject({
+				status: 404,
+				code: "http_404",
+			});
+			await expect(docs.refreshDocumentIndex(documentId)).rejects.toMatchObject({
+				status: 404,
+				code: "http_404",
+			});
 		}
-		expect(pageQueries[0]?.indexOf("coalesce")).toBeLessThan(
-			pageQueries[0]?.indexOf(" limit ") ?? -1,
-		);
+
+		await expect(docs.getDocumentIndexStatus("not-a-uuid")).rejects.toMatchObject({
+			status: 400,
+			code: "http_400",
+		});
+		const readOnly = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertion(["read"]),
+			},
+		});
+		await expect(readOnly.refreshDocumentIndex(ids.docDirectA)).rejects.toMatchObject({
+			status: 403,
+			code: "http_403",
+		});
+
+		const afterRows = await database<{ count: string }[]>`SELECT count(*)::text AS count
+			FROM document_pipeline_runs
+			WHERE document_id IN (${ids.docOther}::uuid, ${ids.docForeign}::uuid, ${ids.docDeleted}::uuid)`;
+		expect(afterRows[0]?.count).toBe(beforeRows[0]?.count);
+	});
+
+	test("binds presign upload confirm read and delete to the contract Seaweed endpoint", async () => {
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: { workspaceAssertion: assertion },
+		});
+		const bytes = new Uint8Array([
+			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x54, 0x41, 0x53,
+			0x4b, 0x32,
+		]);
+		const filename = `task2-contract-${suffix}.png`;
+		const presigned = await docs.presignAttachment(ids.docDirectA, {
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+		});
+		expect(new URL(presigned.url).origin).toBe(new URL(storageUrl).origin);
+		const upload = await fetch(presigned.url, {
+			method: "PUT",
+			headers: { "content-type": "image/png" },
+			body: bytes,
+		});
+		expect(upload.status).toBe(200);
+		const attachment = await docs.confirmAttachment(ids.docDirectA, {
+			key: presigned.key,
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+			quotaReservationId: presigned.quotaReservationId,
+		});
+		const raw = await requestWithAssertion(attachment.url, assertion);
+		expect(raw.status).toBe(200);
+		expect(new Uint8Array(await raw.arrayBuffer())).toEqual(bytes);
+		await docs.deleteAttachment(attachment.id);
+		expect(
+			(await docs.listAttachments(ids.docDirectA)).items.map(({ id }) => id),
+		).not.toContain(attachment.id);
 	});
 
 	test("executes all 17 MCP tools through one sanitized assertion-bound public client", async () => {

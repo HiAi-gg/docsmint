@@ -434,12 +434,24 @@ jobs:
           fi
           ! grep -Eq "ERR_MODULE_NOT_FOUND|Cannot find module" /tmp/docsmint-mcp.log
 
+  contract-evidence-prepublish:
+    name: Strict Contract Evidence Prepublish Gate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Reject incomplete contract or SaaS migration evidence
+        run: bun run release:check:contract-evidence
+
   # ---------------------------------------------------------------------------
   # 6. Publish Docker — runs only after every verification job passes
   # ---------------------------------------------------------------------------
   publish-docker:
     name: Publish Docker Images
-    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build]
+    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build, contract-evidence-prepublish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -506,7 +518,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-npm:
     name: Publish NPM Package
-    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build]
+    needs: [lint, typecheck, unit-test, integration-test, package-consumer, docker-build, contract-evidence-prepublish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -586,7 +598,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-mcp-registry:
     name: Publish Official MCP Registry Entry
-    needs: [publish-npm]
+    needs: [publish-npm, contract-evidence-prepublish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -625,7 +637,7 @@ jobs:
   # ---------------------------------------------------------------------------
   create-github-release:
     name: Create GitHub Release
-    needs: [publish-docker, publish-npm, publish-mcp-registry]
+    needs: [publish-docker, publish-npm, publish-mcp-registry, contract-evidence-prepublish]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

@@ -11,7 +11,7 @@
     "dev": "bun run src/index.ts",
     "test": "bun test --path-ignore-patterns=\"*node_modules*\" src",
     "test:unit": "bun run test",
-    "test:contract:scoped-live": "bun test tests/integration/scoped-public-surfaces.test.ts",
+    "test:contract:scoped-live": "bun run --filter '@hiai-docs/sdk' build && bun test tests/integration/scoped-public-surfaces.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -30,7 +30,9 @@ function manifest(
 			id,
 			question: `Checklist question ${id}`,
 			status: id <= 5 ? "pending_publish" : "proven",
-			evidence: [`test:evidence-${id}`],
+			evidence: [
+				"test:scripts/contract-evidence-validator.test.ts#accepts exact 1-89 evidence only in the explicit Task 2 transition mode",
+			],
 			explanation:
 				id <= 5 ? "Release-origin evidence is captured after publication." : undefined,
 		};
@@ -147,11 +149,14 @@ describe("0.7.0 contract evidence validator", () => {
 	});
 
 	test("requires a completed true SaaS migration declaration before prepublish", async () => {
+		const migrationEvidence = [
+			"test:scripts/contract-evidence-validator.test.ts#requires a completed true SaaS migration declaration before prepublish",
+		];
 		const complete = manifest({
 			requiresSaasMigration: {
 				status: "complete",
 				value: true,
-				evidence: ["task3:migration-rehearsal"],
+				evidence: migrationEvidence,
 			},
 		});
 		expect((await runValidator(complete, "prepublish")).exitCode).toBe(0);
@@ -160,7 +165,7 @@ describe("0.7.0 contract evidence validator", () => {
 			requiresSaasMigration: {
 				status: "complete",
 				value: false,
-				evidence: ["task3:migration-rehearsal"],
+				evidence: migrationEvidence,
 			},
 		});
 		const rejected = await runValidator(falseDeclaration, "prepublish");
@@ -170,12 +175,45 @@ describe("0.7.0 contract evidence validator", () => {
 		);
 	});
 
+	test("rejects placeholder, nonexistent, and unresolvable evidence references", async () => {
+		for (const evidence of [
+			"task3:migration-rehearsal",
+			"test:scripts/does-not-exist.test.ts#missing behavior",
+			"test:scripts/contract-evidence-validator.test.ts#missing behavior",
+			"workflow:.github/workflows/release.yml#publish",
+			"metadata:npm gitHead is created only by publication",
+		]) {
+			const result = await runValidator(
+				manifest({ question: { id: 6, evidence: [evidence] } }),
+			);
+			expect(result.exitCode, evidence).toBe(1);
+			expect(result.stderr, evidence).toContain("invalid evidence reference");
+		}
+
+		const migration = await runValidator(
+			manifest({
+				requiresSaasMigration: {
+					status: "complete",
+					value: true,
+					evidence: ["task3:migration-rehearsal"],
+				},
+			}),
+			"prepublish",
+		);
+		expect(migration.exitCode).toBe(1);
+		expect(migration.stderr).toContain(
+			"requiresSaasMigration has invalid evidence reference",
+		);
+	});
+
 	test("postpublish rejects all remaining pending_publish rows", async () => {
 		const complete = manifest({
 			requiresSaasMigration: {
 				status: "complete",
 				value: true,
-				evidence: ["task3:migration-rehearsal"],
+				evidence: [
+					"test:scripts/contract-evidence-validator.test.ts#postpublish rejects all remaining pending_publish rows",
+				],
 			},
 		});
 		const result = await runValidator(complete, "postpublish");

@@ -108,7 +108,16 @@ export async function withTenant<T>(
 	ctx: TenantContext,
 	fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>,
 ): Promise<T> {
-	return db.transaction(async (tx) => {
+	return withTenantDatabase(db, ctx, fn);
+}
+
+/** Execute the canonical tenant transaction against an explicitly owned client. */
+export async function withTenantDatabase<T>(
+	database: Database,
+	ctx: TenantContext,
+	fn: (tx: TenantTransaction) => Promise<T>,
+): Promise<T> {
+	return database.transaction(async (tx) => {
 		await tx.execute(
 			sql`SELECT set_config('app.current_user_id', ${ctx.userId}, true)`,
 		);

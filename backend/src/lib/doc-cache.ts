@@ -59,6 +59,86 @@ export async function cacheGetOrSet<T>(
 	return value;
 }
 
+export type HttpCacheValue<T> = Readonly<{
+	status: number;
+	body: T;
+}>;
+
+export type HttpCacheResult<T> = HttpCacheValue<T> &
+	Readonly<{ cacheHit: boolean }>;
+
+type HttpCacheEnvelope<T> = Readonly<{
+	version: 1;
+	kind: "http-response";
+	status: number;
+	body: T;
+}>;
+
+function isHttpCacheEnvelope(
+	value: unknown,
+): value is HttpCacheEnvelope<unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"version" in value &&
+		value.version === 1 &&
+		"kind" in value &&
+		value.kind === "http-response" &&
+		"status" in value &&
+		typeof value.status === "number" &&
+		Number.isInteger(value.status) &&
+		value.status >= 100 &&
+		value.status <= 599 &&
+		"body" in value
+	);
+}
+
+/** Cache a response body together with the status required to replay it. */
+export async function cacheHttpResponse<T>(
+	key: string,
+	ttl: number,
+	compute: () => Promise<HttpCacheValue<T>>,
+	options: {
+		shouldCache?: (value: HttpCacheValue<T>) => boolean;
+	} = {},
+): Promise<HttpCacheResult<T>> {
+	try {
+		const cached = await redis.get(key);
+		if (cached) {
+			const parsed: unknown = JSON.parse(cached);
+			if (isHttpCacheEnvelope(parsed)) {
+				return {
+					status: parsed.status,
+					body: parsed.body as T,
+					cacheHit: true,
+				};
+			}
+		}
+	} catch (err) {
+		logger.warn(
+			{ err, key },
+			"Redis HTTP cache get failed, falling through to DB",
+		);
+	}
+
+	const value = await compute();
+	if (options.shouldCache && !options.shouldCache(value)) {
+		return { ...value, cacheHit: false };
+	}
+	const envelope: HttpCacheEnvelope<T> = {
+		version: 1,
+		kind: "http-response",
+		status: value.status,
+		body: value.body,
+	};
+	try {
+		await redis.set(key, JSON.stringify(envelope), "EX", ttl);
+	} catch (err) {
+		logger.warn({ err, key }, "Redis HTTP cache set failed");
+	}
+	return { ...value, cacheHit: false };
+}
+
 export async function invalidateDocListCache(userId: string): Promise<void> {
 	const pattern = `${LIST_PREFIX}${userId}:*`;
 	try {

@@ -274,4 +274,46 @@ describe("cacheGetOrSet with user-scoped keys", () => {
 		expect(result).toBe(value);
 		expect(fakeStore.has(key)).toBe(false);
 	});
+
+	it("replays a cached scoped 404 with its status without recomputing", async () => {
+		const key = `${mod.docSingleKey("doc-missing", "user-A", "workspace-A")}:scope:category-A`;
+		let computes = 0;
+		const compute = async () => {
+			computes += 1;
+			return { status: 404 as const, body: { error: "Document not found" } };
+		};
+
+		const first = await mod.cacheHttpResponse(key, 60, compute);
+		const second = await mod.cacheHttpResponse(key, 60, compute);
+
+		expect(first).toEqual({
+			status: 404,
+			body: { error: "Document not found" },
+			cacheHit: false,
+		});
+		expect(second).toEqual({
+			status: 404,
+			body: { error: "Document not found" },
+			cacheHit: true,
+		});
+		expect(computes).toBe(1);
+	});
+
+	it("keeps negative-cache envelopes isolated by tenant and category scope", async () => {
+		const keyA = `${mod.docSingleKey("doc-missing", "user-A", "workspace-A")}:scope:category-A`;
+		const keyB = `${mod.docSingleKey("doc-missing", "user-A", "workspace-A")}:scope:category-B`;
+		await mod.cacheHttpResponse(keyA, 60, async () => ({
+			status: 404 as const,
+			body: { error: "Document not found" },
+		}));
+
+		let keyBComputes = 0;
+		const resultB = await mod.cacheHttpResponse(keyB, 60, async () => {
+			keyBComputes += 1;
+			return { status: 200 as const, body: { id: "doc-missing" } };
+		});
+
+		expect(resultB).toMatchObject({ status: 200, cacheHit: false });
+		expect(keyBComputes).toBe(1);
+	});
 });

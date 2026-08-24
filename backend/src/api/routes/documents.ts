@@ -42,6 +42,7 @@ import {
 import { contentHash } from "../../lib/content-hash";
 import {
 	cacheGetOrSet,
+	cacheHttpResponse,
 	docListKey,
 	docSingleKey,
 	invalidateDocCache,
@@ -68,6 +69,14 @@ import {
 	rateLimitHeaders,
 	writeRateLimiter,
 } from "../middleware/rate-limit";
+
+type SingleDocumentCacheBody =
+	| Readonly<{ error: string }>
+	| Readonly<{
+			content: string | null;
+			contentJson: unknown;
+			[key: string]: unknown;
+	  }>;
 
 const createDocumentSchema = z.object({
 	title: z.string().min(1).max(500).default("Untitled"),
@@ -1290,7 +1299,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const userId = ctx.userId;
 		try {
-			return await cacheGetOrSet(
+			const response = await cacheHttpResponse<SingleDocumentCacheBody>(
 				`${docSingleKey(params.id, userId, ctx.workspaceId)}:scope:${access.categoryId ?? "all"}`,
 				60,
 				async () => {
@@ -1352,10 +1361,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					});
 
 					if (!result) {
-						set.status = 404;
-						return { error: "Document not found" };
+						return {
+							status: 404,
+							body: { error: "Document not found" },
+						};
 					}
-					return result;
+					return { status: 200, body: result };
 				},
 				{
 					// Large imported documents are already stored durably in Postgres.
@@ -1363,17 +1374,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					// single open evict useful cache entries and adds avoidable main-thread
 					// JSON serialization pressure to the API process.
 					shouldCache: (value) => {
-						// Status codes are response-local Elysia state. Caching an error
-						// body would replay it as a later HTTP 200 because the loader that
-						// sets `set.status` is skipped on a cache hit.
-						if (!value || "error" in value) return false;
-						const jsonSize = value.contentJson
-							? JSON.stringify(value.contentJson).length
+						if (value.status === 404) return true;
+						if (value.status !== 200) return false;
+						if ("error" in value.body) return false;
+						const jsonSize = value.body.contentJson
+							? JSON.stringify(value.body.contentJson).length
 							: 0;
-						return (value.content?.length ?? 0) + jsonSize <= 512 * 1024;
+						return (value.body.content?.length ?? 0) + jsonSize <= 512 * 1024;
 					},
 				},
 			);
+			set.status = response.status as 200 | 404;
+			return response.body;
 		} catch (err) {
 			logger.error({ err }, "Failed to get document");
 			set.status = 500;
@@ -2137,6 +2149,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
 							...(access.restricted
 								? [
 										access.categoryId

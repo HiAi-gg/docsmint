@@ -60,6 +60,8 @@ PIPELINE_RLS_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
 LIFECYCLE_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
 bun run test:integration
 bun run test:package
+bun run release:check:contract-evidence
+bun run scripts/release-workflow-contract.ts
 bun run lint
 bun run typecheck
 bun run test
@@ -100,13 +102,18 @@ Publishing is a separate, explicitly authorized operation.
 3. Confirm the tag version already matches every manifest, `server.json`,
    Swagger/OpenAPI, CLI/MCP runtime, and PWA deployment identity; do not rewrite
    release metadata from the tag.
-4. Create an annotated `v<version>` tag.
-5. Push the commit and tag.
-6. Wait for GitHub Actions to finish successfully.
-7. Create the GitHub Release from the tag using the changelog summary.
-8. Confirm the expected npm package and Docker images exist and report the
+4. Run `bun run release:check:contract-evidence`. This canonical prepublish gate
+   rejects the Task 2 `pending_task_3` transition: Task 3 must first record its
+   completed migration rehearsal with verifiable repository evidence.
+5. Create an annotated `v<version>` tag.
+6. Push the commit and tag.
+7. Wait for GitHub Actions to finish successfully. Every tag publication job
+   depends on the same strict contract-evidence prepublish gate in
+   `.github/workflows/ci.yml`; publication cannot begin while Task 3 is pending.
+8. Create the GitHub Release from the tag using the changelog summary.
+9. Confirm the expected npm package and Docker images exist and report the
    released version.
-9. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
+10. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
 
 The tag workflow publishes `server.json` only after the exact npm version is
 available. It authenticates `mcp-publisher` with GitHub Actions OIDC, so the

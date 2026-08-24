@@ -1,5 +1,8 @@
 import { documents } from "@hiai-docs/db/schema";
-import type { TenantContext } from "@hiai-docs/db/with-tenant";
+import type {
+	TenantContext,
+	TenantTransaction,
+} from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { config } from "../lib/config";
 import {
@@ -39,6 +42,11 @@ interface GraphDocumentVisibilityRow {
 }
 
 export interface GraphRetrieverAdapters {
+	/** Explicit transaction boundary used by service-backed contract tests. */
+	withTenant?: <T>(
+		ctx: TenantContext,
+		operation: (tx: TenantTransaction) => Promise<T>,
+	) => Promise<T>;
 	expandResults?: (
 		documentSeeds: string[],
 		maxHops: number,
@@ -87,6 +95,7 @@ export async function retrieveGraphCandidates(
 	);
 	const visibilityScope =
 		request.visibilityScope ?? _buildGraphVisibilityScope(ctx);
+	const tenantTransaction = adapters.withTenant ?? withTenant;
 	const authorizedSeeds =
 		requestedSeeds.length === 0
 			? new Set<string>()
@@ -96,6 +105,7 @@ export async function retrieveGraphCandidates(
 					adapters.visibleDocumentIds,
 					visibilityScope,
 					request.categoryId,
+					tenantTransaction,
 				);
 	const seeds = requestedSeeds.filter((id) => authorizedSeeds.has(id));
 	const activeSeedGenerations = await resolveActiveGenerations(
@@ -105,6 +115,7 @@ export async function retrieveGraphCandidates(
 		visibilityScope,
 		request.categoryId,
 		Boolean(adapters.visibleDocumentIds),
+		tenantTransaction,
 	);
 	const expand = adapters.expandResults ?? expandResults;
 	const expandQuery = adapters.expandFromQueryPlan ?? expandFromQueryPlan;
@@ -140,6 +151,7 @@ export async function retrieveGraphCandidates(
 		adapters.visibleDocumentIds,
 		visibilityScope,
 		request.categoryId,
+		tenantTransaction,
 	);
 	const activeGenerations = await resolveActiveGenerations(
 		ctx,
@@ -148,6 +160,7 @@ export async function retrieveGraphCandidates(
 		visibilityScope,
 		request.categoryId,
 		Boolean(adapters.visibleDocumentIds),
+		tenantTransaction,
 	);
 	const unique = new Map<string, RelatedDoc>();
 	for (const candidate of relatedWithCurrentSeed) {
@@ -192,11 +205,14 @@ async function resolveActiveGenerations(
 	scope: GraphVisibilityScope = _buildGraphVisibilityScope(ctx),
 	categoryId?: string,
 	trustLegacyVisibilityAdapter = false,
+	tenantTransaction: NonNullable<
+		GraphRetrieverAdapters["withTenant"]
+	> = withTenant,
 ): Promise<Map<string, string | null>> {
 	if (adapter) return adapter(ctx, ids);
 	if (ids.length === 0) return new Map();
 	if (trustLegacyVisibilityAdapter) return new Map();
-	const rows = await withTenant(ctx, (tx) =>
+	const rows = await tenantTransaction(ctx, (tx) =>
 		tx
 			.select({
 				id: documents.id,
@@ -228,10 +244,13 @@ async function resolveVisibleIds(
 	adapter?: GraphRetrieverAdapters["visibleDocumentIds"],
 	scope: GraphVisibilityScope = _buildGraphVisibilityScope(ctx),
 	categoryId?: string,
+	tenantTransaction: NonNullable<
+		GraphRetrieverAdapters["withTenant"]
+	> = withTenant,
 ): Promise<Set<string>> {
 	if (ids.length === 0) return new Set();
 	if (adapter) return adapter(ctx, ids, scope, categoryId);
-	const rows = await withTenant(ctx, async (tx) =>
+	const rows = await tenantTransaction(ctx, async (tx) =>
 		tx
 			.select({
 				id: documents.id,
