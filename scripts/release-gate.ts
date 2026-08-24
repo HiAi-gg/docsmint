@@ -214,11 +214,29 @@ function logName(index: number, name: string): string {
 		.replace(/^-|-$/g, "")}.log`;
 }
 
-const liveIntegrationEnvironment = [
-	"PIPELINE_RLS_TEST_DATABASE_URL",
-	"LIFECYCLE_TEST_DATABASE_URL",
-	"CONTENT_ACCESS_TEST_DATABASE_URL",
-	"DOCSMINT_CONTRACT_DATABASE_URL",
+const hermeticEnvironmentNames = [
+	"PATH",
+	"HOME",
+	"USER",
+	"LOGNAME",
+	"SHELL",
+	"TMPDIR",
+	"TMP",
+	"TEMP",
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"TZ",
+	"TERM",
+	"COLORTERM",
+	"NO_COLOR",
+	"FORCE_COLOR",
+	"CI",
+	"GITHUB_ACTIONS",
+	"BUN_INSTALL",
+	"XDG_CACHE_HOME",
+	"XDG_CONFIG_HOME",
+	"XDG_DATA_HOME",
 ] as const;
 
 export function environmentForStep(
@@ -226,8 +244,11 @@ export function environmentForStep(
 	base: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
 	if (step.name === "unit tests" || step.name === "contract tests") {
-		const hermetic = { ...base };
-		for (const name of liveIntegrationEnvironment) delete hermetic[name];
+		const hermetic: Record<string, string> = {};
+		for (const name of hermeticEnvironmentNames) {
+			const value = base[name];
+			if (value) hermetic[name] = value;
+		}
 		return hermetic;
 	}
 	if (step.name === "required live public surfaces") {

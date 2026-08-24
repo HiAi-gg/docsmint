@@ -131,11 +131,19 @@ test("hermetic release phases cannot inherit live integration triggers", () => {
 				LIFECYCLE_TEST_DATABASE_URL: "postgresql://live.invalid/db",
 				CONTENT_ACCESS_TEST_DATABASE_URL: "postgresql://live.invalid/db",
 				DOCSMINT_CONTRACT_DATABASE_URL: "postgresql://live.invalid/db",
+				CORS_ORIGINS: "http://127.0.0.1:51711",
+				BETTER_AUTH_URL: "http://127.0.0.1:51710",
+				API_PORT: "51710",
+				PATH: "/test/bin",
 			},
 		);
 		expect(environment.PIPELINE_RLS_TEST_DATABASE_URL).toBeUndefined();
 		expect(environment.LIFECYCLE_TEST_DATABASE_URL).toBeUndefined();
 		expect(environment.CONTENT_ACCESS_TEST_DATABASE_URL).toBeUndefined();
 		expect(environment.DOCSMINT_CONTRACT_DATABASE_URL).toBeUndefined();
+		expect(environment.CORS_ORIGINS).toBeUndefined();
+		expect(environment.BETTER_AUTH_URL).toBeUndefined();
+		expect(environment.API_PORT).toBeUndefined();
+		expect(environment.PATH).toBe("/test/bin");
 	}
 });
