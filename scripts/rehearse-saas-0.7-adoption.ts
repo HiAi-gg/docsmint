@@ -455,15 +455,20 @@ export async function resolveComposeServiceContainer(
 	if (service !== "postgres" && service !== "seaweedfs") {
 		throw new Error("invalid rehearsal Compose service");
 	}
+	const project = environment.COMPOSE_PROJECT_NAME ?? "";
+	if (!CONTAINER_PATTERN.test(project)) {
+		throw new Error("explicit Compose project name is required for rehearsal");
+	}
 	const child = Bun.spawn(
 		[
 			"docker",
-			"compose",
-			"--env-file",
-			"/dev/null",
 			"ps",
-			"--quiet",
-			service,
+			"--filter",
+			`label=com.docker.compose.project=${project}`,
+			"--filter",
+			`label=com.docker.compose.service=${service}`,
+			"--format",
+			"{{.ID}}",
 		],
 		{ env: environment, stdout: "pipe", stderr: "pipe" },
 	);
@@ -575,7 +580,7 @@ async function localSeaweedCredentials(
 ): Promise<{ accessKey: string; secretKey: string }> {
 	const container = await resolveComposeServiceContainer(
 		"seaweedfs",
-		safeEnvironment(),
+		safeEnvironment({ COMPOSE_PROJECT_NAME: Bun.env.COMPOSE_PROJECT_NAME ?? "" }),
 	);
 	const inspected = await runner.run(
 		[
@@ -615,7 +620,7 @@ async function dockerPostgres(
 ): Promise<CommandResult> {
 	const container = await resolveComposeServiceContainer(
 		"postgres",
-		safeEnvironment(),
+		safeEnvironment({ COMPOSE_PROJECT_NAME: Bun.env.COMPOSE_PROJECT_NAME ?? "" }),
 	);
 	assertIdentifier(POSTGRES_ADMIN_ROLE, "PostgreSQL admin role");
 	return runner.run(

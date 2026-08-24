@@ -7,6 +7,7 @@ export type ReleaseGateStep = Readonly<{
 }>;
 
 const requiredEnvironment = [
+	"COMPOSE_PROJECT_NAME",
 	"DB_PASSWORD",
 	"HIAI_APP_PASSWORD",
 	"BETTER_AUTH_SECRET",

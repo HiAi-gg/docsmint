@@ -335,12 +335,19 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			docker,
 			[
 				"#!/bin/sh",
-				'test "$1" = "compose"',
-				'test "$2" = "--env-file"',
-				'test "$3" = "/dev/null"',
-				'test "$4" = "ps"',
-				'test "$5" = "--quiet"',
-				'case "$6" in',
+				"set -eu",
+				'test "$1" = "ps"',
+				'test "$2" = "--filter"',
+				'test "$3" = "label=com.docker.compose.project=round1-fixture"',
+				'test "$4" = "--filter"',
+				'case "$5" in',
+				"  label=com.docker.compose.service=postgres) service=postgres ;;",
+				"  label=com.docker.compose.service=seaweedfs) service=seaweedfs ;;",
+				"  *) exit 9 ;;",
+				"esac",
+				'test "$6" = "--format"',
+				'test "$7" = "{{.ID}}"',
+				'case "$service" in',
 				"  postgres) echo active-project-postgres-1 ;;",
 				"  seaweedfs) echo active-project-seaweedfs-1 ;;",
 				"  *) exit 9 ;;",
@@ -352,13 +359,20 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			expect(
 				await resolveComposeServiceContainer("postgres", {
 					PATH: `${bin}:/usr/bin:/bin`,
+					COMPOSE_PROJECT_NAME: "round1-fixture",
 				}),
 			).toBe("active-project-postgres-1");
 			expect(
 				await resolveComposeServiceContainer("seaweedfs", {
 					PATH: `${bin}:/usr/bin:/bin`,
+					COMPOSE_PROJECT_NAME: "round1-fixture",
 				}),
 			).toBe("active-project-seaweedfs-1");
+			await expect(
+				resolveComposeServiceContainer("postgres", {
+					PATH: `${bin}:/usr/bin:/bin`,
+				}),
+			).rejects.toThrow("Compose project name");
 		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
