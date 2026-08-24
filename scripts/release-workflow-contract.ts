@@ -1,4 +1,11 @@
-type WorkflowStep = Readonly<{ run?: string; uses?: string }>;
+type WorkflowStep = Readonly<{
+	"continue-on-error"?: unknown;
+	if?: string;
+	name?: string;
+	run?: string;
+	uses?: string;
+	with?: Readonly<Record<string, unknown>>;
+}>;
 type WorkflowJob = Readonly<{
 	env?: Readonly<Record<string, unknown>>;
 	if?: string;
@@ -35,18 +42,26 @@ const liveDockerJobs = [
 	"browser-e2e",
 ] as const;
 const productionDockerJobs = ["docker-build", "browser-e2e"] as const;
+const workflowManagedLiveDockerJobs = ["scoped-live-integration"] as const;
+const composeProjects = {
+	"docker-build":
+		"docsmint-release-docker-${{ github.run_id }}-${{ github.run_attempt }}",
+	"browser-e2e":
+		"docsmint-release-browser-${{ github.run_id }}-${{ github.run_attempt }}",
+} as const;
+const dockerEvidenceArtifactNames = {
+	"docker-build": "release-docker-smoke-docker-build-${{ github.sha }}",
+	"browser-e2e": "release-docker-smoke-browser-e2e-${{ github.sha }}",
+} as const;
 const dependencyStartCommand =
 	"docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs";
 const migrateCommand =
 	"docker compose --env-file /dev/null run --rm --no-deps migrate";
 const uuidPattern =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const applicationStartCommands = {
-	"docker-build":
-		"docker compose --env-file /dev/null up --detach --no-build --no-deps --wait api",
-	"browser-e2e":
-		"docker compose --env-file /dev/null up --detach --no-deps --wait api web",
-} as const;
+const productionPublicStorageUrl = "https://storage.release.invalid";
+const productionInternalStorageUrl = "http://seaweedfs:8333";
+const scopedLiveStorageUrl = "http://127.0.0.1:50702";
 const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	lint: ["bun run lint"],
 	typecheck: ["bun run typecheck"],
@@ -61,8 +76,12 @@ const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	"docker-build": [
 		"docker compose --env-file /dev/null config --quiet",
 		"sh scripts/check-compose-port-contract.sh",
+		"bun run release:check:docker-smoke",
 	],
-	"browser-e2e": ["bun run release:check:browser"],
+	"browser-e2e": [
+		"bun run release:check:docker-smoke",
+		"bun run release:check:browser",
+	],
 	"release-static-gates": [
 		"bun run release:check:clean",
 		"bun install --frozen-lockfile",
@@ -105,6 +124,31 @@ function isComposeUpWait(line: string): boolean {
 	);
 }
 
+function isCanonicalEndpoint(
+	value: unknown,
+	expected: string,
+	protocol: "http:" | "https:",
+	hostname: string,
+	port: string,
+): boolean {
+	if (typeof value !== "string" || value !== expected) return false;
+	try {
+		const parsed = new URL(value);
+		return (
+			parsed.protocol === protocol &&
+			parsed.hostname === hostname &&
+			parsed.port === port &&
+			parsed.username === "" &&
+			parsed.password === "" &&
+			parsed.pathname === "/" &&
+			parsed.search === "" &&
+			parsed.hash === ""
+		);
+	} catch {
+		return false;
+	}
+}
+
 function validateDockerLifecycle(jobs: Record<string, WorkflowJob>): void {
 	for (const [name, job] of Object.entries(jobs)) {
 		for (const line of jobCommandLines(job).filter(isComposeUpWait)) {
@@ -128,7 +172,7 @@ function validateDockerLifecycle(jobs: Record<string, WorkflowJob>): void {
 		}
 	}
 
-	for (const name of liveDockerJobs) {
+	for (const name of workflowManagedLiveDockerJobs) {
 		const job = jobs[name];
 		if (!job) throw new Error(`Release workflow is missing ${name}`);
 		const lines = jobCommandLines(job);
@@ -144,28 +188,6 @@ function validateDockerLifecycle(jobs: Record<string, WorkflowJob>): void {
 		}
 	}
 
-	for (const [name, command] of Object.entries(applicationStartCommands)) {
-		const lines = jobCommandLines(jobs[name] as WorkflowJob);
-		const migrate = lines.indexOf(migrateCommand);
-		const applicationStart = lines.indexOf(command);
-		if (applicationStart < 0 || applicationStart < migrate) {
-			const services = name === "browser-e2e" ? "API and web" : "API";
-			const serviceTokens = name === "browser-e2e" ? ["api", "web"] : ["api"];
-			const traversesDependencies = lines.some((line) => {
-				if (!isComposeUpWait(line)) return false;
-				const tokens = line.split(/\s+/);
-				return serviceTokens.every((service) => tokens.includes(service));
-			});
-			if (traversesDependencies) {
-				throw new Error(
-					`${name} must start ${services} with --no-deps after standalone migrate`,
-				);
-			}
-			throw new Error(
-				`${name} must start ${services} after standalone migrate`,
-			);
-		}
-	}
 }
 
 function validateStorageEndpoints(jobs: Record<string, WorkflowJob>): void {
@@ -173,12 +195,28 @@ function validateStorageEndpoints(jobs: Record<string, WorkflowJob>): void {
 		const job = jobs[name];
 		if (!job) throw new Error(`Release workflow is missing ${name}`);
 		const publicUrl = job.env?.STORAGE_PUBLIC_ENDPOINT_URL;
-		if (typeof publicUrl !== "string" || !publicUrl.startsWith("https://")) {
+		if (
+			!isCanonicalEndpoint(
+				publicUrl,
+				productionPublicStorageUrl,
+				"https:",
+				"storage.release.invalid",
+				"",
+			)
+		) {
 			throw new Error(
 				`${name} must set STORAGE_PUBLIC_ENDPOINT_URL to an explicit HTTPS URL`,
 			);
 		}
-		if (job.env?.STORAGE_INTERNAL_ENDPOINT_URL !== "http://seaweedfs:8333") {
+		if (
+			!isCanonicalEndpoint(
+				job.env?.STORAGE_INTERNAL_ENDPOINT_URL,
+				productionInternalStorageUrl,
+				"http:",
+				"seaweedfs",
+				"8333",
+			)
+		) {
 			throw new Error(
 				`${name} must keep STORAGE_INTERNAL_ENDPOINT_URL on http://seaweedfs:8333`,
 			);
@@ -198,13 +236,85 @@ function validateStorageEndpoints(jobs: Record<string, WorkflowJob>): void {
 	const internalUrl = scopedLive.env?.STORAGE_INTERNAL_ENDPOINT_URL;
 	const publicUrl = scopedLive.env?.STORAGE_PUBLIC_ENDPOINT_URL;
 	if (
-		typeof internalUrl !== "string" ||
-		!internalUrl.startsWith("http://127.0.0.1:") ||
-		publicUrl !== internalUrl
+		!isCanonicalEndpoint(
+			internalUrl,
+			scopedLiveStorageUrl,
+			"http:",
+			"127.0.0.1",
+			"50702",
+		) ||
+		!isCanonicalEndpoint(
+			publicUrl,
+			scopedLiveStorageUrl,
+			"http:",
+			"127.0.0.1",
+			"50702",
+		)
 	) {
 		throw new Error(
 			"scoped-live-integration must keep explicit equal local HTTP storage URLs",
 		);
+	}
+}
+
+function validateDockerEvidence(jobs: Record<string, WorkflowJob>): void {
+	for (const name of productionDockerJobs) {
+		const job = jobs[name];
+		if (!job) throw new Error(`Release workflow is missing ${name}`);
+		if (job.env?.RELEASE_COMMIT !== "${{ github.sha }}") {
+			throw new Error(`${name} must bind RELEASE_COMMIT to github.sha`);
+		}
+		if (job.env?.COMPOSE_PROJECT_NAME !== composeProjects[name]) {
+			throw new Error(`${name} must use a run-isolated release Compose project`);
+		}
+		if (
+			job.env?.RELEASE_DOCKER_EVIDENCE_DIRECTORY !==
+			"build/release-evidence/docker-smoke"
+		) {
+			throw new Error(`${name} must use the canonical Docker evidence directory`);
+		}
+		const smokeCommand = "bun run release:check:docker-smoke";
+		const smokeSteps = (job.steps ?? []).filter((step) =>
+			step.run
+				?.split("\n")
+				.map((line) => line.trim())
+				.includes(smokeCommand),
+		);
+		if (
+			smokeSteps.length !== 1 ||
+			smokeSteps[0]?.["continue-on-error"] === true ||
+			!smokeSteps[0]?.run
+				?.split("\n")
+				.map((line) => line.trim())
+				.includes("set -euo pipefail")
+		) {
+			throw new Error(
+				`${name} must run the Docker smoke evidence command exactly once and fail closed`,
+			);
+		}
+		const upload = job.steps?.find(
+			(step) => step.name === "Upload commit-bound Docker smoke evidence",
+		);
+		if (upload?.uses !== "actions/upload-artifact@v4") {
+			throw new Error(`${name} must upload commit-bound Docker smoke evidence`);
+		}
+		if (
+			upload.if !== "always()" ||
+			upload.with?.path !== "build/release-evidence/docker-smoke/" ||
+			upload.with?.["if-no-files-found"] !== "error"
+		) {
+			throw new Error(
+				`${name} must upload build/release-evidence/docker-smoke/ with fail-closed settings`,
+			);
+		}
+		if (
+			upload.with?.name !== dockerEvidenceArtifactNames[name] ||
+			upload["continue-on-error"] === true
+		) {
+			throw new Error(
+				`${name} must upload Docker evidence with a commit-bound name and no error suppression`,
+			);
+		}
 	}
 }
 
@@ -229,6 +339,7 @@ export function validateReleaseWorkflow(workflow: Workflow): void {
 	if (!jobs) throw new Error("Release workflow has no jobs");
 	validateDockerLifecycle(jobs);
 	validateStorageEndpoints(jobs);
+	validateDockerEvidence(jobs);
 
 	for (const [name, commands] of Object.entries(requiredCommands)) {
 		const job = jobs[name];

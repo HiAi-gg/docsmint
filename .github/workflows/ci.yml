@@ -234,6 +234,9 @@ jobs:
       OWNER_ID: 00000000-0000-4000-8000-000000000700
       GRAPH_EXTRACT_ENABLED: 'false'
       GRAPH_SEARCH_ENABLED: 'false'
+      RELEASE_COMMIT: ${{ github.sha }}
+      COMPOSE_PROJECT_NAME: docsmint-release-docker-${{ github.run_id }}-${{ github.run_attempt }}
+      RELEASE_DOCKER_EVIDENCE_DIRECTORY: build/release-evidence/docker-smoke
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -330,11 +333,18 @@ jobs:
         run: |
           set -euo pipefail
           docker tag hiai-docs/api:ci-${{ github.sha }} docsmint-api:local
-          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
-          docker compose --env-file /dev/null run --rm --no-deps migrate
-          docker compose --env-file /dev/null up --detach --no-build --no-deps --wait api
-          test "$(docker inspect --format '{{.State.Running}}' "$(docker compose --env-file /dev/null ps --quiet api)")" = "true"
+          docker tag hiai-docs/web:ci-${{ github.sha }} docsmint-web:local
+          bun run release:check:docker-smoke
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
+          curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
+
+      - name: Upload commit-bound Docker smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-docker-smoke-docker-build-${{ github.sha }}
+          path: build/release-evidence/docker-smoke/
+          if-no-files-found: error
 
       - name: Collect smoke logs and stop services
         if: always()
@@ -526,6 +536,9 @@ jobs:
       AGENT_BROWSER_ENGINE: lightpanda
       LIGHTPANDA_DISABLE_TELEMETRY: 'true'
       RELEASE_COMMIT: ${{ github.sha }}
+      COMPOSE_PROJECT_NAME: docsmint-release-browser-${{ github.run_id }}-${{ github.run_attempt }}
+      RELEASE_DOCKER_EVIDENCE_DIRECTORY: build/release-evidence/docker-smoke
+      RELEASE_EVIDENCE_DIRECTORY: build/release-evidence/browser
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -547,18 +560,23 @@ jobs:
         run: |
           set -euo pipefail
           docker compose --env-file /dev/null build
-          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
-          docker compose --env-file /dev/null run --rm --no-deps migrate
-          docker compose --env-file /dev/null up --detach --no-deps --wait api web
+          bun run release:check:docker-smoke
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
           curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
       - run: bun run release:check:browser
+      - name: Upload commit-bound Docker smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-docker-smoke-browser-e2e-${{ github.sha }}
+          path: build/release-evidence/docker-smoke/
+          if-no-files-found: error
       - name: Upload commit-bound browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-browser-e2e-${{ github.sha }}
-          path: build/release-evidence/
+          path: build/release-evidence/browser/
           if-no-files-found: error
       - name: Collect browser stack logs and stop services
         if: always()

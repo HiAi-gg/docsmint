@@ -67,7 +67,11 @@ SaaS adoption rehearsal, fresh Docker rebuild, strict port and health checks,
 required PostgreSQL and live public integrations, and desktop/mobile
 `agent-browser` flows on Lightpanda. Raw logs and machine-readable results are
 written under `build/release-evidence/local-release-gate/` and are bound to the
-checked-out commit.
+checked-out commit. The Docker lifecycle coordinator writes
+`docker-smoke.json`, a sanitized `docker-smoke.log`, and
+`docker-smoke.sha256`; it derives the migration result, migrate-container
+absence, Compose labels, and service health directly from Git and Docker and
+never serializes container environments.
 
 Then verify the release-specific contours affected by the change:
 
@@ -118,8 +122,10 @@ Publishing is a separate, explicitly authorized operation.
    the frozen security/version/evidence checks, lint, typecheck, unit and
    required live integration suites, every build, the clean installed package,
    Docker port/health validation, and executable Lightpanda desktop/mobile
-   evidence. Publication cannot begin while any prerequisite is skipped or
-   failed.
+   evidence. Both production Docker jobs upload their commit-bound Docker
+   lifecycle JSON, sanitized raw log, and checksum manifest with fail-closed
+   missing-file handling. Publication cannot begin while any prerequisite is
+   skipped or failed.
 8. Create the GitHub Release from the tag using the changelog summary.
 9. Confirm the expected npm package and Docker images exist and report the
    released version.

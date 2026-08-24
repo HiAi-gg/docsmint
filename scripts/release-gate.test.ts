@@ -75,12 +75,10 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"compose configuration",
 		"container port contract",
 		"fresh Docker rebuild",
-		"Docker dependency start",
-		"Docker migrations",
+		"commit-bound Docker lifecycle evidence",
 		"SaaS adoption rehearsal",
 		"required PostgreSQL integrations",
 		"required live public surfaces",
-		"Docker start and health",
 		"service health contract",
 		"Lightpanda desktop/mobile E2E",
 	]);
@@ -92,7 +90,7 @@ test("SaaS rehearsal uses the freshly rebuilt release dependencies", () => {
 		(step: { name: string }) => step.name,
 	);
 	const rebuild = stepNames.indexOf("fresh Docker rebuild");
-	const dependencyStart = stepNames.indexOf("Docker dependency start");
+	const dependencyStart = stepNames.indexOf("commit-bound Docker lifecycle evidence");
 	const rehearsal = stepNames.indexOf("SaaS adoption rehearsal");
 
 	expect(rebuild).toBeGreaterThanOrEqual(0);
@@ -100,42 +98,20 @@ test("SaaS rehearsal uses the freshly rebuilt release dependencies", () => {
 	expect(rehearsal).toBeGreaterThan(dependencyStart);
 });
 
-test("Docker lifecycle separates healthy services from one-shot migrations", () => {
+test("Docker lifecycle is owned by the commit-bound evidence coordinator", () => {
 	if (!releaseGate) return;
 	const steps = releaseGate.releaseGateSteps("v0.7.0") as Array<{
 		name: string;
 		command: string[];
 	}>;
-	const dependencies = steps.find(
-		(step) => step.name === "Docker dependency start",
+	const lifecycle = steps.find(
+		(step) => step.name === "commit-bound Docker lifecycle evidence",
 	);
-	const migrations = steps.find((step) => step.name === "Docker migrations");
-	const fullStart = steps.find((step) => step.name === "Docker start and health");
-
-	expect(dependencies?.command).toEqual([
-		"docker",
-		"compose",
-		"--env-file",
-		"/dev/null",
-		"up",
-		"--detach",
-		"--wait",
-		"postgres",
-		"redis",
-		"seaweedfs",
-	]);
-	expect(migrations?.command).toEqual([
-		"docker",
-		"compose",
-		"--env-file",
-		"/dev/null",
+	expect(lifecycle?.command).toEqual([
+		"bun",
 		"run",
-		"--rm",
-		"--no-deps",
-		"migrate",
+		"release:check:docker-smoke",
 	]);
-	expect(fullStart?.command.at(-2)).toBe("api");
-	expect(fullStart?.command.at(-1)).toBe("web");
 	const health = steps.find((step) => step.name === "service health contract");
 	expect(health?.command).toEqual(["bash", "scripts/health-check.sh"]);
 });
@@ -154,7 +130,7 @@ test("full Docker startup preserves the explicit production-safe public storage 
 	if (!environmentForStep) return;
 
 	const environment = environmentForStep(
-		{ name: "Docker start and health", command: [] },
+		{ name: "commit-bound Docker lifecycle evidence", command: [] },
 		{
 			API_PORT: "51710",
 			DOCSMINT_WORKSPACE_ENABLED: "true",

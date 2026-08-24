@@ -84,32 +84,8 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 			command: ["docker", "compose", "--env-file", "/dev/null", "build"],
 		},
 		{
-			name: "Docker dependency start",
-			command: [
-				"docker",
-				"compose",
-				"--env-file",
-				"/dev/null",
-				"up",
-				"--detach",
-				"--wait",
-				"postgres",
-				"redis",
-				"seaweedfs",
-			],
-		},
-		{
-			name: "Docker migrations",
-			command: [
-				"docker",
-				"compose",
-				"--env-file",
-				"/dev/null",
-				"run",
-				"--rm",
-				"--no-deps",
-				"migrate",
-			],
+			name: "commit-bound Docker lifecycle evidence",
+			command: ["bun", "run", "release:check:docker-smoke"],
 		},
 		{
 			name: "SaaS adoption rehearsal",
@@ -122,20 +98,6 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 		{
 			name: "required live public surfaces",
 			command: ["bun", "run", "test:contract:scoped-live"],
-		},
-		{
-			name: "Docker start and health",
-			command: [
-				"docker",
-				"compose",
-				"--env-file",
-				"/dev/null",
-				"up",
-				"--detach",
-				"--wait",
-				"api",
-				"web",
-			],
 		},
 		{
 			name: "service health contract",
@@ -279,7 +241,7 @@ export function environmentForStep(
 			STORAGE_PUBLIC_ENDPOINT_URL: contractStorageUrl,
 		};
 	}
-	if (step.name === "Docker start and health") {
+	if (step.name === "commit-bound Docker lifecycle evidence") {
 		const apiPort = base.API_PORT ?? "50700";
 		return {
 			...base,
@@ -309,6 +271,8 @@ if (import.meta.main) {
 		COMPOSE_BAKE: "false",
 		PGPASSWORD: Bun.env.DB_PASSWORD,
 		RELEASE_COMMIT: commit,
+		RELEASE_DOCKER_EVIDENCE_DIRECTORY:
+			"build/release-evidence/local-release-gate/docker-smoke",
 		RELEASE_EVIDENCE_DIRECTORY: "build/release-evidence/local-release-gate/browser",
 	};
 	const results: Array<Record<string, unknown>> = [];
