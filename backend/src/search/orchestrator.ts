@@ -5,6 +5,10 @@ import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
 import {
+	effectiveDocumentCategoryCondition,
+	tenantOwnerCondition,
+} from "../lib/content-access";
+import {
 	METRIC_NAMES,
 	recordDuration,
 	recordSearchChannelMetrics,
@@ -44,6 +48,8 @@ export interface SearchRequest {
 	filters?: SearchFilters;
 	/** Restricts every lexical/vector channel to an authorized document set. */
 	documentIds?: string[];
+	/** Effective category enforced for a restricted external assertion. */
+	authorizedCategoryId?: string;
 	visibilityScope?: GraphVisibilityScope;
 }
 
@@ -85,6 +91,7 @@ export interface SearchAdapterOptions {
 		options?: {
 			limit?: number;
 			documentIds?: string[];
+			categoryId?: string;
 			getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 		},
 	) => Promise<ChannelResult[]>;
@@ -170,6 +177,7 @@ export async function searchDocuments(
 		fast = await retrieveFast(ctx, plan, {
 			limit: rankingWindow,
 			documentIds: request.documentIds,
+			categoryId: request.authorizedCategoryId,
 			getEmbedding: getCachedEmbedding,
 		} as Parameters<typeof retrieveFastChannels>[2]);
 	} catch {
@@ -180,6 +188,7 @@ export async function searchDocuments(
 			errorCode: "query_failed",
 		}));
 	}
+	fast = restrictChannelResults(fast, request.documentIds);
 	for (const result of fast) {
 		if (result.errorCode) channelErrors[result.channel] = result.errorCode;
 		recordSearchChannelMetrics({
@@ -221,6 +230,7 @@ export async function searchDocuments(
 					expanded = await retrieveExpanded(ctx, expandedPlan, {
 						limit: rankingWindow,
 						documentIds: request.documentIds,
+						categoryId: request.authorizedCategoryId,
 						getEmbedding: getCachedEmbedding,
 					});
 				} catch {
@@ -230,6 +240,7 @@ export async function searchDocuments(
 		} catch {
 			// Expansion is optional; fast-pass results remain valid.
 		}
+		expanded = restrictChannelResults(expanded, request.documentIds);
 		for (const result of expanded) {
 			recordSearchChannelMetrics({
 				channel: result.channel,
@@ -280,10 +291,12 @@ export async function searchDocuments(
 				limit: Math.min(limit * 2, config.SEARCH_GRAPH_RESULT_LIMIT),
 				maxHops: request.maxGraphHops ?? config.SEARCH_GRAPH_MAX_HOPS,
 				visibilityScope: request.visibilityScope,
+				categoryId: request.authorizedCategoryId,
 			});
 		} catch {
 			graphFailed = true;
 		}
+		graph = restrictCandidates(graph, request.documentIds);
 		recordSearchChannelMetrics({
 			channel: "graph",
 			durationMs: performance.now() - graphStarted,
@@ -402,6 +415,7 @@ async function defaultExpandedRetriever(
 	options: {
 		limit?: number;
 		documentIds?: string[];
+		categoryId?: string;
 		getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	} = {},
 ): Promise<ChannelResult[]> {
@@ -419,6 +433,7 @@ async function defaultExpandedRetriever(
 			const result = await retrieveFastChannels(ctx, variantPlan, {
 				limit,
 				documentIds: options.documentIds,
+				categoryId: options.categoryId,
 				getEmbedding: options.getEmbedding,
 			});
 			return result
@@ -439,6 +454,27 @@ async function defaultExpandedRetriever(
 	);
 }
 
+/** Keep adapter mistakes from becoming candidates before confidence, RRF, or AGE. */
+function restrictCandidates(
+	candidates: SearchCandidate[],
+	allowedDocumentIds?: string[],
+): SearchCandidate[] {
+	if (!allowedDocumentIds) return candidates;
+	const allowed = new Set(allowedDocumentIds);
+	return candidates.filter((candidate) => allowed.has(candidate.documentId));
+}
+
+function restrictChannelResults(
+	channels: ChannelResult[],
+	allowedDocumentIds?: string[],
+): ChannelResult[] {
+	if (!allowedDocumentIds) return channels;
+	return channels.map((channel) => ({
+		...channel,
+		candidates: restrictCandidates(channel.candidates, allowedDocumentIds),
+	}));
+}
+
 async function applySearchFilters(
 	ctx: TenantContext,
 	items: RankedSearchResult[],
@@ -454,13 +490,28 @@ async function applySearchFilters(
 			: scope.kind === "public"
 				? eq(documents.visibility, "public")
 				: scope.kind === "share"
-					? inArray(documents.id, scope.allowedDocumentIds)
-					: scope.includePublic
-						? or(
-								eq(documents.ownerId, scope.ownerId),
-								eq(documents.visibility, "public"),
+					? and(
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							inArray(documents.id, scope.allowedDocumentIds),
+						)
+					: scope.kind === "workspace"
+						? tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
 							)
-						: eq(documents.ownerId, scope.ownerId);
+						: or(
+								tenantOwnerCondition(
+									documents.ownerId,
+									documents.workspaceId,
+									ctx,
+								),
+								eq(documents.visibility, "public"),
+							);
 	const rows = await withTenant(ctx, async (tx) =>
 		tx
 			.select({
@@ -469,6 +520,7 @@ async function applySearchFilters(
 				categoryId: documents.categoryId,
 				folderCategoryId: folders.categoryId,
 				folderOwnerId: folders.ownerId,
+				folderWorkspaceId: folders.workspaceId,
 				title: documents.title,
 				createdAt: documents.createdAt,
 			})
@@ -477,7 +529,7 @@ async function applySearchFilters(
 				folders,
 				and(
 					eq(folders.id, documents.folderId),
-					eq(folders.ownerId, ctx.userId),
+					tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
 				),
 			)
 			.where(
@@ -485,6 +537,14 @@ async function applySearchFilters(
 					visibility,
 					isNull(documents.deletedAt),
 					inArray(documents.id, ids),
+					filters.categoryId
+						? effectiveDocumentCategoryCondition(
+								documents.categoryId,
+								documents.folderId,
+								ctx,
+								filters.categoryId,
+							)
+						: undefined,
 				),
 			),
 	);
@@ -494,13 +554,7 @@ async function applySearchFilters(
 		if (!row) return false;
 		if (
 			filters.folderId &&
-			(row.folderId !== filters.folderId || row.folderOwnerId !== ctx.userId)
-		)
-			return false;
-		if (
-			filters.categoryId &&
-			row.categoryId !== filters.categoryId &&
-			!folderCategoryMatchesOwner(row, filters.categoryId, ctx.userId)
+			(row.folderId !== filters.folderId || !folderBelongsToTenant(row, ctx))
 		)
 			return false;
 		const created = new Date(row.createdAt).getTime();
@@ -525,7 +579,7 @@ async function applySearchFilters(
 				.innerJoin(tags, eq(tags.id, documentTags.tagId))
 				.where(
 					and(
-						eq(tags.ownerId, ctx.userId),
+						tenantOwnerCondition(tags.ownerId, tags.workspaceId, ctx),
 						inArray(tags.name, filters.tagNames ?? []),
 						inArray(documentTags.documentId, ids),
 					),
@@ -548,6 +602,16 @@ async function applySearchFilters(
 		});
 	}
 	return filtered;
+}
+
+function folderBelongsToTenant(
+	row: { folderOwnerId: string | null; folderWorkspaceId: string | null },
+	ctx: TenantContext,
+): boolean {
+	if (ctx.source === "external" && ctx.workspaceId) {
+		return row.folderWorkspaceId === ctx.workspaceId;
+	}
+	return row.folderOwnerId === ctx.userId && row.folderWorkspaceId === null;
 }
 
 function dedupe(values: string[]): string[] {

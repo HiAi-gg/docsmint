@@ -140,6 +140,41 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(response.total).toBe(6);
 	});
 
+	test("rejects foreign direct, expanded, and graph candidates before fusion and AGE seeding", async () => {
+		let graphSeeds: string[] = [];
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "scoped",
+				documentIds: ["inherited-folder-doc"],
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [
+							candidate("foreign-direct", "exact", 1),
+							candidate("inherited-folder-doc", "exact", 2),
+						],
+						vector: [candidate("foreign-vector", "vector", 1, 0.99)],
+					}),
+				expand: async (plan) => expansion(plan, ["scope"]),
+				retrieveExpanded: async () =>
+					channels({
+						expanded_fts: [candidate("foreign-expanded", "expanded_fts")],
+					}),
+				retrieveGraph: async (_ctx, request) => {
+					graphSeeds = request.documentSeeds;
+					return [candidate("foreign-graph", "graph")];
+				},
+			},
+		);
+
+		expect(graphSeeds).toEqual(["inherited-folder-doc"]);
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"inherited-folder-doc",
+		]);
+	});
+
 	test("does not apply a folder category from another owner", () => {
 		expect(
 			folderCategoryMatchesOwner(

@@ -8,6 +8,7 @@ import { EMBEDDING_NORM_EPSILON } from "../../embedding/validation";
 import {
 	type ContentAccess,
 	canAccessContent,
+	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
 	tenantOwnerSql,
@@ -15,7 +16,10 @@ import {
 import { logger } from "../../lib/logger";
 import { resolveShareDocumentScope } from "../../lib/share-access";
 import { withTenant } from "../../lib/with-tenant";
-import type { GraphVisibilityScope } from "../../search/graph-retriever";
+import {
+	_buildGraphVisibilityScope,
+	type GraphVisibilityScope,
+} from "../../search/graph-retriever";
 import {
 	MAX_SEARCH_RANKING_WINDOW,
 	searchDocuments,
@@ -201,9 +205,7 @@ export function createSearchRoutes(
 							ownerId: access.userId,
 							allowedDocumentIds: scopedDocumentIds ?? [],
 						}
-					: ctx.role === "admin"
-						? { kind: "admin" }
-						: { kind: "tenant", ownerId: ctx.userId, includePublic: true };
+					: _buildGraphVisibilityScope(ctx);
 			}
 			const parsed = searchQuerySchema.safeParse(query);
 			if (!parsed.success) {
@@ -262,6 +264,9 @@ export function createSearchRoutes(
 						sort,
 					},
 					documentIds: shareDocumentIds ?? scopedDocumentIds,
+					authorizedCategoryId: access.restricted
+						? (access.categoryId ?? undefined)
+						: undefined,
 					visibilityScope: graphVisibilityScope,
 				});
 				const authorizedDomain = scopedDocumentIds
@@ -391,22 +396,11 @@ async function loadCategoryDocumentIds(
 ): Promise<string[]> {
 	if (!access.restricted || !access.categoryId) return [];
 	const categoryId = access.categoryId;
-	const { documents, folders } = await import("@hiai-docs/db/schema");
+	const { documents } = await import("@hiai-docs/db/schema");
 	const rows = await withTenant(access.ctx, (tx) =>
 		tx
 			.select({ id: documents.id })
 			.from(documents)
-			.leftJoin(
-				folders,
-				and(
-					eq(folders.id, documents.folderId),
-					tenantOwnerCondition(
-						folders.ownerId,
-						folders.workspaceId,
-						access.ctx,
-					),
-				),
-			)
 			.where(
 				and(
 					tenantOwnerCondition(
@@ -415,12 +409,11 @@ async function loadCategoryDocumentIds(
 						access.ctx,
 					),
 					isNull(documents.deletedAt),
-					or(
-						eq(documents.categoryId, categoryId),
-						and(
-							sql`${documents.categoryId} IS NULL`,
-							eq(folders.categoryId, categoryId),
-						),
+					effectiveDocumentCategoryCondition(
+						documents.categoryId,
+						documents.folderId,
+						access.ctx,
+						categoryId,
 					),
 				),
 			),

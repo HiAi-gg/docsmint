@@ -5,6 +5,10 @@ import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { EMBEDDING_NORM_EPSILON } from "../embedding/validation";
 import { config } from "../lib/config";
+import {
+	effectiveDocumentCategorySql,
+	tenantOwnerSql,
+} from "../lib/content-access";
 import type {
 	ChannelResult,
 	QueryPlan,
@@ -23,6 +27,8 @@ export interface RetrieverOptions {
 	limit?: number;
 	/** Optional document allow-list used by share guests and scoped callers. */
 	documentIds?: string[];
+	/** Effective category enforced for a restricted assertion. */
+	categoryId?: string;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
 	chunkLimitPerDocument?: number;
@@ -62,18 +68,29 @@ export async function retrieveFastChannels(
 			durationMs: 0,
 		}));
 	}
-	const scopedOptions = options.documentIds
-		? sql`AND d.id IN (${sql.join(
-				options.documentIds.map((id) => sql`${id}`),
-				sql`, `,
-			)})`
-		: sql``;
+	const scopedOptions = buildRetrievalScope(ctx, options);
 
 	const tasks: Array<Promise<ChannelResult>> = [
 		measure("exact", () =>
-			retrieveExact(ctx, plan, limit, execute, scopedOptions),
+			retrieveExact(
+				ctx,
+				plan,
+				limit,
+				execute,
+				scopedOptions,
+				options.documentIds,
+			),
 		),
-		measure("fts", () => retrieveFts(ctx, plan, limit, execute, scopedOptions)),
+		measure("fts", () =>
+			retrieveFts(
+				ctx,
+				plan,
+				limit,
+				execute,
+				scopedOptions,
+				options.documentIds,
+			),
+		),
 		measure("fuzzy", () =>
 			retrieveFuzzy(
 				ctx,
@@ -82,6 +99,7 @@ export async function retrieveFastChannels(
 				fuzzyMinSimilarity,
 				execute,
 				scopedOptions,
+				options.documentIds,
 			),
 		),
 		measure("vector", () =>
@@ -95,6 +113,7 @@ export async function retrieveFastChannels(
 				options.queryEmbedding,
 				options.getEmbedding,
 				scopedOptions,
+				options.documentIds,
 			),
 		),
 	];
@@ -154,12 +173,13 @@ async function retrieveExact(
 	limit: number,
 	execute: SearchQueryExecutor,
 	scope: ReturnType<typeof sql>,
+	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
 	const query = sql`
-		SELECT d.id AS document_id, d.owner_id, d.title,
+		SELECT d.id AS document_id, d.owner_id, d.workspace_id, d.title,
 			1.0::double precision AS score
 		FROM documents d
-		WHERE d.owner_id = ${ctx.userId}
+		WHERE ${tenantOwnerSql("d", ctx)}
 			AND d.deleted_at IS NULL
 			${scope}
 			AND (
@@ -184,6 +204,8 @@ async function retrieveExact(
 		ctx,
 		"exact",
 		"Exact title or identifier match",
+		undefined,
+		allowedDocumentIds,
 	);
 }
 
@@ -193,28 +215,29 @@ async function retrieveFts(
 	limit: number,
 	execute: SearchQueryExecutor,
 	scope: ReturnType<typeof sql>,
+	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
 	const query = sql`
 		WITH lexical AS (
-			SELECT d.id AS document_id, d.owner_id,
+			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
 				ts_rank(d.search_vector, websearch_to_tsquery('english', ${plan.normalized})) AS score
 			FROM documents d
-			WHERE d.owner_id = ${ctx.userId}
+			WHERE ${tenantOwnerSql("d", ctx)}
 				AND d.deleted_at IS NULL
 				${scope}
 				AND d.search_vector @@ websearch_to_tsquery('english', ${plan.normalized})
 			UNION ALL
-			SELECT d.id AS document_id, d.owner_id,
+			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
 				ts_rank(d.search_vector_simple, websearch_to_tsquery('simple', ${plan.normalized})) AS score
 			FROM documents d
-			WHERE d.owner_id = ${ctx.userId}
+			WHERE ${tenantOwnerSql("d", ctx)}
 				AND d.deleted_at IS NULL
 				${scope}
 				AND d.search_vector_simple @@ websearch_to_tsquery('simple', ${plan.normalized})
 		)
-		SELECT document_id, owner_id, MAX(score)::double precision AS score
+		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
 		FROM lexical
-		GROUP BY document_id, owner_id
+		GROUP BY document_id, owner_id, workspace_id
 		ORDER BY score DESC, document_id ASC
 		LIMIT ${limit}
 	`;
@@ -224,6 +247,8 @@ async function retrieveFts(
 		ctx,
 		"fts",
 		"English or language-neutral lexical match",
+		undefined,
+		allowedDocumentIds,
 	);
 }
 
@@ -234,12 +259,13 @@ async function retrieveFuzzy(
 	minimum: number,
 	execute: SearchQueryExecutor,
 	scope: ReturnType<typeof sql>,
+	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
 	const query = sql`
-		SELECT d.id AS document_id, d.owner_id,
+		SELECT d.id AS document_id, d.owner_id, d.workspace_id,
 			similarity(d.title, ${plan.normalized})::double precision AS score
 		FROM documents d
-		WHERE d.owner_id = ${ctx.userId}
+		WHERE ${tenantOwnerSql("d", ctx)}
 			AND d.deleted_at IS NULL
 			${scope}
 			AND d.title % ${plan.normalized}
@@ -248,7 +274,14 @@ async function retrieveFuzzy(
 		LIMIT ${limit}
 	`;
 	const rows = await execute("fuzzy", ctx, query);
-	return rowsToCandidates(rows, ctx, "fuzzy", "Typo-tolerant title match");
+	return rowsToCandidates(
+		rows,
+		ctx,
+		"fuzzy",
+		"Typo-tolerant title match",
+		undefined,
+		allowedDocumentIds,
+	);
 }
 
 async function retrieveVector(
@@ -261,6 +294,7 @@ async function retrieveVector(
 	providedEmbedding?: EmbeddingResult,
 	embeddingProvider: (text: string) => Promise<EmbeddingResult> = getEmbedding,
 	scope: ReturnType<typeof sql> = sql``,
+	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[] | VectorFailure> {
 	let queryEmbedding = providedEmbedding;
 	if (!queryEmbedding) {
@@ -278,6 +312,7 @@ async function retrieveVector(
 			SELECT
 				de.document_id,
 				d.owner_id,
+				d.workspace_id,
 				(1 - (de.embedding <=> ${embeddingString}::vector))::double precision AS score,
 				row_number() OVER (
 					PARTITION BY de.document_id
@@ -285,7 +320,7 @@ async function retrieveVector(
 				) AS chunk_rank
 			FROM document_embeddings de
 			JOIN documents d ON d.id = de.document_id
-			WHERE d.owner_id = ${ctx.userId}
+			WHERE ${tenantOwnerSql("d", ctx)}
 				AND d.deleted_at IS NULL
 				${scope}
 				AND d.active_embedding_generation IS NOT NULL
@@ -297,19 +332,26 @@ async function retrieveVector(
 				AND de.embedding IS NOT NULL
 				AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
 		), top_chunks AS (
-			SELECT document_id, owner_id, score
+			SELECT document_id, owner_id, workspace_id, score
 			FROM ranked_chunks
 			WHERE chunk_rank <= ${chunkLimit}
 		)
-		SELECT document_id, owner_id, MAX(score)::double precision AS score
+		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
 		FROM top_chunks
 		WHERE score >= ${minimum}
-		GROUP BY document_id, owner_id
+		GROUP BY document_id, owner_id, workspace_id
 		ORDER BY score DESC, document_id ASC
 		LIMIT ${limit}
 	`;
 	const rows = await execute("vector", ctx, query);
-	return rowsToCandidates(rows, ctx, "vector", "Semantic match", minimum);
+	return rowsToCandidates(
+		rows,
+		ctx,
+		"vector",
+		"Semantic match",
+		minimum,
+		allowedDocumentIds,
+	);
 }
 
 function rowsToCandidates(
@@ -318,13 +360,15 @@ function rowsToCandidates(
 	channel: SearchChannel,
 	evidence: string,
 	minimumScore?: number,
+	allowedDocumentIds?: string[],
 ): SearchCandidate[] {
+	const allowed = allowedDocumentIds ? new Set(allowedDocumentIds) : undefined;
 	const valid = rows
 		.map((value) =>
 			value && typeof value === "object" ? (value as Row) : null,
 		)
 		.filter((row): row is Row => row !== null)
-		.filter((row) => row.owner_id === ctx.userId)
+		.filter((row) => rowMatchesTenant(row, ctx))
 		.map((row) => ({
 			documentId: String(row.document_id ?? ""),
 			rawScore: toFiniteNumber(row.score),
@@ -335,6 +379,7 @@ function rowsToCandidates(
 		.filter(
 			(row) =>
 				row.documentId.length > 0 &&
+				(!allowed || allowed.has(row.documentId)) &&
 				row.rawScore !== undefined &&
 				(minimumScore === undefined || row.rawScore >= minimumScore) &&
 				(row.isValid === undefined || row.isValid === true) &&
@@ -354,6 +399,32 @@ function rowsToCandidates(
 		rawScore: row.rawScore,
 		evidence,
 	}));
+}
+
+function buildRetrievalScope(
+	ctx: TenantContext,
+	options: RetrieverOptions,
+): ReturnType<typeof sql> {
+	const ids = options.documentIds
+		? sql`AND d.id IN (${sql.join(
+				options.documentIds.map((id) => sql`${id}`),
+				sql`, `,
+			)})`
+		: sql``;
+	const category = options.categoryId
+		? sql`AND ${effectiveDocumentCategorySql("d", ctx, options.categoryId)}`
+		: sql``;
+	return sql`${ids} ${category}`;
+}
+
+function rowMatchesTenant(row: Row, ctx: TenantContext): boolean {
+	if (ctx.source === "external" && ctx.workspaceId) {
+		return row.workspace_id === ctx.workspaceId;
+	}
+	return (
+		row.owner_id === ctx.userId &&
+		(row.workspace_id === null || row.workspace_id === undefined)
+	);
 }
 
 function toFiniteNumber(value: unknown): number | undefined {

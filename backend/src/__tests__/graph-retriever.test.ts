@@ -25,6 +25,21 @@ afterEach(async () => {
 });
 
 describe("graph visibility scope", () => {
+	test("uses a workspace scope for legacy unscoped external assertions", async () => {
+		const { _buildGraphVisibilityScope } = await import(
+			"../search/graph-retriever"
+		);
+
+		expect(
+			_buildGraphVisibilityScope({
+				userId: OWNER,
+				role: "user",
+				source: "external",
+				workspaceId: "workspace-a",
+			}),
+		).toEqual({ kind: "workspace", workspaceId: "workspace-a" });
+	});
+
 	test("drops stale graph generations and orders candidates by hop then document id", async () => {
 		await enableGraphSearchForTest();
 		const { retrieveGraphCandidates } = await import(

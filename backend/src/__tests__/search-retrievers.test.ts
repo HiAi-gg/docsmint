@@ -33,6 +33,128 @@ function executor(rowsByChannel: Partial<Record<SearchChannel, FakeRow[]>>) {
 }
 
 describe("owner-scoped retrieval channels", () => {
+	test("rejects adapter candidates outside a restricted category allow-list before ranking", async () => {
+		const results = await retrieveFastChannels(
+			{ userId: OWNER_ID, role: "user" },
+			plan,
+			{
+				documentIds: ["allowed-inherited-folder-doc"],
+				execute: executor({
+					exact: [
+						{
+							document_id: "allowed-inherited-folder-doc",
+							owner_id: OWNER_ID,
+							score: 1,
+						},
+						{ document_id: "foreign-direct-doc", owner_id: OWNER_ID, score: 2 },
+					],
+					vector: [
+						{
+							document_id: "allowed-inherited-folder-doc",
+							owner_id: OWNER_ID,
+							score: 0.9,
+						},
+						{
+							document_id: "foreign-vector-doc",
+							owner_id: OWNER_ID,
+							score: 0.99,
+						},
+					],
+				}),
+				queryEmbedding: embedding,
+			},
+		);
+
+		expect(results.flatMap((result) => result.candidates)).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					documentId: "allowed-inherited-folder-doc",
+				}),
+			]),
+		);
+		expect(
+			results
+				.flatMap((result) => result.candidates)
+				.map((candidate) => candidate.documentId),
+		).not.toContain("foreign-direct-doc");
+		expect(
+			results
+				.flatMap((result) => result.candidates)
+				.map((candidate) => candidate.documentId),
+		).not.toContain("foreign-vector-doc");
+	});
+
+	test("uses workspace ownership and inherited category SQL for external category assertions", async () => {
+		const queries: unknown[] = [];
+		await retrieveFastChannels(
+			{
+				userId: OWNER_ID,
+				role: "user",
+				source: "external",
+				workspaceId: "workspace-a",
+			},
+			plan,
+			{
+				categoryId: "00000000-0000-4000-8000-000000000099",
+				execute: async (_channel, _ctx, query) => {
+					queries.push(query);
+					return [];
+				},
+				queryEmbedding: embedding,
+			},
+		);
+
+		const rendered = queries.map(
+			(query) =>
+				new PgDialect().sqlToQuery(
+					query as Parameters<PgDialect["sqlToQuery"]>[0],
+				).sql,
+		);
+		expect(
+			rendered.every((query) => query.includes("d.workspace_id = $")),
+		).toBe(true);
+		expect(
+			rendered.every((query) => query.includes("WITH RECURSIVE ancestors")),
+		).toBe(true);
+	});
+
+	test("accepts another owner in the asserted workspace but rejects foreign workspace rows", async () => {
+		const results = await retrieveFastChannels(
+			{
+				userId: OWNER_ID,
+				role: "user",
+				source: "external",
+				workspaceId: "workspace-a",
+			},
+			plan,
+			{
+				execute: executor({
+					exact: [
+						{
+							document_id: "workspace-peer",
+							owner_id: OTHER_OWNER_ID,
+							workspace_id: "workspace-a",
+							score: 1,
+						},
+						{
+							document_id: "foreign-workspace",
+							owner_id: OWNER_ID,
+							workspace_id: "workspace-b",
+							score: 2,
+						},
+					],
+				}),
+				queryEmbedding: { ok: false, code: "not_configured" },
+			},
+		);
+
+		expect(
+			results
+				.flatMap((result) => result.candidates)
+				.map((candidate) => candidate.documentId),
+		).toEqual(["workspace-peer"]);
+	});
+
 	test("filters near-zero stored vectors with the shared norm epsilon", async () => {
 		let vectorQuery: unknown;
 		await retrieveFastChannels({ userId: OWNER_ID, role: "user" }, plan, {

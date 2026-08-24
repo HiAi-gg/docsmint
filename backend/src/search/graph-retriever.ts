@@ -3,6 +3,10 @@ import type { TenantContext } from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import { config } from "../lib/config";
 import {
+	effectiveDocumentCategoryCondition,
+	tenantOwnerCondition,
+} from "../lib/content-access";
+import {
 	expandFromQueryPlan,
 	expandResults,
 	type RelatedDoc,
@@ -16,17 +20,21 @@ export interface GraphRetrieverRequest {
 	limit?: number;
 	maxHops?: number;
 	visibilityScope?: GraphVisibilityScope;
+	/** Effective category enforced for a restricted assertion. */
+	categoryId?: string;
 }
 
 export type GraphVisibilityScope =
 	| { kind: "admin" }
 	| { kind: "public" }
 	| { kind: "tenant"; ownerId: string; includePublic: true }
+	| { kind: "workspace"; workspaceId: string }
 	| { kind: "share"; ownerId: string; allowedDocumentIds: string[] };
 
 interface GraphDocumentVisibilityRow {
 	id: string;
 	ownerId: string;
+	workspaceId?: string | null;
 	visibility: "private" | "shared" | "public";
 }
 
@@ -44,6 +52,7 @@ export interface GraphRetrieverAdapters {
 		ctx: TenantContext,
 		documentIds: string[],
 		scope: GraphVisibilityScope,
+		categoryId?: string,
 	) => Promise<Set<string>>;
 	/** Resolve the relational generation that is currently active for each ID. */
 	visibleDocumentGenerations?: (
@@ -86,6 +95,7 @@ export async function retrieveGraphCandidates(
 					requestedSeeds,
 					adapters.visibleDocumentIds,
 					visibilityScope,
+					request.categoryId,
 				);
 	const seeds = requestedSeeds.filter((id) => authorizedSeeds.has(id));
 	const activeSeedGenerations = await resolveActiveGenerations(
@@ -123,6 +133,7 @@ export async function retrieveGraphCandidates(
 		allIds,
 		adapters.visibleDocumentIds,
 		visibilityScope,
+		request.categoryId,
 	);
 	const activeGenerations = await resolveActiveGenerations(
 		ctx,
@@ -181,7 +192,13 @@ async function resolveActiveGenerations(
 				generationId: documents.activeEmbeddingGeneration,
 			})
 			.from(documents)
-			.where(and(inArray(documents.id, ids), isNull(documents.deletedAt))),
+			.where(
+				and(
+					inArray(documents.id, ids),
+					isNull(documents.deletedAt),
+					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+				),
+			),
 	);
 	return new Map(rows.map((row) => [row.id, row.generationId]));
 }
@@ -191,14 +208,21 @@ async function resolveVisibleIds(
 	ids: string[],
 	adapter?: GraphRetrieverAdapters["visibleDocumentIds"],
 	scope: GraphVisibilityScope = _buildGraphVisibilityScope(ctx),
+	categoryId?: string,
 ): Promise<Set<string>> {
 	if (ids.length === 0) return new Set();
-	if (adapter) return adapter(ctx, ids, scope);
+	if (adapter) return adapter(ctx, ids, scope, categoryId);
+	const tenantDocument = tenantOwnerCondition(
+		documents.ownerId,
+		documents.workspaceId,
+		ctx,
+	);
 	const rows = await withTenant(ctx, async (tx) =>
 		tx
 			.select({
 				id: documents.id,
 				ownerId: documents.ownerId,
+				workspaceId: documents.workspaceId,
 				visibility: documents.visibility,
 			})
 			.from(documents)
@@ -211,11 +235,21 @@ async function resolveVisibleIds(
 						: scope.kind === "public"
 							? eq(documents.visibility, "public")
 							: scope.kind === "share"
-								? inArray(documents.id, scope.allowedDocumentIds)
-								: or(
-										eq(documents.ownerId, scope.ownerId),
-										eq(documents.visibility, "public"),
-									),
+								? and(
+										tenantDocument,
+										inArray(documents.id, scope.allowedDocumentIds),
+									)
+								: scope.kind === "workspace"
+									? tenantDocument
+									: or(tenantDocument, eq(documents.visibility, "public")),
+					categoryId
+						? effectiveDocumentCategoryCondition(
+								documents.categoryId,
+								documents.folderId,
+								ctx,
+								categoryId,
+							)
+						: undefined,
 				),
 			),
 	);
@@ -225,6 +259,7 @@ async function resolveVisibleIds(
 				_isGraphDocumentVisible(scope, {
 					id: row.id,
 					ownerId: row.ownerId,
+					workspaceId: row.workspaceId,
 					visibility: row.visibility,
 				}),
 			)
@@ -239,6 +274,9 @@ export function _buildGraphVisibilityScope(
 	if (override) return override;
 	if (ctx.role === "admin") return { kind: "admin" };
 	if (ctx.role === "none") return { kind: "public" };
+	if (ctx.source === "external" && ctx.workspaceId) {
+		return { kind: "workspace", workspaceId: ctx.workspaceId };
+	}
 	return { kind: "tenant", ownerId: ctx.userId, includePublic: true };
 }
 
@@ -251,6 +289,8 @@ export function _isGraphDocumentVisible(
 	if (scope.kind === "share") {
 		return scope.allowedDocumentIds.includes(document.id);
 	}
+	if (scope.kind === "workspace")
+		return document.workspaceId === scope.workspaceId;
 	return (
 		document.ownerId === scope.ownerId ||
 		(scope.includePublic && document.visibility === "public")
