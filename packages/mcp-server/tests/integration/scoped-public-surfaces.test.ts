@@ -1,4 +1,9 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+	DeleteObjectCommand,
+	HeadObjectCommand,
+	S3Client,
+} from "@aws-sdk/client-s3";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import {
 	DocsApiError,
@@ -32,6 +37,9 @@ const requiredEnvironment = [
 	"HIAI_DOCS_API_KEY",
 	"DOCSMINT_CONTRACT_EMBEDDING_URL",
 	"EMBEDDING_BASE_URL",
+	"STORAGE_ACCESS_KEY",
+	"STORAGE_SECRET_KEY",
+	"STORAGE_BUCKET",
 ] as const;
 
 function requiredEnvironmentValue(
@@ -49,6 +57,7 @@ const { databaseUrl, baseUrl, redisUrl, storageUrl } = bindings;
 const workspaceSecret = requiredEnvironmentValue("DOCSMINT_WORKSPACE_SECRET");
 const workspaceIssuer = requiredEnvironmentValue("DOCSMINT_WORKSPACE_ISSUER");
 const serviceApiKey = requiredEnvironmentValue("HIAI_DOCS_API_KEY");
+const storageBucket = requiredEnvironmentValue("STORAGE_BUCKET");
 const embeddingUrl = requiredEnvironmentValue(
 	"DOCSMINT_CONTRACT_EMBEDDING_URL",
 ).replace(/\/$/, "");
@@ -117,12 +126,67 @@ const contractRedis = new Redis(redisUrl, {
 	lazyConnect: true,
 	maxRetriesPerRequest: 1,
 });
+const contractStorage = new S3Client({
+	endpoint: storageUrl,
+	region: process.env.STORAGE_REGION?.trim() || "us-east-1",
+	credentials: {
+		accessKeyId: requiredEnvironmentValue("STORAGE_ACCESS_KEY"),
+		secretAccessKey: requiredEnvironmentValue("STORAGE_SECRET_KEY"),
+	},
+	forcePathStyle: process.env.STORAGE_FORCE_PATH_STYLE !== "false",
+	requestChecksumCalculation: "WHEN_REQUIRED",
+	responseChecksumValidation: "WHEN_REQUIRED",
+});
+const orphanedObjectKeys = new Set<string>();
 
 let apiHandle: Awaited<ReturnType<typeof launchDocsMintApi>> | undefined;
 let mcpClient: Client | undefined;
 let closeMcp: (() => Promise<void>) | undefined;
 let embeddingServer: { stop(closeActiveConnections?: boolean): void } | undefined;
 let embeddingRequests = 0;
+
+async function deleteContractObject(key: string): Promise<void> {
+	await contractStorage.send(
+		new DeleteObjectCommand({ Bucket: storageBucket, Key: key }),
+	);
+}
+
+async function contractObjectExists(key: string): Promise<boolean> {
+	try {
+		await contractStorage.send(
+			new HeadObjectCommand({ Bucket: storageBucket, Key: key }),
+		);
+		return true;
+	} catch (error) {
+		const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+			?.httpStatusCode;
+		if (status === 404) return false;
+		throw error;
+	}
+}
+
+async function cleanupContractUpload(
+	docs: DocsClient,
+	objectKey: string | undefined,
+	attachmentId: string | undefined,
+): Promise<void> {
+	if (attachmentId) {
+		await docs.deleteAttachment(attachmentId);
+	} else if (objectKey) {
+		await deleteContractObject(objectKey);
+	}
+	if (objectKey) orphanedObjectKeys.delete(objectKey);
+}
+
+afterEach(async () => {
+	for (const key of orphanedObjectKeys) {
+		try {
+			await deleteContractObject(key);
+		} finally {
+			orphanedObjectKeys.delete(key);
+		}
+	}
+});
 
 function assertionPayload(
 	workspaceId: string,
@@ -374,6 +438,7 @@ afterAll(async () => {
 	await database.end();
 	await observedDatabase.client.end();
 	await contractRedis.quit();
+	contractStorage.destroy();
 	embeddingServer?.stop(true);
 });
 
@@ -829,6 +894,7 @@ describe("live category-scoped public surfaces", () => {
 			size: bytes.byteLength,
 		});
 		let attachmentId: string | undefined;
+		let uploadedObjectKey: string | undefined;
 		try {
 			expect(new URL(presigned.url).origin).toBe(new URL(storageUrl).origin);
 			const upload = await fetch(presigned.url, {
@@ -837,6 +903,8 @@ describe("live category-scoped public surfaces", () => {
 				body: bytes,
 			});
 			expect(upload.status).toBe(200);
+			uploadedObjectKey = presigned.key;
+			orphanedObjectKeys.add(uploadedObjectKey);
 			const attachment = await docs.confirmAttachment(ids.docDirectA, {
 				key: presigned.key,
 				filename,
@@ -849,13 +917,57 @@ describe("live category-scoped public surfaces", () => {
 			expect(raw.status).toBe(200);
 			expect(new Uint8Array(await raw.arrayBuffer())).toEqual(bytes);
 		} finally {
-			if (attachmentId) await docs.deleteAttachment(attachmentId);
+			await cleanupContractUpload(docs, uploadedObjectKey, attachmentId);
 		}
 		if (attachmentId) {
 			expect(
 				(await docs.listAttachments(ids.docDirectA)).items.map(({ id }) => id),
 			).not.toContain(attachmentId);
 		}
+		if (uploadedObjectKey) {
+			expect(await contractObjectExists(uploadedObjectKey)).toBe(false);
+		}
+	});
+
+	test("does not leave a direct upload behind when confirmation fails", async () => {
+		const assertion = await createAssertion(["read", "edit", "write"]);
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: { workspaceAssertion: assertion },
+		});
+		const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x46, 0x41, 0x49, 0x4c]);
+		const filename = `task2-confirm-failure-${suffix}.png`;
+		const presigned = await docs.presignAttachment(ids.docDirectA, {
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+		});
+		let attachmentId: string | undefined;
+		let uploadedObjectKey: string | undefined;
+		try {
+			const upload = await fetch(presigned.url, {
+				method: "PUT",
+				headers: { "content-type": "image/png" },
+				body: bytes,
+			});
+			expect(upload.status).toBe(200);
+			uploadedObjectKey = presigned.key;
+			orphanedObjectKeys.add(uploadedObjectKey);
+			await expect(
+				docs.confirmAttachment(ids.docDirectA, {
+					key: presigned.key,
+					filename,
+					contentType: "application/octet-stream",
+					size: bytes.byteLength,
+					quotaReservationId: presigned.quotaReservationId,
+				}),
+			).rejects.toMatchObject({ status: 415, code: "http_415" });
+		} finally {
+			await cleanupContractUpload(docs, uploadedObjectKey, attachmentId);
+		}
+		expect(await contractObjectExists(presigned.key)).toBe(false);
 	});
 
 	test("executes all 17 MCP tools through one sanitized assertion-bound public client", async () => {
