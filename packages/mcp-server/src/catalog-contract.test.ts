@@ -103,18 +103,20 @@ describe('DocsMint MCP catalog contract', () => {
     expect(sources.join('\n')).not.toContain('@modelcontextprotocol/sdk');
   });
 
-  test('publishes the official registry manifest after npm and contract evidence succeed', async () => {
+  test('publishes the official registry manifest only after the complete release gate', async () => {
     const root = new URL('../../../', import.meta.url);
     const workflow = await Bun.file(new URL('.github/workflows/ci.yml', root)).text();
 
     expect(workflow).toContain('publish-mcp-registry:');
-    expect(workflow).toContain('contract-evidence-prepublish:');
+    expect(workflow).toContain('release-static-gates:');
     expect(workflow).toContain('run: bun run release:check:contract-evidence');
-    expect(workflow).toContain('needs: [publish-npm, contract-evidence-prepublish]');
+    expect(workflow).toContain('needs: [publish-npm]');
     expect(workflow).toContain('mcp-publisher login github-oidc');
     expect(workflow).toContain('mcp-publisher publish');
     expect(workflow).toContain(
-      'needs: [publish-docker, publish-npm, publish-mcp-registry, contract-evidence-prepublish]'
+		'needs: [publish-docker, publish-npm, publish-mcp-registry]'
     );
+    expect(workflow).toContain('release-tag-gate:');
+    expect(workflow).toContain('needs: [release-tag-gate]');
   });
 });

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z, type ZodRawShape } from 'zod';
-import { DocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
+import { isDocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
 import { registerExtendedCapabilities } from './capabilities.js';
 import {
@@ -36,7 +36,7 @@ function wrapHandler<Args>(
         content: [{ type: 'text', text: JSON.stringify(await handler(args), null, 2) }],
       };
     } catch (error) {
-      if (error instanceof DocsApiError || error instanceof HiaiDocsError) {
+      if (isDocsApiError(error) || error instanceof HiaiDocsError) {
         return {
           isError: true,
           content: [

@@ -199,4 +199,33 @@ describe('DocsMint MCP protocol discovery', () => {
       body: { error: 'Forbidden category', code: 'workspace_forbidden' },
     });
   });
+
+  test('does not classify an unbranded error with copied fields as DocsApiError', async () => {
+    const spoofedError = Object.assign(new Error('spoofed failure'), {
+      name: 'DocsApiError',
+      status: 403,
+      code: 'workspace_forbidden',
+      body: { error: 'spoofed' },
+    });
+    const docsClient = {
+      listCategories: async () => {
+        throw spoofedError;
+      },
+    } as never;
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createDocsmintMcpServer({ client: docsClient });
+    const client = new Client({ name: 'spoof-contract-test', version: '1.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    close = async () => {
+      await client.close();
+      await server.close();
+    };
+
+    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect((result.content as Array<{ text: string }>)[0]?.text).toBe(
+      "Tool 'extended' failed: spoofed failure"
+    );
+  });
 });

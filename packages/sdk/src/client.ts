@@ -83,6 +83,8 @@ type ResolvedConfig = {
 // Errors
 // ---------------------------------------------------------------------------
 
+const docsApiErrorBrand = Symbol.for("io.github.hiai-gg.docsmint.DocsApiError");
+
 export class DocsApiError extends Error {
 	readonly status: number;
 	readonly code: string;
@@ -104,6 +106,7 @@ export class DocsApiError extends Error {
 		this.body = body;
 		this.url = metadata?.url;
 		this.requestId = metadata?.requestId;
+		Object.defineProperty(this, docsApiErrorBrand, { value: true });
 	}
 
 	private static codeFromBody(status: number, body: unknown): string {
@@ -114,6 +117,26 @@ export class DocsApiError extends Error {
 			? body.code
 			: `http_${status}`;
 	}
+}
+
+/**
+ * Identify public API errors across independently bundled DocsMint entrypoints.
+ * The global symbol is stable across bundles while the invariant checks avoid
+ * treating an arbitrary field-shaped Error as an API response.
+ */
+export function isDocsApiError(error: unknown): error is DocsApiError {
+	if (!(error instanceof Error)) return false;
+	const candidate = error as Error & Record<PropertyKey, unknown>;
+	return (
+		candidate[docsApiErrorBrand] === true &&
+		candidate.name === "DocsApiError" &&
+		Number.isInteger(candidate.status) &&
+		(candidate.status as number) >= 300 &&
+		(candidate.status as number) <= 599 &&
+		typeof candidate.code === "string" &&
+		candidate.code.length > 0 &&
+		Object.hasOwn(candidate, "body")
+	);
 }
 
 export class DocsNetworkError extends Error {

@@ -25,6 +25,27 @@ consumer="$tmp_root/consumer"
 mkdir -p "$consumer"
 (cd "$consumer" && bun init -y >/dev/null && bun add --ignore-scripts "$tarball" >/dev/null)
 
+cp "$repo_root/scripts/fixtures/public-package-consumer.ts" "$consumer/public-package-consumer.ts"
+(cd "$consumer" && bun "$repo_root/frontend/node_modules/typescript/bin/tsc" \
+  --ignoreConfig \
+  --noEmit \
+  --strict \
+  --skipLibCheck \
+  --target ESNext \
+  --module ESNext \
+  --moduleResolution Bundler \
+  public-package-consumer.ts)
+
+if find "$consumer/node_modules/@hiai-gg/docsmint" -path '*/packages/mcp-server/src/*.ts' -print -quit | grep -q .; then
+  echo "Packed MCP consumer contains private raw TypeScript"
+  exit 1
+fi
+if rg --quiet '@hiai-docs/' "$consumer/node_modules/@hiai-gg/docsmint/dist" \
+  --glob '*.js' --glob '*.d.ts'; then
+  echo "Packed MCP consumer contains a private workspace import"
+  exit 1
+fi
+
 "$consumer/node_modules/.bin/hiai-docs" --help >/dev/null
 # MCP uses stdio and exits cleanly when stdin is closed. This verifies that
 # its transitive runtime dependencies are available in a clean install.

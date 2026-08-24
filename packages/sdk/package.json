@@ -8,16 +8,16 @@
   "types": "./src/index.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./src/index.ts"
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
     },
     "./workspace": {
-      "import": "./dist/workspace.js",
-      "types": "./src/workspace.ts"
+      "types": "./src/workspace.ts",
+      "import": "./dist/workspace.js"
     },
     "./pipeline-cancellation": {
-      "import": "./src/pipeline-cancellation.ts",
-      "types": "./src/pipeline-cancellation.ts"
+      "types": "./src/pipeline-cancellation.ts",
+      "import": "./src/pipeline-cancellation.ts"
     }
   },
   "scripts": {

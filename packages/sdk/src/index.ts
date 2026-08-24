@@ -4,6 +4,7 @@ export {
 	DocsClient,
 	DocsNetworkError,
 	DocsTimeoutError,
+	isDocsApiError,
 } from "./client.js";
 export type {
 	AssertPurgeAllowed,

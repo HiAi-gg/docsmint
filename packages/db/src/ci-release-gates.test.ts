@@ -9,15 +9,25 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 	expect(workflow).toContain("integration-test:");
 	expect(workflow).toContain("PIPELINE_RLS_TEST_DATABASE_URL:");
 	expect(workflow).toContain("LIFECYCLE_TEST_DATABASE_URL:");
+	expect(workflow).toContain("CONTENT_ACCESS_TEST_DATABASE_URL:");
+	expect(workflow).toContain("DOCSMINT_CONTRACT_DATABASE_URL:");
 	for (const suite of [
 		"pipeline tenant RLS integration",
 		"lifecycle operation persistence integration",
 		"re-embed delete parent-row lock integration",
 		"embedding context migration integration",
+		"recursive folder category resolution executes on PostgreSQL",
+		"occupied replay keys distinguish authorized replay from a non-disclosing conflict",
+		"authorizes grandparent-inherited category documents and excludes foreign graph IDs",
+		"keeps concurrent observers isolated and preserves client ownership",
+		"contains observer failures and never exposes query parameters",
+		"does not install PostgreSQL debug instrumentation unless requested",
 	]) {
 		expect(workflow).toContain(suite);
 	}
-	expect(workflow).toContain("Required integration suites: 4; skipped: 0");
+	expect(workflow).toContain(
+		"Required integration behavior cases: 16; skipped: 0",
+	);
 });
 
 test("CI smoke and vulnerability gates fail closed without repository env files", () => {
@@ -42,7 +52,7 @@ test("every release publication path validates committed version metadata", asyn
 	).text();
 	const validator = "bun run scripts/release-version-validator.ts";
 
-	expect(workflow.match(new RegExp(validator, "g"))).toHaveLength(3);
+	expect(workflow.match(new RegExp(validator, "g"))).toHaveLength(4);
 	expect(manualRegistryWorkflow).toContain(validator);
 	expect(manualRegistryWorkflow).toContain('npm view "@hiai-gg/docsmint@${VERSION}"');
 	expect(releaseHelper).toContain("scripts/release-version-validator.ts");

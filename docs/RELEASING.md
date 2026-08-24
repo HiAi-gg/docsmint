@@ -54,23 +54,20 @@ and the GitHub Release, not in this file.
 Run from the repository root:
 
 ```bash
-bun install --frozen-lockfile
-bun run test:unit
-PIPELINE_RLS_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
-LIFECYCLE_TEST_DATABASE_URL="$CI_POSTGRES_OWNER_URL" \
-bun run test:integration
-bun run test:package
-bun run release:check:contract-evidence
-bun run scripts/release-workflow-contract.ts
-bun run lint
-bun run typecheck
-bun run test
-bun run --sequential --filter '*' build
-bun audit --production
-docker compose config --quiet
-sh scripts/check-compose-port-contract.sh
-COMPOSE_BAKE=false docker compose build
+bun run test:release
 ```
+
+The canonical gate rejects any staged, modified, or untracked path before it
+runs. Supply its documented test-only service bindings explicitly in the
+process environment; it does not read or create a repository environment file.
+The gate coordinates the frozen install, version and workflow validators,
+production audit, tracked-Git-blob secret scan, lint, typecheck, unit and
+contract suites, every workspace build, packed and clean-installed consumers,
+SaaS adoption rehearsal, fresh Docker rebuild, strict port and health checks,
+required PostgreSQL and live public integrations, and desktop/mobile
+`agent-browser` flows on Lightpanda. Raw logs and machine-readable results are
+written under `build/release-evidence/local-release-gate/` and are bound to the
+checked-out commit.
 
 Then verify the release-specific contours affected by the change:
 
@@ -83,10 +80,11 @@ Then verify the release-specific contours affected by the change:
   a clean consumer directory;
 - exercise global and category keys when authentication or API routes changed;
 - run live search/GraphRAG relevance gates when retrieval or providers changed;
-- verify PWA installability, `/sw.js` controller activation, offline fallback,
-  absence of private Cache Storage entries, explicit-draft/no-replay behavior,
-  and mobile browser flows with `agent-browser`;
-- inspect `git diff --check` and run the repository's secret scan.
+- verify PWA artifact validity and mobile/desktop flows with `agent-browser` on
+  Lightpanda. Lightpanda does not implement ServiceWorker or CacheStorage, so
+  record that engine limitation explicitly; do not install Chrome as a
+  fallback;
+- retain the commit-bound browser/Docker results and strict clean-state proof.
 
 Use [Deployment](DEPLOYMENT.md) for database, queue, provider, and operational
 details. Do not weaken migrations or disable security features to make a smoke
@@ -114,9 +112,14 @@ Publishing is a separate, explicitly authorized operation.
    generic tests and validator self-references are rejected.
 5. Create an annotated `v<version>` tag.
 6. Push the commit and tag.
-7. Wait for GitHub Actions to finish successfully. Every tag publication job
-   depends on the same strict contract-evidence prepublish gate in
-   `.github/workflows/ci.yml`; publication cannot begin while Task 3 is pending.
+7. Wait for GitHub Actions to finish successfully. Every npm, Docker, MCP
+   Registry, and GitHub Release publication path transitively depends on the
+   complete `release-tag-gate` in `.github/workflows/ci.yml`. That gate requires
+   the frozen security/version/evidence checks, lint, typecheck, unit and
+   required live integration suites, every build, the clean installed package,
+   Docker port/health validation, and executable Lightpanda desktop/mobile
+   evidence. Publication cannot begin while any prerequisite is skipped or
+   failed.
 8. Create the GitHub Release from the tag using the changelog summary.
 9. Confirm the expected npm package and Docker images exist and report the
    released version.

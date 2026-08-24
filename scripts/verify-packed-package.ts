@@ -222,9 +222,9 @@ async function walk(directory: string): Promise<string[]> {
 
 const packedRuntimeSources: Array<{ file: string; source: string }> = [];
 for (const file of await walk(join(packageRoot, 'dist'))) {
-  if (!file.endsWith('.js')) continue;
+  if (!file.endsWith('.js') && !file.endsWith('.d.ts')) continue;
   const source = await readFile(file, 'utf8');
-  packedRuntimeSources.push({ file, source });
+  if (file.endsWith('.js')) packedRuntimeSources.push({ file, source });
   const importSpecifiers = [...source.matchAll(/(?:from\s*|import\s*\()(["'])(.*?)\1/g)].map(
     (match) => match[2] ?? ''
   );
@@ -240,6 +240,9 @@ for (const file of await walk(join(packageRoot, 'dist'))) {
       throw new Error(`Private runtime import ${specifier} in ${relative(packageRoot, file)}`);
     }
   }
+}
+if (listing.some((entry) => entry.includes('packages/mcp-server/src/'))) {
+  throw new Error('Packed MCP export contains raw private TypeScript source');
 }
 
 const packagedFrontendFiles = packedRuntimeSources.filter(({ file }) =>
@@ -275,6 +278,50 @@ console.log("server imports: pass");
 `
 );
 await run(['bun', 'server-import-smoke.ts'], packageRoot);
+
+const mcpClientLink = join(packageRoot, 'node_modules', '@modelcontextprotocol', 'client');
+await mkdir(dirname(mcpClientLink), { recursive: true });
+await symlink(join(root, 'packages/mcp-server/node_modules/@modelcontextprotocol/client'), mcpClientLink, 'dir');
+await writeFile(
+  join(packageRoot, 'mcp-public-error-smoke.ts'),
+  `import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
+import { DocsApiError, DocsClient } from "${manifest.name}";
+import { createDocsmintMcpServer } from "${manifest.name}/mcp";
+const docsClient = new DocsClient({
+  baseUrl: "https://docs.example.test",
+  retries: 1,
+  fetch: (async () => Response.json(
+    { error: "Forbidden category", code: "workspace_forbidden" },
+    { status: 403 }
+  )) as unknown as typeof fetch,
+});
+const publicIdentity = new DocsApiError(403, { error: "probe" }, "probe");
+if (!(publicIdentity instanceof DocsApiError)) throw new Error("public DocsApiError identity failed");
+const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+const server = createDocsmintMcpServer({ docsClient });
+const client = new Client({ name: "packed-error-contract", version: "1.0.0" });
+await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+try {
+  const result = await client.callTool({ name: "list_categories", arguments: {} });
+  const body = JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? "");
+  const expected = {
+    type: "DocsApiError",
+    status: 403,
+    code: "workspace_forbidden",
+    message: "Forbidden category",
+    body: { error: "Forbidden category", code: "workspace_forbidden" },
+  };
+  if (!result.isError || JSON.stringify(body) !== JSON.stringify(expected)) {
+    throw new Error(\`packed MCP error contract mismatch: \${JSON.stringify(body)}\`);
+  }
+} finally {
+  await client.close();
+  await server.close();
+}
+console.log("packed MCP public error identity: pass");
+`
+);
+await run(['bun', 'mcp-public-error-smoke.ts'], packageRoot);
 
 await writeFile(
   join(packageRoot, 'svelte.config.js'),
@@ -349,7 +396,8 @@ for (const dependency of new Set([
 }
 await writeFile(
   join(packageRoot, 'declaration-smoke.ts'),
-  `import { DocsClient } from "${manifest.name}";
+  `import { DocsApiError, DocsClient, type DocsRequestContext } from "${manifest.name}";
+import { createDocsmintMcpServer, registerDocsmintMcpCapabilities, type CreateDocsmintMcpServerOptions, type HiaiDocsClient } from "${manifest.name}/mcp";
 import type { PurgeUserDataContext, UserDataExportRecord } from "${manifest.name}/lifecycle";
 import type { LifecycleRuntimeAdapters } from "${manifest.name}/lifecycle/persistent";
 import type { LifecycleRuntimeAdapters as DurableLifecycleRuntimeAdapters, LifecycleScopedDatabaseExecutor as DurableLifecycleDatabaseExecutor } from "${manifest.name}/lifecycle/runtime";
@@ -387,8 +435,13 @@ import { Sidebar } from "${manifest.name}/frontend/components/sidebar";
 import { SettingsDialog } from "${manifest.name}/frontend/components/settings";
 import { theme, setTheme, toggleTheme, type ThemeMode } from "${manifest.name}/frontend/theme";
 import { messages, getMessage, setLocale, supportedLocales, type Locale } from "${manifest.name}/frontend/i18n";
-void [DocsClient, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, createAccountRuntimeCleanup, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, uploadAttachment, createShareLink, startCollaboration, CreateSnapshotDialog, DeleteDialog, CategoryDialog, FolderNode, createDocumentDropCoordinator, resolveOfflineIdentity, createDocTabRegistry, registerShortcut, refreshFolders, cn, formatRelativeTime, copyToClipboard, dndzone, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
-type PublicTypes = PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | WorkspaceRole | WorkspaceResourcePermission | WorkspaceResourceScope | WorkspaceAssertionPayload | DocsmintWorkspaceContext | WorkspaceAssertionOptions | WorkspaceRoleFromWorkspace | WorkspaceResourcePermissionFromWorkspace | WorkspaceResourceScopeFromWorkspace | WorkspaceAssertionPayloadFromWorkspace | DocsmintWorkspaceContextFromWorkspace | WorkspaceAssertionOptionsFromWorkspace | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | AccountRuntimeCleanup | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions;
+const mcpOptions: CreateDocsmintMcpServerOptions = { docsClient: new DocsClient({ baseUrl: "https://docs.example.test" }) };
+const mcpServer = createDocsmintMcpServer(mcpOptions);
+declare const capabilityClient: HiaiDocsClient;
+registerDocsmintMcpCapabilities(mcpServer, capabilityClient);
+const publicError = new DocsApiError(403, { error: "forbidden" }, "Forbidden");
+void [DocsClient, DocsApiError, publicError, mcpServer, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, createAccountRuntimeCleanup, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, uploadAttachment, createShareLink, startCollaboration, CreateSnapshotDialog, DeleteDialog, CategoryDialog, FolderNode, createDocumentDropCoordinator, resolveOfflineIdentity, createDocTabRegistry, registerShortcut, refreshFolders, cn, formatRelativeTime, copyToClipboard, dndzone, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
+type PublicTypes = DocsRequestContext | PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | WorkspaceRole | WorkspaceResourcePermission | WorkspaceResourceScope | WorkspaceAssertionPayload | DocsmintWorkspaceContext | WorkspaceAssertionOptions | WorkspaceRoleFromWorkspace | WorkspaceResourcePermissionFromWorkspace | WorkspaceResourceScopeFromWorkspace | WorkspaceAssertionPayloadFromWorkspace | DocsmintWorkspaceContextFromWorkspace | WorkspaceAssertionOptionsFromWorkspace | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | AccountRuntimeCleanup | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions | CreateDocsmintMcpServerOptions | HiaiDocsClient;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 `
@@ -564,6 +617,7 @@ await writeFile(
       entries: listing,
       checks: {
         serverImports: 'passed',
+        mcpPublicErrorIdentity: 'passed',
         declarations: 'passed',
         frontendSsrAndBrowserBuild: 'passed',
         frontendProviderConsumerBuild: 'passed',
