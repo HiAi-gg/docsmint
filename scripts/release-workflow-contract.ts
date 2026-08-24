@@ -1,5 +1,6 @@
 type WorkflowStep = Readonly<{ run?: string; uses?: string }>;
 type WorkflowJob = Readonly<{
+	env?: Readonly<Record<string, unknown>>;
 	if?: string;
 	needs?: string | string[];
 	steps?: WorkflowStep[];
@@ -28,6 +29,22 @@ const completeGateDependencies = [
 	"browser-e2e",
 	"release-static-gates",
 ] as const;
+const liveDockerJobs = [
+	"docker-build",
+	"scoped-live-integration",
+	"browser-e2e",
+] as const;
+const productionDockerJobs = ["docker-build", "browser-e2e"] as const;
+const dependencyStartCommand =
+	"docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs";
+const migrateCommand =
+	"docker compose --env-file /dev/null run --rm --no-deps migrate";
+const applicationStartCommands = {
+	"docker-build":
+		"docker compose --env-file /dev/null up --detach --no-build --wait api",
+	"browser-e2e":
+		"docker compose --env-file /dev/null up --detach --wait api web",
+} as const;
 const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	lint: ["bun run lint"],
 	typecheck: ["bun run typecheck"],
@@ -67,6 +84,111 @@ function jobCommands(job: WorkflowJob): string[] {
 		.filter((command): command is string => Boolean(command));
 }
 
+function jobCommandLines(job: WorkflowJob): string[] {
+	return jobCommands(job).flatMap((script) =>
+		script
+			.split("\n")
+			.map((line) => line.trim())
+			.filter(Boolean),
+	);
+}
+
+function isComposeUpWait(line: string): boolean {
+	const tokens = line.split(/\s+/);
+	return (
+		tokens[0] === "docker" &&
+		tokens[1] === "compose" &&
+		tokens.includes("up") &&
+		tokens.includes("--wait")
+	);
+}
+
+function validateDockerLifecycle(jobs: Record<string, WorkflowJob>): void {
+	for (const [name, job] of Object.entries(jobs)) {
+		for (const line of jobCommandLines(job).filter(isComposeUpWait)) {
+			const tokens = line.split(/\s+/);
+			if (tokens.includes("migrate")) {
+				throw new Error(
+					`${name} must not run migrate through docker compose up --wait`,
+				);
+			}
+			if (liveDockerJobs.includes(name as (typeof liveDockerJobs)[number])) {
+				const upIndex = tokens.indexOf("up");
+				const services = tokens
+					.slice(upIndex + 1)
+					.filter((token) => !token.startsWith("--"));
+				if (services.length === 0) {
+					throw new Error(
+						`${name} must explicitly start only long-running dependencies before migrate`,
+					);
+				}
+			}
+		}
+	}
+
+	for (const name of liveDockerJobs) {
+		const job = jobs[name];
+		if (!job) throw new Error(`Release workflow is missing ${name}`);
+		const lines = jobCommandLines(job);
+		const dependencies = lines.indexOf(dependencyStartCommand);
+		const migrate = lines.indexOf(migrateCommand);
+		if (migrate < 0) {
+			throw new Error(`${name} must run ${migrateCommand}`);
+		}
+		if (dependencies < 0 || dependencies > migrate) {
+			throw new Error(
+				`${name} must start long-running dependencies before standalone migrate`,
+			);
+		}
+	}
+
+	for (const [name, command] of Object.entries(applicationStartCommands)) {
+		const lines = jobCommandLines(jobs[name] as WorkflowJob);
+		const migrate = lines.indexOf(migrateCommand);
+		const applicationStart = lines.indexOf(command);
+		if (applicationStart < 0 || applicationStart < migrate) {
+			const services = name === "browser-e2e" ? "API and web" : "API";
+			throw new Error(
+				`${name} must start ${services} after standalone migrate`,
+			);
+		}
+	}
+}
+
+function validateStorageEndpoints(jobs: Record<string, WorkflowJob>): void {
+	for (const name of productionDockerJobs) {
+		const job = jobs[name];
+		if (!job) throw new Error(`Release workflow is missing ${name}`);
+		const publicUrl = job.env?.STORAGE_PUBLIC_ENDPOINT_URL;
+		if (typeof publicUrl !== "string" || !publicUrl.startsWith("https://")) {
+			throw new Error(
+				`${name} must set STORAGE_PUBLIC_ENDPOINT_URL to an explicit HTTPS URL`,
+			);
+		}
+		if (job.env?.STORAGE_INTERNAL_ENDPOINT_URL !== "http://seaweedfs:8333") {
+			throw new Error(
+				`${name} must keep STORAGE_INTERNAL_ENDPOINT_URL on http://seaweedfs:8333`,
+			);
+		}
+	}
+
+	const scopedLive = jobs["scoped-live-integration"];
+	if (!scopedLive) {
+		throw new Error("Release workflow is missing scoped-live-integration");
+	}
+	const internalUrl = scopedLive.env?.STORAGE_INTERNAL_ENDPOINT_URL;
+	const publicUrl = scopedLive.env?.STORAGE_PUBLIC_ENDPOINT_URL;
+	if (
+		typeof internalUrl !== "string" ||
+		!internalUrl.startsWith("http://127.0.0.1:") ||
+		publicUrl !== internalUrl
+	) {
+		throw new Error(
+			"scoped-live-integration must keep explicit equal local HTTP storage URLs",
+		);
+	}
+}
+
 function reachesJob(
 	jobs: Record<string, WorkflowJob>,
 	start: string,
@@ -86,6 +208,8 @@ function reachesJob(
 export function validateReleaseWorkflow(workflow: Workflow): void {
 	const jobs = workflow.jobs;
 	if (!jobs) throw new Error("Release workflow has no jobs");
+	validateDockerLifecycle(jobs);
+	validateStorageEndpoints(jobs);
 
 	for (const [name, commands] of Object.entries(requiredCommands)) {
 		const job = jobs[name];

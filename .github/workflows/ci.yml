@@ -226,6 +226,8 @@ jobs:
       BETTER_AUTH_SECRET: ci-better-auth-secret-32-characters
       CSRF_SECRET: ci-csrf-secret-32-characters-long
       STORAGE_SECRET_KEY: ci-storage-secret-32-characters-long
+      STORAGE_INTERNAL_ENDPOINT_URL: http://seaweedfs:8333
+      STORAGE_PUBLIC_ENDPOINT_URL: https://storage.release.invalid
       WEBHOOK_SECRET: ci-webhook-secret-32-characters-long
       HIAI_DOCS_API_KEY: ci-admin-api-key-non-placeholder
       API_KEY_ENCRYPTION_SECRET: ci-api-key-encryption-secret-32-chars
@@ -327,7 +329,8 @@ jobs:
         run: |
           set -euo pipefail
           docker tag hiai-docs/api:ci-${{ github.sha }} docsmint-api:local
-          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs migrate
+          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
+          docker compose --env-file /dev/null run --rm --no-deps migrate
           docker compose --env-file /dev/null up --detach --no-build --wait api
           test "$(docker inspect --format '{{.State.Running}}' "$(docker compose --env-file /dev/null ps --quiet api)")" = "true"
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
@@ -488,8 +491,11 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - name: Start isolated required services and migrations
+        shell: bash
         run: |
-          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs migrate
+          set -euo pipefail
+          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
+          docker compose --env-file /dev/null run --rm --no-deps migrate
           docker compose --env-file /dev/null ps --all
       - run: bun run test:contract:scoped-live
       - name: Collect live-contract logs and stop services
@@ -508,6 +514,8 @@ jobs:
       BETTER_AUTH_SECRET: ci-browser-better-auth-secret-32-characters
       CSRF_SECRET: ci-browser-csrf-secret-32-characters
       STORAGE_SECRET_KEY: ci-browser-storage-secret-32-characters
+      STORAGE_INTERNAL_ENDPOINT_URL: http://seaweedfs:8333
+      STORAGE_PUBLIC_ENDPOINT_URL: https://storage.release.invalid
       WEBHOOK_SECRET: ci-browser-webhook-secret-32-characters
       HIAI_DOCS_API_KEY: ci-browser-admin-api-key-non-placeholder
       API_KEY_ENCRYPTION_SECRET: ci-browser-api-key-encryption-secret-32-chars
@@ -533,9 +541,13 @@ jobs:
           sudo install "${RUNNER_TEMP}/lightpanda" /usr/local/bin/lightpanda
           lightpanda version
       - name: Rebuild and start the complete release stack
+        shell: bash
         run: |
+          set -euo pipefail
           docker compose --env-file /dev/null build
-          docker compose --env-file /dev/null up --detach --wait
+          docker compose --env-file /dev/null up --detach --wait postgres redis seaweedfs
+          docker compose --env-file /dev/null run --rm --no-deps migrate
+          docker compose --env-file /dev/null up --detach --wait api web
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
           curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
       - run: bun run release:check:browser
