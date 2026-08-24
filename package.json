@@ -249,13 +249,17 @@
     "test": "bun run test:unit && bun run test:contract",
     "test:unit": "bun run --filter '*' test:unit",
     "test:contract": "bun run --filter '*' test:contract",
+    "test:contract:scoped-live": "bun run --filter '@hiai-docs/mcp-server' test:contract:scoped-live",
     "test:integration": "bun run --filter '@hiai-docs/db' test:integration",
     "start": "docker compose up -d",
     "stop": "docker compose down",
     "build:sdk": "cd packages/sdk && bun run build",
     "test:package": "bun run build:sdk && bun run scripts/verify-packed-package.ts",
     "test:lifecycle:integration": "bun test packages/db/scripts/lifecycle-operations.integration.test.ts",
-    "test:release": "bun run lint && bun run typecheck && bun run test && bun run test:package && git diff --check",
+    "release:check:contract-evidence:task2": "bun run scripts/contract-evidence-validator.ts --phase task2 docs/release/0.7.0-contract-evidence.json",
+    "release:check:contract-evidence": "bun run scripts/contract-evidence-validator.ts --phase prepublish docs/release/0.7.0-contract-evidence.json",
+    "release:check:contract-evidence:published": "bun run scripts/contract-evidence-validator.ts --phase postpublish docs/release/0.7.0-contract-evidence.json",
+    "test:release": "bun run lint && bun run typecheck && bun run test && bun run test:package && bun run release:check:contract-evidence && git diff --check",
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "dependencies": {

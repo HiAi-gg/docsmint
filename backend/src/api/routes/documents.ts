@@ -1363,7 +1363,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					// single open evict useful cache entries and adds avoidable main-thread
 					// JSON serialization pressure to the API process.
 					shouldCache: (value) => {
-						if (!value || "error" in value) return true;
+						// Status codes are response-local Elysia state. Caching an error
+						// body would replay it as a later HTTP 200 because the loader that
+						// sets `set.status` is skipped on a cache hit.
+						if (!value || "error" in value) return false;
 						const jsonSize = value.contentJson
 							? JSON.stringify(value.contentJson).length
 							: 0;
