@@ -25,15 +25,17 @@
  */
 
 import { documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { config } from "../../lib/config";
 import {
 	type ContentAccess,
 	canAccessContent,
+	effectiveDocumentCategorySql,
 	resolveContentAccess,
 	tenantOwnerCondition,
+	tenantOwnerSql,
 } from "../../lib/content-access";
 import { getGraphDb } from "../../lib/graph/init";
 import {
@@ -445,50 +447,52 @@ async function graphRagLookup(
 // Postgres helpers
 // ---------------------------------------------------------------------
 
+type GraphAuthorizationQueryExecutor = {
+	execute(query: SQL): Promise<unknown>;
+};
+
 /** Category keys are reduced to an ID allow-list before any AGE traversal. */
+function graphAuthorizationQuery(access: ContentAccess, docIds: string[]): SQL {
+	const categoryScope =
+		access.restricted && access.categoryId
+			? sql`AND ${effectiveDocumentCategorySql(
+					"d",
+					access.ctx,
+					access.categoryId,
+				)}`
+			: sql``;
+	return sql`
+		SELECT d.id
+		FROM documents d
+		WHERE ${tenantOwnerSql("d", access.ctx)}
+			AND d.id IN (${sql.join(
+				docIds.map((id) => sql`${id}`),
+				sql`, `,
+			)})
+			AND d.deleted_at IS NULL
+			${categoryScope}
+	`;
+}
+
 async function allowedGraphDocumentIds(
 	access: ContentAccess,
 	docIds: string[],
 ): Promise<Set<string>> {
 	if (docIds.length === 0) return new Set();
-	const rows = await withTenant(access.ctx, (tx) =>
-		tx
-			.select({ id: documents.id })
-			.from(documents)
-			.leftJoin(
-				folders,
-				and(
-					eq(folders.id, documents.folderId),
-					tenantOwnerCondition(
-						folders.ownerId,
-						folders.workspaceId,
-						access.ctx,
-					),
-				),
-			)
-			.where(
-				and(
-					tenantOwnerCondition(
-						documents.ownerId,
-						documents.workspaceId,
-						access.ctx,
-					),
-					inArray(documents.id, docIds),
-					isNull(documents.deletedAt),
-					access.restricted
-						? access.categoryId
-							? or(
-									eq(documents.categoryId, access.categoryId),
-									and(
-										isNull(documents.categoryId),
-										eq(folders.categoryId, access.categoryId),
-									),
-								)
-							: undefined
-						: undefined,
-				),
-			),
+	return withTenant(access.ctx, (tx) =>
+		resolveAllowedGraphDocumentIds(tx, access, docIds),
 	);
+}
+
+async function resolveAllowedGraphDocumentIds(
+	executor: GraphAuthorizationQueryExecutor,
+	access: ContentAccess,
+	docIds: string[],
+): Promise<Set<string>> {
+	if (docIds.length === 0) return new Set();
+	const rows = (await executor.execute(
+		graphAuthorizationQuery(access, docIds),
+	)) as Array<{ id: string }>;
 	return new Set(rows.map((row) => row.id));
 }
 
@@ -665,4 +669,5 @@ export type { RelatedDoc };
 export {
 	currentGraphNeighbors as _currentGraphNeighborsForTests,
 	fetchDocumentEntities as _fetchDocumentEntitiesForTests,
+	resolveAllowedGraphDocumentIds as _allowedGraphDocumentIdsForTests,
 };

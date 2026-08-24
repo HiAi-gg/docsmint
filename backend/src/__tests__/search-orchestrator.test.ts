@@ -3,7 +3,6 @@ import type { TenantContext } from "@hiai-docs/db/with-tenant";
 import type { EmbeddingResult } from "../embedding/result";
 import { getMetrics, METRIC_NAMES, resetMetrics } from "../lib/metrics";
 import {
-	folderCategoryMatchesOwner,
 	resolveSearchEmbedding,
 	searchDocuments,
 } from "../search/orchestrator";
@@ -173,26 +172,6 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(response.items.map((item) => item.documentId)).toEqual([
 			"inherited-folder-doc",
 		]);
-	});
-
-	test("does not apply a folder category from another owner", () => {
-		expect(
-			folderCategoryMatchesOwner(
-				{
-					folderCategoryId: "category-1",
-					folderOwnerId: "another-owner",
-				},
-				"category-1",
-				OWNER,
-			),
-		).toBe(false);
-		expect(
-			folderCategoryMatchesOwner(
-				{ folderCategoryId: "category-1", folderOwnerId: OWNER },
-				"category-1",
-				OWNER,
-			),
-		).toBe(true);
 	});
 
 	test("shares one request embedding with vector retrieval and hydration", async () => {

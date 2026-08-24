@@ -105,18 +105,6 @@ export interface SearchAdapterOptions {
 	) => Promise<RankedSearchResult[]>;
 }
 
-/** A folder category is usable only when the joined folder belongs to the caller. */
-export function folderCategoryMatchesOwner(
-	row: {
-		folderCategoryId: string | null;
-		folderOwnerId: string | null;
-	},
-	categoryId: string,
-	ownerId: string,
-): boolean {
-	return row.folderOwnerId === ownerId && row.folderCategoryId === categoryId;
-}
-
 const CHANNELS = ["exact", "fts", "fuzzy", "vector"] as const;
 const EXPANDED_CHANNELS = new Set<SearchChannel>(["fts", "fuzzy", "vector"]);
 export const MAX_SEARCH_RANKING_WINDOW = 1_000;

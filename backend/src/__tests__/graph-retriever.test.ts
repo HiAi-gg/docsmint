@@ -150,6 +150,54 @@ describe("graph visibility scope", () => {
 		expect(expandedSeeds).toEqual([["visible-seed"]]);
 	});
 
+	test.each([
+		{ kind: "public" } as const,
+		{ kind: "tenant", ownerId: OWNER, includePublic: true } as const,
+		{ kind: "admin" } as const,
+		{ kind: "workspace", workspaceId: "workspace-a" } as const,
+	])("rejects a $kind-visible graph result without a relational active generation", async (visibilityScope) => {
+		await enableGraphSearchForTest();
+		const { retrieveGraphCandidates } = await import(
+			"../search/graph-retriever"
+		);
+
+		const results = await retrieveGraphCandidates(
+			{ userId: OWNER, role: "user" },
+			{
+				documentSeeds: ["seed"],
+				queryPlan,
+				visibilityScope,
+			},
+			{
+				visibleDocumentIds: async (_ctx, ids) => new Set(ids),
+				visibleDocumentGenerations: async (_ctx, ids) =>
+					new Map(
+						ids
+							.filter((id) => id === "seed")
+							.map((id) => [id, "seed-current"] as const),
+					),
+				expandResults: async () =>
+					new Map([
+						[
+							"seed",
+							[
+								{
+									docId: "visible-stale-result",
+									generationId: "age-stale",
+									seedGenerationId: "seed-current",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+							],
+						],
+					]),
+				expandFromQueryPlan: async () => [],
+			},
+		);
+
+		expect(results).toEqual([]);
+	});
+
 	test("falls back to query-plan graph seeds when no document seed is visible", async () => {
 		await enableGraphSearchForTest();
 		const { retrieveGraphCandidates } = await import(

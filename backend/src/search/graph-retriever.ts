@@ -102,6 +102,8 @@ export async function retrieveGraphCandidates(
 		ctx,
 		seeds,
 		adapters.visibleDocumentGenerations,
+		visibilityScope,
+		request.categoryId,
 		Boolean(adapters.visibleDocumentIds),
 	);
 	const expand = adapters.expandResults ?? expandResults;
@@ -121,9 +123,13 @@ export async function retrieveGraphCandidates(
 		if (!candidate.docId || seeds.includes(candidate.docId)) return false;
 		if (seeds.length === 0) return true;
 		if (!candidate.seedGenerationId) return false;
-		return seeds.some(
-			(seed) => activeSeedGenerations.get(seed) === candidate.seedGenerationId,
-		);
+		return seeds.some((seed) => {
+			const activeGeneration = activeSeedGenerations.get(seed);
+			return (
+				typeof activeGeneration === "string" &&
+				activeGeneration === candidate.seedGenerationId
+			);
+		});
 	});
 	const allIds = dedupe(
 		relatedWithCurrentSeed.map((candidate) => candidate.docId),
@@ -139,14 +145,17 @@ export async function retrieveGraphCandidates(
 		ctx,
 		allIds,
 		adapters.visibleDocumentGenerations,
+		visibilityScope,
+		request.categoryId,
 		Boolean(adapters.visibleDocumentIds),
 	);
 	const unique = new Map<string, RelatedDoc>();
 	for (const candidate of relatedWithCurrentSeed) {
 		if (!visible.has(candidate.docId)) continue;
+		const activeGeneration = activeGenerations.get(candidate.docId);
 		if (
-			activeGenerations.has(candidate.docId) &&
-			candidate.generationId !== activeGenerations.get(candidate.docId)
+			typeof activeGeneration !== "string" ||
+			candidate.generationId !== activeGeneration
 		) {
 			continue;
 		}
@@ -180,6 +189,8 @@ async function resolveActiveGenerations(
 	ctx: TenantContext,
 	ids: string[],
 	adapter?: GraphRetrieverAdapters["visibleDocumentGenerations"],
+	scope: GraphVisibilityScope = _buildGraphVisibilityScope(ctx),
+	categoryId?: string,
 	trustLegacyVisibilityAdapter = false,
 ): Promise<Map<string, string | null>> {
 	if (adapter) return adapter(ctx, ids);
@@ -196,7 +207,15 @@ async function resolveActiveGenerations(
 				and(
 					inArray(documents.id, ids),
 					isNull(documents.deletedAt),
-					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+					graphVisibilityCondition(ctx, scope),
+					categoryId
+						? effectiveDocumentCategoryCondition(
+								documents.categoryId,
+								documents.folderId,
+								ctx,
+								categoryId,
+							)
+						: undefined,
 				),
 			),
 	);
@@ -212,11 +231,6 @@ async function resolveVisibleIds(
 ): Promise<Set<string>> {
 	if (ids.length === 0) return new Set();
 	if (adapter) return adapter(ctx, ids, scope, categoryId);
-	const tenantDocument = tenantOwnerCondition(
-		documents.ownerId,
-		documents.workspaceId,
-		ctx,
-	);
 	const rows = await withTenant(ctx, async (tx) =>
 		tx
 			.select({
@@ -230,18 +244,7 @@ async function resolveVisibleIds(
 				and(
 					inArray(documents.id, ids),
 					isNull(documents.deletedAt),
-					scope.kind === "admin"
-						? undefined
-						: scope.kind === "public"
-							? eq(documents.visibility, "public")
-							: scope.kind === "share"
-								? and(
-										tenantDocument,
-										inArray(documents.id, scope.allowedDocumentIds),
-									)
-								: scope.kind === "workspace"
-									? tenantDocument
-									: or(tenantDocument, eq(documents.visibility, "public")),
+					graphVisibilityCondition(ctx, scope),
 					categoryId
 						? effectiveDocumentCategoryCondition(
 								documents.categoryId,
@@ -265,6 +268,24 @@ async function resolveVisibleIds(
 			)
 			.map((row) => row.id),
 	);
+}
+
+function graphVisibilityCondition(
+	ctx: TenantContext,
+	scope: GraphVisibilityScope,
+) {
+	const tenantDocument = tenantOwnerCondition(
+		documents.ownerId,
+		documents.workspaceId,
+		ctx,
+	);
+	if (scope.kind === "admin") return undefined;
+	if (scope.kind === "public") return eq(documents.visibility, "public");
+	if (scope.kind === "share") {
+		return and(tenantDocument, inArray(documents.id, scope.allowedDocumentIds));
+	}
+	if (scope.kind === "workspace") return tenantDocument;
+	return or(tenantDocument, eq(documents.visibility, "public"));
 }
 
 export function _buildGraphVisibilityScope(

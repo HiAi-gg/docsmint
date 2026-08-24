@@ -16,8 +16,114 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
+import { PgDialect } from "drizzle-orm/pg-core";
+import postgres from "postgres";
+import type { ContentAccess } from "../lib/content-access";
+
+type GraphAuthorizationTestHelper = (
+	executor: {
+		execute: (query: unknown) => Promise<unknown>;
+	},
+	access: ContentAccess,
+	documentIds: string[],
+) => Promise<Set<string>>;
+
+const databaseUrl = process.env.CONTENT_ACCESS_TEST_DATABASE_URL;
 
 describe("graph routes cypher safety (N1)", () => {
+	test("exports the graph authorization helper used by route-level PostgreSQL coverage", async () => {
+		const mod = await import("../api/routes/graph");
+		const authorize = (
+			mod as unknown as {
+				_allowedGraphDocumentIdsForTests?: GraphAuthorizationTestHelper;
+			}
+		)._allowedGraphDocumentIdsForTests;
+
+		expect(typeof authorize).toBe("function");
+	});
+
+	test.skipIf(!databaseUrl)(
+		"authorizes grandparent-inherited category documents and excludes foreign graph IDs",
+		async () => {
+			const client = postgres(databaseUrl as string, { max: 1 });
+			const dialect = new PgDialect();
+			const actorId = crypto.randomUUID();
+			const otherOwnerId = crypto.randomUUID();
+			const categoryId = crypto.randomUUID();
+			const grandparentId = crypto.randomUUID();
+			const parentId = crypto.randomUUID();
+			const inheritedDocumentId = crypto.randomUUID();
+			const foreignDocumentId = crypto.randomUUID();
+			const access: ContentAccess = {
+				principal: { kind: "session", userId: actorId },
+				ctx: {
+					userId: actorId,
+					role: "user",
+					source: "external",
+					workspaceId: "workspace-a",
+					resourceScope: {
+						kind: "category",
+						categoryId,
+						permissions: ["read"],
+					},
+				},
+				userId: actorId,
+				categoryId,
+				permissions: new Set(["read"]),
+				restricted: true,
+				externalRole: "viewer",
+			};
+			try {
+				await client.begin(async (tx) => {
+					await tx`CREATE TEMP TABLE folders (id uuid PRIMARY KEY, owner_id uuid NOT NULL, workspace_id text, parent_id uuid, category_id uuid) ON COMMIT DROP`;
+					await tx`CREATE TEMP TABLE documents (id uuid PRIMARY KEY, owner_id uuid NOT NULL, workspace_id text, folder_id uuid, category_id uuid, deleted_at timestamptz) ON COMMIT DROP`;
+					await tx`SET LOCAL search_path TO pg_temp`;
+					await tx`INSERT INTO folders (id, owner_id, workspace_id, parent_id, category_id) VALUES (${grandparentId}::uuid, ${otherOwnerId}::uuid, 'workspace-a', NULL, ${categoryId}::uuid), (${parentId}::uuid, ${otherOwnerId}::uuid, 'workspace-a', ${grandparentId}::uuid, NULL)`;
+					await tx`INSERT INTO documents (id, owner_id, workspace_id, folder_id, category_id, deleted_at) VALUES (${inheritedDocumentId}::uuid, ${otherOwnerId}::uuid, 'workspace-a', ${parentId}::uuid, NULL, NULL), (${foreignDocumentId}::uuid, ${otherOwnerId}::uuid, 'workspace-b', NULL, ${categoryId}::uuid, NULL)`;
+					const mod = await import("../api/routes/graph");
+					const authorize = (
+						mod as unknown as {
+							_allowedGraphDocumentIdsForTests?: GraphAuthorizationTestHelper;
+						}
+					)._allowedGraphDocumentIdsForTests;
+					expect(typeof authorize).toBe("function");
+					if (!authorize) return;
+					const executor = {
+						execute: async (query: unknown) => {
+							const rendered = dialect.sqlToQuery(
+								query as Parameters<PgDialect["sqlToQuery"]>[0],
+							);
+							return tx.unsafe(rendered.sql, rendered.params as never[]);
+						},
+					};
+					await expect(
+						authorize(executor, access, [
+							inheritedDocumentId,
+							foreignDocumentId,
+						]),
+					).resolves.toEqual(new Set([inheritedDocumentId]));
+					const legacyWorkspaceAccess: ContentAccess = {
+						...access,
+						categoryId: null,
+						restricted: false,
+						ctx: {
+							...access.ctx,
+							resourceScope: undefined,
+						},
+					};
+					await expect(
+						authorize(executor, legacyWorkspaceAccess, [
+							inheritedDocumentId,
+							foreignDocumentId,
+						]),
+					).resolves.toEqual(new Set([inheritedDocumentId]));
+				});
+			} finally {
+				await client.end();
+			}
+		},
+	);
+
 	test("filters stale graph generations and orders current neighbors deterministically", async () => {
 		const mod = await import("../api/routes/graph");
 		const expansion = new Map([
