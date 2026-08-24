@@ -7,6 +7,7 @@ type WorkflowStep = Readonly<{
 	with?: Readonly<Record<string, unknown>>;
 }>;
 type WorkflowJob = Readonly<{
+	"continue-on-error"?: unknown;
 	env?: Readonly<Record<string, unknown>>;
 	if?: string;
 	needs?: string | string[];
@@ -35,6 +36,11 @@ const completeGateDependencies = [
 	"docker-build",
 	"browser-e2e",
 	"release-static-gates",
+] as const;
+const tagReleaseCriticalJobs = [
+	...completeGateDependencies,
+	completeGateJob,
+	...publicationJobs,
 ] as const;
 const liveDockerJobs = [
 	"docker-build",
@@ -318,6 +324,30 @@ function validateDockerEvidence(jobs: Record<string, WorkflowJob>): void {
 	}
 }
 
+function hasUnsafeErrorSuppression(
+	node: WorkflowJob | WorkflowStep,
+): boolean {
+	return (
+		Object.hasOwn(node, "continue-on-error") &&
+		node["continue-on-error"] !== false
+	);
+}
+
+function validateErrorSuppression(jobs: Record<string, WorkflowJob>): void {
+	for (const name of tagReleaseCriticalJobs) {
+		const job = jobs[name];
+		if (!job) continue;
+		if (
+			hasUnsafeErrorSuppression(job) ||
+			(job.steps ?? []).some(hasUnsafeErrorSuppression)
+		) {
+			throw new Error(
+				`${name} must reject continue-on-error unless it is literal false`,
+			);
+		}
+	}
+}
+
 function reachesJob(
 	jobs: Record<string, WorkflowJob>,
 	start: string,
@@ -340,6 +370,7 @@ export function validateReleaseWorkflow(workflow: Workflow): void {
 	validateDockerLifecycle(jobs);
 	validateStorageEndpoints(jobs);
 	validateDockerEvidence(jobs);
+	validateErrorSuppression(jobs);
 
 	for (const [name, commands] of Object.entries(requiredCommands)) {
 		const job = jobs[name];

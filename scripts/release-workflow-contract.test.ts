@@ -6,6 +6,23 @@ import { join } from "node:path";
 import { validateReleaseWorkflowContract } from "./release-workflow-contract";
 
 const temporaryDirectories: string[] = [];
+const tagReleaseCriticalJobs = [
+	"lint",
+	"typecheck",
+	"unit-test",
+	"integration-test",
+	"scoped-live-integration",
+	"build",
+	"package-consumer",
+	"docker-build",
+	"browser-e2e",
+	"release-static-gates",
+	"release-tag-gate",
+	"publish-docker",
+	"publish-npm",
+	"publish-mcp-registry",
+	"create-github-release",
+] as const;
 
 afterEach(async () => {
 	await Promise.all(
@@ -27,10 +44,26 @@ async function mutatedWorkflow(
 	return Bun.pathToFileURL(path);
 }
 
+async function mutatedWorkflowSource(
+	mutate: (source: string) => string,
+): Promise<URL> {
+	const source = await Bun.file(
+		new URL("../.github/workflows/ci.yml", import.meta.url),
+	).text();
+	const directory = await mkdtemp(join(tmpdir(), "docsmint-release-workflow-"));
+	temporaryDirectories.push(directory);
+	const path = join(directory, "ci.yml");
+	await Bun.write(path, mutate(source));
+	return Bun.pathToFileURL(path);
+}
+
 function workflowJob(
 	workflow: Record<string, unknown>,
 	name: string,
-): { env?: Record<string, unknown>; steps?: Array<Record<string, unknown>> } {
+): Record<string, unknown> & {
+	env?: Record<string, unknown>;
+	steps?: Array<Record<string, unknown>>;
+} {
 	const jobs = workflow.jobs as Record<
 		string,
 		{ env?: Record<string, unknown>; steps?: Array<Record<string, unknown>> }
@@ -60,6 +93,91 @@ test("every tag publication transitively depends on the complete release gate", 
 			new URL("../.github/workflows/ci.yml", import.meta.url),
 		),
 	).resolves.toBeUndefined();
+});
+
+test.each(tagReleaseCriticalJobs)(
+	"workflow validation rejects expression-valued suppression on every release-critical %s step",
+	async (jobName) => {
+		const path = await mutatedWorkflow((workflow) => {
+			const firstStep = workflowJob(workflow, jobName).steps?.[0];
+			if (!firstStep) throw new Error(`Missing workflow fixture step: ${jobName}/0`);
+			firstStep["continue-on-error"] = "${{ true }}";
+		});
+
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			`${jobName} must reject continue-on-error unless it is literal false`,
+		);
+	},
+);
+
+test.each(tagReleaseCriticalJobs)(
+	"workflow validation rejects job-level literal suppression on release-critical %s",
+	async (jobName) => {
+		const path = await mutatedWorkflow((workflow) => {
+			workflowJob(workflow, jobName)["continue-on-error"] = true;
+		});
+
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			`${jobName} must reject continue-on-error unless it is literal false`,
+		);
+	},
+);
+
+test.each(["true", "yes", "on"])(
+	"workflow validation rejects truthy string step suppression %s",
+	async (value) => {
+		const path = await mutatedWorkflow((workflow) => {
+			workflowStep(
+				workflow,
+				"release-static-gates",
+				"Reject incomplete contract or SaaS migration evidence",
+			)["continue-on-error"] = value;
+		});
+
+		await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+			"release-static-gates must reject continue-on-error unless it is literal false",
+		);
+	},
+);
+
+test("workflow validation rejects job-level expression suppression", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		workflowJob(workflow, "publish-npm")["continue-on-error"] = "${{ true }}";
+	});
+
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"publish-npm must reject continue-on-error unless it is literal false",
+	);
+});
+
+test("workflow validation accepts explicit literal false on every release-critical job and step", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		for (const jobName of tagReleaseCriticalJobs) {
+			const job = workflowJob(workflow, jobName);
+			job["continue-on-error"] = false;
+			for (const step of job.steps ?? []) step["continue-on-error"] = false;
+		}
+	});
+
+	await expect(validateReleaseWorkflowContract(path)).resolves.toBeUndefined();
+});
+
+test("workflow validation rejects aliased suppression after YAML parsing", async () => {
+	const path = await mutatedWorkflowSource((source) =>
+		source
+			.replace(
+				"name: CI\n",
+				"name: CI\nx-release-suppression: &release-suppression ${{ true }}\n",
+			)
+			.replace(
+				"      - name: Reject incomplete contract or SaaS migration evidence\n        run: bun run release:check:contract-evidence\n",
+				"      - name: Reject incomplete contract or SaaS migration evidence\n        continue-on-error: *release-suppression\n        run: bun run release:check:contract-evidence\n",
+			),
+	);
+
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"release-static-gates must reject continue-on-error unless it is literal false",
+	);
 });
 
 test("workflow validation rejects a publication path that bypasses the complete gate", async () => {
