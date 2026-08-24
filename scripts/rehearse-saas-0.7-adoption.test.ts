@@ -1,14 +1,45 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, rm } from "node:fs/promises";
 
 import {
 	redactSecrets,
 	runRehearsalWorkflow,
+	startIsolatedRedisServer,
+	stopIsolatedRedisServer,
 	validateTemporaryRoot,
 	verifyAdditiveMigrationReapply,
 	verifyAtomicAdoption,
+	verifyCandidateProvenance,
 	verifyNoNewRequiredEnvironment,
 	verifyRuntimeSmoke,
+	verifySaasBaseline,
 } from "./rehearse-saas-0.7-adoption";
+
+async function redisCli(
+	database: number,
+	...arguments_: string[]
+): Promise<string> {
+	const child = Bun.spawn(
+		[
+			"redis-cli",
+			"-h",
+			"127.0.0.1",
+			"-p",
+			"6384",
+			"-n",
+			String(database),
+			...arguments_,
+		],
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const [exitCode, stdout, stderr] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	if (exitCode !== 0) throw new Error(stderr);
+	return stdout.trim();
+}
 
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 	test("reapplies the additive migration as an idempotent no-op", () => {
@@ -91,11 +122,20 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			),
 			lockfileVersion: "0.7.0",
 			localTarballResolved: true,
+			packageGitHead: expectedCandidate,
+			tarballSha256: "c".repeat(64),
+			verifiedTarballSha256: "c".repeat(64),
+			provenanceRecord: {
+				candidateCommit: expectedCandidate,
+				packageGitHead: expectedCandidate,
+				tarballSha256: "c".repeat(64),
+			},
 			submoduleCommit: expectedCandidate,
 			commitFiles: [
 				...packageManifests,
 				"bun.lock",
 				"docsmint-oss",
+				".docsmint-oss-adoption.json",
 				"apps/api/src/lib/oss-034-quota-launcher.ts",
 			],
 		};
@@ -123,6 +163,30 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				{ candidateCommit: expectedCandidate, packageManifests },
 			),
 		).toThrow("local packed OSS candidate");
+		expect(() =>
+			verifyAtomicAdoption(
+				{ ...evidence, packageGitHead: "d".repeat(40) },
+				{ candidateCommit: expectedCandidate, packageManifests },
+			),
+		).toThrow("package provenance");
+		expect(() =>
+			verifyAtomicAdoption(
+				{ ...evidence, verifiedTarballSha256: "d".repeat(64) },
+				{ candidateCommit: expectedCandidate, packageManifests },
+			),
+		).toThrow("tarball content hash");
+		expect(() =>
+			verifyAtomicAdoption(
+				{
+					...evidence,
+					provenanceRecord: {
+						...evidence.provenanceRecord,
+						candidateCommit: "d".repeat(40),
+					},
+				},
+				{ candidateCommit: expectedCandidate, packageManifests },
+			),
+		).toThrow("adoption provenance record");
 	});
 
 	test("smokes the 0.7 runtime against the upgraded disposable database", () => {
@@ -193,6 +257,111 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		).toBe("[REDACTED] [REDACTED] [REDACTED]");
 	});
 
+	test("keeps foreign Redis keys after old lease ownership is lost", async () => {
+		const root = `/tmp/docsmint-saas-adoption-${crypto.randomUUID().replaceAll("-", "")}`;
+		const foreignKey = `foreign:${crypto.randomUUID()}`;
+		const staleLeaseKey = `old-rehearsal-lease:${crypto.randomUUID()}`;
+		await mkdir(root);
+		let isolated:
+			| Awaited<ReturnType<typeof startIsolatedRedisServer>>
+			| undefined;
+		try {
+			expect(
+				await redisCli(15, "SET", foreignKey, "survives", "EX", "120"),
+			).toBe("OK");
+			expect(
+				await redisCli(15, "SET", staleLeaseKey, "expired", "EX", "120"),
+			).toBe("OK");
+			isolated = await startIsolatedRedisServer(root);
+			const owned = Bun.spawn(
+				["redis-cli", "-u", isolated.url, "SET", "bull:owned", "value"],
+				{ stdout: "pipe", stderr: "pipe" },
+			);
+			expect(await owned.exited).toBe(0);
+			expect(await redisCli(15, "DEL", staleLeaseKey)).toBe("1");
+
+			await stopIsolatedRedisServer(isolated);
+			isolated = undefined;
+
+			expect(await redisCli(15, "GET", foreignKey)).toBe("survives");
+		} finally {
+			if (isolated)
+				await stopIsolatedRedisServer(isolated).catch(() => undefined);
+			await redisCli(15, "DEL", foreignKey, staleLeaseKey);
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("rejects dirty or mismatched OSS candidate provenance before packing", () => {
+		const clean = {
+			candidateCommit: "a".repeat(40),
+			headCommit: "a".repeat(40),
+			headTree: "b".repeat(40),
+			indexTree: "b".repeat(40),
+			status: "",
+			submoduleStatus: [] as string[],
+		};
+
+		expect(verifyCandidateProvenance(clean)).toEqual({
+			commit: "a".repeat(40),
+			tree: "b".repeat(40),
+		});
+		expect(() =>
+			verifyCandidateProvenance({ ...clean, status: " M package.public.json" }),
+		).toThrow("candidate checkout is not clean");
+		expect(() =>
+			verifyCandidateProvenance({
+				...clean,
+				status: "?? packages/sdk/src/injected.ts",
+			}),
+		).toThrow("candidate checkout is not clean");
+		expect(() =>
+			verifyCandidateProvenance({ ...clean, headCommit: "c".repeat(40) }),
+		).toThrow("candidate HEAD does not match");
+		expect(() =>
+			verifyCandidateProvenance({ ...clean, indexTree: "c".repeat(40) }),
+		).toThrow("candidate index does not match");
+	});
+
+	test("rejects a mixed or mutable 0.6.8 SaaS baseline", () => {
+		const manifests = {
+			"package.json": "0.6.8",
+			"apps/api/package.json": "0.6.8",
+			"apps/web/package.json": "0.6.8",
+			"packages/cli/package.json": "0.6.8",
+			"packages/mcp/package.json": "0.6.8",
+		};
+		const baseline = {
+			expectedCommit: "a".repeat(40),
+			baseCommit: "a".repeat(40),
+			packageVersions: manifests,
+			lockfileVersion: "0.6.8",
+			launcherVersion: "0.6.8",
+			gitlinkCommit: "b".repeat(40),
+			submoduleCommit: "b".repeat(40),
+			expectedSubmoduleCommit: "b".repeat(40),
+		};
+
+		expect(verifySaasBaseline(baseline)).toEqual({
+			commit: "a".repeat(40),
+			version: "0.6.8",
+		});
+		for (const mutation of [
+			{ baseCommit: "c".repeat(40) },
+			{
+				packageVersions: { ...manifests, "apps/api/package.json": "0.7.0" },
+			},
+			{ lockfileVersion: "0.7.0" },
+			{ launcherVersion: "0.7.0" },
+			{ gitlinkCommit: "c".repeat(40) },
+			{ submoduleCommit: "c".repeat(40) },
+		]) {
+			expect(() => verifySaasBaseline({ ...baseline, ...mutation })).toThrow(
+				"exact SaaS 0.6.8 baseline",
+			);
+		}
+	});
+
 	test("orders the real rehearsal gates and always cleans isolated resources", async () => {
 		const events: string[] = [];
 		const migrationBefore = {
@@ -235,8 +404,21 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			packageVersions: { "package.json": "0.7.0" },
 			lockfileVersion: "0.7.0",
 			localTarballResolved: true,
+			packageGitHead: "b".repeat(40),
+			tarballSha256: "c".repeat(64),
+			verifiedTarballSha256: "c".repeat(64),
+			provenanceRecord: {
+				candidateCommit: "b".repeat(40),
+				packageGitHead: "b".repeat(40),
+				tarballSha256: "c".repeat(64),
+			},
 			submoduleCommit: "b".repeat(40),
-			commitFiles: ["package.json", "bun.lock", "docsmint-oss"],
+			commitFiles: [
+				"package.json",
+				"bun.lock",
+				"docsmint-oss",
+				".docsmint-oss-adoption.json",
+			],
 		};
 
 		const report = await runRehearsalWorkflow(

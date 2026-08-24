@@ -20,6 +20,14 @@ export interface AtomicAdoptionEvidence {
 	packageVersions: Record<string, string>;
 	lockfileVersion: string;
 	localTarballResolved: boolean;
+	packageGitHead: string;
+	tarballSha256: string;
+	verifiedTarballSha256: string;
+	provenanceRecord: {
+		candidateCommit: string;
+		packageGitHead: string;
+		tarballSha256: string;
+	};
 	submoduleCommit: string;
 	commitFiles: string[];
 }
@@ -38,6 +46,36 @@ export interface RuntimeSmokeEvidence {
 		allowedDocumentVisible: boolean;
 		foreignDocumentHidden: boolean;
 	};
+}
+
+export interface CandidateProvenanceEvidence {
+	candidateCommit: string;
+	headCommit: string;
+	headTree: string;
+	indexTree: string;
+	status: string;
+	submoduleStatus: string[];
+}
+
+export interface SaasBaselineEvidence {
+	expectedCommit: string;
+	baseCommit: string;
+	packageVersions: Record<string, string>;
+	lockfileVersion: string;
+	launcherVersion: string;
+	gitlinkCommit: string;
+	submoduleCommit: string;
+	expectedSubmoduleCommit: string;
+}
+
+export interface IsolatedRedisServer {
+	root: string;
+	url: string;
+	port: number;
+	child: ReturnType<typeof Bun.spawn>;
+	stdout: Promise<string>;
+	stderr: Promise<string>;
+	stopped: boolean;
 }
 
 export interface PreparedRehearsal {
@@ -79,6 +117,50 @@ const EXPECTED_ADDITIVE_COLUMNS = [
 	"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 	"documents.embedding_context_hash:text:YES:",
 ];
+
+export function verifyCandidateProvenance(
+	evidence: CandidateProvenanceEvidence,
+): { commit: string; tree: string } {
+	if (
+		!COMMIT_PATTERN.test(evidence.candidateCommit) ||
+		!COMMIT_PATTERN.test(evidence.headCommit) ||
+		evidence.headCommit !== evidence.candidateCommit
+	) {
+		throw new Error("candidate HEAD does not match the recorded commit");
+	}
+	if (
+		!COMMIT_PATTERN.test(evidence.headTree) ||
+		!COMMIT_PATTERN.test(evidence.indexTree) ||
+		evidence.headTree !== evidence.indexTree
+	) {
+		throw new Error("candidate index does not match the recorded commit tree");
+	}
+	if (evidence.status.length > 0) {
+		throw new Error("candidate checkout is not clean");
+	}
+	if (evidence.submoduleStatus.some((line) => !line.startsWith(" "))) {
+		throw new Error("candidate submodule state is not clean and initialized");
+	}
+	return { commit: evidence.candidateCommit, tree: evidence.headTree };
+}
+
+export function verifySaasBaseline(evidence: SaasBaselineEvidence): {
+	commit: string;
+	version: "0.6.8";
+} {
+	const valid =
+		COMMIT_PATTERN.test(evidence.expectedCommit) &&
+		evidence.baseCommit === evidence.expectedCommit &&
+		PACKAGE_MANIFESTS.every(
+			(manifest) => evidence.packageVersions[manifest] === "0.6.8",
+		) &&
+		evidence.lockfileVersion === "0.6.8" &&
+		evidence.launcherVersion === "0.6.8" &&
+		evidence.gitlinkCommit === evidence.expectedSubmoduleCommit &&
+		evidence.submoduleCommit === evidence.expectedSubmoduleCommit;
+	if (!valid) throw new Error("exact SaaS 0.6.8 baseline verification failed");
+	return { commit: evidence.baseCommit, version: "0.6.8" };
+}
 
 export function validateTemporaryRoot(path: string): string {
 	const normalized = resolve(path);
@@ -181,7 +263,11 @@ export function verifyAtomicAdoption(
 			throw new Error(`atomic adoption commit is missing ${manifest}`);
 		}
 	}
-	for (const path of ["bun.lock", "docsmint-oss"]) {
+	for (const path of [
+		"bun.lock",
+		"docsmint-oss",
+		".docsmint-oss-adoption.json",
+	]) {
 		if (!evidence.commitFiles.includes(path)) {
 			throw new Error(`atomic adoption commit is missing ${path}`);
 		}
@@ -192,6 +278,26 @@ export function verifyAtomicAdoption(
 	if (!evidence.localTarballResolved) {
 		throw new Error(
 			"atomic adoption did not resolve the local packed OSS candidate",
+		);
+	}
+	if (evidence.packageGitHead !== expected.candidateCommit) {
+		throw new Error(
+			"atomic adoption package provenance does not match the candidate",
+		);
+	}
+	if (
+		!/^[0-9a-f]{64}$/.test(evidence.tarballSha256) ||
+		evidence.verifiedTarballSha256 !== evidence.tarballSha256
+	) {
+		throw new Error("atomic adoption tarball content hash was not preserved");
+	}
+	if (
+		evidence.provenanceRecord.candidateCommit !== expected.candidateCommit ||
+		evidence.provenanceRecord.packageGitHead !== expected.candidateCommit ||
+		evidence.provenanceRecord.tarballSha256 !== evidence.tarballSha256
+	) {
+		throw new Error(
+			"atomic adoption provenance record is not bound to the candidate",
 		);
 	}
 	return { adoptionCommit: evidence.adoptionCommit, version: "0.7.0" };
@@ -263,6 +369,7 @@ export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 const REPOSITORY_ROOT = resolve(import.meta.dir, "..");
 const SAAS_SOURCE_ROOT = "/mnt/data/projects/docsmint";
 const OSS_REPOSITORY_ROOT = "/mnt/data/projects/docsmint-oss";
+const BASELINE_SAAS_COMMIT = "31485e6679608a762b6fda4a8ee8f97afbf76577";
 const BASELINE_OSS_COMMIT = "ea83e5380596567434545ac2a34f65d241a9e75b";
 const PACKAGE_MANIFESTS = [
 	"package.json",
@@ -274,7 +381,6 @@ const PACKAGE_MANIFESTS = [
 const POSTGRES_CONTAINER = "docsmint_oss_e2e-postgres-1";
 const POSTGRES_ADMIN_ROLE = "aiuser";
 const POSTGRES_HOST_PORT = 5437;
-const REDIS_HOST_PORT = 6384;
 const STORAGE_HOST_PORT = 50702;
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 const CONTAINER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
@@ -355,6 +461,7 @@ interface ActualPreparedRehearsal extends PreparedRehearsal {
 	candidateCommit: string;
 	saasRoot: string;
 	baselineRoot: string;
+	candidateSourceRoot: string;
 	stageRoot: string;
 	tarballRoot: string;
 	cacheRoot: string;
@@ -363,8 +470,9 @@ interface ActualPreparedRehearsal extends PreparedRehearsal {
 	runtimeRole: string;
 	ownerUrl: string;
 	runtimeUrl: string;
-	redisDatabase: number;
+	redisPort: number;
 	redisUrl: string;
+	redisServer?: IsolatedRedisServer;
 	storageBucket: string;
 	userId: string;
 	workspaceId: string;
@@ -385,7 +493,6 @@ interface ActualPreparedRehearsal extends PreparedRehearsal {
 	embeddingServer: ReturnType<typeof Bun.serve>;
 	postgresCreated: boolean;
 	storageBucketCreated: boolean;
-	redisReserved: boolean;
 }
 
 function safeEnvironment(
@@ -467,53 +574,6 @@ async function localSeaweedCredentials(
 	return { accessKey: credential.accessKey, secretKey: credential.secretKey };
 }
 
-async function reserveRedisDatabase(
-	runner: SafeCommandRunner,
-	token: string,
-): Promise<{ database: number; url: string }> {
-	const start = Number.parseInt(token.slice(0, 2), 16) % 8;
-	for (let offset = 0; offset < 8; offset += 1) {
-		const database = 8 + ((start + offset) % 8);
-		const base = [
-			"redis-cli",
-			"-h",
-			"127.0.0.1",
-			"-p",
-			String(REDIS_HOST_PORT),
-			"-n",
-			String(database),
-		];
-		const lock = await runner.run(
-			[
-				...base,
-				"SET",
-				"docsmint:rehearsal:exclusive",
-				token,
-				"NX",
-				"EX",
-				"900",
-			],
-			{ env: safeEnvironment() },
-		);
-		if (lock.stdout.trim() !== "OK") continue;
-		const size = await runner.run([...base, "DBSIZE"], {
-			env: safeEnvironment(),
-		});
-		if (size.stdout.trim() === "1") {
-			return {
-				database,
-				url: `redis://127.0.0.1:${REDIS_HOST_PORT}/${database}`,
-			};
-		}
-		await runner.run([...base, "DEL", "docsmint:rehearsal:exclusive"], {
-			env: safeEnvironment(),
-		});
-	}
-	throw new Error(
-		"no empty isolated Redis database is available for rehearsal",
-	);
-}
-
 async function dockerPostgres(
 	runner: SafeCommandRunner,
 	sql: string,
@@ -564,6 +624,123 @@ async function cloneSubmodule(
 		cwd: destination,
 		env: safeEnvironment(),
 	});
+}
+
+async function collectCandidateProvenance(
+	runner: SafeCommandRunner,
+	root: string,
+	candidateCommit: string,
+): Promise<CandidateProvenanceEvidence> {
+	const [headCommit, headTree, indexTree, status, submodules] =
+		await Promise.all([
+			runner.run(["git", "rev-parse", "HEAD"], {
+				cwd: root,
+				env: safeEnvironment(),
+			}),
+			runner.run(["git", "rev-parse", "HEAD^{tree}"], {
+				cwd: root,
+				env: safeEnvironment(),
+			}),
+			runner.run(["git", "write-tree"], {
+				cwd: root,
+				env: safeEnvironment(),
+			}),
+			runner.run(
+				[
+					"git",
+					"status",
+					"--porcelain=v1",
+					"--untracked-files=all",
+					"--ignore-submodules=none",
+				],
+				{ cwd: root, env: safeEnvironment() },
+			),
+			runner.run(["git", "submodule", "status", "--recursive"], {
+				cwd: root,
+				env: safeEnvironment(),
+			}),
+		]);
+	return {
+		candidateCommit,
+		headCommit: headCommit.stdout.trim(),
+		headTree: headTree.stdout.trim(),
+		indexTree: indexTree.stdout.trim(),
+		status: status.stdout,
+		submoduleStatus: submodules.stdout.split("\n").filter(Boolean),
+	};
+}
+
+function dependencyVersion(manifest: {
+	dependencies?: Record<string, string>;
+	devDependencies?: Record<string, string>;
+}): string {
+	return (
+		manifest.dependencies?.["@hiai-gg/docsmint"] ??
+		manifest.devDependencies?.["@hiai-gg/docsmint"] ??
+		""
+	);
+}
+
+function resolvedSaasLockVersion(lockfile: string): string {
+	return (
+		/"@hiai-gg\/docsmint": \["@hiai-gg\/docsmint@([^"]+)"/.exec(
+			lockfile,
+		)?.[1] ?? ""
+	);
+}
+
+async function collectSaasBaselineEvidence(
+	runner: SafeCommandRunner,
+	root: string,
+): Promise<SaasBaselineEvidence> {
+	const baseCommit = (
+		await runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: root,
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	const packageVersions: Record<string, string> = {};
+	for (const manifestPath of PACKAGE_MANIFESTS) {
+		const manifest = JSON.parse(
+			await readFile(join(root, manifestPath), "utf8"),
+		) as {
+			dependencies?: Record<string, string>;
+			devDependencies?: Record<string, string>;
+		};
+		packageVersions[manifestPath] = dependencyVersion(manifest);
+	}
+	const lockfileVersion = resolvedSaasLockVersion(
+		await readFile(join(root, "bun.lock"), "utf8"),
+	);
+	const launcher = await readFile(
+		join(root, "apps/api/src/lib/oss-034-quota-launcher.ts"),
+		"utf8",
+	);
+	const launcherVersion =
+		/OSS_QUOTA_LAUNCHER_VERSION\s*=\s*['"]([^'"]+)['"]/.exec(launcher)?.[1] ??
+		"";
+	const gitlinkCommit = (
+		await runner.run(["git", "rev-parse", ":docsmint-oss"], {
+			cwd: root,
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	const submoduleCommit = (
+		await runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: join(root, "docsmint-oss"),
+			env: safeEnvironment(),
+		})
+	).stdout.trim();
+	return {
+		expectedCommit: BASELINE_SAAS_COMMIT,
+		baseCommit,
+		packageVersions,
+		lockfileVersion,
+		launcherVersion,
+		gitlinkCommit,
+		submoduleCommit,
+		expectedSubmoduleCommit: BASELINE_OSS_COMMIT,
+	};
 }
 
 async function runUpstreamMigrations(
@@ -672,6 +849,7 @@ async function prepareActualRehearsal(
 		candidateCommit,
 		saasRoot: assertContainedPath(root, join(root, "saas-070")),
 		baselineRoot: assertContainedPath(root, join(root, "saas-068")),
+		candidateSourceRoot: assertContainedPath(root, join(root, "oss-candidate")),
 		stageRoot: assertContainedPath(root, join(root, "candidate-stage")),
 		tarballRoot: assertContainedPath(root, join(root, "tarballs")),
 		cacheRoot: assertContainedPath(root, join(root, "bun-cache")),
@@ -680,7 +858,7 @@ async function prepareActualRehearsal(
 		runtimeRole,
 		ownerUrl: connectionUrl(ownerRole, ownerPassword, databaseName),
 		runtimeUrl: connectionUrl(runtimeRole, runtimePassword, databaseName),
-		redisDatabase: -1,
+		redisPort: -1,
 		redisUrl: "",
 		storageBucket: `dm-rehearsal-${normalizedToken}`,
 		userId: crypto.randomUUID(),
@@ -699,14 +877,12 @@ async function prepareActualRehearsal(
 		embeddingServer,
 		postgresCreated: false,
 		storageBucketCreated: false,
-		redisReserved: false,
 	};
 	runner.addSecrets(prepared.ownerUrl, prepared.runtimeUrl);
 	try {
-		const redis = await reserveRedisDatabase(runner, normalizedToken);
-		prepared.redisDatabase = redis.database;
-		prepared.redisUrl = redis.url;
-		prepared.redisReserved = true;
+		prepared.redisServer = await startIsolatedRedisServer(root);
+		prepared.redisPort = prepared.redisServer.port;
+		prepared.redisUrl = prepared.redisServer.url;
 		await mkdir(prepared.cacheRoot, { recursive: true });
 		await runner.run(
 			[
@@ -719,12 +895,29 @@ async function prepareActualRehearsal(
 			],
 			{ cwd: root, env: safeEnvironment() },
 		);
+		await runner.run(["git", "checkout", "--detach", BASELINE_SAAS_COMMIT], {
+			cwd: prepared.saasRoot,
+			env: safeEnvironment(),
+		});
 		await runner.run(
-			["git", "worktree", "add", "--detach", prepared.baselineRoot, "HEAD"],
+			[
+				"git",
+				"worktree",
+				"add",
+				"--detach",
+				prepared.baselineRoot,
+				BASELINE_SAAS_COMMIT,
+			],
 			{ cwd: prepared.saasRoot, env: safeEnvironment() },
 		);
 		await cloneSubmodule(runner, prepared.saasRoot, BASELINE_OSS_COMMIT);
 		await cloneSubmodule(runner, prepared.baselineRoot, BASELINE_OSS_COMMIT);
+		verifySaasBaseline(
+			await collectSaasBaselineEvidence(runner, prepared.saasRoot),
+		);
+		verifySaasBaseline(
+			await collectSaasBaselineEvidence(runner, prepared.baselineRoot),
+		);
 		await runner.run(
 			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
 			{
@@ -735,6 +928,18 @@ async function prepareActualRehearsal(
 				}),
 			},
 		);
+		const installedBaseline = JSON.parse(
+			await readFile(
+				join(
+					prepared.baselineRoot,
+					"node_modules/@hiai-gg/docsmint/package.json",
+				),
+				"utf8",
+			),
+		) as { version?: string };
+		if (installedBaseline.version !== "0.6.8") {
+			throw new Error("exact SaaS 0.6.8 baseline install verification failed");
+		}
 		await runner.run(
 			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
 			{
@@ -881,11 +1086,9 @@ async function cleanupActualRehearsal(
 			failures.push(error instanceof Error ? error.message : String(error));
 		}
 	}
-	if (prepared.redisReserved) {
+	if (prepared.redisServer) {
 		try {
-			await runner.run(["redis-cli", "-u", prepared.redisUrl, "FLUSHDB"], {
-				env: safeEnvironment(),
-			});
+			await stopIsolatedRedisServer(prepared.redisServer);
 		} catch (error) {
 			failures.push(error instanceof Error ? error.message : String(error));
 		}
@@ -924,14 +1127,56 @@ async function cleanupActualRehearsal(
 async function stageCandidateTarball(
 	runner: SafeCommandRunner,
 	prepared: ActualPreparedRehearsal,
-): Promise<string> {
+): Promise<{ tarball: string; sha256: string }> {
+	await runner.run(
+		[
+			"git",
+			"clone",
+			"--local",
+			"--no-hardlinks",
+			OSS_REPOSITORY_ROOT,
+			prepared.candidateSourceRoot,
+		],
+		{ cwd: prepared.root, env: safeEnvironment() },
+	);
+	await runner.run(["git", "checkout", "--detach", prepared.candidateCommit], {
+		cwd: prepared.candidateSourceRoot,
+		env: safeEnvironment(),
+	});
+	verifyCandidateProvenance(
+		await collectCandidateProvenance(
+			runner,
+			prepared.candidateSourceRoot,
+			prepared.candidateCommit,
+		),
+	);
+	await runner.run(
+		["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
+		{
+			cwd: prepared.candidateSourceRoot,
+			env: safeEnvironment({
+				BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
+				TMPDIR: prepared.root,
+			}),
+		},
+	);
 	await runner.run(["bun", "run", "build:sdk"], {
-		cwd: REPOSITORY_ROOT,
+		cwd: prepared.candidateSourceRoot,
 		env: safeEnvironment({ TMPDIR: prepared.root }),
 	});
+	verifyCandidateProvenance(
+		await collectCandidateProvenance(
+			runner,
+			prepared.candidateSourceRoot,
+			prepared.candidateCommit,
+		),
+	);
 	const publicManifest = JSON.parse(
-		await readFile(join(REPOSITORY_ROOT, "package.public.json"), "utf8"),
-	) as { name: string; version: string; files: string[] };
+		await readFile(
+			join(prepared.candidateSourceRoot, "package.public.json"),
+			"utf8",
+		),
+	) as { name: string; version: string; files: string[]; gitHead?: string };
 	if (
 		publicManifest.name !== "@hiai-gg/docsmint" ||
 		publicManifest.version !== "0.7.0" ||
@@ -939,6 +1184,7 @@ async function stageCandidateTarball(
 	) {
 		throw new Error("candidate public manifest is not @hiai-gg/docsmint@0.7.0");
 	}
+	publicManifest.gitHead = prepared.candidateCommit;
 	await mkdir(prepared.stageRoot, { recursive: true });
 	await mkdir(prepared.tarballRoot, { recursive: true });
 	await writeFile(
@@ -951,8 +1197,8 @@ async function stageCandidateTarball(
 		}
 		const source =
 			entry === "dist"
-				? join(REPOSITORY_ROOT, "packages/sdk/dist")
-				: join(REPOSITORY_ROOT, entry);
+				? join(prepared.candidateSourceRoot, "packages/sdk/dist")
+				: join(prepared.candidateSourceRoot, entry);
 		await cp(source, join(prepared.stageRoot, entry), { recursive: true });
 	}
 	const pack = await runner.run(
@@ -979,7 +1225,10 @@ async function stageCandidateTarball(
 	const canonicalTarball = await realpath(tarball);
 	assertContainedPath(prepared.root, canonicalTarball);
 	prepared.tarball = canonicalTarball;
-	return canonicalTarball;
+	const sha256 = new Bun.CryptoHasher("sha256")
+		.update(await readFile(canonicalTarball))
+		.digest("hex");
+	return { tarball: canonicalTarball, sha256 };
 }
 
 async function updatePackageVersion(path: string): Promise<void> {
@@ -1002,7 +1251,10 @@ async function packAndAdoptActual(
 	runner: SafeCommandRunner,
 	prepared: ActualPreparedRehearsal,
 ): Promise<AtomicAdoptionEvidence> {
-	const tarball = await stageCandidateTarball(runner, prepared);
+	const { tarball, sha256: tarballSha256 } = await stageCandidateTarball(
+		runner,
+		prepared,
+	);
 	for (const manifest of PACKAGE_MANIFESTS) {
 		await updatePackageVersion(join(prepared.saasRoot, manifest));
 	}
@@ -1029,6 +1281,15 @@ async function packAndAdoptActual(
 		);
 	}
 	await writeFile(quotaPath, oldQuota.replaceAll("0.6.8", "0.7.0"));
+	const provenanceRecord = {
+		candidateCommit: prepared.candidateCommit,
+		packageGitHead: prepared.candidateCommit,
+		tarballSha256,
+	};
+	await writeFile(
+		join(prepared.saasRoot, ".docsmint-oss-adoption.json"),
+		`${JSON.stringify(provenanceRecord, null, 2)}\n`,
+	);
 	await runner.run(["git", "checkout", "--detach", prepared.candidateCommit], {
 		cwd: join(prepared.saasRoot, "docsmint-oss"),
 		env: safeEnvironment(),
@@ -1062,6 +1323,7 @@ async function packAndAdoptActual(
 		...PACKAGE_MANIFESTS,
 		"bun.lock",
 		"docsmint-oss",
+		".docsmint-oss-adoption.json",
 		"apps/api/src/lib/oss-034-quota-launcher.ts",
 	]);
 	const unexpected = changed.filter((path) => !expectedChanges.has(path));
@@ -1080,11 +1342,14 @@ async function packAndAdoptActual(
 			join(prepared.saasRoot, "node_modules/@hiai-gg/docsmint/package.json"),
 			"utf8",
 		),
-	) as { version?: string };
+	) as { version?: string; gitHead?: string };
 	const lockfile = await readFile(join(prepared.saasRoot, "bun.lock"), "utf8");
 	const localTarballResolved =
 		installedManifest.version === "0.7.0" &&
 		lockfile.includes(basename(tarball));
+	const verifiedTarballSha256 = new Bun.CryptoHasher("sha256")
+		.update(await readFile(tarball))
+		.digest("hex");
 	await runner.run(["git", "add", "--", ...expectedChanges], {
 		cwd: prepared.saasRoot,
 		env: safeEnvironment(),
@@ -1142,6 +1407,10 @@ async function packAndAdoptActual(
 		packageVersions,
 		lockfileVersion: installedManifest.version ?? "",
 		localTarballResolved,
+		packageGitHead: installedManifest.gitHead ?? "",
+		tarballSha256,
+		verifiedTarballSha256,
+		provenanceRecord,
 		submoduleCommit,
 		commitFiles,
 	};
@@ -1306,6 +1575,89 @@ async function freePort(): Promise<number> {
 	server.stop(true);
 	if (!port) throw new Error("failed to reserve a local runtime port");
 	return port;
+}
+
+export async function startIsolatedRedisServer(
+	root: string,
+): Promise<IsolatedRedisServer> {
+	const validatedRoot = validateTemporaryRoot(root);
+	const port = await freePort();
+	const child = Bun.spawn(
+		[
+			"redis-server",
+			"--bind",
+			"127.0.0.1",
+			"--port",
+			String(port),
+			"--save",
+			"",
+			"--appendonly",
+			"no",
+			"--dir",
+			validatedRoot,
+			"--dbfilename",
+			`redis-${basename(validatedRoot)}.rdb`,
+		],
+		{
+			env: safeEnvironment(),
+			stdin: "ignore",
+			stdout: "pipe",
+			stderr: "pipe",
+		},
+	);
+	const server: IsolatedRedisServer = {
+		root: validatedRoot,
+		url: `redis://127.0.0.1:${port}/0`,
+		port,
+		child,
+		stdout: new Response(child.stdout).text(),
+		stderr: new Response(child.stderr).text(),
+		stopped: false,
+	};
+	for (let attempt = 0; attempt < 80; attempt += 1) {
+		const ping = Bun.spawn(["redis-cli", "-u", server.url, "PING"], {
+			env: safeEnvironment(),
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		const [exitCode, stdout] = await Promise.all([
+			ping.exited,
+			new Response(ping.stdout).text(),
+		]);
+		if (exitCode === 0 && stdout.trim() === "PONG") return server;
+		const exited = await Promise.race([
+			child.exited.then(() => true),
+			Bun.sleep(0).then(() => false),
+		]);
+		if (exited) break;
+		await Bun.sleep(25);
+	}
+	await stopIsolatedRedisServer(server);
+	throw new Error("isolated Redis server did not become ready");
+}
+
+export async function stopIsolatedRedisServer(
+	server: IsolatedRedisServer,
+): Promise<void> {
+	validateTemporaryRoot(server.root);
+	const parsed = new URL(server.url);
+	if (
+		parsed.protocol !== "redis:" ||
+		parsed.hostname !== "127.0.0.1" ||
+		Number(parsed.port) !== server.port
+	) {
+		throw new Error("isolated Redis server identity is invalid");
+	}
+	if (server.stopped) return;
+	server.stopped = true;
+	server.child.kill("SIGTERM");
+	const exited = await Promise.race([
+		server.child.exited.then(() => true),
+		Bun.sleep(5_000).then(() => false),
+	]);
+	if (!exited) server.child.kill("SIGKILL");
+	await server.child.exited;
+	await Promise.all([server.stdout, server.stderr]);
 }
 
 function runtimeEnvironment(
@@ -1756,6 +2108,9 @@ async function main(): Promise<void> {
 	).stdout.trim();
 	if (!COMMIT_PATTERN.test(candidateCommit))
 		throw new Error("candidate is not a full Git SHA");
+	verifyCandidateProvenance(
+		await collectCandidateProvenance(runner, REPOSITORY_ROOT, candidateCommit),
+	);
 	let initialSiblingStatus: string | undefined;
 	let preparedForSummary: ActualPreparedRehearsal | undefined;
 	const report = await runRehearsalWorkflow<ActualPreparedRehearsal>(
@@ -1812,7 +2167,7 @@ async function main(): Promise<void> {
 							databaseName: preparedForSummary.databaseName,
 							ownerRole: preparedForSummary.ownerRole,
 							runtimeRole: preparedForSummary.runtimeRole,
-							redisDatabase: preparedForSummary.redisDatabase,
+							redisPort: preparedForSummary.redisPort,
 							storageBucket: preparedForSummary.storageBucket,
 						}
 					: undefined,
@@ -1820,7 +2175,9 @@ async function main(): Promise<void> {
 					temporaryRootRemoved: Boolean(preparedForSummary),
 					databaseDropped: Boolean(preparedForSummary?.postgresCreated),
 					rolesDropped: Boolean(preparedForSummary?.postgresCreated),
-					redisNamespaceCleared: Boolean(preparedForSummary?.redisReserved),
+					redisNamespaceStopped: Boolean(
+						preparedForSummary?.redisServer?.stopped,
+					),
 					storageBucketDeleted: Boolean(
 						preparedForSummary?.storageBucketCreated,
 					),
