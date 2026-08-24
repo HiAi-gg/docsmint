@@ -109,3 +109,33 @@ test("full Docker startup preserves the explicit production-safe public storage 
 		"https://storage.release.invalid",
 	);
 });
+
+test("hermetic release phases cannot inherit live integration triggers", () => {
+	if (!releaseGate) return;
+	const environmentForStep = (
+		releaseGate as unknown as {
+			environmentForStep?: (
+				step: { name: string; command: readonly string[] },
+				environment: Record<string, string | undefined>,
+			) => Record<string, string | undefined>;
+		}
+	).environmentForStep;
+	expect(typeof environmentForStep).toBe("function");
+	if (!environmentForStep) return;
+
+	for (const name of ["unit tests", "contract tests"]) {
+		const environment = environmentForStep(
+			{ name, command: [] },
+			{
+				PIPELINE_RLS_TEST_DATABASE_URL: "postgresql://live.invalid/db",
+				LIFECYCLE_TEST_DATABASE_URL: "postgresql://live.invalid/db",
+				CONTENT_ACCESS_TEST_DATABASE_URL: "postgresql://live.invalid/db",
+				DOCSMINT_CONTRACT_DATABASE_URL: "postgresql://live.invalid/db",
+			},
+		);
+		expect(environment.PIPELINE_RLS_TEST_DATABASE_URL).toBeUndefined();
+		expect(environment.LIFECYCLE_TEST_DATABASE_URL).toBeUndefined();
+		expect(environment.CONTENT_ACCESS_TEST_DATABASE_URL).toBeUndefined();
+		expect(environment.DOCSMINT_CONTRACT_DATABASE_URL).toBeUndefined();
+	}
+});

@@ -214,10 +214,22 @@ function logName(index: number, name: string): string {
 		.replace(/^-|-$/g, "")}.log`;
 }
 
+const liveIntegrationEnvironment = [
+	"PIPELINE_RLS_TEST_DATABASE_URL",
+	"LIFECYCLE_TEST_DATABASE_URL",
+	"CONTENT_ACCESS_TEST_DATABASE_URL",
+	"DOCSMINT_CONTRACT_DATABASE_URL",
+] as const;
+
 export function environmentForStep(
 	step: ReleaseGateStep,
 	base: Record<string, string | undefined>,
 ): Record<string, string | undefined> {
+	if (step.name === "unit tests" || step.name === "contract tests") {
+		const hermetic = { ...base };
+		for (const name of liveIntegrationEnvironment) delete hermetic[name];
+		return hermetic;
+	}
 	if (step.name === "required live public surfaces") {
 		return {
 			...base,
