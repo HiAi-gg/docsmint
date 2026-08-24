@@ -744,11 +744,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble
 			// stops appearing in their embedding context.
-			await enqueueReembed(
-				deletion.affectedDocs,
-				ctx.workspaceId,
-				{ reason: "metadata", refreshMode: "full" },
-			);
+			await enqueueReembed(deletion.affectedDocs, ctx.workspaceId, {
+				reason: "metadata",
+				refreshMode: "full",
+			});
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete folder");

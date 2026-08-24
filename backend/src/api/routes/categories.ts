@@ -1,5 +1,5 @@
 import { categories, documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -477,11 +477,10 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			// automatically detaches the category from any owned folders/docs.
 			// We re-embed those docs/folders so their preamble no longer mentions
 			// the (now-gone) category name.
-			await enqueueReembed(
-				deletion.affectedDocs,
-				ctx.workspaceId,
-				{ reason: "metadata", refreshMode: "full" },
-			);
+			await enqueueReembed(deletion.affectedDocs, ctx.workspaceId, {
+				reason: "metadata",
+				refreshMode: "full",
+			});
 			return { success: true };
 		} catch (err) {
 			logger.error({ err }, "Failed to delete category");
