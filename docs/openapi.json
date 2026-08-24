@@ -1499,6 +1499,7 @@
       },
       "DocsDocumentPipeline": {
         "type": "object",
+        "nullable": true,
         "required": ["documentId", "generationId", "status", "revision", "stages", "batches", "updatedAt"],
         "properties": {
           "documentId": { "type": "string", "format": "uuid" },
@@ -1540,11 +1541,7 @@
           "embeddingErrorCode": { "type": "string", "nullable": true },
           "embeddingUpdatedAt": { "type": "string", "format": "date-time", "nullable": true },
           "searchable": { "type": "boolean" },
-          "pipeline": {
-            "type": "object",
-            "nullable": true,
-            "allOf": [{ "$ref": "#/components/schemas/DocsDocumentPipeline" }]
-          }
+          "pipeline": { "$ref": "#/components/schemas/DocsDocumentPipeline" }
         }
       },
       "DocsDocumentIndexRefresh": {

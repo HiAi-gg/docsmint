@@ -101,9 +101,10 @@ describe("OpenAPI external integration contract", () => {
 	test("documents signed category-scoped workspace assertions and index authorization", () => {
 		const scope = spec.components.schemas.WorkspaceResourceScope;
 		const assertion = spec.components.schemas.WorkspaceAssertionPayload;
+		const pipeline = spec.components.schemas.DocsDocumentPipeline;
 		const indexStatus = spec.components.schemas.DocsDocumentIndexStatus;
 		const indexRefresh = spec.components.schemas.DocsDocumentIndexRefresh;
-		if (!scope || !assertion || !indexStatus || !indexRefresh) {
+		if (!scope || !assertion || !pipeline || !indexStatus || !indexRefresh) {
 			throw new Error("Workspace assertion schemas must be published");
 		}
 		expect(scope).toMatchObject({
@@ -172,12 +173,14 @@ describe("OpenAPI external integration contract", () => {
 			type: "object",
 			required: ["documentId", "generationId", "deduplicated"],
 		});
+		expect(pipeline).toMatchObject({
+			type: "object",
+			nullable: true,
+		});
 		expect(
 			(indexStatus.properties as Record<string, unknown>).pipeline,
 		).toEqual({
-			type: "object",
-			nullable: true,
-			allOf: [{ $ref: "#/components/schemas/DocsDocumentPipeline" }],
+			$ref: "#/components/schemas/DocsDocumentPipeline",
 		});
 
 		for (const operation of [
