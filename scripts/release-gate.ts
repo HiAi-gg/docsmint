@@ -267,14 +267,17 @@ export function environmentForStep(
 		return hermetic;
 	}
 	if (step.name === "required live public surfaces") {
+		const contractStorageUrl = base.DOCSMINT_CONTRACT_STORAGE_URL;
 		return {
 			...base,
-			API_PORT: Bun.env.DOCSMINT_LIVE_API_PORT,
-			BETTER_AUTH_URL: Bun.env.DOCSMINT_CONTRACT_BASE_URL,
+			API_PORT: base.DOCSMINT_LIVE_API_PORT,
+			BETTER_AUTH_URL: base.DOCSMINT_CONTRACT_BASE_URL,
+			STORAGE_INTERNAL_ENDPOINT_URL: contractStorageUrl,
+			STORAGE_PUBLIC_ENDPOINT_URL: contractStorageUrl,
 		};
 	}
 	if (step.name === "Docker start and health") {
-		const apiPort = Bun.env.API_PORT ?? "50700";
+		const apiPort = base.API_PORT ?? "50700";
 		return {
 			...base,
 			BETTER_AUTH_URL: `http://127.0.0.1:${apiPort}`,

@@ -165,6 +165,40 @@ test("full Docker startup preserves the explicit production-safe public storage 
 	expect(environment.DOCSMINT_WORKSPACE_ENABLED).toBe("false");
 });
 
+test("live public surfaces bind every service to the isolated contract stack", () => {
+	if (!releaseGate) return;
+	const environmentForStep = (
+		releaseGate as unknown as {
+			environmentForStep?: (
+				step: { name: string; command: readonly string[] },
+				environment: Record<string, string | undefined>,
+			) => Record<string, string | undefined>;
+		}
+	).environmentForStep;
+	expect(typeof environmentForStep).toBe("function");
+	if (!environmentForStep) return;
+
+	const environment = environmentForStep(
+		{ name: "required live public surfaces", command: [] },
+		{
+			DOCSMINT_CONTRACT_BASE_URL: "http://127.0.0.1:51710",
+			DOCSMINT_LIVE_API_PORT: "51710",
+			DOCSMINT_CONTRACT_STORAGE_URL: "http://127.0.0.1:51702",
+			STORAGE_INTERNAL_ENDPOINT_URL: "http://stale.invalid:8333",
+			STORAGE_PUBLIC_ENDPOINT_URL: "https://storage.release.invalid",
+		},
+	);
+
+	expect(environment.API_PORT).toBe("51710");
+	expect(environment.BETTER_AUTH_URL).toBe("http://127.0.0.1:51710");
+	expect(environment.STORAGE_INTERNAL_ENDPOINT_URL).toBe(
+		"http://127.0.0.1:51702",
+	);
+	expect(environment.STORAGE_PUBLIC_ENDPOINT_URL).toBe(
+		"http://127.0.0.1:51702",
+	);
+});
+
 test("hermetic release phases cannot inherit live integration triggers", () => {
 	if (!releaseGate) return;
 	const environmentForStep = (
