@@ -424,6 +424,24 @@ describe("POST /api/documents", () => {
     expect(getState().enqueuedEmbeddings).toContain(body.id);
   });
 
+  it("locks tenant topology before creating an attached document", async () => {
+    const folderId = "00000000-0000-4000-8000-000000000123";
+    const res = await authedPost("/api/documents", {
+      title: "Attached",
+      folderId,
+    });
+    expect(res.status).toBe(201);
+    const state = getState();
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const insertIndex = state.calls.findIndex(
+      (call) => call.kind === "insert" && call.table === "documents",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(insertIndex).toBeGreaterThan(topologyLockIndex);
+  });
+
   it("defaults the title to 'Untitled' when omitted", async () => {
     const res = await authedPost("/api/documents", {});
     expect(res.status).toBe(201);
@@ -440,6 +458,28 @@ describe("POST /api/documents", () => {
       body: JSON.stringify({ title: "Nope" }),
     });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/documents/:id/duplicate", () => {
+  it("locks tenant topology before duplicating an attached document", async () => {
+    const source = seedDocument({
+      id: "00000000-0000-4000-8000-000000000124",
+      folderId: "00000000-0000-4000-8000-000000000125",
+    });
+
+    const res = await authedPost(`/api/documents/${source.id}/duplicate`, {});
+
+    expect(res.status).toBe(201);
+    const state = getState();
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const insertIndex = state.calls.findIndex(
+      (call) => call.kind === "insert" && call.table === "documents",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 });
 
@@ -556,6 +596,9 @@ describe("PATCH /api/documents/:id", () => {
     // Embedding should have been re-enqueued
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getState().enqueuedEmbeddings).toContain(doc.id);
+    expect(
+      getState().calls.some((call) => call.kind === "lock:topology"),
+    ).toBe(false);
   });
 
   it("moves a document to a different folder", async () => {
@@ -570,6 +613,15 @@ describe("PATCH /api/documents/:id", () => {
     });
     expect(res.status).toBe(200);
     expect((res.body as any).folderId).toBe(newFolder);
+    const state = getState();
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const updateIndex = state.calls.findIndex(
+      (call) => call.kind === "update" && call.table === "documents",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
   it("invalidates the cached list before acknowledging a placement update", async () => {

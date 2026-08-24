@@ -61,6 +61,7 @@ import {
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { BUCKET, storage } from "../../lib/storage";
+import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
 import { withTenant } from "../../lib/with-tenant";
 import { enqueueDocumentPipeline } from "../../queue/enqueue";
@@ -761,6 +762,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			const createdResult = await withTenant(ctx, async (tx) => {
+				if (folderId || categoryId) {
+					await acquireTenantTopologyLock(tx, ctx);
+				}
 				const workspaceIdentity = documentCreateWorkspaceIdentity(
 					userId,
 					ctx.workspaceId,
@@ -1449,6 +1453,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const result = await withTenant(ctx, async (tx) => {
+				if (hasPlacementInput) {
+					await acquireTenantTopologyLock(tx, ctx);
+				}
 				const existingRows = await tx
 					.select({
 						id: documents.id,
@@ -1809,6 +1816,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			const copyTitle = `${source.title} (Copy)`;
 			const copyHash = contentHash(copyTitle, rewrittenContent);
 			const copy = await withTenant(ctx, async (tx) => {
+				if (source.folderId || source.categoryId) {
+					await acquireTenantTopologyLock(tx, ctx);
+				}
 				const [row] = await tx
 					.insert(documents)
 					.values({
@@ -2333,6 +2343,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 			const persistItem = (item: ImportedItem): Promise<CreatedEntry> =>
 				withTenant(ctx, async (tx) => {
+					if (folderId || resolvedCategoryId) {
+						await acquireTenantTopologyLock(tx, ctx);
+					}
 					const revision = contentHash(item.title, item.content);
 					const [row] = await tx
 						.insert(documents)

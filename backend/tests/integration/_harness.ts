@@ -716,6 +716,10 @@ function buildMockDb() {
         ? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
         : "";
       state.queries.push(queryText);
+      if (queryText.includes("docsmint:tenant-topology-lock")) {
+        state.calls.push({ kind: "lock:topology", table: "tenant" });
+        return Promise.resolve([]);
+      }
       if (queryText.includes("docsmint:metadata-impact:folder")) {
         const targetId = query.values?.find(
           (value: unknown) => typeof value === "string",

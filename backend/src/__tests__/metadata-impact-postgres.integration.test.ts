@@ -15,6 +15,7 @@ import {
 	reembedDocsInFolder,
 	snapshotMetadataImpact,
 } from "../lib/reembed";
+import { acquireTenantTopologyLock } from "../lib/topology-serialization";
 
 const databaseUrl = Bun.env.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
 
@@ -338,5 +339,137 @@ describe.skipIf(!databaseUrl)(
 				]);
 			}
 		});
+
+		test.each(["personal", "workspace"] as const)(
+			"serializes %s multi-level reparent and document attach behind a recursive delete snapshot",
+			async (mode) => {
+				const setup = postgres(databaseUrl as string, { max: 1 });
+				const rowBlocker = postgres(databaseUrl as string, { max: 1 });
+				const snapshotClient = createDatabaseClient(databaseUrl as string, {
+					max: 1,
+				});
+				const mutationClient = createDatabaseClient(databaseUrl as string, {
+					max: 1,
+				});
+				const observer = postgres(databaseUrl as string, { max: 1 });
+				const ownerId = crypto.randomUUID();
+				const workspaceId =
+					mode === "workspace" ? `metadata-race-${crypto.randomUUID()}` : null;
+				const rootId = "ffffffff-ffff-4fff-8fff-fffffffff201";
+				const childId = "00000000-0000-4000-8000-000000000201";
+				const grandchildId = "11111111-1111-4111-8111-111111111201";
+				const detachedRootId = "22222222-2222-4222-8222-222222222201";
+				const detachedChildId = "33333333-3333-4333-8333-333333333201";
+				const detachedDocumentId = crypto.randomUUID();
+				const attachDocumentId = crypto.randomUUID();
+				const blockerReady = deferred<number>();
+				const releaseBlocker = deferred<void>();
+				const snapshotPid = deferred<number>();
+				const mutationPid = deferred<number>();
+				const context: TenantContext = workspaceId
+					? {
+							userId: ownerId,
+							role: "user",
+							source: "external",
+							workspaceId,
+						}
+					: { userId: ownerId, role: "user", source: "personal" };
+
+				try {
+					await setup`INSERT INTO public.users (id, email)
+						VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-race.invalid`})`;
+					await setup`INSERT INTO public.folders
+						(id, owner_id, workspace_id, parent_id, name)
+						VALUES
+							(${rootId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, 'root'),
+							(${childId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${rootId}::uuid, 'child'),
+							(${grandchildId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${childId}::uuid, 'grandchild'),
+							(${detachedRootId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, 'detached root'),
+							(${detachedChildId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${detachedRootId}::uuid, 'detached child')`;
+					await setup`INSERT INTO public.documents
+						(id, owner_id, workspace_id, folder_id, title, content)
+						VALUES
+							(${detachedDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, ${detachedChildId}::uuid, 'reparented', ''),
+							(${attachDocumentId}::uuid, ${ownerId}::uuid, ${workspaceId}, NULL, 'attached', '')`;
+
+					const blockerTask = rowBlocker.begin(async (tx) => {
+						const [backend] = await tx`SELECT pg_backend_pid() AS pid`;
+						await tx`SELECT id FROM public.folders
+							WHERE id = ${childId}::uuid FOR UPDATE`;
+						blockerReady.resolve(backend?.pid as number);
+						await releaseBlocker.promise;
+					});
+					const blockerPid = await blockerReady.promise;
+					const snapshotTask = withTenantDatabase(
+						snapshotClient.db,
+						context,
+						async (tx) => {
+							const backendRows = (await tx.execute(
+								sql`SELECT pg_backend_pid() AS pid`,
+							)) as unknown as Array<{ pid: number }>;
+							snapshotPid.resolve(backendRows[0]?.pid ?? -1);
+							return snapshotMetadataImpact(
+								tx,
+								context,
+								{ kind: "folder", id: rootId },
+								{ lockFolders: true },
+							);
+						},
+					);
+					await waitForBlock(observer, await snapshotPid.promise, blockerPid);
+
+					const mutationTask = withTenantDatabase(
+						mutationClient.db,
+						context,
+						async (tx) => {
+							const backendRows = (await tx.execute(
+								sql`SELECT pg_backend_pid() AS pid`,
+							)) as unknown as Array<{ pid: number }>;
+							mutationPid.resolve(backendRows[0]?.pid ?? -1);
+							await acquireTenantTopologyLock(tx, context);
+							await tx.execute(sql`UPDATE public.folders
+								SET parent_id = ${grandchildId}::uuid
+								WHERE id = ${detachedRootId}::uuid`);
+							await tx.execute(sql`UPDATE public.documents
+								SET folder_id = ${grandchildId}::uuid
+								WHERE id = ${attachDocumentId}::uuid`);
+						},
+					);
+					await waitForBlock(
+						observer,
+						await mutationPid.promise,
+						await snapshotPid.promise,
+					);
+					releaseBlocker.resolve();
+					const snapshot = await snapshotTask;
+					await Promise.all([blockerTask, mutationTask]);
+
+					expect(snapshot.documents.map(({ id }) => id)).not.toContain(
+						detachedDocumentId,
+					);
+					expect(snapshot.documents.map(({ id }) => id)).not.toContain(
+						attachDocumentId,
+					);
+					const [reparented] = await setup<{ parent_id: string }[]>`
+						SELECT parent_id::text FROM public.folders
+						WHERE id = ${detachedRootId}::uuid`;
+					const [attached] = await setup<{ folder_id: string }[]>`
+						SELECT folder_id::text FROM public.documents
+						WHERE id = ${attachDocumentId}::uuid`;
+					expect(reparented?.parent_id).toBe(grandchildId);
+					expect(attached?.folder_id).toBe(grandchildId);
+				} finally {
+					releaseBlocker.resolve();
+					await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+					await Promise.all([
+						setup.end(),
+						rowBlocker.end(),
+						snapshotClient.client.end(),
+						mutationClient.client.end(),
+						observer.end(),
+					]);
+				}
+			},
+		);
 	},
 );

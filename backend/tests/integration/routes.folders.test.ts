@@ -240,6 +240,14 @@ describe("POST /api/folders", () => {
     );
     expect(stored).toBeTruthy();
     expect((stored as any).name).toBe("Engineering");
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const insertIndex = state.calls.findIndex(
+      (call) => call.kind === "insert" && call.table === "folders",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 
   it("returns 404 when parentId refers to a non-existent folder", async () => {
@@ -389,6 +397,14 @@ describe("PATCH /api/folders/:id", () => {
 
     const stored = (state.folders.get(id) as any).name;
     expect(stored).toBe("New Name");
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const updateIndex = state.calls.findIndex(
+      (call) => call.kind === "update" && call.table === "folders",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
   it("rejects setting folder as its own parent", async () => {
@@ -544,6 +560,9 @@ describe("DELETE /api/folders/:id", () => {
     const res = await authedDelete(`/api/folders/${id}`);
 
     expect(res.status).toBe(200);
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
     const lockIndex = state.calls.findIndex(
       (call) => call.kind === "lock:update" && call.table === "folders",
     );
@@ -555,7 +574,8 @@ describe("DELETE /api/folders/:id", () => {
       (call, index) =>
         index > lockIndex && call.kind === "delete" && call.table === "folders",
     );
-    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(lockIndex).toBeGreaterThan(topologyLockIndex);
     expect(snapshotIndex).toBeGreaterThan(lockIndex);
     expect(deleteIndex).toBeGreaterThan(snapshotIndex);
   });

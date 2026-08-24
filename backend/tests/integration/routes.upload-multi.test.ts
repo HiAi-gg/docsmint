@@ -222,6 +222,15 @@ describe("POST /api/documents/import — JSON single-item path", () => {
     ).items[0]?.document?.id;
     const stored = getState().documents.get(docId);
     expect(stored?.folderId).toBe(folderId);
+    const state = getState();
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const insertIndex = state.calls.findIndex(
+      (call) => call.kind === "insert" && call.table === "documents",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(insertIndex).toBeGreaterThan(topologyLockIndex);
   });
 
   it("creates a version row alongside the document", async () => {

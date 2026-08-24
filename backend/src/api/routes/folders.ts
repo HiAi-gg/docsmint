@@ -21,6 +21,7 @@ import {
 	reembedDocsInFolder,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
+import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -361,6 +362,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const created = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const parentId = parsed.data.parentId ?? null;
 				const categoryId = parentId ? null : (parsed.data.categoryId ?? null);
 				const effectiveCategory = parentId
@@ -505,6 +507,13 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const result = await withTenant(ctx, async (tx) => {
+				if (
+					parsed.data.name !== undefined ||
+					parsed.data.parentId !== undefined ||
+					parsed.data.categoryId !== undefined
+				) {
+					await acquireTenantTopologyLock(tx, ctx);
+				}
 				const [current] = await tx
 					.select({ id: folders.id })
 					.from(folders)
@@ -702,6 +711,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 		}
 		try {
 			const deletion = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				const effectiveCategory = await resolveFolderEffectiveCategory(
 					tx,
 					ctx,

@@ -16,6 +16,7 @@ import {
 	reembedDocsInCategory,
 	snapshotMetadataImpact,
 } from "../../lib/reembed";
+import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
 
@@ -327,6 +328,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 		try {
 			const updated = await withTenant(ctx, async (tx) => {
 				if (newName !== undefined) {
+					await acquireTenantTopologyLock(tx, ctx);
 					const existing = await tx
 						.select({ id: categories.id })
 						.from(categories)
@@ -427,6 +429,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const deletion = await withTenant(ctx, async (tx) => {
+				await acquireTenantTopologyLock(tx, ctx);
 				// Serialize FK attach checks with the folder/document snapshot. Without
 				// this lock, READ COMMITTED permits a child to attach after the snapshot
 				// and then be detached by ON DELETE SET NULL without a re-embed enqueue.

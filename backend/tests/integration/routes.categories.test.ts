@@ -197,6 +197,15 @@ describe("PATCH /api/categories/:id", () => {
     expect(res.status).toBe(200);
     expect((res.body as any).name).toBe("new-name");
     expect(getState().categories.get("cat-1")?.name).toBe("new-name");
+    const state = getState();
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
+    const updateIndex = state.calls.findIndex(
+      (call) => call.kind === "update" && call.table === "categories",
+    );
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
   it("returns 404 when the id is unknown", async () => {
@@ -386,6 +395,9 @@ describe("DELETE /api/categories/:id", () => {
     const res = await authedDelete("/api/categories/cat-delete-lock");
 
     expect(res.status).toBe(200);
+    const topologyLockIndex = state.calls.findIndex(
+      (call) => call.kind === "lock:topology",
+    );
     const lockIndex = state.calls.findIndex(
       (call) => call.kind === "lock:update" && call.table === "categories",
     );
@@ -401,7 +413,8 @@ describe("DELETE /api/categories/:id", () => {
       (call, index) =>
         index > lockIndex && call.kind === "delete" && call.table === "categories",
     );
-    expect(lockIndex).toBeGreaterThanOrEqual(0);
+    expect(topologyLockIndex).toBeGreaterThanOrEqual(0);
+    expect(lockIndex).toBeGreaterThan(topologyLockIndex);
     expect(folderSnapshotIndex).toBeGreaterThan(lockIndex);
     expect(documentSnapshotIndex).toBeGreaterThan(folderSnapshotIndex);
     expect(deleteIndex).toBeGreaterThan(documentSnapshotIndex);

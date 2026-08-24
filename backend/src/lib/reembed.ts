@@ -49,6 +49,7 @@ import { contentHash } from "./content-hash";
 import { enqueueEmbedding } from "./embedding-queue";
 import { logger } from "./logger";
 import { redis } from "./redis";
+import { acquireTenantTopologyLock } from "./topology-serialization";
 
 /**
  * Per-doc dedup slot prefix. Combined with a 5-second TTL this absorbs
@@ -183,6 +184,7 @@ export async function snapshotMetadataImpact(
 	target: MetadataImpactTarget,
 	options: Readonly<{ lockFolders?: boolean }> = {},
 ): Promise<MetadataImpactSnapshot> {
+	await acquireTenantTopologyLock(tx, ctx);
 	const folderIds = await loadMetadataImpactFolderIds(tx, ctx, target);
 	if (options.lockFolders && folderIds.length > 0) {
 		await tx
@@ -381,12 +383,14 @@ export async function reembedDocsInFolder(
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const folderIds = await withTenant(tenant, (tx) =>
-		loadMetadataImpactFolderIds(tx, tenant, { kind: "folder", id: folderId }),
-	);
-	const enqueued = await enqueueReembedPages(
-		(cursor, pageLimit) =>
-			withTenant(tenant, (tx) =>
+	const enqueued = await withTenant(tenant, async (tx) => {
+		await acquireTenantTopologyLock(tx, tenant);
+		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
+			kind: "folder",
+			id: folderId,
+		});
+		return enqueueReembedPages(
+			(cursor, pageLimit) =>
 				loadMetadataImpactDocumentPage(
 					tx,
 					tenant,
@@ -395,11 +399,11 @@ export async function reembedDocsInFolder(
 					cursor,
 					pageLimit,
 				),
-			),
-		limit,
-		workspaceId,
-		{ reason: "metadata", refreshMode: "full" },
-	);
+			limit,
+			workspaceId,
+			{ reason: "metadata", refreshMode: "full" },
+		);
+	});
 	if (enqueued > 0) {
 		logger.info(
 			{ folderId, enqueued, limit },
@@ -553,15 +557,14 @@ export async function reembedDocsInCategory(
 		source: workspaceId ? "external" : "personal",
 		workspaceId,
 	};
-	const folderIds = await withTenant(tenant, (tx) =>
-		loadMetadataImpactFolderIds(tx, tenant, {
+	const { enqueued, folderCount } = await withTenant(tenant, async (tx) => {
+		await acquireTenantTopologyLock(tx, tenant);
+		const folderIds = await loadMetadataImpactFolderIds(tx, tenant, {
 			kind: "category",
 			id: categoryId,
-		}),
-	);
-	const enqueued = await enqueueReembedPages(
-		(cursor, pageLimit) =>
-			withTenant(tenant, (tx) =>
+		});
+		const enqueued = await enqueueReembedPages(
+			(cursor, pageLimit) =>
 				loadMetadataImpactDocumentPage(
 					tx,
 					tenant,
@@ -570,11 +573,12 @@ export async function reembedDocsInCategory(
 					cursor,
 					pageLimit,
 				),
-			),
-		limit,
-		workspaceId,
-		{ reason: "metadata", refreshMode: "full" },
-	);
+			limit,
+			workspaceId,
+			{ reason: "metadata", refreshMode: "full" },
+		);
+		return { enqueued, folderCount: folderIds.length };
+	});
 
 	if (enqueued > 0) {
 		logger.info(
@@ -582,7 +586,7 @@ export async function reembedDocsInCategory(
 				categoryId,
 				enqueued,
 				limit,
-				folderCount: folderIds.length,
+				folderCount,
 			},
 			"Re-embedding documents after category change",
 		);
