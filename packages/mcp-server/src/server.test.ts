@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { DocsClient } from '@hiai-docs/sdk';
 
 import { capabilityCatalog } from './capabilities.js';
 import { client as defaultClient } from './client.js';
@@ -113,5 +114,89 @@ describe('DocsMint MCP protocol discovery', () => {
       },
     ]);
     expect(calls).toEqual(['categories', 'search', 'categories', 'folders', 'tags']);
+  });
+
+  test('adapts a public DocsClient through one sanitized scoped context', async () => {
+    const seenHeaders: Headers[] = [];
+    const docsClient = new DocsClient({
+      baseUrl: 'https://docs.example.test',
+      apiKey: 'service-key',
+      retries: 1,
+      fetch: (async (_input, init) => {
+        seenHeaders.push(new Headers(init?.headers));
+        return Response.json([{ id: 'category-scoped', name: 'Scoped' }]);
+      }) as typeof fetch,
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createDocsmintMcpServer({
+      docsClient,
+      requestContext: {
+        workspaceAssertion: 'signed-workspace-assertion',
+        authorization: 'Bearer caller-token',
+        cookie: 'caller-cookie=secret',
+        headers: {
+          Authorization: 'Bearer duplicate-caller-token',
+          Cookie: 'duplicate-caller-cookie=secret',
+        },
+        requestId: 'req-mcp',
+        idempotencyKey: 'idem-mcp',
+      },
+    });
+    const client = new Client({ name: 'public-sdk-test', version: '1.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    close = async () => {
+      await client.close();
+      await server.close();
+    };
+
+    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+
+    expect(result).toMatchObject({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify([{ id: 'category-scoped', name: 'Scoped' }], null, 2),
+        },
+      ],
+    });
+    expect(seenHeaders).toHaveLength(1);
+    expect(seenHeaders[0]?.get('authorization')).toBe('Bearer service-key');
+    expect(seenHeaders[0]?.get('cookie')).toBeNull();
+    expect(seenHeaders[0]?.get('x-docsmint-workspace-context')).toBe(
+      'signed-workspace-assertion'
+    );
+    expect(seenHeaders[0]?.get('x-request-id')).toBe('req-mcp');
+    expect(seenHeaders[0]?.get('idempotency-key')).toBe('idem-mcp');
+  });
+
+  test('returns DocsApiError details as structured MCP error JSON', async () => {
+    const docsClient = new DocsClient({
+      baseUrl: 'https://docs.example.test',
+      retries: 1,
+      fetch: (async () =>
+        Response.json(
+          { error: 'Forbidden category', code: 'workspace_forbidden' },
+          { status: 403 }
+        )) as unknown as typeof fetch,
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createDocsmintMcpServer({ docsClient });
+    const client = new Client({ name: 'error-contract-test', version: '1.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    close = async () => {
+      await client.close();
+      await server.close();
+    };
+
+    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? '')).toEqual({
+      type: 'DocsApiError',
+      status: 403,
+      code: 'workspace_forbidden',
+      message: 'Forbidden category',
+      body: { error: 'Forbidden category', code: 'workspace_forbidden' },
+    });
   });
 });

@@ -31,13 +31,15 @@ export const capabilityCatalog = {
   ] as const,
 };
 
-type TextResult = { content: Array<{ type: 'text'; text: string }> };
+type ToolWrapper = <Args>(
+  handler: (args: Args) => Promise<unknown>
+) => (args: Args) => Promise<unknown>;
 
-function jsonResult(value: unknown): TextResult {
-  return { content: [{ type: 'text', text: JSON.stringify(value, null, 2) }] };
-}
-
-export function registerExtendedCapabilities(server: McpServer, client: HiaiDocsClient): void {
+export function registerExtendedCapabilities(
+  server: McpServer,
+  client: HiaiDocsClient,
+  wrapHandler: ToolWrapper
+): void {
   server.registerTool(
     'list_categories',
     {
@@ -45,7 +47,7 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
         'List categories visible to the API key. Category keys receive only their bound category.',
       inputSchema: z.object({}),
     },
-    async () => jsonResult(await client.listCategories())
+    wrapHandler(async () => client.listCategories()) as never
   );
   server.registerTool(
     'create_category',
@@ -57,7 +59,9 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
         description: z.string().optional(),
       }),
     },
-    async (input) => jsonResult(await client.createCategory(input))
+    wrapHandler(async (input: { name: string; description?: string }) =>
+      client.createCategory(input)
+    ) as never
   );
   server.registerTool(
     'list_tags',
@@ -65,7 +69,7 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
       description: 'List tags visible in the workspace or bound category.',
       inputSchema: z.object({}),
     },
-    async () => jsonResult(await client.listTags())
+    wrapHandler(async () => client.listTags()) as never
   );
   server.registerTool(
     'get_related_documents',
@@ -76,7 +80,9 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
         limit: z.number().int().min(1).max(50).optional(),
       }),
     },
-    async ({ documentId, limit }) => jsonResult(await client.getRelatedDocuments(documentId, limit))
+    wrapHandler(async ({ documentId, limit }: { documentId: string; limit?: number }) =>
+      client.getRelatedDocuments(documentId, limit)
+    ) as never
   );
   server.registerTool(
     'search_knowledge_graph',
@@ -89,7 +95,9 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
         limit: z.number().int().min(1).max(50).optional(),
       }),
     },
-    async (input) => jsonResult(await client.searchGraph(input))
+    wrapHandler(async (input: { query: string; docIds: string[]; limit?: number }) =>
+      client.searchGraph(input)
+    ) as never
   );
   server.registerTool(
     'get_document_index_status',
@@ -97,7 +105,9 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
       description: 'Read the current indexing and knowledge-pipeline status of a document.',
       inputSchema: z.object({ documentId: z.string().min(1) }),
     },
-    async ({ documentId }) => jsonResult(await client.getDocumentIndexStatus(documentId))
+    wrapHandler(async ({ documentId }: { documentId: string }) =>
+      client.getDocumentIndexStatus(documentId)
+    ) as never
   );
   server.registerTool(
     'refresh_document_index',
@@ -105,7 +115,9 @@ export function registerExtendedCapabilities(server: McpServer, client: HiaiDocs
       description: 'Request reindexing after a document or metadata change. Requires write access.',
       inputSchema: z.object({ documentId: z.string().min(1) }),
     },
-    async ({ documentId }) => jsonResult(await client.refreshDocumentIndex(documentId))
+    wrapHandler(async ({ documentId }: { documentId: string }) =>
+      client.refreshDocumentIndex(documentId)
+    ) as never
   );
 
   server.registerPrompt(

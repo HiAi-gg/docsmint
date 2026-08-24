@@ -1,8 +1,14 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { z, type ZodRawShape } from 'zod';
+import { DocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
 import { registerExtendedCapabilities } from './capabilities.js';
-import { client as defaultClient, HiaiDocsError, type HiaiDocsClient } from './client.js';
+import {
+  createDefaultDocsClient,
+  createMcpDocsClient,
+  HiaiDocsError,
+  type HiaiDocsClient,
+} from './client.js';
 import * as createDocument from './tools/create-document.js';
 import * as createFolder from './tools/create-folder.js';
 import * as createSnapshot from './tools/create-snapshot.js';
@@ -20,21 +26,37 @@ interface McpToolResult {
   isError?: boolean;
 }
 
-function wrapHandler(
+function wrapHandler<Args>(
   name: string,
-  handler: ToolHandler
-): (args: Record<string, unknown>) => Promise<McpToolResult> {
+  handler: (args: Args) => Promise<unknown>
+): (args: Args) => Promise<McpToolResult> {
   return async (args) => {
     try {
       return {
         content: [{ type: 'text', text: JSON.stringify(await handler(args), null, 2) }],
       };
     } catch (error) {
-      const message =
-        error instanceof HiaiDocsError
-          ? `DocsMint API error (${error.status}): ${error.message}`
-          : `Tool '${name}' failed: ${error instanceof Error ? error.message : String(error)}`;
-      return { isError: true, content: [{ type: 'text', text: message }] };
+      if (error instanceof DocsApiError || error instanceof HiaiDocsError) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                type: error.name,
+                status: error.status,
+                code: error.code,
+                message: error.message,
+                body: error.body,
+              }),
+            },
+          ],
+        };
+      }
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `Tool '${name}' failed: ${error instanceof Error ? error.message : String(error)}` }],
+      };
     }
   };
 }
@@ -73,15 +95,21 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
       tool.createHandler(client) as ToolHandler
     );
   }
-  registerExtendedCapabilities(server, client);
+  registerExtendedCapabilities(server, client, (handler) => wrapHandler('extended', handler));
 }
 
 export interface CreateDocsmintMcpServerOptions {
+  docsClient?: DocsClient;
+  requestContext?: DocsRequestContext;
+  /** @deprecated Inject a legacy capability client only for compatibility. */
   client?: HiaiDocsClient;
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
   const server = new McpServer({ name: 'docsmint', version: '0.7.0' });
-  registerDocsmintMcpCapabilities(server, options.client ?? defaultClient);
+  const client = options.docsClient
+    ? createMcpDocsClient(options.docsClient, options.requestContext)
+    : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);
+  registerDocsmintMcpCapabilities(server, client);
   return server;
 }

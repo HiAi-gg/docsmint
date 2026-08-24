@@ -33,10 +33,9 @@ describe("hiai-docs MCP REST client contract", () => {
 		expect(request?.[0].toString()).toBe(
 			"https://docs.example.test/api/documents",
 		);
-		expect(request?.[1]?.headers).toMatchObject({
-			Accept: "application/json",
-			Authorization: "Bearer test-api-key",
-		});
+		expect(new Headers(request?.[1]?.headers).get("authorization")).toBe(
+			"Bearer test-api-key",
+		);
 	});
 
 	test("creates snapshots through the versions collection endpoint", async () => {

@@ -85,6 +85,7 @@ type ResolvedConfig = {
 
 export class DocsApiError extends Error {
 	readonly status: number;
+	readonly code: string;
 	readonly body: unknown;
 	readonly url?: string;
 	readonly requestId?: string;
@@ -94,13 +95,24 @@ export class DocsApiError extends Error {
 		body: unknown,
 		message?: string,
 		metadata?: { url?: string; requestId?: string },
+		code?: string,
 	) {
 		super(message ?? `hiai-docs API error ${status}`);
 		this.name = "DocsApiError";
 		this.status = status;
+		this.code = code ?? DocsApiError.codeFromBody(status, body);
 		this.body = body;
 		this.url = metadata?.url;
 		this.requestId = metadata?.requestId;
+	}
+
+	private static codeFromBody(status: number, body: unknown): string {
+		return body &&
+			typeof body === "object" &&
+			"code" in body &&
+			typeof body.code === "string"
+			? body.code
+			: `http_${status}`;
 	}
 }
 
@@ -729,11 +741,12 @@ export class DocsClient {
 	async getRelatedDocuments(
 		docId: string,
 		context?: DocsRequestContext,
+		options?: { limit?: number },
 	): Promise<DocsGraphRelatedResponse> {
 		return this.request<DocsGraphRelatedResponse>(
 			"GET",
 			`/api/graph/related/${encodeURIComponent(docId)}`,
-			undefined,
+			{ query: this.cleanQuery({ limit: options?.limit }) },
 			context,
 		);
 	}
@@ -1052,14 +1065,22 @@ export class DocsClient {
 			context,
 		);
 		const headers = new Headers(requestContext?.headers);
-		if (!headers.has("Authorization") && this.config.apiKey) {
+		const hasWorkspaceAssertion = Boolean(requestContext?.workspaceAssertion);
+		if (hasWorkspaceAssertion) {
+			headers.delete("Authorization");
+			headers.delete("Cookie");
+		}
+		if (this.config.apiKey) {
 			headers.set("Authorization", `Bearer ${this.config.apiKey}`);
 		}
-		if (requestContext?.authorization)
+		if (!hasWorkspaceAssertion && requestContext?.authorization)
 			headers.set("Authorization", requestContext.authorization);
-		if (requestContext?.cookie) headers.set("Cookie", requestContext.cookie);
+		if (!hasWorkspaceAssertion && requestContext?.cookie)
+			headers.set("Cookie", requestContext.cookie);
 		if (requestContext?.requestId)
 			headers.set("X-Request-Id", requestContext.requestId);
+		if (requestContext?.idempotencyKey)
+			headers.set("Idempotency-Key", requestContext.idempotencyKey);
 		if (requestContext?.workspaceAssertion) {
 			headers.set(
 				"X-Docsmint-Workspace-Context",
@@ -1081,11 +1102,15 @@ export class DocsClient {
 
 		let lastError: unknown = null;
 		const maxAttempts = Math.max(1, this.config.retries);
+		const timeoutMs = requestContext?.timeoutMs ?? this.config.timeout;
 		for (let attempt = 0; attempt < maxAttempts; attempt++) {
-			const timeoutSignal = AbortSignal.timeout(this.config.timeout);
+			const timeoutController = new AbortController();
+			const timeoutTimer = setTimeout(() => {
+				timeoutController.abort(new DOMException("timed out", "TimeoutError"));
+			}, timeoutMs);
 			const signal = requestContext?.signal
-				? AbortSignal.any([requestContext.signal, timeoutSignal])
-				: timeoutSignal;
+				? AbortSignal.any([requestContext.signal, timeoutController.signal])
+				: timeoutController.signal;
 			try {
 				const res = await this.config.fetch(url, { ...init, signal });
 				if (this.shouldRetryStatus(res.status) && attempt < maxAttempts - 1) {
@@ -1104,7 +1129,7 @@ export class DocsClient {
 				}
 				if (!this.isRetryableError(err) || attempt === maxAttempts - 1) {
 					if (this.isTimeoutError(err)) {
-						throw new DocsTimeoutError(this.config.timeout, {
+						throw new DocsTimeoutError(timeoutMs, {
 							cause: err,
 							requestId: requestContext?.requestId,
 						});
@@ -1112,6 +1137,8 @@ export class DocsClient {
 					throw this.wrapNetworkError(err, requestContext?.requestId);
 				}
 				await this.sleep(this.backoffDelay(attempt), requestContext?.signal);
+			} finally {
+				clearTimeout(timeoutTimer);
 			}
 		}
 

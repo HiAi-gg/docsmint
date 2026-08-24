@@ -480,7 +480,11 @@ describe("DocsClient public contract", () => {
 
 	it("throws DocsApiError with status and parsed body", async () => {
 		const docs = client(async () =>
-			jsonResponse({ error: "Forbidden" }, 403, { "x-request-id": "req-403" }),
+			jsonResponse(
+				{ error: "Forbidden", code: "workspace_forbidden" },
+				403,
+				{ "x-request-id": "req-403" },
+			),
 		);
 		try {
 			await docs.getDoc("doc-1");
@@ -489,6 +493,9 @@ describe("DocsClient public contract", () => {
 			expect(error).toBeInstanceOf(DocsApiError);
 			if (!(error instanceof DocsApiError)) return;
 			expect(error.status).toBe(403);
+			expect("code" in error ? error.code : undefined).toBe(
+				"workspace_forbidden",
+			);
 			expect(error.message).toBe("Forbidden");
 			expect((error.body as { error: string }).error).toBe("Forbidden");
 		}
@@ -530,6 +537,67 @@ describe("DocsClient public contract", () => {
 		);
 
 		await expect(docs.health()).rejects.toBeInstanceOf(DocsTimeoutError);
+	});
+
+	it("applies a request context timeout at the fetch boundary", async () => {
+		const docs = client(
+			async (_input, init) => {
+				await new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener(
+						"abort",
+						() => reject(new DOMException("timed out", "TimeoutError")),
+						{ once: true },
+					);
+				});
+				return jsonResponse({});
+			},
+			{ timeout: 20 },
+		);
+
+		await expect(
+			docs.health({ timeoutMs: 1 }),
+		).rejects.toMatchObject({ name: "DocsTimeoutError", timeout: 1 });
+	});
+
+	it("sends a request context idempotency key without changing typed requests", async () => {
+		let seenHeaders: Headers | undefined;
+		const docs = client(async (_input, init) => {
+			seenHeaders = new Headers(init?.headers);
+			return jsonResponse({ id: "document-1" });
+		});
+
+		await docs.createDoc(
+			{ title: "Idempotent" },
+			{ idempotencyKey: "idem-123" },
+		);
+
+		expect(seenHeaders?.get("idempotency-key")).toBe("idem-123");
+	});
+
+	it("sanitizes caller credentials when forwarding a workspace assertion", async () => {
+		let seenHeaders: Headers | undefined;
+		const docs = client(async (_input, init) => {
+			seenHeaders = new Headers(init?.headers);
+			return jsonResponse([]);
+		});
+
+		await docs.listCategories({
+			workspaceAssertion: "signed-workspace-assertion",
+			authorization: "Bearer caller-token",
+			cookie: "caller-cookie=secret",
+			headers: {
+				Authorization: "Bearer duplicate-caller-token",
+				Cookie: "duplicate-caller-cookie=secret",
+				"X-Request-Id": "req-assertion",
+			},
+		});
+
+		expect(seenHeaders?.get("authorization")).toBe("Bearer api-key");
+		expect(seenHeaders?.get("cookie")).toBeNull();
+		expect(seenHeaders?.get("x-request-id")).toBe("req-assertion");
+		expect(seenHeaders?.get("x-docsmint-workspace-context")).toBe(
+			"signed-workspace-assertion",
+		);
 	});
 
 	it("propagates caller cancellation without retrying or converting to timeout", async () => {

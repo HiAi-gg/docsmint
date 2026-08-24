@@ -1,25 +1,21 @@
 /**
- * REST client for hiai-docs.
- *
- * Reads configuration from environment:
- *   HIAI_DOCS_URL       — base URL (default: http://localhost:50700)
- *   HIAI_DOCS_API_KEY   — bearer token for the API
- *
- * Bun-native. Uses global `fetch`. Throws on non-2xx responses with the
- * error message extracted from the response body when possible.
+ * Compatibility adapter from the public DocsClient to the MCP capability
+ * surface. The MCP server has no independent REST transport.
  */
+
+import { DocsClient, type DocsRequestContext } from "@hiai-docs/sdk";
 
 import type { ExportResponse } from "./types.js";
 
 const DEFAULT_BASE_URL = "http://localhost:50700";
 
-function readConfig() {
+function readConfig(): { baseUrl: string; apiKey?: string } {
 	const baseUrl = (process.env.HIAI_DOCS_URL ?? DEFAULT_BASE_URL).replace(
 		/\/+$/,
 		"",
 	);
-	const apiKey = process.env.HIAI_DOCS_API_KEY ?? "";
-	return { baseUrl, apiKey };
+	const apiKey = process.env.HIAI_DOCS_API_KEY;
+	return { baseUrl, apiKey: apiKey || undefined };
 }
 
 export class HiaiDocsError extends Error {
@@ -27,199 +23,110 @@ export class HiaiDocsError extends Error {
 		message: string,
 		readonly status: number,
 		readonly body: unknown,
+		readonly code = `http_${status}`,
 	) {
 		super(message);
 		this.name = "HiaiDocsError";
 	}
 }
 
-type QueryValue = string | number | boolean | string[] | undefined;
+export interface HiaiDocsClient {
+	search(params: { query: string; folder?: string; tags?: string[]; limit?: number }): Promise<unknown>;
+	getDocument(id: string): Promise<unknown>;
+	createDocument(input: { title: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
+	updateDocument(id: string, input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
+	listDocuments(params: { folderId?: string; tag?: string; page?: number; limit?: number }): Promise<unknown>;
+	listFolders(params: { parentId?: string }): Promise<unknown>;
+	createFolder(input: { name: string; parentId?: string; categoryId?: string }): Promise<unknown>;
+	listCategories(): Promise<unknown>;
+	createCategory(input: { name: string; description?: string }): Promise<unknown>;
+	listTags(): Promise<unknown>;
+	getRelatedDocuments(documentId: string, limit?: number): Promise<unknown>;
+	searchGraph(input: { query: string; docIds: string[]; limit?: number }): Promise<unknown>;
+	getDocumentIndexStatus(documentId: string): Promise<unknown>;
+	refreshDocumentIndex(documentId: string): Promise<unknown>;
+	createSnapshot(documentId: string, input: { label: string; description?: string }): Promise<unknown>;
+	getVersionHistory(documentId: string, onlySnapshots?: boolean): Promise<unknown>;
+	exportDocument(id: string): Promise<ExportResponse>;
+}
 
-async function request<T>(
-	method: string,
-	path: string,
-	options: { query?: Record<string, QueryValue>; body?: unknown } = {},
-): Promise<T> {
-	const { baseUrl, apiKey } = readConfig();
-
-	const url = new URL(path.startsWith("/") ? path : `/${path}`, `${baseUrl}/`);
-	if (options.query) {
-		for (const [key, value] of Object.entries(options.query)) {
-			if (value === undefined) continue;
-			if (Array.isArray(value)) {
-				if (value.length > 0) url.searchParams.set(key, value.join(","));
-			} else {
-				url.searchParams.set(key, String(value));
-			}
-		}
+/** Remove caller-controlled credentials before sharing assertion scope. */
+export function sanitizeMcpRequestContext(
+	context?: DocsRequestContext,
+): DocsRequestContext | undefined {
+	if (!context) return undefined;
+	const headers = new Headers(context.headers);
+	if (context.workspaceAssertion) {
+		headers.delete("Authorization");
+		headers.delete("Cookie");
 	}
-
-	const headers: Record<string, string> = {
-		Accept: "application/json",
+	return {
+		...context,
+		authorization: context.workspaceAssertion ? undefined : context.authorization,
+		cookie: context.workspaceAssertion ? undefined : context.cookie,
+		headers,
 	};
-	if (apiKey) {
-		headers.Authorization = `Bearer ${apiKey}`;
-	}
-
-	let body: BodyInit | undefined;
-	if (options.body !== undefined) {
-		headers["Content-Type"] = "application/json";
-		body = JSON.stringify(options.body);
-	}
-
-	const response = await fetch(url, { method, headers, body });
-
-	const contentType = response.headers.get("content-type") ?? "";
-	const isJson = contentType.includes("application/json");
-	const payload: unknown = isJson
-		? await response.json().catch(() => null)
-		: await response.text().catch(() => null);
-
-	if (!response.ok) {
-		const message =
-			(isJson && payload && typeof payload === "object" && "error" in payload
-				? String((payload as { error: unknown }).error)
-				: typeof payload === "string" && payload.length > 0
-					? payload
-					: `HTTP ${response.status} ${response.statusText}`) ||
-			`HTTP ${response.status}`;
-		throw new HiaiDocsError(message, response.status, payload);
-	}
-
-	return payload as T;
 }
 
-function joinId(...segments: string[]): string {
-	return segments.map((s) => encodeURIComponent(s)).join("/");
-}
-
-export const client = {
-	search(params: {
-		query: string;
-		folder?: string;
-		tags?: string[];
-		limit?: number;
-	}) {
-		return request("GET", "/api/search", {
-			query: {
-				q: params.query,
+/** Bind a single public client and request context to every MCP capability. */
+export function createMcpDocsClient(
+	docsClient: DocsClient,
+	requestContext?: DocsRequestContext,
+): HiaiDocsClient {
+	const context = sanitizeMcpRequestContext(requestContext);
+	return {
+		search: (params) =>
+			docsClient.search(params.query, {
 				folder: params.folder,
-				tags: params.tags,
+				tags: params.tags?.join(","),
 				limit: params.limit,
-			},
-		});
-	},
+			}, context),
+		getDocument: (id) => docsClient.getDoc(id, context),
+		createDocument: (input) =>
+			docsClient.createDoc(
+				{
+					...input,
+					folderId: input.folderId ?? undefined,
+					categoryId: input.categoryId ?? undefined,
+				},
+				context,
+			),
+		updateDocument: (id, input) => docsClient.updateDoc(id, input, context),
+		listDocuments: (params) => docsClient.listDocs(params, context),
+		listFolders: (params) => docsClient.listFolders(params.parentId, context),
+		createFolder: (input) => docsClient.createFolder(input, context),
+		listCategories: () => docsClient.listCategories(context),
+		createCategory: (input) => docsClient.createCategory(input, context),
+		listTags: () => docsClient.listTags(context),
+		getRelatedDocuments: (documentId, limit) =>
+			docsClient.getRelatedDocuments(documentId, context, { limit }),
+		searchGraph: (input) =>
+			docsClient.searchGraph(
+				{ query: input.query, docIds: input.docIds, maxResults: input.limit },
+				context,
+			),
+		getDocumentIndexStatus: (documentId) =>
+			docsClient.getDocumentIndexStatus(documentId, context),
+		refreshDocumentIndex: (documentId) =>
+			docsClient.refreshDocumentIndex(documentId, context),
+		createSnapshot: (documentId, input) =>
+			docsClient.createSnapshot(documentId, input, context),
+		getVersionHistory: (documentId, onlySnapshots) =>
+			docsClient.listVersions(documentId, { onlySnapshots }, context),
+		exportDocument: async (id) => ({ markdown: await docsClient.exportDoc(id, context) }),
+	};
+}
 
-	getDocument(id: string) {
-		return request("GET", `/api/${joinId("documents", id)}`);
-	},
+export function createDefaultDocsClient(): DocsClient {
+	const { baseUrl, apiKey } = readConfig();
+	return new DocsClient({ baseUrl, apiKey, retries: 1 });
+}
 
-	createDocument(input: {
-		title: string;
-		content?: string;
-		folderId?: string | null;
-		categoryId?: string | null;
-	}) {
-		return request("POST", "/api/documents", { body: input });
+/** @deprecated Use createDocsmintMcpServer({ docsClient, requestContext }). */
+export const client = new Proxy({} as HiaiDocsClient, {
+	get(_target, property) {
+		const configured = createMcpDocsClient(createDefaultDocsClient());
+		const value = configured[property as keyof HiaiDocsClient];
+		return typeof value === "function" ? value.bind(configured) : value;
 	},
-
-	updateDocument(
-		id: string,
-		input: {
-			title?: string;
-			content?: string;
-			folderId?: string | null;
-			categoryId?: string | null;
-		},
-	) {
-		return request("PATCH", `/api/${joinId("documents", id)}`, { body: input });
-	},
-
-	listDocuments(params: {
-		folderId?: string;
-		tag?: string;
-		page?: number;
-		limit?: number;
-	}) {
-		return request("GET", "/api/documents", { query: params });
-	},
-
-	listFolders(params: { parentId?: string }) {
-		return request("GET", "/api/folders", {
-			query: { parentId: params.parentId },
-		});
-	},
-
-	createFolder(input: {
-		name: string;
-		parentId?: string;
-		categoryId?: string;
-	}) {
-		return request("POST", "/api/folders", { body: input });
-	},
-
-	listCategories() {
-		return request("GET", "/api/categories");
-	},
-
-	createCategory(input: { name: string; description?: string }) {
-		return request("POST", "/api/categories", { body: input });
-	},
-
-	listTags() {
-		return request("GET", "/api/tags");
-	},
-
-	getRelatedDocuments(documentId: string, limit?: number) {
-		return request("GET", `/api/${joinId("graph", "related", documentId)}`, {
-			query: { limit },
-		});
-	},
-
-	searchGraph(input: { query: string; docIds: string[]; limit?: number }) {
-		return request("POST", "/api/graph/search", { body: input });
-	},
-
-	getDocumentIndexStatus(documentId: string) {
-		return request(
-			"GET",
-			`/api/${joinId("documents", documentId, "index-status")}`,
-		);
-	},
-
-	refreshDocumentIndex(documentId: string) {
-		return request(
-			"POST",
-			`/api/${joinId("documents", documentId, "index", "refresh")}`,
-		);
-	},
-
-	createSnapshot(
-		documentId: string,
-		input: { label: string; description?: string },
-	) {
-		return request(
-			"POST",
-			`/api/${joinId("documents", documentId, "versions")}`,
-			{ body: input },
-		);
-	},
-
-	getVersionHistory(documentId: string, onlySnapshots?: boolean) {
-		return request(
-			"GET",
-			`/api/${joinId("documents", documentId, "versions")}`,
-			{ query: { onlySnapshots } },
-		);
-	},
-
-	async exportDocument(id: string): Promise<ExportResponse> {
-		const markdown = await request<string>(
-			"GET",
-			`/api/${joinId("documents", id, "export")}`,
-		);
-		return { markdown };
-	},
-};
-
-export type HiaiDocsClient = typeof client;
+});

@@ -529,4 +529,8 @@ export interface DocsRequestContext {
 	workspaceAssertion?: string;
 	headers?: HeadersInit;
 	signal?: AbortSignal;
+	/** Per-request timeout in milliseconds, overriding the client default. */
+	timeoutMs?: number;
+	/** Idempotency key forwarded as the standard Idempotency-Key header. */
+	idempotencyKey?: string;
 }
