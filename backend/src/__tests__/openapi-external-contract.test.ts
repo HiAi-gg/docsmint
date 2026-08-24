@@ -101,7 +101,9 @@ describe("OpenAPI external integration contract", () => {
 	test("documents signed category-scoped workspace assertions and index authorization", () => {
 		const scope = spec.components.schemas.WorkspaceResourceScope;
 		const assertion = spec.components.schemas.WorkspaceAssertionPayload;
-		if (!scope || !assertion) {
+		const indexStatus = spec.components.schemas.DocsDocumentIndexStatus;
+		const indexRefresh = spec.components.schemas.DocsDocumentIndexRefresh;
+		if (!scope || !assertion || !indexStatus || !indexRefresh) {
 			throw new Error("Workspace assertion schemas must be published");
 		}
 		expect(scope).toMatchObject({
@@ -152,7 +154,7 @@ describe("OpenAPI external integration contract", () => {
 				},
 			},
 		});
-		expect(spec.components.schemas.DocsDocumentIndexStatus).toMatchObject({
+		expect(indexStatus).toMatchObject({
 			type: "object",
 			required: [
 				"documentId",
@@ -166,10 +168,43 @@ describe("OpenAPI external integration contract", () => {
 				"pipeline",
 			],
 		});
-		expect(spec.components.schemas.DocsDocumentIndexRefresh).toMatchObject({
+		expect(indexRefresh).toMatchObject({
 			type: "object",
 			required: ["documentId", "generationId", "deduplicated"],
 		});
+		expect(
+			(indexStatus.properties as Record<string, unknown>).pipeline,
+		).toEqual({
+			nullable: true,
+			allOf: [{ $ref: "#/components/schemas/DocsDocumentPipeline" }],
+		});
+
+		for (const operation of [
+			spec.paths["/api/documents/{id}/index-status"]?.get,
+			spec.paths["/api/documents/{id}/index/refresh"]?.post,
+		]) {
+			for (const status of ["400", "401", "403", "404", "429"]) {
+				const response = operation?.responses?.[status] as {
+					description?: unknown;
+				};
+				expect(response?.description).toEqual(expect.any(String));
+				expect((response?.description as string).trim().length).toBeGreaterThan(
+					0,
+				);
+			}
+		}
+
+		const assertNoReferenceSiblings = (value: unknown): void => {
+			if (!value || typeof value !== "object") return;
+			const record = value as Record<string, unknown>;
+			if ("$ref" in record) expect(Object.keys(record)).toEqual(["$ref"]);
+			for (const nested of Object.values(record)) {
+				if (Array.isArray(nested)) nested.forEach(assertNoReferenceSiblings);
+				else assertNoReferenceSiblings(nested);
+			}
+		};
+		assertNoReferenceSiblings(spec.paths["/api/documents/{id}/index-status"]);
+		assertNoReferenceSiblings(spec.paths["/api/documents/{id}/index/refresh"]);
 	});
 
 	test("matches the exact route fragments mounted by the backend", async () => {

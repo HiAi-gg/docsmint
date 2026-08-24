@@ -49,3 +49,24 @@ test("every release publication path validates committed version metadata", asyn
 	expect(workflow).not.toContain("PUBLIC_DEPLOYMENT_ID=${{ github.ref_name }}");
 	expect(workflow).not.toContain("pkg.version = '${CLEAN_VERSION}'");
 });
+
+test("tagged web publication receives the validated canonical PWA identity", async () => {
+	const vite = await Bun.file(
+		new URL("../../../frontend/vite.config.ts", import.meta.url),
+	).text();
+	const compose = await Bun.file(
+		new URL("../../../docker-compose.yml", import.meta.url),
+	).text();
+	const validator = await Bun.file(
+		new URL("../../../scripts/release-version-validator.ts", import.meta.url),
+	).text();
+	const canonicalDeploymentId = "docsmint-oss-0.7.0";
+
+	expect(vite).toContain(canonicalDeploymentId);
+	expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);
+	expect(workflow).toContain("PUBLIC_APP_ID=docsmint");
+	expect(workflow).toContain(`PUBLIC_DEPLOYMENT_ID=${canonicalDeploymentId}`);
+	expect(workflow).not.toContain("PUBLIC_DEPLOYMENT_ID=${{ github.ref_name }}");
+	expect(validator).toContain("tagged web PWA identity");
+	expect(validator).toContain("name: Rebuild and push Web image");
+});

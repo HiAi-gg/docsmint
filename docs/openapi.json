@@ -707,11 +707,11 @@
               }
             }
           },
-          "400": {},
-          "401": {},
-          "403": {},
-          "404": {},
-          "429": {}
+          "400": { "description": "Invalid document identifier." },
+          "401": { "description": "Authentication is required." },
+          "403": { "description": "The caller lacks the required permission." },
+          "404": { "description": "Document not found in the accessible scope." },
+          "429": { "description": "Too many requests." }
         },
         "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
       }
@@ -738,11 +738,11 @@
               }
             }
           },
-          "400": {},
-          "401": {},
-          "403": {},
-          "404": {},
-          "429": {}
+          "400": { "description": "Invalid document identifier." },
+          "401": { "description": "Authentication is required." },
+          "403": { "description": "The caller lacks the required permission." },
+          "404": { "description": "Document not found in the accessible scope." },
+          "429": { "description": "Too many requests." }
         },
         "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
       }
@@ -1540,7 +1540,10 @@
           "embeddingErrorCode": { "type": "string", "nullable": true },
           "embeddingUpdatedAt": { "type": "string", "format": "date-time", "nullable": true },
           "searchable": { "type": "boolean" },
-          "pipeline": { "$ref": "#/components/schemas/DocsDocumentPipeline", "nullable": true }
+          "pipeline": {
+            "nullable": true,
+            "allOf": [{ "$ref": "#/components/schemas/DocsDocumentPipeline" }]
+          }
         }
       },
       "DocsDocumentIndexRefresh": {

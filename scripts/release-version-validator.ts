@@ -97,6 +97,20 @@ export async function validateReleaseVersion({
 		recordMismatch(mismatches, source.path, match?.[1], expected);
 	}
 
+	const releaseWorkflow = await Bun.file(
+		new URL(".github/workflows/ci.yml", root),
+	).text();
+	const taggedWebBuild =
+		/name: Rebuild and push Web image[\s\S]*?build-args:\s*\|\s*PUBLIC_APP_ID=docsmint\s*PUBLIC_DEPLOYMENT_ID=docsmint-oss-([0-9A-Za-z.+-]+)[\s\S]*?push: true/.exec(
+			releaseWorkflow,
+		);
+	recordMismatch(
+		mismatches,
+		".github/workflows/ci.yml tagged web PWA identity",
+		taggedWebBuild?.[1],
+		expected,
+	);
+
 	if (mismatches.length > 0) {
 		throw new Error(
 			`Release version mismatch for ${tag}; expected ${expected}: ${mismatches.join(", ")}`,
