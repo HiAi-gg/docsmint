@@ -16,6 +16,7 @@ import {
 } from "./rehearse-saas-0.7-adoption";
 
 async function redisCli(
+	port: number,
 	database: number,
 	...arguments_: string[]
 ): Promise<string> {
@@ -25,7 +26,7 @@ async function redisCli(
 			"-h",
 			"127.0.0.1",
 			"-p",
-			"6384",
+			String(port),
 			"-n",
 			String(database),
 			...arguments_,
@@ -262,15 +263,27 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		const foreignKey = `foreign:${crypto.randomUUID()}`;
 		const staleLeaseKey = `old-rehearsal-lease:${crypto.randomUUID()}`;
 		await mkdir(root);
+		let foreign:
+			| Awaited<ReturnType<typeof startIsolatedRedisServer>>
+			| undefined;
 		let isolated:
 			| Awaited<ReturnType<typeof startIsolatedRedisServer>>
 			| undefined;
 		try {
+			foreign = await startIsolatedRedisServer(root);
 			expect(
-				await redisCli(15, "SET", foreignKey, "survives", "EX", "120"),
+				await redisCli(foreign.port, 15, "SET", foreignKey, "survives", "EX", "120"),
 			).toBe("OK");
 			expect(
-				await redisCli(15, "SET", staleLeaseKey, "expired", "EX", "120"),
+				await redisCli(
+					foreign.port,
+					15,
+					"SET",
+					staleLeaseKey,
+					"expired",
+					"EX",
+					"120",
+				),
 			).toBe("OK");
 			isolated = await startIsolatedRedisServer(root);
 			const owned = Bun.spawn(
@@ -278,16 +291,23 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				{ stdout: "pipe", stderr: "pipe" },
 			);
 			expect(await owned.exited).toBe(0);
-			expect(await redisCli(15, "DEL", staleLeaseKey)).toBe("1");
+			expect(await redisCli(foreign.port, 15, "DEL", staleLeaseKey)).toBe("1");
 
 			await stopIsolatedRedisServer(isolated);
 			isolated = undefined;
 
-			expect(await redisCli(15, "GET", foreignKey)).toBe("survives");
+			expect(await redisCli(foreign.port, 15, "GET", foreignKey)).toBe(
+				"survives",
+			);
 		} finally {
 			if (isolated)
 				await stopIsolatedRedisServer(isolated).catch(() => undefined);
-			await redisCli(15, "DEL", foreignKey, staleLeaseKey);
+			if (foreign) {
+				await redisCli(foreign.port, 15, "DEL", foreignKey, staleLeaseKey).catch(
+					() => undefined,
+				);
+				await stopIsolatedRedisServer(foreign).catch(() => undefined);
+			}
 			await rm(root, { recursive: true, force: true });
 		}
 	});
