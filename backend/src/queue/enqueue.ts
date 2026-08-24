@@ -50,6 +50,33 @@ export interface PrepareQueueWriter {
 	): Promise<{ remove(): Promise<void> }>;
 }
 
+export type MetadataReembedPrepareJob = Readonly<{
+	outboxId: string;
+	documentId: string;
+	ownerId: string;
+	workspaceId?: string;
+	generationId: string;
+	revision: string;
+	requestedAt: string;
+}>;
+
+export interface PrepareBulkQueueWriter {
+	addBulk(
+		jobs: Array<{
+			name: "prepare";
+			data: PrepareJob;
+			opts: {
+				jobId: string;
+				priority: number;
+				attempts: number;
+				backoff: { type: string; delay: number };
+				removeOnComplete: { count: number };
+				removeOnFail: { count: number };
+			};
+		}>,
+	): Promise<ReadonlyArray<{ data: PrepareJob }>>;
+}
+
 export interface EnqueueDependencies {
 	runs: PipelineRunStore;
 	prepareQueue: PrepareQueueWriter;
@@ -192,6 +219,61 @@ async function defaultDependencies(): Promise<EnqueueDependencies> {
 	return {
 		runs: postgresRunStore,
 		prepareQueue: getPipelineQueue("prepare", config.REDIS_URL),
+	};
+}
+
+async function defaultPrepareBulkQueueWriter(): Promise<PrepareBulkQueueWriter> {
+	const [{ config }, { getPipelineQueue }] = await Promise.all([
+		import("../lib/config"),
+		import("./queues"),
+	]);
+	return getPipelineQueue(
+		"prepare",
+		config.REDIS_URL,
+	) as unknown as PrepareBulkQueueWriter;
+}
+
+/** Queue one committed metadata-outbox page with deterministic generation jobs. */
+export async function enqueueMetadataReembedPrepareJobsBulk(
+	jobs: readonly MetadataReembedPrepareJob[],
+	writer?: PrepareBulkQueueWriter,
+): Promise<{ acceptedIds: string[]; deduplicatedIds: string[] }> {
+	if (jobs.length === 0) return { acceptedIds: [], deduplicatedIds: [] };
+	const queue = writer ?? (await defaultPrepareBulkQueueWriter());
+	const queued = await queue.addBulk(
+		jobs.map((job) => ({
+			name: "prepare" as const,
+			data: {
+				schemaVersion: PIPELINE_SCHEMA_VERSION,
+				stage: "prepare" as const,
+				documentId: job.documentId,
+				ownerId: job.ownerId,
+				workspaceId: job.workspaceId,
+				generationId: job.generationId,
+				revision: job.revision,
+				requestedAt: job.requestedAt,
+				source: "interactive" as const,
+				refreshMode: "full" as const,
+			},
+			opts: {
+				...DEFAULT_JOB_OPTIONS,
+				jobId: JOB_IDS.prepare(
+					job.documentId,
+					job.generationId,
+					job.workspaceId,
+				),
+				priority: SOURCE_PRIORITY.interactive,
+			},
+		})),
+	);
+	const acceptedGenerations = new Set(
+		queued.map(({ data }) => data.generationId),
+	);
+	return {
+		acceptedIds: jobs
+			.filter(({ generationId }) => acceptedGenerations.has(generationId))
+			.map(({ outboxId }) => outboxId),
+		deduplicatedIds: [],
 	};
 }
 

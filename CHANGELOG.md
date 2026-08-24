@@ -28,8 +28,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   and release-contract gates fail closed for release preparation.
 - Snapshot metadata-driven re-embed targets into a durable PostgreSQL outbox
   while holding the tenant topology lock, then dispatch bounded pages only
-  after commit. Retained rows recover on startup with deterministic pipeline
-  generations when Redis or queue admission fails.
+  after commit. Each metadata event owns a distinct deterministic generation;
+  retained rows recover through set-based database staging and bounded BullMQ
+  bulk writes without delaying worker readiness when Redis admission fails.
 
 ### Fixed
 

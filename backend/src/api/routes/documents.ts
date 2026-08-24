@@ -1660,13 +1660,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					serverVersion: result.serverVersion,
 				};
 			}
-			const {
-				updated,
-				existing,
-				folderChanged,
-				categoryChanged,
-				operationId,
-			} = result;
+			const { updated, existing, folderChanged, categoryChanged, operationId } =
+				result;
 
 			// Fire-and-forget pruning. We don't await — pruning is a
 			// background GC pass and must not block the user's PATCH
@@ -1709,11 +1704,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						updated?.title ?? existing?.title ?? "",
 						updated?.content ?? existing?.content ?? "",
 					);
-					enqueueReembed(
-						[{ id: params.id, revision }],
-						ctx.workspaceId,
-						{ reason: "content", refreshMode: "incremental" },
-					);
+					enqueueReembed([{ id: params.id, revision }], ctx.workspaceId, {
+						reason: "content",
+						refreshMode: "incremental",
+					});
 				}
 			}
 			// Preserve read-after-write consistency for placement changes. A

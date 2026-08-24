@@ -22,8 +22,8 @@ describe("self-host correctness contracts", () => {
 		).text();
 		expect(folders).toContain("parsed.data.parentId !== undefined ||");
 		expect(folders).toContain("parsed.data.categoryId !== undefined");
-		expect(folders).toContain(
-			"reembedDocsInFolder(params.id, userId, ctx.workspaceId)",
-		);
+		expect(folders).toContain("? await snapshotMetadataImpact(tx, ctx, {");
+		expect(folders).toContain('kind: "folder"');
+		expect(folders).toContain("dispatchMetadataReembedOutbox(");
 	});
 });

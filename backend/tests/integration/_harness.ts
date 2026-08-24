@@ -855,6 +855,54 @@ function buildMockDb() {
 				}
 				return Promise.resolve([]);
 			}
+			if (queryText.includes("insert into public.document_pipeline_runs")) {
+				const serialized = query.values?.find(
+					(value: unknown) =>
+						typeof value === "string" && value.startsWith("["),
+				);
+				const inputs =
+					typeof serialized === "string" ? JSON.parse(serialized) : [];
+				for (const input of inputs) {
+					if (state.pipelineRuns.has(input.outbox_id)) continue;
+					state.pipelineRuns.set(input.outbox_id, {
+						id: input.outbox_id,
+						documentId: input.document_id,
+						ownerId: input.owner_id,
+						workspaceId: input.workspace_id,
+						generationId: input.outbox_id,
+						revision: input.revision,
+						requestedAt: new Date(input.created_at),
+						status: "pending",
+						prepareStatus: "pending",
+					});
+				}
+				return Promise.resolve([]);
+			}
+			if (
+				queryText.includes("run.prepare_status") &&
+				queryText.includes("jsonb_to_recordset")
+			) {
+				const serialized = query.values?.find(
+					(value: unknown) =>
+						typeof value === "string" && value.startsWith("["),
+				);
+				const inputs =
+					typeof serialized === "string" ? JSON.parse(serialized) : [];
+				return Promise.resolve(
+					inputs.flatMap((input: any) => {
+						const run = state.pipelineRuns.get(input.outbox_id);
+						return run
+							? [
+									{
+										...input,
+										status: run.status,
+										prepare_status: run.prepareStatus,
+									},
+								]
+							: [];
+					}),
+				);
+			}
       if (queryText.includes("select id, title, similarity(title")) {
         const q = query.values?.find((value: unknown) => typeof value === "string");
         const normalized = typeof q === "string" ? q.trim().toLowerCase() : "";
@@ -1248,6 +1296,15 @@ mock.module("../../src/queue/enqueue.js", () => ({
   enqueueDocumentPipeline: async ({ documentId }: { documentId: string }) => {
     state.enqueuedEmbeddings.push(documentId);
     return { generationId: "00000000-0000-4000-8000-000000000099", deduplicated: false };
+  },
+  enqueueMetadataReembedPrepareJobsBulk: async (
+    jobs: Array<{ outboxId: string; documentId: string }>,
+  ) => {
+    state.enqueuedEmbeddings.push(...jobs.map(({ documentId }) => documentId));
+    return {
+      acceptedIds: jobs.map(({ outboxId }) => outboxId),
+      deduplicatedIds: [],
+    };
   },
 }));
 

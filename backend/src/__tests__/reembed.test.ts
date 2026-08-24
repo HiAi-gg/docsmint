@@ -79,36 +79,8 @@ mock.module("../lib/redis", () => ({ redis: fakeRedis }));
 mock.module("../lib/embedding-queue", () => ({
 	enqueueEmbedding: fakeEnqueue,
 }));
-type DrainMetadataReembedOutboxPages = (
-	operationId: string | undefined,
-	pageSize: number,
-	dependencies: {
-		loadPage: (
-			operationId: string | undefined,
-			cursor: string | undefined,
-			limit: number,
-		) => Promise<
-			Array<{
-				id: string;
-				documentId: string;
-				ownerId: string;
-				workspaceId?: string;
-				revision: string;
-			}>
-		>;
-		dispatch: (
-			target: Readonly<{ id: string }>,
-		) => Promise<"enqueued" | "deduplicated" | "failed">;
-		acknowledge: (ids: readonly string[]) => Promise<void>;
-	},
-) => Promise<{ enqueued: number; completed: number; failed: number }>;
-type ReembedOutboxTestModule = typeof import("../lib/reembed") & {
-	drainMetadataReembedOutboxPagesWith: DrainMetadataReembedOutboxPages;
-};
 // Now safe to import the module under test.
-const reembedModule = (await import(
-	"../lib/reembed"
-)) as ReembedOutboxTestModule;
+const reembedModule = await import("../lib/reembed");
 const {
 	drainMetadataReembedOutboxPagesWith,
 	enqueueReembed,
@@ -283,17 +255,21 @@ describe("enqueueReembed best-effort on Redis failure", () => {
 });
 
 describe("durable metadata re-embed outbox paging", () => {
-	test("never buffers more than one configured page and retains failed rows", async () => {
+	test("uses one set-based stage and one bulk queue write per bounded page", async () => {
 		const targetCount = 10_003;
 		const pageSize = 37;
 		const observedPageSizes: number[] = [];
 		const acknowledged: string[] = [];
+		let stageCalls = 0;
+		let bulkCalls = 0;
 		const result = await drainMetadataReembedOutboxPagesWith(
 			"operation",
 			pageSize,
 			{
 				loadPage: async (_operationId, cursor, limit) => {
-					const start = cursor ? Number(cursor.slice("outbox-".length)) + 1 : 0;
+					const start = cursor
+						? Number(cursor.id.slice("outbox-".length)) + 1
+						: 0;
 					const page = Array.from(
 						{ length: Math.min(limit, targetCount - start) },
 						(_, offset) => {
@@ -303,16 +279,39 @@ describe("durable metadata re-embed outbox paging", () => {
 								documentId: `doc-${index}`,
 								ownerId: "owner",
 								revision: `revision-${index}`,
+								createdAt: new Date(index).toISOString(),
 							};
 						},
 					);
 					observedPageSizes.push(page.length);
 					return page;
 				},
-				dispatch: async ({ id }) => {
-					if (id === "outbox-2") return "failed";
-					if (id === "outbox-4") return "deduplicated";
-					return "enqueued";
+				stagePage: async (targets) => {
+					stageCalls += 1;
+					return {
+						jobs: targets
+							.filter(({ id }) => id !== "outbox-4")
+							.map(({ id }) => ({
+								outboxId: id,
+								documentId: id,
+								ownerId: "owner",
+								generationId: id,
+								revision: "revision",
+								requestedAt: new Date(0).toISOString(),
+							})),
+						completedIds: targets
+							.filter(({ id }) => id === "outbox-4")
+							.map(({ id }) => id),
+					};
+				},
+				enqueueBulk: async (jobs) => {
+					bulkCalls += 1;
+					return {
+						acceptedIds: jobs
+							.filter(({ outboxId }) => outboxId !== "outbox-2")
+							.map(({ outboxId }) => outboxId),
+						deduplicatedIds: [],
+					};
 				},
 				acknowledge: async (ids) => {
 					acknowledged.push(...ids);
@@ -322,6 +321,8 @@ describe("durable metadata re-embed outbox paging", () => {
 
 		expect(Math.max(...observedPageSizes)).toBe(pageSize);
 		expect(observedPageSizes).toHaveLength(Math.ceil(targetCount / pageSize));
+		expect(stageCalls).toBe(Math.ceil(targetCount / pageSize));
+		expect(bulkCalls).toBe(Math.ceil(targetCount / pageSize));
 		expect(result).toEqual({
 			enqueued: targetCount - 2,
 			completed: targetCount - 1,
@@ -329,6 +330,116 @@ describe("durable metadata re-embed outbox paging", () => {
 		});
 		expect(acknowledged).not.toContain("outbox-2");
 		expect(acknowledged).toContain("outbox-4");
+	});
+
+	test("retains an entire page when the bulk queue write fails", async () => {
+		const rows = [
+			{
+				id: "outbox-a",
+				documentId: "doc-a",
+				ownerId: "owner",
+				revision: "revision",
+				createdAt: new Date(0).toISOString(),
+			},
+			{
+				id: "outbox-b",
+				documentId: "doc-b",
+				ownerId: "owner",
+				revision: "revision",
+				createdAt: new Date(1).toISOString(),
+			},
+		];
+		const acknowledged: string[] = [];
+		let stageCalls = 0;
+		let bulkCalls = 0;
+		const result = await drainMetadataReembedOutboxPagesWith("operation", 50, {
+			loadPage: async (_operationId, cursor) => (cursor ? [] : rows),
+			stagePage: async (targets) => {
+				stageCalls += 1;
+				return {
+					jobs: targets.map(({ id }) => ({
+						outboxId: id,
+						documentId: id,
+						ownerId: "owner",
+						generationId: id,
+						revision: "revision",
+						requestedAt: new Date(0).toISOString(),
+					})),
+					completedIds: [],
+				};
+			},
+			enqueueBulk: async () => {
+				bulkCalls += 1;
+				throw new Error("redis unavailable");
+			},
+			acknowledge: async (ids) => {
+				acknowledged.push(...ids);
+			},
+		});
+
+		expect(result).toEqual({ enqueued: 0, completed: 0, failed: 2 });
+		expect(acknowledged).toEqual([]);
+		expect(stageCalls).toBe(1);
+		expect(bulkCalls).toBe(1);
+	});
+
+	test("starts retained-outbox recovery in the background and contains errors", async () => {
+		const startRecovery = Reflect.get(
+			reembedModule,
+			"startMetadataReembedOutboxRecovery",
+		) as
+			| ((dependencies: {
+					drain: () => Promise<{
+						enqueued: number;
+						completed: number;
+						failed: number;
+					}>;
+					onComplete: (result: {
+						enqueued: number;
+						completed: number;
+						failed: number;
+					}) => void;
+					onError: (error: unknown) => void;
+			  }) => void)
+			| undefined;
+		expect(startRecovery).toBeFunction();
+		if (!startRecovery) return;
+
+		let releaseDrain!: () => void;
+		const drainReleased = new Promise<void>((resolve) => {
+			releaseDrain = resolve;
+		});
+		let entered = false;
+		let completed = false;
+		const errors: unknown[] = [];
+		const returned = startRecovery({
+			drain: async () => {
+				entered = true;
+				await drainReleased;
+				return { enqueued: 1, completed: 1, failed: 0 };
+			},
+			onComplete: () => {
+				completed = true;
+			},
+			onError: (error) => errors.push(error),
+		});
+		expect(returned).toBeUndefined();
+		await Bun.sleep(0);
+		expect(entered).toBe(true);
+		expect(completed).toBe(false);
+		releaseDrain();
+		await Bun.sleep(0);
+		expect(completed).toBe(true);
+
+		startRecovery({
+			drain: async () => {
+				throw new Error("recovery unavailable");
+			},
+			onComplete: () => undefined,
+			onError: (error) => errors.push(error),
+		});
+		await Bun.sleep(0);
+		expect(errors).toHaveLength(1);
 	});
 });
 

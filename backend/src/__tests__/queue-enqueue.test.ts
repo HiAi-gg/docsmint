@@ -9,7 +9,8 @@ import type {
 // query-suffixed module identity keeps this unit under test real regardless of
 // file scheduling/order in the combined suite.
 // @ts-expect-error Bun supports query-suffixed TypeScript module imports.
-const { enqueueDocumentPipeline } = await import("../queue/enqueue.ts?unit");
+const enqueueModule = await import("../queue/enqueue.ts?unit");
+const { enqueueDocumentPipeline } = enqueueModule;
 
 const documentId = "11111111-1111-4111-8111-111111111111";
 const ownerA = "22222222-2222-4222-8222-222222222222";
@@ -226,5 +227,137 @@ describe("document pipeline enqueue", () => {
 				deps,
 			),
 		).rejects.toThrow("redis unavailable");
+	});
+});
+
+describe("metadata outbox bulk enqueue", () => {
+	test("admits distinct metadata events in one bounded BullMQ bulk write", async () => {
+		const enqueueBulk = Reflect.get(
+			enqueueModule,
+			"enqueueMetadataReembedPrepareJobsBulk",
+		) as
+			| ((
+					jobs: ReadonlyArray<{
+						outboxId: string;
+						documentId: string;
+						ownerId: string;
+						generationId: string;
+						revision: string;
+						requestedAt: string;
+						workspaceId?: string;
+					}>,
+					writer: {
+						addBulk(
+							jobs: ReadonlyArray<{
+								data: { generationId: string };
+								opts: { jobId: string };
+							}>,
+						): Promise<ReadonlyArray<{ data: { generationId: string } }>>;
+					},
+			  ) => Promise<{ acceptedIds: string[]; deduplicatedIds: string[] }>)
+			| undefined;
+		expect(enqueueBulk).toBeFunction();
+		if (!enqueueBulk) return;
+
+		const firstGeneration = "44444444-4444-4444-8444-444444444441";
+		const secondGeneration = "44444444-4444-4444-8444-444444444442";
+		const bulkWrites: Array<
+			ReadonlyArray<{
+				data: { generationId: string };
+				opts: { jobId: string };
+			}>
+		> = [];
+		const events = [
+			{
+				outboxId: firstGeneration,
+				documentId,
+				ownerId: ownerA,
+				generationId: firstGeneration,
+				revision: "unchanged-content",
+				requestedAt: "2026-08-24T18:00:00.000Z",
+			},
+			{
+				outboxId: secondGeneration,
+				documentId,
+				ownerId: ownerA,
+				generationId: secondGeneration,
+				revision: "unchanged-content",
+				requestedAt: "2026-08-24T18:00:00.001Z",
+			},
+		];
+		const result = await enqueueBulk(events, {
+			async addBulk(jobs) {
+				bulkWrites.push(jobs);
+				return jobs.map(({ data }) => ({ data }));
+			},
+		});
+
+		expect(result).toEqual({
+			acceptedIds: [firstGeneration, secondGeneration],
+			deduplicatedIds: [],
+		});
+		expect(bulkWrites).toHaveLength(1);
+		expect(bulkWrites[0]?.map(({ data }) => data.generationId)).toEqual([
+			firstGeneration,
+			secondGeneration,
+		]);
+		expect(bulkWrites[0]?.map(({ opts }) => opts.jobId)).toEqual([
+			`prepare-${documentId}-${firstGeneration}`,
+			`prepare-${documentId}-${secondGeneration}`,
+		]);
+	});
+
+	test("retries one retained outbox event with the same deterministic generation", async () => {
+		const enqueueBulk = Reflect.get(
+			enqueueModule,
+			"enqueueMetadataReembedPrepareJobsBulk",
+		) as (
+			jobs: ReadonlyArray<{
+				outboxId: string;
+				documentId: string;
+				ownerId: string;
+				generationId: string;
+				revision: string;
+				requestedAt: string;
+			}>,
+			writer: {
+				addBulk(
+					jobs: ReadonlyArray<{
+						data: { generationId: string };
+						opts: { jobId: string };
+					}>,
+				): Promise<ReadonlyArray<{ data: { generationId: string } }>>;
+			},
+		) => Promise<{ acceptedIds: string[]; deduplicatedIds: string[] }>;
+		const generationId = "44444444-4444-4444-8444-444444444443";
+		const event = {
+			outboxId: generationId,
+			documentId,
+			ownerId: ownerA,
+			generationId,
+			revision: "unchanged-content",
+			requestedAt: "2026-08-24T18:00:00.000Z",
+		};
+		const observedJobIds: string[] = [];
+		const writer = {
+			async addBulk(
+				jobs: ReadonlyArray<{
+					data: { generationId: string };
+					opts: { jobId: string };
+				}>,
+			) {
+				observedJobIds.push(...jobs.map(({ opts }) => opts.jobId));
+				return jobs.map(({ data }) => ({ data }));
+			},
+		};
+
+		const first = await enqueueBulk([event], writer);
+		const retry = await enqueueBulk([event], writer);
+
+		expect(first).toEqual(retry);
+		expect(observedJobIds).toEqual([
+			`prepare-${documentId}-${generationId}`,
+			`prepare-${documentId}-${generationId}`,
+		]);
 	});
 });

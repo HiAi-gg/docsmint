@@ -48,6 +48,10 @@ import {
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
 import { and, asc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+	enqueueMetadataReembedPrepareJobsBulk,
+	type MetadataReembedPrepareJob,
+} from "../queue/enqueue";
 import { config } from "./config";
 import { tenantOwnerCondition, tenantOwnerSql } from "./content-access";
 import { contentHash } from "./content-hash";
@@ -104,6 +108,7 @@ export type MetadataReembedOutboxTarget = Readonly<{
 	ownerId: string;
 	workspaceId?: string;
 	revision: string;
+	createdAt: string;
 }>;
 
 async function loadMetadataImpactFolderIds(
@@ -181,7 +186,7 @@ async function insertMetadataImpactOutbox(
 	if (target.kind === "folder" && folderIds.length === 0) return 0;
 	await tx.execute(sql`
 		INSERT INTO public.metadata_reembed_outbox
-			(id, operation_id, document_id, owner_id, workspace_id, revision)
+			(id, operation_id, document_id, owner_id, workspace_id, revision, created_at)
 		SELECT
 			gen_random_uuid(),
 			${operationId}::uuid,
@@ -191,7 +196,8 @@ async function insertMetadataImpactOutbox(
 			encode(
 				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
 				'hex'
-			)
+			),
+			statement_timestamp()
 		FROM ${documents}
 		WHERE ${and(
 			metadataImpactDocumentCondition(target, folderIds),
@@ -249,7 +255,7 @@ export async function snapshotDocumentMetadataImpact(
 	const operationId = crypto.randomUUID();
 	await tx.execute(sql`
 		INSERT INTO public.metadata_reembed_outbox
-			(id, operation_id, document_id, owner_id, workspace_id, revision)
+			(id, operation_id, document_id, owner_id, workspace_id, revision, created_at)
 		SELECT
 			gen_random_uuid(),
 			${operationId}::uuid,
@@ -259,7 +265,8 @@ export async function snapshotDocumentMetadataImpact(
 			encode(
 				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
 				'hex'
-			)
+			),
+			statement_timestamp()
 		FROM ${documents}
 		WHERE ${and(
 			eq(documents.id, documentId),
@@ -432,17 +439,25 @@ export async function enqueueReembed(
 	return pushed;
 }
 
-type MetadataOutboxDispatchResult = "enqueued" | "deduplicated" | "failed";
+type MetadataOutboxCursor = Readonly<{ createdAt: string; id: string }>;
+
+type MetadataOutboxStageResult = Readonly<{
+	jobs: readonly MetadataReembedPrepareJob[];
+	completedIds: readonly string[];
+}>;
 
 type MetadataOutboxDrainDependencies = Readonly<{
 	loadPage: (
 		operationId: string | undefined,
-		cursor: string | undefined,
+		cursor: MetadataOutboxCursor | undefined,
 		limit: number,
 	) => Promise<readonly MetadataReembedOutboxTarget[]>;
-	dispatch: (
-		target: MetadataReembedOutboxTarget,
-	) => Promise<MetadataOutboxDispatchResult>;
+	stagePage: (
+		targets: readonly MetadataReembedOutboxTarget[],
+	) => Promise<MetadataOutboxStageResult>;
+	enqueueBulk: (
+		jobs: readonly MetadataReembedPrepareJob[],
+	) => Promise<Readonly<{ acceptedIds: string[]; deduplicatedIds: string[] }>>;
 	acknowledge: (ids: readonly string[]) => Promise<void>;
 }>;
 
@@ -453,7 +468,7 @@ export async function drainMetadataReembedOutboxPagesWith(
 	dependencies: MetadataOutboxDrainDependencies,
 ): Promise<{ enqueued: number; completed: number; failed: number }> {
 	const boundedPageSize = Math.max(1, pageSize);
-	let cursor: string | undefined;
+	let cursor: MetadataOutboxCursor | undefined;
 	let enqueued = 0;
 	let completed = 0;
 	let failed = 0;
@@ -464,34 +479,43 @@ export async function drainMetadataReembedOutboxPagesWith(
 			boundedPageSize,
 		);
 		if (rows.length === 0) break;
-		const acknowledged: string[] = [];
-		for (const row of rows) {
-			let result: MetadataOutboxDispatchResult;
-			try {
-				result = await dependencies.dispatch(row);
-			} catch (err) {
-				logger.warn(
-					{ err, outboxId: row.id, documentId: row.documentId },
-					"Metadata re-embed outbox dispatch failed",
-				);
-				result = "failed";
-			}
-			if (result === "failed") {
-				failed += 1;
-				continue;
-			}
-			if (result === "enqueued") enqueued += 1;
-			completed += 1;
-			acknowledged.push(row.id);
+		let staged: MetadataOutboxStageResult;
+		try {
+			staged = await dependencies.stagePage(rows);
+		} catch (err) {
+			logger.warn({ err }, "Metadata re-embed outbox page staging failed");
+			staged = { jobs: [], completedIds: [] };
 		}
+		let acceptedIds: readonly string[] = [];
+		let deduplicatedIds: readonly string[] = [];
+		if (staged.jobs.length > 0) {
+			try {
+				const result = await dependencies.enqueueBulk(staged.jobs);
+				acceptedIds = result.acceptedIds;
+				deduplicatedIds = result.deduplicatedIds;
+			} catch (err) {
+				logger.warn({ err }, "Metadata re-embed outbox bulk dispatch failed");
+			}
+		}
+		const acknowledged = [
+			...new Set([...staged.completedIds, ...acceptedIds, ...deduplicatedIds]),
+		];
+		const acknowledgedSet = new Set(acknowledged);
+		enqueued += acceptedIds.length;
+		completed += acknowledged.length;
+		failed += rows.filter(({ id }) => !acknowledgedSet.has(id)).length;
 		if (acknowledged.length > 0) {
 			await dependencies.acknowledge(acknowledged);
 		}
-		const nextCursor = rows.at(-1)?.id;
+		const lastRow = rows.at(-1);
+		const nextCursor = lastRow
+			? { createdAt: lastRow.createdAt, id: lastRow.id }
+			: undefined;
 		if (
 			rows.length < boundedPageSize ||
-			typeof nextCursor !== "string" ||
-			nextCursor === cursor
+			!nextCursor ||
+			(nextCursor.id === cursor?.id &&
+				nextCursor.createdAt === cursor.createdAt)
 		) {
 			break;
 		}
@@ -500,114 +524,237 @@ export async function drainMetadataReembedOutboxPagesWith(
 	return { enqueued, completed, failed };
 }
 
-const METADATA_OUTBOX_DEDUP_PREFIX = "hiai-docs:reembed:outbox:";
-const UUID_PATTERN =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function metadataOutboxDedupKey(target: MetadataReembedOutboxTarget): string {
-	const scope = target.workspaceId
-		? encodeURIComponent(target.workspaceId)
-		: `personal:${target.ownerId}`;
-	return `${METADATA_OUTBOX_DEDUP_PREFIX}${scope}:${encodeURIComponent(target.documentId)}:${encodeURIComponent(target.revision)}`;
-}
-
-async function releaseMetadataOutboxSlot(
-	key: string,
-	generationId: string,
-): Promise<void> {
-	try {
-		await redis.eval(
-			"if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
-			1,
-			key,
-			generationId,
-		);
-	} catch (err) {
-		logger.warn(
-			{ err, key },
-			"Failed to release metadata outbox dedup slot after enqueue failure",
-		);
-	}
-}
-
-async function dispatchMetadataOutboxTarget(
-	target: MetadataReembedOutboxTarget,
-): Promise<MetadataOutboxDispatchResult> {
-	const key = metadataOutboxDedupKey(target);
-	let generationId = target.id;
-	let claimed = false;
-	let reused = false;
-	try {
-		const result = await redis.set(
-			key,
-			target.id,
-			"EX",
-			DEDUP_TTL_SECONDS,
-			"NX",
-		);
-		claimed = result === "OK";
-		if (!claimed) {
-			const existingGeneration = await redis.get(key);
-			if (existingGeneration && UUID_PATTERN.test(existingGeneration)) {
-				generationId = existingGeneration;
-				reused = existingGeneration !== target.id;
-			}
-		}
-	} catch (err) {
-		logger.warn(
-			{ err, documentId: target.documentId },
-			"Metadata outbox Redis dedup failed - using durable generation",
-		);
-	}
-
-	const queued = await enqueueEmbedding(
-		target.documentId,
-		"interactive",
-		target.workspaceId,
-		{
-			forceNewGeneration: true,
-			refreshMode: "full",
-			revision: target.revision,
-			generationId,
-		},
-	);
-	if (!queued) {
-		if (claimed) await releaseMetadataOutboxSlot(key, generationId);
-		return "failed";
-	}
-	return reused ? "deduplicated" : "enqueued";
-}
-
 async function loadMetadataOutboxPage(
 	operationId: string | undefined,
-	cursor: string | undefined,
+	cursor: MetadataOutboxCursor | undefined,
 	limit: number,
 ): Promise<readonly MetadataReembedOutboxTarget[]> {
 	const rows = await withTenant(REEMBED_ADMIN_TENANT, (tx) => {
-		const conditions = [
-			...(operationId
-				? [eq(metadataReembedOutbox.operationId, operationId)]
-				: []),
-			...(cursor ? [gt(metadataReembedOutbox.id, cursor)] : []),
-		];
-		const query = tx
+		const baseQuery = tx
 			.select({
 				id: metadataReembedOutbox.id,
 				documentId: metadataReembedOutbox.documentId,
 				ownerId: metadataReembedOutbox.ownerId,
 				workspaceId: metadataReembedOutbox.workspaceId,
 				revision: metadataReembedOutbox.revision,
+				createdAt: sql<string>`${metadataReembedOutbox.createdAt}::text`,
 			})
-			.from(metadataReembedOutbox)
-			.where(conditions.length > 0 ? and(...conditions) : undefined)
-			.orderBy(asc(metadataReembedOutbox.id))
+			.from(metadataReembedOutbox);
+		if (operationId) {
+			return baseQuery
+				.where(
+					and(
+						eq(metadataReembedOutbox.operationId, operationId),
+						...(cursor ? [gt(metadataReembedOutbox.id, cursor.id)] : []),
+					),
+				)
+				.orderBy(asc(metadataReembedOutbox.id))
+				.limit(limit);
+		}
+		return baseQuery
+			.where(
+				cursor
+					? sql`(${metadataReembedOutbox.createdAt}, ${metadataReembedOutbox.id}) > (${cursor.createdAt}::timestamp, ${cursor.id}::uuid)`
+					: undefined,
+			)
+			.orderBy(
+				asc(metadataReembedOutbox.createdAt),
+				asc(metadataReembedOutbox.id),
+			)
 			.limit(limit);
-		return query;
 	});
 	return rows.map((row) => ({
 		...row,
 		workspaceId: row.workspaceId ?? undefined,
 	}));
+}
+
+type MetadataStagingRow = Readonly<{
+	outbox_id: string;
+	document_id: string;
+	owner_id: string;
+	workspace_id: string | null;
+	revision: string;
+	created_at: string;
+	status: string | null;
+	prepare_status: string | null;
+	ordinal: number;
+}>;
+
+/** Stage one bounded outbox page in a fixed number of set-based DB statements. */
+async function stageMetadataOutboxPage(
+	targets: readonly MetadataReembedOutboxTarget[],
+): Promise<MetadataOutboxStageResult> {
+	if (targets.length === 0) return { jobs: [], completedIds: [] };
+	const payload = JSON.stringify(
+		targets.map((target, ordinal) => ({
+			outbox_id: target.id,
+			document_id: target.documentId,
+			owner_id: target.ownerId,
+			workspace_id: target.workspaceId ?? null,
+			revision: target.revision,
+			created_at: target.createdAt,
+			ordinal,
+		})),
+	);
+	const staged = await withTenant(REEMBED_ADMIN_TENANT, async (tx) => {
+		await tx.execute(sql`
+			WITH input AS (
+				SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS row(
+					outbox_id uuid,
+					document_id uuid,
+					owner_id uuid,
+					workspace_id text,
+					revision text,
+					created_at timestamp,
+					ordinal integer
+				)
+			), locked_documents AS MATERIALIZED (
+				SELECT document.id, input.revision
+				FROM input
+				JOIN public.documents AS document
+					ON document.id = input.document_id
+					AND document.owner_id = input.owner_id
+					AND document.workspace_id IS NOT DISTINCT FROM input.workspace_id
+					AND encode(
+						digest(document.title || E'\n' || coalesce(document.content, ''), 'sha256'),
+						'hex'
+					) = input.revision
+				ORDER BY document.id
+				FOR UPDATE OF document
+			)
+			UPDATE public.documents AS document
+			SET embedding_status = 'stale',
+				embedding_error_code = NULL,
+				content_hash = locked_documents.revision,
+				updated_at = now()
+			FROM locked_documents
+			WHERE document.id = locked_documents.id
+		`);
+		await tx.execute(sql`
+			WITH input AS (
+				SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS row(
+					outbox_id uuid,
+					document_id uuid,
+					owner_id uuid,
+					workspace_id text,
+					revision text,
+					created_at timestamp,
+					ordinal integer
+				)
+			)
+			INSERT INTO public.document_pipeline_runs (
+				document_id,
+				owner_id,
+				workspace_id,
+				generation_id,
+				revision,
+				source,
+				refresh_mode,
+				requested_at
+			)
+			SELECT
+				input.document_id,
+				input.owner_id,
+				input.workspace_id,
+				input.outbox_id,
+				input.revision,
+				'interactive',
+				'full',
+				input.created_at
+			FROM input
+			JOIN public.documents AS document
+				ON document.id = input.document_id
+				AND document.owner_id = input.owner_id
+				AND document.workspace_id IS NOT DISTINCT FROM input.workspace_id
+				AND encode(
+					digest(document.title || E'\n' || coalesce(document.content, ''), 'sha256'),
+					'hex'
+				) = input.revision
+			ON CONFLICT (document_id, generation_id) DO NOTHING
+		`);
+		await tx.execute(sql`
+			WITH input AS (
+				SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS row(
+					outbox_id uuid,
+					document_id uuid,
+					owner_id uuid,
+					workspace_id text,
+					revision text,
+					created_at timestamp,
+					ordinal integer
+				)
+			), input_documents AS (
+				SELECT DISTINCT run.document_id
+				FROM public.document_pipeline_runs AS run
+				JOIN input
+					ON input.document_id = run.document_id
+					AND input.outbox_id = run.generation_id
+			), latest AS (
+				SELECT DISTINCT ON (run.document_id)
+					run.document_id, run.generation_id, run.requested_at
+				FROM public.document_pipeline_runs AS run
+				JOIN input_documents ON input_documents.document_id = run.document_id
+				WHERE run.status IN ('pending', 'processing', 'retrying')
+				ORDER BY run.document_id, run.requested_at DESC, run.generation_id DESC
+			)
+			UPDATE public.document_pipeline_runs AS run
+			SET status = 'cancelled',
+				error_code = 'superseded_by_reindex',
+				updated_at = now()
+			FROM latest
+			WHERE run.document_id = latest.document_id
+				AND run.status IN ('pending', 'processing', 'retrying')
+				AND (run.requested_at, run.generation_id)
+					< (latest.requested_at, latest.generation_id)
+		`);
+		return (await tx.execute(sql`
+			WITH input AS (
+				SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS row(
+					outbox_id uuid,
+					document_id uuid,
+					owner_id uuid,
+					workspace_id text,
+					revision text,
+					created_at timestamp,
+					ordinal integer
+				)
+			)
+			SELECT
+				input.outbox_id::text,
+				input.document_id::text,
+				input.owner_id::text,
+				input.workspace_id,
+				input.revision,
+				to_char(input.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS created_at,
+				run.status,
+				run.prepare_status,
+				input.ordinal
+			FROM input
+			LEFT JOIN public.document_pipeline_runs AS run
+				ON run.document_id = input.document_id
+				AND run.generation_id = input.outbox_id
+			ORDER BY input.ordinal
+		`)) as unknown as MetadataStagingRow[];
+	});
+	const jobs: MetadataReembedPrepareJob[] = [];
+	const completedIds: string[] = [];
+	for (const row of staged) {
+		if (row.status === "pending" && row.prepare_status === "pending") {
+			jobs.push({
+				outboxId: row.outbox_id,
+				documentId: row.document_id,
+				ownerId: row.owner_id,
+				workspaceId: row.workspace_id ?? undefined,
+				generationId: row.outbox_id,
+				revision: row.revision,
+				requestedAt: row.created_at,
+			});
+		} else {
+			completedIds.push(row.outbox_id);
+		}
+	}
+	return { jobs, completedIds };
 }
 
 function acknowledgeMetadataOutbox(ids: readonly string[]): Promise<void> {
@@ -625,8 +772,43 @@ export function drainMetadataReembedOutbox(
 ): Promise<{ enqueued: number; completed: number; failed: number }> {
 	return drainMetadataReembedOutboxPagesWith(operationId, pageSize, {
 		loadPage: loadMetadataOutboxPage,
-		dispatch: dispatchMetadataOutboxTarget,
+		stagePage: stageMetadataOutboxPage,
+		enqueueBulk: enqueueMetadataReembedPrepareJobsBulk,
 		acknowledge: acknowledgeMetadataOutbox,
+	});
+}
+
+type MetadataOutboxDrainResult = Awaited<
+	ReturnType<typeof drainMetadataReembedOutbox>
+>;
+
+/** Start retained-work recovery without delaying worker readiness or API startup. */
+export function startMetadataReembedOutboxRecovery(
+	dependencies: Readonly<{
+		drain?: () => Promise<MetadataOutboxDrainResult>;
+		onComplete?: (result: MetadataOutboxDrainResult) => void;
+		onError?: (error: unknown) => void;
+	}> = {},
+): void {
+	const drain = dependencies.drain ?? (() => drainMetadataReembedOutbox());
+	queueMicrotask(() => {
+		void drain()
+			.then((result) => {
+				if (dependencies.onComplete) dependencies.onComplete(result);
+				else
+					logger.info(
+						{ metadataOutbox: result },
+						"Metadata outbox recovery completed",
+					);
+			})
+			.catch((err) => {
+				if (dependencies.onError) dependencies.onError(err);
+				else
+					logger.error(
+						{ err },
+						"Metadata outbox recovery deferred after startup failure",
+					);
+			});
 	});
 }
 
@@ -891,7 +1073,7 @@ export async function snapshotTagMetadataImpact(
 	const operationId = crypto.randomUUID();
 	await tx.execute(sql`
 		INSERT INTO public.metadata_reembed_outbox
-			(id, operation_id, document_id, owner_id, workspace_id, revision)
+			(id, operation_id, document_id, owner_id, workspace_id, revision, created_at)
 		SELECT
 			gen_random_uuid(),
 			${operationId}::uuid,
@@ -901,7 +1083,8 @@ export async function snapshotTagMetadataImpact(
 			encode(
 				digest(${documents.title} || E'\n' || coalesce(${documents.content}, ''), 'sha256'),
 				'hex'
-			)
+			),
+			statement_timestamp()
 		FROM ${documentTags}
 		JOIN ${documents} ON ${documents.id} = ${documentTags.documentId}
 		WHERE ${and(

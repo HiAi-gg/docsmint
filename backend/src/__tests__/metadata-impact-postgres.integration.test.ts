@@ -9,17 +9,22 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { sql } from "drizzle-orm";
 import postgres from "postgres";
-import { redis } from "../lib/redis";
+import { config } from "../lib/config";
+import { contentHash } from "../lib/content-hash";
 import {
+	drainMetadataReembedOutbox,
 	reembedDocsByTag,
 	reembedDocsInCategory,
 	reembedDocsInFolder,
+	snapshotDocumentMetadataImpact,
 	snapshotMetadataImpact,
 } from "../lib/reembed";
 import {
 	acquireTenantTopologyLock,
 	tenantTopologyLockKey,
 } from "../lib/topology-serialization";
+import { JOB_IDS } from "../queue/contracts";
+import { getPipelineQueue } from "../queue/queues";
 
 const databaseUrl = Bun.env.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
 
@@ -202,7 +207,7 @@ describe.skipIf(!databaseUrl)(
 			}
 		});
 
-		test("releases the topology transaction before Redis and durable enqueue I/O", async () => {
+		test("releases the topology transaction before BullMQ bulk enqueue I/O", async () => {
 			const setup = postgres(databaseUrl as string, { max: 1 });
 			const contender = postgres(databaseUrl as string, { max: 1 });
 			const ownerId = crypto.randomUUID();
@@ -210,9 +215,11 @@ describe.skipIf(!databaseUrl)(
 			const documentId = crypto.randomUUID();
 			const enqueueEntered = deferred<void>();
 			const releaseEnqueue = deferred<void>();
-			type RedisSet = (...args: unknown[]) => Promise<unknown>;
-			const redisTarget = redis as unknown as { set: RedisSet };
-			const originalSet = redisTarget.set;
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			const queueTarget = queue as unknown as {
+				addBulk: (jobs: unknown[]) => Promise<unknown[]>;
+			};
+			const originalAddBulk = queueTarget.addBulk.bind(queue);
 			let helperTask: Promise<number> | undefined;
 
 			try {
@@ -224,16 +231,18 @@ describe.skipIf(!databaseUrl)(
 					(id, owner_id, folder_id, title, content)
 					VALUES (${documentId}::uuid, ${ownerId}::uuid, ${folderId}::uuid, 'release probe', '')`;
 
-				redisTarget.set = async (...args: unknown[]) => {
+				queueTarget.addBulk = async (jobs: unknown[]) => {
 					enqueueEntered.resolve();
 					await releaseEnqueue.promise;
-					return Reflect.apply(originalSet, redis, args) as Promise<unknown>;
+					return originalAddBulk(jobs);
 				};
 				helperTask = reembedDocsInFolder(folderId, ownerId);
 				await Promise.race([
 					enqueueEntered.promise,
 					Bun.sleep(2_000).then(() => {
-						throw new Error("re-embed helper did not reach Redis enqueue");
+						throw new Error(
+							"re-embed helper did not reach BullMQ bulk enqueue",
+						);
 					}),
 				]);
 
@@ -253,9 +262,263 @@ describe.skipIf(!databaseUrl)(
 			} finally {
 				releaseEnqueue.resolve();
 				await helperTask?.catch(() => undefined);
-				redisTarget.set = originalSet;
+				queueTarget.addBulk = originalAddBulk;
 				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
 				await Promise.all([setup.end(), contender.end()]);
+			}
+		});
+
+		test("admits two rapid metadata events with unchanged content as distinct generations", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+			const generationIds: string[] = [];
+			const operationIds: string[] = [];
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			const queueTarget = queue as unknown as {
+				addBulk: (jobs: unknown[]) => Promise<unknown[]>;
+			};
+			const originalAddBulk = queueTarget.addBulk.bind(queue);
+			const firstBulkEntered = deferred<void>();
+			const releaseFirstBulk = deferred<void>();
+			let bulkCalls = 0;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-events.invalid`})`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'same', 'body')`;
+
+				for (const metadataName of ["first", "second"]) {
+					const snapshot = await withTenantDatabase(
+						snapshotClient.db,
+						context,
+						async (tx) => {
+							await tx.execute(sql`UPDATE public.documents
+								SET metadata = jsonb_build_object('event', ${metadataName}::text)
+								WHERE id = ${documentId}::uuid`);
+							return snapshotDocumentMetadataImpact(tx, context, documentId);
+						},
+					);
+					const [outbox] = await setup<{ id: string }[]>`
+						SELECT id::text FROM public.metadata_reembed_outbox
+						WHERE operation_id = ${snapshot.operationId}::uuid`;
+					if (!outbox) throw new Error("metadata event outbox row missing");
+					generationIds.push(outbox.id);
+					operationIds.push(snapshot.operationId);
+				}
+				queueTarget.addBulk = async (jobs: unknown[]) => {
+					bulkCalls += 1;
+					if (bulkCalls === 1) {
+						firstBulkEntered.resolve();
+						await releaseFirstBulk.promise;
+					}
+					return originalAddBulk(jobs);
+				};
+				const firstDrain = drainMetadataReembedOutbox(operationIds[0], 10);
+				await firstBulkEntered.promise;
+				await drainMetadataReembedOutbox(operationIds[1], 10);
+				releaseFirstBulk.resolve();
+				await firstDrain;
+
+				const runs = await setup<
+					{ generation_id: string; revision: string; status: string }[]
+				>`
+					SELECT generation_id::text, revision, status
+					FROM public.document_pipeline_runs
+					WHERE document_id = ${documentId}::uuid
+					ORDER BY requested_at, generation_id`;
+				expect(generationIds[0]).not.toBe(generationIds[1]);
+				expect(runs.map(({ generation_id }) => generation_id).sort()).toEqual(
+					[...generationIds].sort(),
+				);
+				expect(new Set(runs.map(({ revision }) => revision))).toEqual(
+					new Set([runs[0]?.revision as string]),
+				);
+				const statuses = new Map(
+					runs.map(({ generation_id, status }) => [generation_id, status]),
+				);
+				expect(statuses.get(generationIds[0] as string)).toBe("cancelled");
+				expect(statuses.get(generationIds[1] as string)).toBe("pending");
+
+				const queue = getPipelineQueue("prepare", config.REDIS_URL);
+				const jobs = await Promise.all(
+					generationIds.map((generationId) =>
+						queue.getJob(JOB_IDS.prepare(documentId, generationId)),
+					),
+				);
+				expect(jobs.every(Boolean)).toBe(true);
+				expect(bulkCalls).toBe(2);
+			} finally {
+				releaseFirstBulk.resolve();
+				queueTarget.addBulk = originalAddBulk;
+				await Promise.allSettled(
+					generationIds.map(async (generationId) => {
+						const job = await queue.getJob(
+							JOB_IDS.prepare(documentId, generationId),
+						);
+						await job?.remove();
+					}),
+				);
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), snapshotClient.client.end()]);
+			}
+		});
+
+		test("retains a failed bulk admission and retries the same outbox generation", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			const queueTarget = queue as unknown as {
+				addBulk: (jobs: unknown[]) => Promise<unknown[]>;
+			};
+			const originalAddBulk = queueTarget.addBulk.bind(queue);
+			let generationId: string | undefined;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-retry.invalid`})`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'retry', 'body')`;
+				const snapshot = await withTenantDatabase(
+					snapshotClient.db,
+					context,
+					(tx) => snapshotDocumentMetadataImpact(tx, context, documentId),
+				);
+				const [outbox] = await setup<{ id: string }[]>`
+					SELECT id::text FROM public.metadata_reembed_outbox
+					WHERE operation_id = ${snapshot.operationId}::uuid`;
+				if (!outbox) throw new Error("metadata retry outbox row missing");
+				generationId = outbox.id;
+
+				queueTarget.addBulk = async () => {
+					throw new Error("simulated Redis admission failure");
+				};
+				const failed = await drainMetadataReembedOutbox(
+					snapshot.operationId,
+					10,
+				);
+				expect(failed).toEqual({ enqueued: 0, completed: 0, failed: 1 });
+				const [retained] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.metadata_reembed_outbox
+					WHERE id = ${generationId}::uuid`;
+				expect(retained?.count).toBe(1);
+
+				queueTarget.addBulk = originalAddBulk;
+				const recovered = await drainMetadataReembedOutbox(
+					snapshot.operationId,
+					10,
+				);
+				expect(recovered).toEqual({ enqueued: 1, completed: 1, failed: 0 });
+				const runs = await setup<{ generation_id: string }[]>`
+					SELECT generation_id::text FROM public.document_pipeline_runs
+					WHERE document_id = ${documentId}::uuid`;
+				expect(runs.map(({ generation_id }) => ({ generation_id }))).toEqual([
+					{ generation_id: generationId },
+				]);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.metadata_reembed_outbox
+					WHERE id = ${generationId}::uuid`;
+				expect(remaining?.count).toBe(0);
+				expect(
+					await queue.getJob(JOB_IDS.prepare(documentId, generationId)),
+				).toBeTruthy();
+			} finally {
+				queueTarget.addBulk = originalAddBulk;
+				if (generationId) {
+					const job = await queue.getJob(
+						JOB_IDS.prepare(documentId, generationId),
+					);
+					await job?.remove();
+				}
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), snapshotClient.client.end()]);
+			}
+		});
+
+		test("does not let an obsolete metadata snapshot overwrite or cancel a newer content run", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const newerGenerationId = crypto.randomUUID();
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-superseded.invalid`})`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'same', 'before')`;
+				const snapshot = await withTenantDatabase(
+					snapshotClient.db,
+					context,
+					(tx) => snapshotDocumentMetadataImpact(tx, context, documentId),
+				);
+				const [outbox] = await setup<{ id: string }[]>`
+					SELECT id::text FROM public.metadata_reembed_outbox
+					WHERE operation_id = ${snapshot.operationId}::uuid`;
+				if (!outbox) throw new Error("superseded metadata outbox row missing");
+				const newerRevision = contentHash("same", "after");
+				await setup`UPDATE public.documents
+					SET content = 'after', content_hash = ${newerRevision}
+					WHERE id = ${documentId}::uuid`;
+				await setup`INSERT INTO public.document_pipeline_runs
+					(document_id, owner_id, generation_id, revision, source, refresh_mode)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						${newerGenerationId}::uuid,
+						${newerRevision},
+						'interactive',
+						'incremental'
+					)`;
+
+				const result = await drainMetadataReembedOutbox(
+					snapshot.operationId,
+					10,
+				);
+				expect(result).toEqual({ enqueued: 0, completed: 1, failed: 0 });
+				const [document] = await setup<
+					{ content_hash: string | null }[]
+				>`SELECT content_hash FROM public.documents WHERE id = ${documentId}::uuid`;
+				expect(document?.content_hash).toBe(newerRevision);
+				const runs = await setup<{ generation_id: string; status: string }[]>`
+					SELECT generation_id::text, status
+					FROM public.document_pipeline_runs
+					WHERE document_id = ${documentId}::uuid`;
+				expect(
+					runs.map(({ generation_id, status }) => ({ generation_id, status })),
+				).toEqual([{ generation_id: newerGenerationId, status: "pending" }]);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.metadata_reembed_outbox
+					WHERE id = ${outbox.id}::uuid`;
+				expect(remaining?.count).toBe(0);
+			} finally {
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), snapshotClient.client.end()]);
 			}
 		});
 
