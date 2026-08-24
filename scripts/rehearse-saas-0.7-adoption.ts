@@ -378,7 +378,6 @@ const PACKAGE_MANIFESTS = [
 	"packages/cli/package.json",
 	"packages/mcp/package.json",
 ];
-const POSTGRES_CONTAINER = "docsmint_oss_e2e-postgres-1";
 const POSTGRES_ADMIN_ROLE = "aiuser";
 const POSTGRES_HOST_PORT = 5437;
 const STORAGE_HOST_PORT = 50702;
@@ -447,6 +446,37 @@ class SafeCommandRunner {
 		}
 		return result;
 	}
+}
+
+export async function resolveComposeServiceContainer(
+	service: string,
+	environment: Record<string, string>,
+): Promise<string> {
+	if (service !== "postgres" && service !== "seaweedfs") {
+		throw new Error("invalid rehearsal Compose service");
+	}
+	const child = Bun.spawn(
+		[
+			"docker",
+			"compose",
+			"--env-file",
+			"/dev/null",
+			"ps",
+			"--quiet",
+			service,
+		],
+		{ env: environment, stdout: "pipe", stderr: "pipe" },
+	);
+	const [exitCode, stdout] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	const container = stdout.trim();
+	if (exitCode !== 0 || !CONTAINER_PATTERN.test(container)) {
+		throw new Error(`active Compose ${service} container is unavailable`);
+	}
+	return container;
 }
 
 interface ActiveRuntime {
@@ -543,13 +573,17 @@ function connectionUrl(
 async function localSeaweedCredentials(
 	runner: SafeCommandRunner,
 ): Promise<{ accessKey: string; secretKey: string }> {
+	const container = await resolveComposeServiceContainer(
+		"seaweedfs",
+		safeEnvironment(),
+	);
 	const inspected = await runner.run(
 		[
 			"docker",
 			"inspect",
 			"--format",
 			"{{json .Config.Env}}",
-			"docsmint_oss_e2e-seaweedfs-1",
+			container,
 		],
 		{ env: safeEnvironment() },
 	);
@@ -579,16 +613,17 @@ async function dockerPostgres(
 	sql: string,
 	allowFailure = false,
 ): Promise<CommandResult> {
-	if (!CONTAINER_PATTERN.test(POSTGRES_CONTAINER)) {
-		throw new Error("invalid PostgreSQL container name");
-	}
+	const container = await resolveComposeServiceContainer(
+		"postgres",
+		safeEnvironment(),
+	);
 	assertIdentifier(POSTGRES_ADMIN_ROLE, "PostgreSQL admin role");
 	return runner.run(
 		[
 			"docker",
 			"exec",
 			"-i",
-			POSTGRES_CONTAINER,
+			container,
 			"psql",
 			"-X",
 			"-v",

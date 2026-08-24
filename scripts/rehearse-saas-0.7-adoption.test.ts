@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { chmod, mkdir, rm } from "node:fs/promises";
 
 import {
 	redactSecrets,
@@ -308,6 +308,58 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				);
 				await stopIsolatedRedisServer(foreign).catch(() => undefined);
 			}
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	test("resolves rehearsal dependencies from the active Compose project", async () => {
+		const resolveComposeServiceContainer = (
+			await import("./rehearse-saas-0.7-adoption")
+				.catch(() => undefined) as unknown as
+					| {
+							resolveComposeServiceContainer?: (
+								service: string,
+								environment: Record<string, string>,
+							) => Promise<string>;
+						}
+					| undefined
+		)?.resolveComposeServiceContainer;
+		expect(typeof resolveComposeServiceContainer).toBe("function");
+		if (!resolveComposeServiceContainer) return;
+
+		const root = `/tmp/docsmint-saas-adoption-${crypto.randomUUID().replaceAll("-", "")}`;
+		const bin = `${root}/bin`;
+		await mkdir(bin, { recursive: true });
+		const docker = `${bin}/docker`;
+		await Bun.write(
+			docker,
+			[
+				"#!/bin/sh",
+				'test "$1" = "compose"',
+				'test "$2" = "--env-file"',
+				'test "$3" = "/dev/null"',
+				'test "$4" = "ps"',
+				'test "$5" = "--quiet"',
+				'case "$6" in',
+				"  postgres) echo active-project-postgres-1 ;;",
+				"  seaweedfs) echo active-project-seaweedfs-1 ;;",
+				"  *) exit 9 ;;",
+				"esac",
+			].join("\n"),
+		);
+		await chmod(docker, 0o700);
+		try {
+			expect(
+				await resolveComposeServiceContainer("postgres", {
+					PATH: `${bin}:/usr/bin:/bin`,
+				}),
+			).toBe("active-project-postgres-1");
+			expect(
+				await resolveComposeServiceContainer("seaweedfs", {
+					PATH: `${bin}:/usr/bin:/bin`,
+				}),
+			).toBe("active-project-seaweedfs-1");
+		} finally {
 			await rm(root, { recursive: true, force: true });
 		}
 	});

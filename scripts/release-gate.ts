@@ -71,10 +71,6 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 			command: ["bash", "scripts/test-public-package-consumer.sh"],
 		},
 		{
-			name: "SaaS adoption rehearsal",
-			command: ["bun", "run", "scripts/rehearse-saas-0.7-adoption.ts"],
-		},
-		{
 			name: "compose configuration",
 			command: ["docker", "compose", "--env-file", "/dev/null", "config", "--quiet"],
 		},
@@ -101,6 +97,10 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 				"seaweedfs",
 				"migrate",
 			],
+		},
+		{
+			name: "SaaS adoption rehearsal",
+			command: ["bun", "run", "scripts/rehearse-saas-0.7-adoption.ts"],
 		},
 		{
 			name: "required PostgreSQL integrations",

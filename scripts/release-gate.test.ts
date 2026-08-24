@@ -72,17 +72,31 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"all workspace builds",
 		"packed package",
 		"clean installed consumer",
-		"SaaS adoption rehearsal",
 		"compose configuration",
 		"container port contract",
 		"fresh Docker rebuild",
 		"Docker dependency start",
+		"SaaS adoption rehearsal",
 		"required PostgreSQL integrations",
 		"required live public surfaces",
 		"Docker start and health",
 		"service health contract",
 		"Lightpanda desktop/mobile E2E",
 	]);
+});
+
+test("SaaS rehearsal uses the freshly rebuilt release dependencies", () => {
+	if (!releaseGate) return;
+	const stepNames = releaseGate.releaseGateSteps("v0.7.0").map(
+		(step: { name: string }) => step.name,
+	);
+	const rebuild = stepNames.indexOf("fresh Docker rebuild");
+	const dependencyStart = stepNames.indexOf("Docker dependency start");
+	const rehearsal = stepNames.indexOf("SaaS adoption rehearsal");
+
+	expect(rebuild).toBeGreaterThanOrEqual(0);
+	expect(dependencyStart).toBeGreaterThan(rebuild);
+	expect(rehearsal).toBeGreaterThan(dependencyStart);
 });
 
 test("full Docker startup preserves the explicit production-safe public storage URL", () => {
