@@ -1541,6 +1541,7 @@
           "embeddingUpdatedAt": { "type": "string", "format": "date-time", "nullable": true },
           "searchable": { "type": "boolean" },
           "pipeline": {
+            "type": "object",
             "nullable": true,
             "allOf": [{ "$ref": "#/components/schemas/DocsDocumentPipeline" }]
           }

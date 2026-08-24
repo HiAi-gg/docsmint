@@ -175,6 +175,7 @@ describe("OpenAPI external integration contract", () => {
 		expect(
 			(indexStatus.properties as Record<string, unknown>).pipeline,
 		).toEqual({
+			type: "object",
 			nullable: true,
 			allOf: [{ $ref: "#/components/schemas/DocsDocumentPipeline" }],
 		});
