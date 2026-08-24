@@ -176,7 +176,7 @@ const MAX_EXTRACTED_CONTENT_SIZE = 25 * 1024 * 1024;
 class ImportInputError extends Error {
 	constructor(
 		message: string,
-		readonly status: 400 | 413 | 415 | 422,
+		readonly status: 400 | 403 | 413 | 415 | 422,
 	) {
 		super(message);
 		this.name = "ImportInputError";
