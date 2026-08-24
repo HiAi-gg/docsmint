@@ -58,6 +58,33 @@ async function waitForBlock(
 	);
 }
 
+async function waitForSessionBlockedBy(
+	observer: postgres.Sql,
+	blockerPid: number,
+): Promise<number> {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const rows = await observer<{ pid: number }[]>`
+			SELECT pid
+			FROM pg_stat_activity
+			WHERE pid <> pg_backend_pid()
+				AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+			ORDER BY pid
+			LIMIT 1`;
+		if (rows[0]?.pid) return rows[0].pid;
+		await Bun.sleep(10);
+	}
+	throw new Error("metadata outbox stage did not block on the worker session");
+}
+
+function expectedDocumentPipelineLockKey(documentId: string): bigint {
+	const prefix = new Bun.CryptoHasher("sha256")
+		.update(JSON.stringify(["docsmint:document-pipeline:v1", documentId]))
+		.digest("hex")
+		.slice(0, 16);
+	const unsigned = BigInt(`0x${prefix}`);
+	return unsigned >= 1n << 63n ? unsigned - (1n << 64n) : unsigned;
+}
+
 describe.skipIf(!databaseUrl)(
 	"recursive metadata impact PostgreSQL contract",
 	() => {
@@ -265,6 +292,300 @@ describe.skipIf(!databaseUrl)(
 				queueTarget.addBulk = originalAddBulk;
 				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
 				await Promise.all([setup.end(), contender.end()]);
+			}
+		});
+
+		test("stages only embedding state and preserves the document concurrency token and revision", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			const updatedAt = "2024-06-01T12:34:56.123456Z";
+			let generationId: string | undefined;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-fields.invalid`})`;
+				await setup`INSERT INTO public.documents (
+					id, owner_id, title, content, content_json, metadata, visibility,
+					content_hash, embedding_status, embedding_error_code, updated_at
+				) VALUES (
+					${documentId}::uuid,
+					${ownerId}::uuid,
+					'visible title',
+					'visible body',
+					'{"type":"doc"}'::jsonb,
+					'{"review":"preserve"}'::jsonb,
+					'public',
+					'preserved-content-revision',
+					'ready',
+					'previous-provider-error',
+					${updatedAt}::timestamp
+				)`;
+				const snapshot = await withTenantDatabase(
+					snapshotClient.db,
+					context,
+					(tx) => snapshotDocumentMetadataImpact(tx, context, documentId),
+				);
+				const [outbox] = await setup<{ id: string }[]>`
+					SELECT id::text FROM public.metadata_reembed_outbox
+					WHERE operation_id = ${snapshot.operationId}::uuid`;
+				if (!outbox) throw new Error("metadata field outbox row missing");
+				generationId = outbox.id;
+				const [before] = await setup<{ preserved: Record<string, unknown> }[]>`
+					SELECT to_jsonb(document) - 'embedding_status' - 'embedding_error_code' AS preserved
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
+
+				const result = await drainMetadataReembedOutbox(
+					snapshot.operationId,
+					10,
+				);
+				expect(result).toEqual({ enqueued: 1, completed: 1, failed: 0 });
+				const [after] = await setup<
+					{
+						preserved: Record<string, unknown>;
+						embedding_status: string;
+						embedding_error_code: string | null;
+					}[]
+				>`
+					SELECT
+						to_jsonb(document) - 'embedding_status' - 'embedding_error_code' AS preserved,
+						embedding_status,
+						embedding_error_code
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
+				expect(after?.preserved).toEqual(before?.preserved);
+				expect(after?.embedding_status).toBe("stale");
+				expect(after?.embedding_error_code).toBeNull();
+			} finally {
+				if (generationId) {
+					const job = await queue.getJob(
+						JOB_IDS.prepare(documentId, generationId),
+					);
+					await job?.remove();
+				}
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), snapshotClient.client.end()]);
+			}
+		});
+
+		test("acknowledges a completed exact generation without changing the document", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const revision = contentHash("terminal", "body");
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			let generationId: string | undefined;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-terminal.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, content_hash, embedding_status, updated_at)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						'terminal',
+						'body',
+						${revision},
+						'ready',
+						'2024-06-02T12:34:56.123456Z'::timestamp
+					)`;
+				const snapshot = await withTenantDatabase(
+					snapshotClient.db,
+					context,
+					(tx) => snapshotDocumentMetadataImpact(tx, context, documentId),
+				);
+				const [outbox] = await setup<{ id: string }[]>`
+					SELECT id::text FROM public.metadata_reembed_outbox
+					WHERE operation_id = ${snapshot.operationId}::uuid`;
+				if (!outbox) throw new Error("terminal metadata outbox row missing");
+				generationId = outbox.id;
+				await setup`INSERT INTO public.document_pipeline_runs (
+					document_id, owner_id, generation_id, revision, source, refresh_mode,
+					status, prepare_status, embed_status, graph_status,
+					summarize_status, finalize_status, completed_at
+				) VALUES (
+					${documentId}::uuid,
+					${ownerId}::uuid,
+					${generationId}::uuid,
+					${revision},
+					'interactive',
+					'full',
+					'ready', 'ready', 'ready', 'ready', 'ready', 'ready', now()
+				)`;
+				await setup`UPDATE public.documents
+					SET active_embedding_generation = ${generationId}::uuid
+					WHERE id = ${documentId}::uuid`;
+				const [before] = await setup<{ document: Record<string, unknown> }[]>`
+					SELECT to_jsonb(document) AS document
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
+
+				const result = await drainMetadataReembedOutbox(
+					snapshot.operationId,
+					10,
+				);
+				expect(result).toEqual({ enqueued: 0, completed: 1, failed: 0 });
+				const [after] = await setup<{ document: Record<string, unknown> }[]>`
+					SELECT to_jsonb(document) AS document
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
+				expect(after?.document).toEqual(before?.document);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.metadata_reembed_outbox
+					WHERE id = ${generationId}::uuid`;
+				expect(remaining?.count).toBe(0);
+				expect(
+					await queue.getJob(JOB_IDS.prepare(documentId, generationId)),
+				).toBeFalsy();
+			} finally {
+				if (generationId) {
+					const job = await queue.getJob(
+						JOB_IDS.prepare(documentId, generationId),
+					);
+					await job?.remove();
+				}
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([setup.end(), snapshotClient.client.end()]);
+			}
+		});
+
+		test("serializes bulk staging with run-first worker transactions without deadlock", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const worker = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const snapshotClient = createDatabaseClient(databaseUrl as string, {
+				max: 1,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const oldGenerationId = crypto.randomUUID();
+			const revision = contentHash("deadlock", "body");
+			const context: TenantContext = {
+				userId: ownerId,
+				role: "user",
+				source: "personal",
+			};
+			const runLocked = deferred<void>();
+			const releaseWorkerDocument = deferred<void>();
+			const queue = getPipelineQueue("prepare", config.REDIS_URL);
+			let workerPid = 0;
+			let generationId: string | undefined;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@metadata-deadlock.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, content_hash, embedding_status)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						'deadlock',
+						'body',
+						${revision},
+						'pending'
+					)`;
+				await setup`INSERT INTO public.document_pipeline_runs
+					(document_id, owner_id, generation_id, revision, source, requested_at)
+					VALUES (
+						${documentId}::uuid,
+						${ownerId}::uuid,
+						${oldGenerationId}::uuid,
+						${revision},
+						'interactive',
+						now() - interval '1 minute'
+					)`;
+				const snapshot = await withTenantDatabase(
+					snapshotClient.db,
+					context,
+					(tx) => snapshotDocumentMetadataImpact(tx, context, documentId),
+				);
+				const [outbox] = await setup<{ id: string }[]>`
+					SELECT id::text FROM public.metadata_reembed_outbox
+					WHERE operation_id = ${snapshot.operationId}::uuid`;
+				if (!outbox) throw new Error("deadlock metadata outbox row missing");
+				generationId = outbox.id;
+
+				const workerTask = worker.begin(async (tx) => {
+					await tx`SET LOCAL deadlock_timeout = '100ms'`;
+					await tx`SET LOCAL lock_timeout = '3s'`;
+					const [pid] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					workerPid = pid?.pid ?? 0;
+					await tx`SELECT pg_advisory_xact_lock(
+						${expectedDocumentPipelineLockKey(documentId).toString()}::bigint
+					)`;
+					await tx`SELECT id FROM public.document_pipeline_runs
+						WHERE generation_id = ${oldGenerationId}::uuid
+						FOR UPDATE`;
+					runLocked.resolve();
+					await releaseWorkerDocument.promise;
+					await tx`UPDATE public.documents
+						SET embedding_status = 'processing'
+						WHERE id = ${documentId}::uuid`;
+				});
+				await runLocked.promise;
+				if (!workerPid) throw new Error("worker backend PID missing");
+				const drainTask = drainMetadataReembedOutbox(snapshot.operationId, 10);
+				await waitForSessionBlockedBy(observer, workerPid);
+				releaseWorkerDocument.resolve();
+				const [workerResult, drainResult] = await Promise.allSettled([
+					workerTask,
+					drainTask,
+				]);
+				expect(workerResult.status).toBe("fulfilled");
+				expect(drainResult).toEqual({
+					status: "fulfilled",
+					value: { enqueued: 1, completed: 1, failed: 0 },
+				});
+				const runs = await setup<
+					{ generation_id: string; status: string }[]
+				>`SELECT generation_id::text, status
+					FROM public.document_pipeline_runs
+					WHERE document_id = ${documentId}::uuid
+					ORDER BY generation_id`;
+				const statuses = new Map(
+					runs.map(({ generation_id, status }) => [generation_id, status]),
+				);
+				expect(statuses.get(oldGenerationId)).toBe("cancelled");
+				expect(statuses.get(generationId)).toBe("pending");
+				const [document] = await setup<{ embedding_status: string }[]>`
+					SELECT embedding_status FROM public.documents
+					WHERE id = ${documentId}::uuid`;
+				expect(document?.embedding_status).toBe("stale");
+			} finally {
+				releaseWorkerDocument.resolve();
+				if (generationId) {
+					const job = await queue.getJob(
+						JOB_IDS.prepare(documentId, generationId),
+					);
+					await job?.remove();
+				}
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([
+					setup.end(),
+					worker.end(),
+					observer.end(),
+					snapshotClient.client.end(),
+				]);
 			}
 		});
 
@@ -481,9 +802,14 @@ describe.skipIf(!databaseUrl)(
 					SELECT id::text FROM public.metadata_reembed_outbox
 					WHERE operation_id = ${snapshot.operationId}::uuid`;
 				if (!outbox) throw new Error("superseded metadata outbox row missing");
-				const newerRevision = contentHash("same", "after");
+				const newerRevision = contentHash("new title", "after");
 				await setup`UPDATE public.documents
-					SET content = 'after', content_hash = ${newerRevision}
+					SET title = 'new title',
+						content = 'after',
+						content_hash = ${newerRevision},
+						embedding_status = 'processing',
+						pending_embedding_generation = ${newerGenerationId}::uuid,
+						updated_at = '2024-06-03T12:34:56.123456Z'::timestamp
 					WHERE id = ${documentId}::uuid`;
 				await setup`INSERT INTO public.document_pipeline_runs
 					(document_id, owner_id, generation_id, revision, source, refresh_mode)
@@ -495,16 +821,21 @@ describe.skipIf(!databaseUrl)(
 						'interactive',
 						'incremental'
 					)`;
+				const [before] = await setup<{ document: Record<string, unknown> }[]>`
+					SELECT to_jsonb(document) AS document
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
 
 				const result = await drainMetadataReembedOutbox(
 					snapshot.operationId,
 					10,
 				);
 				expect(result).toEqual({ enqueued: 0, completed: 1, failed: 0 });
-				const [document] = await setup<
-					{ content_hash: string | null }[]
-				>`SELECT content_hash FROM public.documents WHERE id = ${documentId}::uuid`;
-				expect(document?.content_hash).toBe(newerRevision);
+				const [after] = await setup<{ document: Record<string, unknown> }[]>`
+					SELECT to_jsonb(document) AS document
+					FROM public.documents AS document
+					WHERE id = ${documentId}::uuid`;
+				expect(after?.document).toEqual(before?.document);
 				const runs = await setup<{ generation_id: string; status: string }[]>`
 					SELECT generation_id::text, status
 					FROM public.document_pipeline_runs

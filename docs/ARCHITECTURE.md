@@ -141,8 +141,13 @@ Dispatch stages each bounded page with a fixed number of set-based PostgreSQL
 statements, submits one BullMQ bulk write, and acknowledges only admitted or
 already-complete rows. Failed rows remain durable; after workers become ready,
 startup recovery retries their deterministic generation and job IDs in the
-background. The `*_REEMBED_BATCH_SIZE` settings control page memory, not total
-coverage. A configured value of `0` falls back to the safe domain default.
+background. Staging mutates only embedding lifecycle fields: document content
+revision and `updatedAt` remain owned by the user mutation that created them.
+Bulk staging and every worker transaction that locks both a document and its
+pipeline run first acquire the same per-document transaction advisory lock;
+multi-document pages acquire those locks in deterministic order. The
+`*_REEMBED_BATCH_SIZE` settings control page memory, not total coverage. A
+configured value of `0` falls back to the safe domain default.
 
 Embedding work is split into bounded batches (five chunks by default). A large
 document therefore cannot occupy the entire ready queue: only the configured

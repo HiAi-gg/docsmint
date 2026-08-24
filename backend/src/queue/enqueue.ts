@@ -1,6 +1,7 @@
 import { documentPipelineRuns, documents } from "@hiai-docs/db/schema";
 import { withTenant } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
+import { acquireDocumentPipelineLock } from "../lib/document-pipeline-serialization";
 import {
 	type EnqueueDocumentPipelineInput,
 	enqueueDocumentPipelineSchema,
@@ -125,9 +126,7 @@ const postgresRunStore: PipelineRunStore = {
 		return withTenant(
 			{ userId: input.ownerId, role: "user", workspaceId: input.workspaceId },
 			async (tx) => {
-				await tx.execute(
-					sql`select pg_advisory_xact_lock(hashtextextended(${`${input.documentId}:${input.revision}`}, 0))`,
-				);
+				await acquireDocumentPipelineLock(tx, input.documentId);
 				const [document] = await tx
 					.select({ id: documents.id })
 					.from(documents)

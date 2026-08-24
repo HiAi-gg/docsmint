@@ -639,6 +639,39 @@ describe("PATCH /api/documents/:id", () => {
     expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
+  it("stores the current content revision atomically with a placement and content update", async () => {
+    const document = seedDocument({
+      id: "abcdef08-0000-4000-8000-000000000000",
+      folderId: null,
+      title: "Old title",
+      content: "Old body",
+      contentHash: "old-revision",
+    });
+    const folderId = "abcdef09-0000-4000-8000-000000000000";
+    getState().folders.set(folderId, {
+      id: folderId,
+      ownerId: OWNER_ID,
+      name: "Revision destination",
+      parentId: null,
+      categoryId: null,
+    });
+
+    const response = await authedPatch(`/api/documents/${document.id}`, {
+      folderId,
+      title: "New title",
+      content: "New body",
+    });
+
+    expect(response.status).toBe(200);
+    expect(getState().documents.get(document.id)).toMatchObject({
+      folderId,
+      title: "New title",
+      content: "New body",
+      contentHash:
+        "7fe2b3933fae78c3d1ec53d0f9cb3f7c7325ed99da90b6d53a78d3533d66a22e",
+    });
+  });
+
 	it("rolls back a placement change when its outbox snapshot cannot commit", async () => {
 		const document = seedDocument({
 			id: "abcdef06-0000-4000-8000-000000000000",

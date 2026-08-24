@@ -22,6 +22,7 @@ import { embeddingProfileId } from "../embedding/validation";
 import { chunkHash } from "../lib/chunk-hash";
 import { config } from "../lib/config";
 import { tenantOwnerCondition, tenantOwnerSql } from "../lib/content-access";
+import { acquireDocumentPipelineLock } from "../lib/document-pipeline-serialization";
 import { deleteDocumentGraphGeneration } from "../lib/graph/delete-document-state";
 import { extractEntities } from "../lib/graph/extract-entities";
 import {
@@ -533,6 +534,7 @@ export function createPipelineStageDependencies(
 						if ((batches.at(-1)?.chunkEnd ?? 0) !== totalChunks) {
 							return "stale" as const;
 						}
+						await acquireDocumentPipelineLock(tx, job.documentId);
 						const [run] = await tx
 							.select({ status: documentPipelineRuns.prepareStatus })
 							.from(documentPipelineRuns)
@@ -643,6 +645,7 @@ export function createPipelineStageDependencies(
 				await withTenant(
 					{ ...admin, workspaceId: job.workspaceId },
 					async (tx) => {
+						await acquireDocumentPipelineLock(tx, job.documentId);
 						const [run] = await tx
 							.select({ status: documentPipelineRuns.status })
 							.from(documentPipelineRuns)
@@ -1084,6 +1087,7 @@ export function createPipelineStageDependencies(
 						withTenant(
 							{ ...admin, workspaceId: job.workspaceId },
 							async (tx) => {
+								await acquireDocumentPipelineLock(tx, job.documentId);
 								const [current] = await tx
 									.select({ id: documents.id })
 									.from(documents)

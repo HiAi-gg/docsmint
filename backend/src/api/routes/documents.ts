@@ -1585,6 +1585,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				// the next open. The markdown `content` is the source of
 				// truth.
 				const resolvedDocJson: unknown | undefined = body.data.contentJson;
+				const currentContentRevision =
+					body.data.title !== undefined || body.data.content !== undefined
+						? contentHash(
+								body.data.title ?? existing.title,
+								body.data.content ?? existing.content ?? "",
+							)
+						: undefined;
 
 				const [updated] = await tx
 					.update(documents)
@@ -1607,6 +1614,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						}),
 						...(body.data.visibility !== undefined && {
 							visibility: body.data.visibility,
+						}),
+						...(currentContentRevision !== undefined && {
+							contentHash: currentContentRevision,
 						}),
 						updatedAt: new Date(),
 					})

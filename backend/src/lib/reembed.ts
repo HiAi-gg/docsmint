@@ -55,6 +55,7 @@ import {
 import { config } from "./config";
 import { tenantOwnerCondition, tenantOwnerSql } from "./content-access";
 import { contentHash } from "./content-hash";
+import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
 import { enqueueEmbedding } from "./embedding-queue";
 import { logger } from "./logger";
 import { redis } from "./redis";
@@ -598,6 +599,10 @@ async function stageMetadataOutboxPage(
 		})),
 	);
 	const staged = await withTenant(REEMBED_ADMIN_TENANT, async (tx) => {
+		await acquireDocumentPipelineLocks(
+			tx,
+			targets.map(({ documentId }) => documentId),
+		);
 		await tx.execute(sql`
 			WITH input AS (
 				SELECT * FROM jsonb_to_recordset(${payload}::jsonb) AS row(
@@ -620,14 +625,18 @@ async function stageMetadataOutboxPage(
 						digest(document.title || E'\n' || coalesce(document.content, ''), 'sha256'),
 						'hex'
 					) = input.revision
+					AND NOT EXISTS (
+						SELECT 1
+						FROM public.document_pipeline_runs AS exact_run
+						WHERE exact_run.document_id = input.document_id
+							AND exact_run.generation_id = input.outbox_id
+					)
 				ORDER BY document.id
 				FOR UPDATE OF document
 			)
 			UPDATE public.documents AS document
 			SET embedding_status = 'stale',
-				embedding_error_code = NULL,
-				content_hash = locked_documents.revision,
-				updated_at = now()
+				embedding_error_code = NULL
 			FROM locked_documents
 			WHERE document.id = locked_documents.id
 		`);

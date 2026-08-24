@@ -42,6 +42,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Keep folder, category, and tag metadata snapshots bounded in application
   memory; `*_REEMBED_BATCH_SIZE=0` now selects the safe domain page size rather
   than materializing an unbounded result.
+- Preserve document revision and `updatedAt` concurrency fields while staging
+  metadata refreshes, make completed outbox retries document-state no-ops, and
+  serialize bulk staging with worker document/run row locks to prevent inverse
+  lock-order deadlocks.
 
 ## [0.6.8] - 2026-08-21
 

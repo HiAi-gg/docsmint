@@ -20,6 +20,7 @@
 
 import { z } from "zod";
 import { config } from "../config";
+import { documentPipelineLockKey } from "../document-pipeline-serialization";
 import { logger } from "../logger";
 import {
 	type ChatProviderConfig,
@@ -630,6 +631,11 @@ async function persistEntities(
 		await tx`SELECT pg_catalog.set_config('app.current_user_id', '00000000-0000-0000-0000-000000000000', true)`;
 		await tx`SELECT pg_catalog.set_config('app.current_user_role', 'admin', true)`;
 		await tx`SELECT pg_catalog.set_config('app.current_workspace_id', '', true)`;
+		await tx`
+			/* docsmint:document-pipeline-lock */
+			SELECT pg_advisory_xact_lock(
+				${documentPipelineLockKey(documentId).toString()}::bigint
+			)`;
 
 		const nowIso = new Date().toISOString();
 		await runGenerationFencedGraphWrite({

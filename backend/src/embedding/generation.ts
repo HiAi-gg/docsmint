@@ -9,6 +9,7 @@ import {
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, ne } from "drizzle-orm";
+import { acquireDocumentPipelineLock } from "../lib/document-pipeline-serialization";
 
 const WORKER_TENANT = adminTenantContext(ZERO_UUID);
 
@@ -86,6 +87,7 @@ export async function activateEmbeddingGeneration(
 	embeddingContextHash?: string,
 ): Promise<void> {
 	await withTenant(WORKER_TENANT, async (tx) => {
+		await acquireDocumentPipelineLock(tx, documentId);
 		const run = await tx
 			.select({ status: documentPipelineRuns.status })
 			.from(documentPipelineRuns)
