@@ -137,7 +137,10 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 				"web",
 			],
 		},
-		{ name: "service health contract", command: ["sh", "scripts/health-check.sh"] },
+		{
+			name: "service health contract",
+			command: ["bash", "scripts/health-check.sh"],
+		},
 		{
 			name: "Lightpanda desktop/mobile E2E",
 			command: ["bun", "run", "release:check:browser"],

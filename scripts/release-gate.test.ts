@@ -136,6 +136,8 @@ test("Docker lifecycle separates healthy services from one-shot migrations", () 
 	]);
 	expect(fullStart?.command.at(-2)).toBe("api");
 	expect(fullStart?.command.at(-1)).toBe("web");
+	const health = steps.find((step) => step.name === "service health contract");
+	expect(health?.command).toEqual(["bash", "scripts/health-check.sh"]);
 });
 
 test("full Docker startup preserves the explicit production-safe public storage URL", () => {
