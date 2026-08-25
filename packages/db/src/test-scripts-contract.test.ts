@@ -52,8 +52,10 @@ test("unit, contract, and required integration discovery stay explicit", async (
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
 			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",
 			"backend/src/__tests__/graph-routes.test.ts",
+			"packages/db/scripts/query-observer.integration.test.ts &&",
+			'DATABASE_URL="${DATABASE_URL:-${CONTENT_ACCESS_TEST_DATABASE_URL:-}}"',
+			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
 			"backend/src/__tests__/storage-lifecycle-concurrency-postgres.integration.test.ts",
-			"packages/db/scripts/query-observer.integration.test.ts",
 		].join(" "),
 	);
 });

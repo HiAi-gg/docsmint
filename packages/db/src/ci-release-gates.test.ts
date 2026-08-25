@@ -11,7 +11,6 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 	expect(workflow).toContain("LIFECYCLE_TEST_DATABASE_URL:");
 	expect(workflow).toContain("CONTENT_ACCESS_TEST_DATABASE_URL:");
 	expect(workflow).toContain("DOCSMINT_CONTRACT_DATABASE_URL:");
-	expect(workflow).toContain("DATABASE_URL:");
 	for (const suite of [
 		"pipeline tenant RLS integration",
 		"lifecycle operation persistence integration",

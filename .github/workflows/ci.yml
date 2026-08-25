@@ -122,7 +122,6 @@ jobs:
       LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       CONTENT_ACCESS_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
-      DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
