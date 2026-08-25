@@ -50,7 +50,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [] as string[],
 		};
 		const afterFirst = {
-			journalEntries: 48,
+			journalEntries: 47,
 			schemaFingerprint: "embedding-context-and-outbox-schema",
 			columns: [
 				"attachments.uploaded_by:uuid:NO:",
@@ -83,11 +83,11 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 
 		expect(
 			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
-		).toEqual({ addedJournalEntries: 5, secondRunNoOp: true });
+		).toEqual({ addedJournalEntries: 4, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
-				journalEntries: 49,
+				journalEntries: 48,
 			}),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
@@ -480,7 +480,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [],
 		};
 		const migrationAfter = {
-			journalEntries: 48,
+			journalEntries: 47,
 			schemaFingerprint: "after",
 			columns: [
 				"attachments.uploaded_by:uuid:NO:",
