@@ -88,11 +88,14 @@ describe("workspace document-child RLS integration", () => {
 					}
 
 					await tx`SELECT set_config('app.current_workspace_id', '', true)`;
-					const personalRows = await tx`SELECT document_id::text AS document_id
-						FROM public.attachments ORDER BY document_id`;
-					expect(personalRows.map((row) => row.document_id)).toEqual([
-						docs.actorPersonal,
-					]);
+					for (const table of ["attachments", "versions"] as const) {
+						const personalRows = await tx.unsafe(
+							`SELECT document_id::text AS document_id FROM public.${table} ORDER BY document_id`,
+						);
+						expect(personalRows.map((row) => row.document_id), table).toEqual([
+							docs.actorPersonal,
+						]);
+					}
 
 					await tx`INSERT INTO public.document_pipeline_runs
 						(document_id, owner_id, generation_id, revision, source)

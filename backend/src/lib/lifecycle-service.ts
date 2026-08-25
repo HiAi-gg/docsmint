@@ -581,7 +581,7 @@ export function createPersistentLifecycleService(
 					"settle_pending_attachment_uploads",
 					deletedByDomain,
 					async () => {
-						const pending = await withActor(ctx.actorUserId, (tx) =>
+						const pending = await withCleanupActor((tx) =>
 							tx
 								.select()
 								.from(pendingAttachmentUploads)
@@ -710,7 +710,7 @@ export function createPersistentLifecycleService(
 					deletedByDomain,
 					() => runtime.removeGraphState(documentIds, ctx.signal),
 				);
-				const objectRows = await withActor(ctx.actorUserId, (tx) =>
+				const objectRows = await withCleanupActor((tx) =>
 					tx
 						.select({
 							id: attachments.id,

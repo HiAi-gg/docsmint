@@ -54,7 +54,14 @@ CREATE POLICY tenant_isolation ON public.pending_attachment_uploads
   FOR ALL TO hiai_app
   USING (
     current_setting('app.current_user_role', true) = 'admin'
-    OR actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+    OR (
+      actor_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+      AND (
+        workspace_id IS NULL
+        OR workspace_id = NULLIF(current_setting('app.current_workspace_id', true), '')
+        OR public.lifecycle_cleanup_authorized(actor_user_id)
+      )
+    )
   )
   WITH CHECK (
     current_setting('app.current_user_role', true) = 'admin'
@@ -81,7 +88,10 @@ CREATE POLICY tenant_isolation ON public.attachments
   FOR ALL TO hiai_app
   USING (
     current_setting('app.current_user_role', true) = 'admin'
-    OR uploaded_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+    OR (
+      uploaded_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+      AND public.lifecycle_cleanup_authorized(uploaded_by)
+    )
     OR EXISTS (
       SELECT 1 FROM public.documents AS parent
       WHERE parent.id = attachments.document_id
@@ -113,7 +123,10 @@ CREATE POLICY tenant_isolation ON public.versions
   FOR ALL TO hiai_app
   USING (
     current_setting('app.current_user_role', true) = 'admin'
-    OR created_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+    OR (
+      created_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+      AND public.lifecycle_cleanup_authorized(created_by)
+    )
     OR EXISTS (
       SELECT 1 FROM public.documents AS parent
       WHERE parent.id = versions.document_id

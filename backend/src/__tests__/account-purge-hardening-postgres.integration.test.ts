@@ -539,9 +539,9 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 					ownerAttachments: 1,
 				});
 			} finally {
-				await setup`DELETE FROM public.lifecycle_operations
-					WHERE actor_user_id = ${peerB}::uuid
-						AND status NOT IN ('completed', 'rejected')`;
+				await setup`UPDATE public.lifecycle_operations
+					SET actor_user_id = NULL
+					WHERE actor_user_id = ${peerB}::uuid`;
 				await setup`DELETE FROM public.attachments
 					WHERE document_id = ${documentId}::uuid`;
 				await setup`DELETE FROM public.versions
