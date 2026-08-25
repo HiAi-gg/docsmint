@@ -57,6 +57,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Repair historical `0037` installs where the AGE session search path placed
   `document_create_operations` in `ag_catalog`; migration `0042` moves or
   creates the durable idempotency table in `public` before enabling its fence.
+- Serialize purge-fence enforcement per statement across every direct actor and
+  parent-derived owner, guard Better Auth user updates, and keep existing
+  pipeline cancellation transitions available without admitting new work.
+- Persist every presigned attachment admission before returning its URL, bind
+  confirmation and cleanup to an exact signed object key, and keep lifecycle
+  purge retryable until issued URLs expire and confirmed or pending SeaweedFS
+  objects attributed to the account are durably removed.
 
 ## [0.6.8] - 2026-08-21
 

@@ -193,8 +193,19 @@ curl -X POST "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID/attachments" \
 
 For direct object-storage upload, call
 `POST /api/documents/:id/attachments/presign`, upload to the returned URL, then
-call `POST /api/documents/:id/attachments/confirm`. Attachment metadata can be
+call `POST /api/documents/:id/attachments/confirm`. Presign returns an opaque
+`uploadToken`; confirm must return that token, the exact `key`, and the admitted
+filename, MIME type, size, and optional `quotaReservationId` unchanged. The
+server records this admission before returning the URL. An unconfirmed object
+is cleaned after URL expiry, and account deletion remains retryable until every
+issued URL has expired and its exact key is gone. A mismatched or tampered token
+never grants authority to delete another object. Attachment metadata can be
 listed on the document and deleted by attachment ID.
+
+When the durable account-deletion fence is active, guarded document, folder,
+category, tag, version, attachment, key, sharing, and Better Auth profile/email
+mutations return HTTP `409` with machine code `ACCOUNT_PURGE_FENCED`. This code
+is stable; unrelated database errors retain their existing status and shape.
 
 `GET /api/attachments/:id/raw` streams bytes. It accepts the owner's session or
 Bearer key. An anonymous share viewer must send a matching `x-share-token`.

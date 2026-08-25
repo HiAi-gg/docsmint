@@ -112,8 +112,9 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
-const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 3;
+const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 5;
 const EXPECTED_ADDITIVE_COLUMNS = [
+	"attachments.uploaded_by:uuid:NO:",
 	"document_pipeline_runs.embedding_context_hash:text:YES:",
 	"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 	"documents.embedding_context_hash:text:YES:",
@@ -124,6 +125,19 @@ const EXPECTED_ADDITIVE_COLUMNS = [
 	"metadata_reembed_outbox.owner_id:uuid:NO:",
 	"metadata_reembed_outbox.revision:text:NO:",
 	"metadata_reembed_outbox.workspace_id:text:YES:",
+	"pending_attachment_uploads.actor_user_id:uuid:NO:",
+	"pending_attachment_uploads.confirming_at:timestamp without time zone:YES:",
+	"pending_attachment_uploads.created_at:timestamp without time zone:NO:now()",
+	"pending_attachment_uploads.declared_size:bigint:NO:",
+	"pending_attachment_uploads.document_id:uuid:NO:",
+	"pending_attachment_uploads.expires_at:timestamp without time zone:NO:",
+	"pending_attachment_uploads.filename:text:NO:",
+	"pending_attachment_uploads.id:uuid:NO:gen_random_uuid()",
+	"pending_attachment_uploads.mime_type:text:NO:",
+	"pending_attachment_uploads.quota_reservation_id:text:YES:",
+	"pending_attachment_uploads.storage_key:text:NO:",
+	"pending_attachment_uploads.token_hash:text:NO:",
+	"pending_attachment_uploads.workspace_id:text:YES:",
 ];
 
 export function verifyCandidateProvenance(
@@ -202,7 +216,7 @@ export function verifyAdditiveMigrationReapply(
 		afterFirst.columns.length !== EXPECTED_ADDITIVE_COLUMNS.length
 	) {
 		throw new Error(
-			"first migration run did not apply exactly three additive journal entries",
+			"first migration run did not apply exactly five additive journal entries",
 		);
 	}
 	if (
@@ -1486,6 +1500,9 @@ async function databaseSnapshot(ownerUrl: string): Promise<MigrationSnapshot> {
 			FROM information_schema.columns
 			WHERE table_schema = 'public'
 				AND (
+					(table_name = 'attachments' AND column_name = 'uploaded_by')
+					OR table_name = 'pending_attachment_uploads'
+					OR
 					(table_name = 'documents' AND column_name = 'embedding_context_hash')
 					OR (
 						table_name = 'document_pipeline_runs'

@@ -50,9 +50,10 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [] as string[],
 		};
 		const afterFirst = {
-			journalEntries: 46,
+			journalEntries: 48,
 			schemaFingerprint: "embedding-context-and-outbox-schema",
 			columns: [
+				"attachments.uploaded_by:uuid:NO:",
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 				"documents.embedding_context_hash:text:YES:",
@@ -63,17 +64,30 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				"metadata_reembed_outbox.owner_id:uuid:NO:",
 				"metadata_reembed_outbox.revision:text:NO:",
 				"metadata_reembed_outbox.workspace_id:text:YES:",
+				"pending_attachment_uploads.actor_user_id:uuid:NO:",
+				"pending_attachment_uploads.confirming_at:timestamp without time zone:YES:",
+				"pending_attachment_uploads.created_at:timestamp without time zone:NO:now()",
+				"pending_attachment_uploads.declared_size:bigint:NO:",
+				"pending_attachment_uploads.document_id:uuid:NO:",
+				"pending_attachment_uploads.expires_at:timestamp without time zone:NO:",
+				"pending_attachment_uploads.filename:text:NO:",
+				"pending_attachment_uploads.id:uuid:NO:gen_random_uuid()",
+				"pending_attachment_uploads.mime_type:text:NO:",
+				"pending_attachment_uploads.quota_reservation_id:text:YES:",
+				"pending_attachment_uploads.storage_key:text:NO:",
+				"pending_attachment_uploads.token_hash:text:NO:",
+				"pending_attachment_uploads.workspace_id:text:YES:",
 			],
 		};
 		const afterSecond = structuredClone(afterFirst);
 
 		expect(
 			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
-		).toEqual({ addedJournalEntries: 3, secondRunNoOp: true });
+		).toEqual({ addedJournalEntries: 5, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
-				journalEntries: 47,
+				journalEntries: 49,
 			}),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
@@ -466,9 +480,10 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [],
 		};
 		const migrationAfter = {
-			journalEntries: 46,
+			journalEntries: 48,
 			schemaFingerprint: "after",
 			columns: [
+				"attachments.uploaded_by:uuid:NO:",
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
 				"documents.embedding_context_hash:text:YES:",
@@ -479,6 +494,19 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				"metadata_reembed_outbox.owner_id:uuid:NO:",
 				"metadata_reembed_outbox.revision:text:NO:",
 				"metadata_reembed_outbox.workspace_id:text:YES:",
+				"pending_attachment_uploads.actor_user_id:uuid:NO:",
+				"pending_attachment_uploads.confirming_at:timestamp without time zone:YES:",
+				"pending_attachment_uploads.created_at:timestamp without time zone:NO:now()",
+				"pending_attachment_uploads.declared_size:bigint:NO:",
+				"pending_attachment_uploads.document_id:uuid:NO:",
+				"pending_attachment_uploads.expires_at:timestamp without time zone:NO:",
+				"pending_attachment_uploads.filename:text:NO:",
+				"pending_attachment_uploads.id:uuid:NO:gen_random_uuid()",
+				"pending_attachment_uploads.mime_type:text:NO:",
+				"pending_attachment_uploads.quota_reservation_id:text:YES:",
+				"pending_attachment_uploads.storage_key:text:NO:",
+				"pending_attachment_uploads.token_hash:text:NO:",
+				"pending_attachment_uploads.workspace_id:text:YES:",
 			],
 		};
 		const environment = {

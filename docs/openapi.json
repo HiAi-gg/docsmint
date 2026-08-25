@@ -72,6 +72,26 @@
         }
       }
     },
+    "/api/auth/update-user": {
+      "post": {
+        "operationId": "postApiAuthUpdateUser",
+        "responses": {
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+        },
+        "security": [{ "SessionAuth": [] }]
+      }
+    },
+    "/api/auth/change-email": {
+      "post": {
+        "operationId": "postApiAuthChangeEmail",
+        "responses": {
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+        },
+        "security": [{ "SessionAuth": [] }]
+      }
+    },
     "/api/tags": {
       "get": {
         "operationId": "getApiTags",
@@ -82,7 +102,8 @@
       "post": {
         "operationId": "postApiTags",
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -100,7 +121,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       },
       "delete": {
@@ -116,7 +138,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -134,7 +157,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -160,7 +184,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -182,7 +207,8 @@
       "post": {
         "operationId": "postApiCategories",
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -208,7 +234,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -232,7 +259,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -257,8 +285,24 @@
             "required": true
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AttachmentPresignRequest" }
+            }
+          }
+        },
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Durable upload admission and exact signed PUT URL.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AttachmentPresignResponse" }
+              }
+            }
+          },
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -283,8 +327,17 @@
             "required": true
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AttachmentConfirmRequest" }
+            }
+          }
+        },
         "responses": {
-          "200": {}
+          "201": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -310,7 +363,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -360,7 +414,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -778,7 +833,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       },
       "delete": {
@@ -794,7 +850,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -858,7 +915,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -919,7 +977,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       },
       "delete": {
@@ -935,7 +994,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -949,7 +1009,8 @@
       "post": {
         "operationId": "postApiFolders",
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -983,7 +1044,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         }
       }
     },
@@ -1468,7 +1530,65 @@
     }
   },
   "components": {
+    "responses": {
+      "AccountPurgeFenced": {
+        "description": "The account deletion fence is active; no mutation was admitted.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/AccountPurgeFencedError" }
+          }
+        }
+      }
+    },
     "schemas": {
+      "AccountPurgeFencedError": {
+        "type": "object",
+        "required": ["error", "code"],
+        "additionalProperties": false,
+        "properties": {
+          "error": { "type": "string", "enum": ["Account deletion is in progress"] },
+          "code": { "type": "string", "enum": ["ACCOUNT_PURGE_FENCED"] }
+        }
+      },
+      "AttachmentPresignRequest": {
+        "type": "object",
+        "required": ["filename", "contentType", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "contentType": { "type": "string", "pattern": "^image/" },
+          "size": { "type": "integer", "minimum": 1 }
+        }
+      },
+      "AttachmentPresignResponse": {
+        "type": "object",
+        "required": ["url", "key", "uploadToken", "maxSize", "expiresIn"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "key": { "type": "string", "minLength": 1 },
+          "uploadToken": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Opaque signed admission identity. Return it verbatim to confirm."
+          },
+          "quotaReservationId": { "type": "string" },
+          "maxSize": { "type": "integer", "minimum": 1 },
+          "expiresIn": { "type": "integer", "minimum": 60, "maximum": 3600 }
+        }
+      },
+      "AttachmentConfirmRequest": {
+        "type": "object",
+        "required": ["key", "uploadToken", "filename", "contentType", "size"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string", "minLength": 1 },
+          "uploadToken": { "type": "string", "minLength": 1 },
+          "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "contentType": { "type": "string", "pattern": "^image/" },
+          "size": { "type": "integer", "minimum": 1 },
+          "quotaReservationId": { "type": "string" }
+        }
+      },
       "WorkspaceResourceScope": {
         "type": "object",
         "description": "Optional category restriction carried only in a trusted server-to-server signed workspace assertion; it is never a browser secret.",
