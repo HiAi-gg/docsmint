@@ -126,7 +126,10 @@ async function claimCleanupPage(
 	pageSize: number,
 	actorUserId?: string,
 ): Promise<readonly ClaimedCleanupRow[]> {
-	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS);
+	// Drizzle's raw postgres-js path does not apply column encoders to bound
+	// parameters. Bind timestamps as ISO strings rather than JavaScript Dates.
+	const nowTimestamp = now.toISOString();
+	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS).toISOString();
 	const actorFilter = actorUserId
 		? sql`AND (
 			candidate.actor_user_id = ${actorUserId}::uuid
@@ -141,10 +144,10 @@ async function claimCleanupPage(
 			WITH candidates AS (
 				SELECT candidate.id
 				FROM public.attachment_storage_cleanup_outbox AS candidate
-				WHERE candidate.not_before <= ${now}
+				WHERE candidate.not_before <= ${nowTimestamp}
 					AND (
 						candidate.lease_expires_at IS NULL
-						OR candidate.lease_expires_at <= ${now}
+						OR candidate.lease_expires_at <= ${nowTimestamp}
 					)
 					${actorFilter}
 				ORDER BY candidate.not_before, candidate.created_at, candidate.id

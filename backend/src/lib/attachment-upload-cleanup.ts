@@ -113,7 +113,9 @@ async function claimExpiredPendingUploads(
 	now: Date,
 	limit: number,
 ): Promise<readonly PendingAttachmentUploadRow[]> {
-	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS);
+	// Raw postgres-js SQL does not run Drizzle's timestamp column encoder.
+	const nowTimestamp = now.toISOString();
+	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS).toISOString();
 	const rows = await withTenant(
 		CLEANUP_ADMIN_TENANT,
 		async (tx) =>
@@ -122,18 +124,18 @@ async function claimExpiredPendingUploads(
 				SELECT pending.id
 				FROM public.pending_attachment_uploads AS pending
 				WHERE (
-					pending.expires_at <= ${now}
+					pending.expires_at <= ${nowTimestamp}
 					OR (
 						pending.url_issued_at IS NULL
 						AND (
 							pending.lease_expires_at IS NULL
-							OR pending.lease_expires_at <= ${now}
+							OR pending.lease_expires_at <= ${nowTimestamp}
 						)
 					)
 				)
 				AND (
 					pending.lease_expires_at IS NULL
-					OR pending.lease_expires_at <= ${now}
+					OR pending.lease_expires_at <= ${nowTimestamp}
 				)
 				ORDER BY pending.expires_at, pending.id
 				FOR UPDATE SKIP LOCKED
@@ -318,6 +320,7 @@ export async function claimPendingAttachmentUploadForConfirm(
 	}>,
 ): Promise<ClaimedPendingAttachmentUploadRow | null> {
 	const now = new Date();
+	const nowTimestamp = now.toISOString();
 	const leaseOwner = `confirm:${crypto.randomUUID()}`;
 	const leaseExpiresAt = new Date(now.getTime() + 5 * 60_000);
 	const rows = await withTenant(ctx, async (tx) => {
@@ -346,10 +349,10 @@ export async function claimPendingAttachmentUploadForConfirm(
 				AND pending.document_id = ${input.documentId}::uuid
 				AND pending.storage_key = ${input.storageKey}
 				AND pending.token_hash = ${input.tokenHash}
-				AND pending.expires_at > ${now}
+				AND pending.expires_at > ${nowTimestamp}
 				AND (
 					pending.lease_expires_at IS NULL
-					OR pending.lease_expires_at <= ${now}
+					OR pending.lease_expires_at <= ${nowTimestamp}
 				)
 			FOR UPDATE OF pending
 		`)) as unknown as PendingRawRow[];
