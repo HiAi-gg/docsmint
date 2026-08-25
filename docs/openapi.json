@@ -1254,7 +1254,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -1303,7 +1304,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {
@@ -1329,7 +1331,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
         },
         "security": [
           {

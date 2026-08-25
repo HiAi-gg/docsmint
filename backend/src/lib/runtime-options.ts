@@ -16,17 +16,21 @@ export type RuntimeAttachmentQuotaContext = Readonly<{
 }>;
 
 export type RuntimeAttachmentQuotaAdmission = Readonly<{
+	/** Retry-safe by context.idempotencyKey; returns one stable reservation. */
 	reserve(
 		context: RuntimeAttachmentQuotaContext,
 	): Promise<Readonly<{ id: string }>>;
+	/** Retry-safe by context.idempotencyKey; commits usage at most once. */
 	finalize(
 		context: RuntimeAttachmentQuotaContext,
 		finalization: Readonly<{ reservationId: string; actualSize: number }>,
 	): Promise<void>;
+	/** Retry-safe by context.idempotencyKey; repeated release is a no-op. */
 	releaseReservation(
 		context: RuntimeAttachmentQuotaContext,
 		reservationId: string,
 	): Promise<void>;
+	/** Retry-safe by context.idempotencyKey; repeated release is a no-op. */
 	releaseCommitted(context: RuntimeAttachmentQuotaContext): Promise<void>;
 }>;
 

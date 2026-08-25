@@ -43,6 +43,40 @@ async function redisCli(
 }
 
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
+	const withAttachmentCleanupColumns = (columns: string[]) =>
+		[
+			...columns,
+			"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
+			"attachment_storage_cleanup_outbox.attempt_count:integer:NO:0",
+			"attachment_storage_cleanup_outbox.created_at:timestamp without time zone:NO:now()",
+			"attachment_storage_cleanup_outbox.document_id:uuid:NO:",
+			"attachment_storage_cleanup_outbox.id:uuid:NO:gen_random_uuid()",
+			"attachment_storage_cleanup_outbox.last_error:text:YES:",
+			"attachment_storage_cleanup_outbox.lease_expires_at:timestamp without time zone:YES:",
+			"attachment_storage_cleanup_outbox.lease_owner:text:YES:",
+			"attachment_storage_cleanup_outbox.not_before:timestamp without time zone:NO:now()",
+			"attachment_storage_cleanup_outbox.object_deleted_at:timestamp without time zone:YES:",
+			"attachment_storage_cleanup_outbox.owner_user_id:uuid:NO:",
+			"attachment_storage_cleanup_outbox.quota_operation_key:text:NO:",
+			"attachment_storage_cleanup_outbox.quota_release_kind:text:NO:'none'::text",
+			"attachment_storage_cleanup_outbox.quota_reservation_id:text:YES:",
+			"attachment_storage_cleanup_outbox.requested_by_user_id:uuid:NO:",
+			"attachment_storage_cleanup_outbox.retain_until:timestamp without time zone:YES:",
+			"attachment_storage_cleanup_outbox.size:bigint:NO:",
+			"attachment_storage_cleanup_outbox.source_id:uuid:NO:",
+			"attachment_storage_cleanup_outbox.source_kind:text:NO:",
+			"attachment_storage_cleanup_outbox.storage_key:text:NO:",
+			"attachment_storage_cleanup_outbox.workspace_id:text:YES:",
+			"pending_attachment_uploads.actual_size:bigint:YES:",
+			"pending_attachment_uploads.attempt_count:integer:NO:0",
+			"pending_attachment_uploads.last_error:text:YES:",
+			"pending_attachment_uploads.lease_expires_at:timestamp without time zone:YES:",
+			"pending_attachment_uploads.lease_owner:text:YES:",
+			"pending_attachment_uploads.quota_operation_key:text:NO:",
+			"pending_attachment_uploads.quota_state:text:NO:",
+			"pending_attachment_uploads.url_issued_at:timestamp without time zone:YES:",
+		].sort();
+
 	test("reapplies the additive migration as an idempotent no-op", () => {
 		const before = {
 			journalEntries: 43,
@@ -50,9 +84,9 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [] as string[],
 		};
 		const afterFirst = {
-			journalEntries: 47,
+			journalEntries: 48,
 			schemaFingerprint: "embedding-context-and-outbox-schema",
-			columns: [
+			columns: withAttachmentCleanupColumns([
 				"attachments.uploaded_by:uuid:NO:",
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
@@ -77,17 +111,17 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				"pending_attachment_uploads.storage_key:text:NO:",
 				"pending_attachment_uploads.token_hash:text:NO:",
 				"pending_attachment_uploads.workspace_id:text:YES:",
-			],
+			]),
 		};
 		const afterSecond = structuredClone(afterFirst);
 
 		expect(
 			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
-		).toEqual({ addedJournalEntries: 4, secondRunNoOp: true });
+		).toEqual({ addedJournalEntries: 5, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
-				journalEntries: 48,
+				journalEntries: 49,
 			}),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
@@ -480,9 +514,9 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [],
 		};
 		const migrationAfter = {
-			journalEntries: 47,
+			journalEntries: 48,
 			schemaFingerprint: "after",
-			columns: [
+			columns: withAttachmentCleanupColumns([
 				"attachments.uploaded_by:uuid:NO:",
 				"document_pipeline_runs.embedding_context_hash:text:YES:",
 				"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
@@ -507,7 +541,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				"pending_attachment_uploads.storage_key:text:NO:",
 				"pending_attachment_uploads.token_hash:text:NO:",
 				"pending_attachment_uploads.workspace_id:text:YES:",
-			],
+			]),
 		};
 		const environment = {
 			accepted: true,

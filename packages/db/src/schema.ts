@@ -628,6 +628,7 @@ export const attachments = pgTable(
   },
   (table) => [
     index("attachments_document_id_idx").on(table.documentId),
+    index("attachments_uploaded_by_idx").on(table.uploadedBy),
     uniqueIndex("attachments_storage_key_unique").on(table.storageKey),
   ]
 );
@@ -653,7 +654,15 @@ export const pendingAttachmentUploads = pgTable(
     mimeType: text("mime_type").notNull(),
     declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
     quotaReservationId: text("quota_reservation_id"),
+    quotaOperationKey: text("quota_operation_key").notNull(),
+    quotaState: text("quota_state").notNull(),
+    actualSize: bigint("actual_size", { mode: "number" }),
+    urlIssuedAt: timestamp("url_issued_at"),
     confirmingAt: timestamp("confirming_at"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    lastError: text("last_error"),
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -665,6 +674,85 @@ export const pendingAttachmentUploads = pgTable(
       table.expiresAt,
     ),
     index("pending_attachment_uploads_document_idx").on(table.documentId),
+    index("pending_attachment_uploads_cleanup_lease_idx").on(
+      table.expiresAt,
+      table.leaseExpiresAt,
+      table.id,
+    ),
+    check(
+      "pending_attachment_uploads_quota_state_check",
+      sql`${table.quotaState} IN ('not_required', 'reserve_pending', 'reserved', 'finalize_pending', 'committed')`,
+    ),
+  ],
+);
+
+// DB-authoritative intents for object removal and quota release. Source rows
+// are deleted in the same transaction that inserts an intent; S3 and quota
+// effects happen only after commit and remain recoverable across crashes.
+export const attachmentStorageCleanupOutbox = pgTable(
+  "attachment_storage_cleanup_outbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    storageKey: text("storage_key").notNull(),
+    documentId: uuid("document_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    requestedByUserId: uuid("requested_by_user_id").notNull(),
+    workspaceId: text("workspace_id"),
+    size: bigint("size", { mode: "number" }).notNull(),
+    quotaOperationKey: text("quota_operation_key").notNull(),
+    quotaReleaseKind: text("quota_release_kind").default("none").notNull(),
+    quotaReservationId: text("quota_reservation_id"),
+    notBefore: timestamp("not_before").defaultNow().notNull(),
+    retainUntil: timestamp("retain_until"),
+    objectDeletedAt: timestamp("object_deleted_at"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at"),
+    attemptCount: integer("attempt_count").default(0).notNull(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("attachment_storage_cleanup_outbox_source_unique").on(
+      table.sourceKind,
+      table.sourceId,
+    ),
+    uniqueIndex("attachment_storage_cleanup_outbox_storage_key_unique").on(
+      table.storageKey,
+    ),
+    index("attachment_storage_cleanup_outbox_ready_idx").on(
+      table.notBefore,
+      table.leaseExpiresAt,
+      table.createdAt,
+      table.id,
+    ),
+    index("attachment_storage_cleanup_outbox_actor_idx").on(
+      table.actorUserId,
+      table.id,
+    ),
+    index("attachment_storage_cleanup_outbox_owner_idx").on(
+      table.ownerUserId,
+      table.id,
+    ),
+    index("attachment_storage_cleanup_outbox_requester_idx").on(
+      table.requestedByUserId,
+      table.id,
+    ),
+    check(
+      "attachment_storage_cleanup_outbox_source_kind_check",
+      sql`${table.sourceKind} IN ('attachment', 'pending_upload', 'uncommitted_upload')`,
+    ),
+    check(
+      "attachment_storage_cleanup_outbox_quota_kind_check",
+      sql`${table.quotaReleaseKind} IN ('none', 'reserve_pending', 'reservation', 'finalize_pending', 'committed')`,
+    ),
+    check("attachment_storage_cleanup_outbox_size_check", sql`${table.size} >= 0`),
+    check(
+      "attachment_storage_cleanup_outbox_reservation_check",
+      sql`${table.quotaReleaseKind} NOT IN ('reservation', 'finalize_pending') OR ${table.quotaReservationId} IS NOT NULL`,
+    ),
   ],
 );
 

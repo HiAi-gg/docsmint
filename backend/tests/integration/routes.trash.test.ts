@@ -1,9 +1,10 @@
 import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import {
-	OWNER_ID,
-	OTHER_USER_ID,
 	getState,
+	getStorageMockState,
 	noAuthHeaders,
+	OTHER_USER_ID,
+	OWNER_ID,
 	ownerHeaders,
 	request,
 	resetState,
@@ -84,6 +85,34 @@ describe("Trash contract", () => {
 		expect((await remove(`/api/trash/documents/${document.id}`)).status).toBe(
 			404,
 		);
+	});
+
+	it("does not remove attachment objects when the hard-purge transaction is fenced", async () => {
+		const document = seedDocument("00000000-0000-4000-8000-000000000107");
+		document.deletedAt = new Date("2024-06-02T00:00:00Z");
+		const attachmentId = "00000000-0000-4000-8000-000000000108";
+		const storageKey = `${OWNER_ID}/${document.id}/fenced.png`;
+		getState().attachments.set(attachmentId, {
+			id: attachmentId,
+			documentId: document.id,
+			workspaceId: null,
+			uploadedBy: OWNER_ID,
+			ownerId: OWNER_ID,
+			filename: "fenced.png",
+			mimeType: "image/png",
+			size: 16,
+			storageKey,
+		});
+		getState().accountPurgeFenceDeleteTables.add("documents");
+
+		const response = await remove(`/api/trash/documents/${document.id}`);
+
+		expect(response.status).toBe(409);
+		expect(response.body).toMatchObject({ code: "ACCOUNT_PURGE_FENCED" });
+		expect(getState().documents.has(document.id)).toBe(true);
+		expect(getState().attachments.has(attachmentId)).toBe(true);
+		expect(getState().attachmentStorageCleanupOutbox.size).toBe(0);
+		expect(getStorageMockState().removedKeys).toEqual([]);
 	});
 
 	it("does not expose or mutate another owner's Trash", async () => {

@@ -254,4 +254,26 @@ describe("OpenAPI external integration contract", () => {
 			]);
 		}
 	});
+
+	test("publishes the stable account-fence response for visibility and key revocation", async () => {
+		for (const [method, path] of [
+			["post", "/api/documents/{id}/publish"],
+			["post", "/api/documents/{id}/unpublish"],
+			["delete", "/api/keys/{id}"],
+		] as const) {
+			expect(spec.paths[path]?.[method]?.responses?.["409"]).toEqual({
+				$ref: "#/components/responses/AccountPurgeFenced",
+			});
+		}
+		for (const sourcePath of [
+			"../api/routes/visibility.ts",
+			"../api/routes/keys.ts",
+		]) {
+			const source = await Bun.file(
+				new URL(sourcePath, import.meta.url),
+			).text();
+			expect(source).toContain("isAccountPurgeFencedError");
+			expect(source).toContain("accountPurgeFencedResponse()");
+		}
+	});
 });

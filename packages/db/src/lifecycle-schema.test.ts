@@ -139,12 +139,36 @@ test("attachment admission migration durably binds direct uploads to their actor
 	expect(migration).toContain("FORCE ROW LEVEL SECURITY");
 	expect(migration).toContain("pending_attachment_uploads_account_purge_fence");
 	expect(migration).toContain("attachments_uploaded_by_fkey");
+	expect(migration).toContain("fill_legacy_attachment_uploaded_by");
+
+	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+		entries: Array<{ idx: number; tag: string }>;
+	};
+	expect(journal.entries).toContainEqual(expect.objectContaining({
+		idx: 46,
+		tag: "0043_attachment_upload_admission",
+	}));
+});
+
+test("attachment cleanup outbox makes object removal recoverable after DB commit", async () => {
+	const migration = await readFile(
+		new URL("./migrations/0044_attachment_storage_cleanup_outbox.sql", import.meta.url),
+		"utf8",
+	);
+	expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.attachment_storage_cleanup_outbox");
+	expect(migration).toContain("storage_key text NOT NULL");
+	expect(migration).toContain("not_before timestamp");
+	expect(migration).toContain("lease_owner text");
+	expect(migration).toContain("lease_expires_at timestamp");
+	expect(migration).toContain("FORCE ROW LEVEL SECURITY");
+	expect(migration).toContain("attachment_storage_cleanup_outbox_account_purge_fence_insert");
+	expect(migration).toContain("pending_attachment_uploads_account_purge_fence_delete");
 
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;
 	};
 	expect(journal.entries.at(-1)).toMatchObject({
-		idx: 46,
-		tag: "0043_attachment_upload_admission",
+		idx: 47,
+		tag: "0044_attachment_storage_cleanup_outbox",
 	});
 });

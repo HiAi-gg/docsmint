@@ -47,7 +47,16 @@ exact object; an unauthenticated or tampered key cannot delete it. Account purge
 also removes workspace-peer objects attributed to the purged uploader, but does
 not complete while any previously issued PUT URL is still valid. Bounded
 startup/periodic recovery removes expired unconfirmed objects without delaying
-API readiness.
+API readiness. Presign quota work is also a durable saga: a stable operation key
+is stored before reserve, and each reserve/finalize/release phase is retry-safe.
+
+No attachment mutation deletes an object before its authoritative database
+transaction commits. Attachment delete, document hard purge, lifecycle cleanup,
+legacy upload, and duplicate-copy failure first commit an exact key to
+`attachment_storage_cleanup_outbox`. Workers claim bounded pages with
+`FOR UPDATE SKIP LOCKED`, delete idempotently, release quota by the persisted
+phase, and acknowledge only after both effects succeed. Issued URLs receive a
+second delete pass after expiry so a late PUT cannot recreate an orphan.
 
 ## Monorepo Structure
 

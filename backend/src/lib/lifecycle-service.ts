@@ -1,6 +1,7 @@
 import {
 	accounts,
 	apiKeys,
+	attachmentStorageCleanupOutbox,
 	attachments,
 	auditLog,
 	categories,
@@ -25,7 +26,15 @@ import type {
 	UserDataExportRecord,
 	UserDataLifecycle,
 } from "@hiai-docs/sdk";
-import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import {
+	drainAttachmentStorageCleanupOutbox,
+	stageAttachmentStorageCleanup,
+} from "./attachment-storage-cleanup";
+import {
+	type PendingAttachmentUploadRow,
+	stagePendingAttachmentCleanup,
+} from "./attachment-upload-cleanup";
 import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
 import { getDocsMintRuntimeOptions } from "./runtime-options";
 
@@ -581,59 +590,78 @@ export function createPersistentLifecycleService(
 					"settle_pending_attachment_uploads",
 					deletedByDomain,
 					async () => {
-						const pending = await withCleanupActor((tx) =>
-							tx
-								.select()
+						const staged = await withCleanupActor(async (tx) => {
+							const pending = await tx
+								.select({
+									id: pendingAttachmentUploads.id,
+									documentId: pendingAttachmentUploads.documentId,
+									ownerUserId: documents.ownerId,
+									actorUserId: pendingAttachmentUploads.actorUserId,
+									workspaceId: pendingAttachmentUploads.workspaceId,
+									storageKey: pendingAttachmentUploads.storageKey,
+									tokenHash: pendingAttachmentUploads.tokenHash,
+									filename: pendingAttachmentUploads.filename,
+									mimeType: pendingAttachmentUploads.mimeType,
+									declaredSize: pendingAttachmentUploads.declaredSize,
+									quotaReservationId:
+										pendingAttachmentUploads.quotaReservationId,
+									quotaOperationKey: pendingAttachmentUploads.quotaOperationKey,
+									quotaState: pendingAttachmentUploads.quotaState,
+									actualSize: pendingAttachmentUploads.actualSize,
+									urlIssuedAt: pendingAttachmentUploads.urlIssuedAt,
+									expiresAt: pendingAttachmentUploads.expiresAt,
+									leaseOwner: pendingAttachmentUploads.leaseOwner,
+								})
 								.from(pendingAttachmentUploads)
+								.innerJoin(
+									documents,
+									eq(pendingAttachmentUploads.documentId, documents.id),
+								)
 								.where(
 									eq(pendingAttachmentUploads.actorUserId, ctx.actorUserId),
-								),
-						);
-						if (pending.some((row) => row.expiresAt > new Date())) {
-							throw new LifecyclePendingAttachmentUploadsError();
-						}
-						if (pending.length === 0) return 0;
-						const deleted = await runtime.deleteObjects(
-							pending.map((row) => row.storageKey),
-							ctx.signal,
-						);
-						if (deleted < pending.length) {
-							throw new Error("pending_attachment_cleanup_failed");
-						}
-						const quotaAdmission =
-							getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
-						for (const row of pending) {
-							if (
-								!quotaAdmission ||
-								!row.quotaReservationId ||
-								!row.workspaceId
-							)
-								continue;
-							await quotaAdmission.releaseReservation(
-								{
-									workspaceId: row.workspaceId,
-									actorUserId: row.actorUserId,
-									documentId: row.documentId,
-									storageKey: row.storageKey,
-									proposedSize: row.declaredSize,
-									requestId: operation.id,
-									idempotencyKey: `attachment:${row.documentId}:${row.storageKey}`,
-									signal: ctx.signal,
-								},
-								row.quotaReservationId,
-							);
-						}
-						return dbDelete((tx) =>
+								);
+							for (const row of pending) {
+								await stagePendingAttachmentCleanup(
+									tx,
+									row as PendingAttachmentUploadRow,
+									ctx.actorUserId,
+								);
+							}
+							return pending.length;
+						});
+						await drainAttachmentStorageCleanupOutbox({
+							deleteObjects: runtime.deleteObjects,
+							actorUserId: ctx.actorUserId,
+							quotaAdmission:
+								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
+							signal: ctx.signal,
+							maxPages: 1,
+						});
+						const retained = await withCleanupActor((tx) =>
 							tx
-								.delete(pendingAttachmentUploads)
+								.select({ id: attachmentStorageCleanupOutbox.id })
+								.from(attachmentStorageCleanupOutbox)
 								.where(
-									inArray(
-										pendingAttachmentUploads.id,
-										pending.map((row) => row.id),
+									or(
+										eq(
+											attachmentStorageCleanupOutbox.actorUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.ownerUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.requestedByUserId,
+											ctx.actorUserId,
+										),
 									),
 								)
-								.returning({ id: pendingAttachmentUploads.id }),
+								.limit(1),
 						);
+						if (retained.length > 0)
+							throw new LifecyclePendingAttachmentUploadsError();
+						return staged;
 					},
 				);
 				await runStep(
@@ -662,7 +690,12 @@ export function createPersistentLifecycleService(
 					tx
 						.select({ id: documents.id })
 						.from(documents)
-						.where(eq(documents.ownerId, ctx.actorUserId)),
+						.where(
+							and(
+								eq(documents.ownerId, ctx.actorUserId),
+								isNull(documents.workspaceId),
+							),
+						),
 				);
 				const documentIds = owned.map((row) => row.id);
 				await runStep(
@@ -719,8 +752,10 @@ export function createPersistentLifecycleService(
 							size: attachments.size,
 							uploadedBy: attachments.uploadedBy,
 							workspaceId: attachments.workspaceId,
+							ownerUserId: documents.ownerId,
 						})
 						.from(attachments)
+						.innerJoin(documents, eq(attachments.documentId, documents.id))
 						.where(
 							documentIds.length
 								? or(
@@ -737,14 +772,34 @@ export function createPersistentLifecycleService(
 					"delete_attachment_objects",
 					deletedByDomain,
 					async () => {
-						const deleted = await runtime.deleteObjects(
-							objectRows.map((row) => row.storageKey),
-							ctx.signal,
-						);
-						if (deleted < objectRows.length) {
-							throw new Error("attachment_object_cleanup_failed");
-						}
-						return deleted;
+						if (objectRows.length === 0) return 0;
+						return withCleanupActor(async (tx) => {
+							for (const row of objectRows) {
+								await stageAttachmentStorageCleanup(tx, {
+									sourceKind: "attachment",
+									sourceId: row.id,
+									storageKey: row.storageKey,
+									documentId: row.documentId,
+									actorUserId: row.uploadedBy,
+									ownerUserId: row.ownerUserId,
+									requestedByUserId: ctx.actorUserId,
+									workspaceId: row.workspaceId,
+									size: row.size,
+									quotaOperationKey: `attachment:${row.documentId}:${row.storageKey}`,
+									quotaReleaseKind: row.workspaceId ? "committed" : "none",
+								});
+							}
+							const removed = await tx
+								.delete(attachments)
+								.where(
+									inArray(
+										attachments.id,
+										objectRows.map((row) => row.id),
+									),
+								)
+								.returning({ id: attachments.id });
+							return removed.length;
+						});
 					},
 				);
 				await runStep(
@@ -754,25 +809,39 @@ export function createPersistentLifecycleService(
 					"release_attachment_quota",
 					deletedByDomain,
 					async () => {
-						const quotaAdmission =
-							getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
-						if (!quotaAdmission) return 0;
-						let released = 0;
-						for (const row of objectRows) {
-							if (!row.workspaceId) continue;
-							await quotaAdmission.releaseCommitted({
-								workspaceId: row.workspaceId,
-								actorUserId: row.uploadedBy,
-								documentId: row.documentId,
-								storageKey: row.storageKey,
-								proposedSize: row.size,
-								requestId: operation.id,
-								idempotencyKey: `attachment:${row.documentId}:${row.storageKey}`,
-								signal: ctx.signal,
-							});
-							released += 1;
-						}
-						return released;
+						const result = await drainAttachmentStorageCleanupOutbox({
+							deleteObjects: runtime.deleteObjects,
+							actorUserId: ctx.actorUserId,
+							quotaAdmission:
+								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
+							signal: ctx.signal,
+							maxPages: 1,
+						});
+						const retained = await withCleanupActor((tx) =>
+							tx
+								.select({ id: attachmentStorageCleanupOutbox.id })
+								.from(attachmentStorageCleanupOutbox)
+								.where(
+									or(
+										eq(
+											attachmentStorageCleanupOutbox.actorUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.ownerUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.requestedByUserId,
+											ctx.actorUserId,
+										),
+									),
+								)
+								.limit(1),
+						);
+						if (result.failed > 0 || result.deferred > 0 || retained.length > 0)
+							throw new LifecyclePendingAttachmentUploadsError();
+						return result.deleted;
 					},
 				);
 				await runStep(
@@ -781,20 +850,7 @@ export function createPersistentLifecycleService(
 					leaseOwner,
 					"remove_attachment_rows",
 					deletedByDomain,
-					() =>
-						objectRows.length
-							? dbDelete((tx) =>
-									tx
-										.delete(attachments)
-										.where(
-											inArray(
-												attachments.id,
-												objectRows.map((row) => row.id),
-											),
-										)
-										.returning({ id: attachments.id }),
-								)
-							: Promise.resolve(0),
+					() => Promise.resolve(0),
 				);
 				await runStep(
 					operation,
@@ -825,13 +881,23 @@ export function createPersistentLifecycleService(
 							const currentDocuments = await tx
 								.select({ id: documents.id })
 								.from(documents)
-								.where(eq(documents.ownerId, ctx.actorUserId));
+								.where(
+									and(
+										eq(documents.ownerId, ctx.actorUserId),
+										isNull(documents.workspaceId),
+									),
+								);
 							const currentDocumentIds = currentDocuments.map(({ id }) => id);
 							await acquireDocumentPipelineLocks(tx, currentDocumentIds);
 							if (currentDocumentIds.length === 0) return [];
 							return tx
 								.delete(documents)
-								.where(eq(documents.ownerId, ctx.actorUserId))
+								.where(
+									and(
+										eq(documents.ownerId, ctx.actorUserId),
+										isNull(documents.workspaceId),
+									),
+								)
 								.returning({ id: documents.id });
 						}),
 				);
@@ -847,7 +913,12 @@ export function createPersistentLifecycleService(
 						dbDelete((tx) =>
 							tx
 								.delete(folders)
-								.where(eq(folders.ownerId, ctx.actorUserId))
+								.where(
+									and(
+										eq(folders.ownerId, ctx.actorUserId),
+										isNull(folders.workspaceId),
+									),
+								)
 								.returning({ id: folders.id }),
 						),
 				);
@@ -861,7 +932,12 @@ export function createPersistentLifecycleService(
 						dbDelete((tx) =>
 							tx
 								.delete(tags)
-								.where(eq(tags.ownerId, ctx.actorUserId))
+								.where(
+									and(
+										eq(tags.ownerId, ctx.actorUserId),
+										isNull(tags.workspaceId),
+									),
+								)
 								.returning({ id: tags.id }),
 						),
 				);
@@ -875,7 +951,12 @@ export function createPersistentLifecycleService(
 						dbDelete((tx) =>
 							tx
 								.delete(categories)
-								.where(eq(categories.ownerId, ctx.actorUserId))
+								.where(
+									and(
+										eq(categories.ownerId, ctx.actorUserId),
+										isNull(categories.workspaceId),
+									),
+								)
 								.returning({ id: categories.id }),
 						),
 				);

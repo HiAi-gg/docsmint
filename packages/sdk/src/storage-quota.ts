@@ -87,7 +87,11 @@ export type AttachmentStorageQuotaFinalization = Readonly<{
 
 /**
  * OSS invokes this only after it has verified tenant context and document
- * access.  A host provider is never exposed to HTTP or browser code.
+ * access. A host provider is never exposed to HTTP or browser code. Every
+ * method MUST be idempotent for `context.idempotencyKey`: repeated reserve
+ * returns the same logical reservation, repeated finalize has one charge, and
+ * repeated release is a successful no-op after the first release. The OSS
+ * durable upload/cleanup saga relies on this contract at crash boundaries.
  */
 export type AttachmentStorageQuotaAdmission = Readonly<{
 	reserve(

@@ -200,7 +200,9 @@ server records this admission before returning the URL. An unconfirmed object
 is cleaned after URL expiry, and account deletion remains retryable until every
 issued URL has expired and its exact key is gone. A mismatched or tampered token
 never grants authority to delete another object. Attachment metadata can be
-listed on the document and deleted by attachment ID.
+listed on the document and deleted by attachment ID. Deletes are database-first:
+the API commits a durable cleanup intent with the row mutation, then removes the
+exact object and releases quota asynchronously with idempotent recovery.
 
 When the durable account-deletion fence is active, guarded document, folder,
 category, tag, version, attachment, key, sharing, and Better Auth profile/email

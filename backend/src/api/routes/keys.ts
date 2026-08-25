@@ -3,6 +3,10 @@ import { and, eq } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
+import {
 	buildCategoryApiKeyScopes,
 	createApiKey,
 	GLOBAL_API_SCOPE,
@@ -262,6 +266,10 @@ export const keysRoutes = new Elysia({ prefix: "/api" })
 
 			return { success: true };
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err }, "Failed to revoke API key");
 			set.status = 500;
 			return { error: "Failed to revoke API key" };

@@ -1,5 +1,6 @@
-import { CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { CopyObjectCommand } from "@aws-sdk/client-s3";
 import {
+	attachmentStorageCleanupOutbox,
 	attachments,
 	categories,
 	documentCreateOperations,
@@ -34,6 +35,14 @@ import {
 	isAccountPurgeFenced,
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
+import {
+	drainAttachmentStorageCleanupOutbox,
+	stageAttachmentStorageCleanup,
+} from "../../lib/attachment-storage-cleanup";
+import {
+	type PendingAttachmentUploadRow,
+	stagePendingAttachmentCleanup,
+} from "../../lib/attachment-upload-cleanup";
 import { recordAuditEvent } from "../../lib/audit";
 import { config } from "../../lib/config";
 import {
@@ -71,7 +80,6 @@ import {
 	metadataReembedPageSize,
 	snapshotDocumentMetadataImpact,
 } from "../../lib/reembed";
-import { getDocsMintRuntimeOptions } from "../../lib/runtime-options";
 import { BUCKET, storage } from "../../lib/storage";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
@@ -1793,12 +1801,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
-		const copiedStorageKeys: string[] = [];
 		const cleanupCopiedStorage = async (): Promise<void> => {
-			await Promise.allSettled(
-				copiedStorageKeys.map((key) =>
-					storage.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key })),
-				),
+			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
+				() => undefined,
 			);
 		};
 		try {
@@ -1854,6 +1859,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				undefined,
 				ctx.workspaceId,
 			);
+			if (attachmentPlans.length > 0) {
+				await withTenant(ctx, async (tx) => {
+					for (const plan of attachmentPlans) {
+						await stageAttachmentStorageCleanup(tx, {
+							sourceKind: "uncommitted_upload",
+							sourceId: plan.id,
+							storageKey: plan.storageKey,
+							documentId: copyId,
+							actorUserId: userId,
+							ownerUserId: userId,
+							requestedByUserId: userId,
+							workspaceId: ctx.workspaceId ?? null,
+							size: plan.size,
+							quotaOperationKey: `attachment:${copyId}:${plan.storageKey}`,
+							quotaReleaseKind: "none",
+						});
+					}
+				});
+			}
 			for (const plan of attachmentPlans) {
 				await storage.send(
 					new CopyObjectCommand({
@@ -1862,7 +1886,6 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						Key: plan.storageKey,
 					}),
 				);
-				copiedStorageKeys.push(plan.storageKey);
 			}
 
 			const source = sourceBundle.source;
@@ -1941,6 +1964,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							size: plan.size,
 							storageKey: plan.storageKey,
 						})),
+					);
+					await tx.delete(attachmentStorageCleanupOutbox).where(
+						and(
+							eq(
+								attachmentStorageCleanupOutbox.sourceKind,
+								"uncommitted_upload",
+							),
+							inArray(
+								attachmentStorageCleanupOutbox.sourceId,
+								attachmentPlans.map((plan) => plan.id),
+							),
+						),
 					);
 				}
 
@@ -2127,13 +2162,30 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				: []),
 		);
 		try {
-			const cleanup = await withTenant(ctx, async (tx) => {
+			// Non-locking scoped preflight masks foreign IDs before taking the
+			// document pipeline advisory. The final transaction repeats this exact
+			// authorization predicate after acquiring its serialization locks.
+			const visible = await withTenant(ctx, async (tx) => {
 				const [authorized] = await tx
 					.select({ id: documents.id })
 					.from(documents)
 					.where(authorizedCondition)
 					.limit(1);
+				return authorized ?? null;
+			});
+			if (!visible) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+
+			const purged = await withTenant(ctx, async (tx) => {
+				const [authorized] = await tx
+					.select({ id: documents.id, ownerId: documents.ownerId })
+					.from(documents)
+					.where(authorizedCondition)
+					.limit(1);
 				if (!authorized) return null;
+				await acquireDocumentPipelineLock(tx, params.id);
 				const confirmed = await tx
 					.select({
 						id: attachments.id,
@@ -2147,109 +2199,49 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				const pending = await tx
 					.select({
 						id: pendingAttachmentUploads.id,
+						tokenHash: pendingAttachmentUploads.tokenHash,
+						filename: pendingAttachmentUploads.filename,
+						mimeType: pendingAttachmentUploads.mimeType,
 						storageKey: pendingAttachmentUploads.storageKey,
 						declaredSize: pendingAttachmentUploads.declaredSize,
 						actorUserId: pendingAttachmentUploads.actorUserId,
 						workspaceId: pendingAttachmentUploads.workspaceId,
 						quotaReservationId: pendingAttachmentUploads.quotaReservationId,
+						quotaOperationKey: pendingAttachmentUploads.quotaOperationKey,
+						quotaState: pendingAttachmentUploads.quotaState,
+						actualSize: pendingAttachmentUploads.actualSize,
+						urlIssuedAt: pendingAttachmentUploads.urlIssuedAt,
 						expiresAt: pendingAttachmentUploads.expiresAt,
+						leaseOwner: pendingAttachmentUploads.leaseOwner,
 					})
 					.from(pendingAttachmentUploads)
 					.where(eq(pendingAttachmentUploads.documentId, params.id));
-				return { confirmed, pending };
-			});
-			if (!cleanup) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
-			if (cleanup.pending.some((row) => row.expiresAt > new Date())) {
-				set.status = 409;
-				return {
-					error: "Attachment upload URL has not expired",
-					code: "ATTACHMENT_UPLOAD_PENDING",
-				};
-			}
-			const cleanupKeys = [
-				...cleanup.confirmed.map((row) => row.storageKey),
-				...cleanup.pending.map((row) => row.storageKey),
-			];
-			const quotaAdmission =
-				getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
-			const requiresQuotaRelease =
-				cleanup.confirmed.some((row) => row.workspaceId !== null) ||
-				cleanup.pending.some(
-					(row) => row.workspaceId !== null && row.quotaReservationId !== null,
-				);
-			if (
-				config.DOCSMINT_WORKSPACE_ENABLED &&
-				requiresQuotaRelease &&
-				!quotaAdmission
-			) {
-				set.status = 503;
-				return { error: "Attachment storage quota admission is unavailable" };
-			}
-			for (const key of cleanupKeys) {
-				await storage.send(
-					new DeleteObjectCommand({ Bucket: BUCKET, Key: key }),
-				);
-			}
-			if (quotaAdmission) {
-				try {
-					for (const row of cleanup.confirmed) {
-						if (!row.workspaceId) continue;
-						await quotaAdmission.releaseCommitted({
-							workspaceId: row.workspaceId,
-							actorUserId: row.uploadedBy,
-							documentId: params.id,
-							storageKey: row.storageKey,
-							proposedSize: row.size,
-							requestId: row.id,
-							idempotencyKey: `attachment:${params.id}:${row.storageKey}`,
-						});
-					}
-					for (const row of cleanup.pending) {
-						if (!row.workspaceId || !row.quotaReservationId) continue;
-						await quotaAdmission.releaseReservation(
-							{
-								workspaceId: row.workspaceId,
-								actorUserId: row.actorUserId,
-								documentId: params.id,
-								storageKey: row.storageKey,
-								proposedSize: row.declaredSize,
-								requestId: row.id,
-								idempotencyKey: `attachment:${params.id}:${row.storageKey}`,
-							},
-							row.quotaReservationId,
-						);
-					}
-				} catch (error) {
-					logger.error(
-						{ err: error, documentId: params.id },
-						"Failed to release attachment quota during document purge",
-					);
-					set.status = 503;
-					return { error: "Failed to release attachment storage quota" };
+				for (const row of confirmed) {
+					await stageAttachmentStorageCleanup(tx, {
+						sourceKind: "attachment",
+						sourceId: row.id,
+						storageKey: row.storageKey,
+						documentId: params.id,
+						actorUserId: row.uploadedBy,
+						ownerUserId: authorized.ownerId,
+						requestedByUserId: ctx.userId,
+						workspaceId: row.workspaceId,
+						size: row.size,
+						quotaOperationKey: `attachment:${params.id}:${row.storageKey}`,
+						quotaReleaseKind: row.workspaceId ? "committed" : "none",
+					});
 				}
-			}
-			if (cleanup.pending.length > 0) {
-				await withTenant(ctx, (tx) =>
-					tx.delete(pendingAttachmentUploads).where(
-						inArray(
-							pendingAttachmentUploads.id,
-							cleanup.pending.map((row) => row.id),
-						),
-					),
-				);
-			}
-
-			const purged = await withTenant(ctx, async (tx) => {
-				const [authorized] = await tx
-					.select({ id: documents.id })
-					.from(documents)
-					.where(authorizedCondition)
-					.limit(1);
-				if (!authorized) return null;
-				await acquireDocumentPipelineLock(tx, params.id);
+				for (const row of pending) {
+					await stagePendingAttachmentCleanup(
+						tx,
+						{
+							...row,
+							documentId: params.id,
+							ownerUserId: authorized.ownerId,
+						} as PendingAttachmentUploadRow,
+						ctx.userId,
+					);
+				}
 				const result = await tx
 					.delete(documents)
 					.where(authorizedCondition)
@@ -2260,6 +2252,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				set.status = 404;
 				return { error: "Document not found" };
 			}
+			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
+				(error) => {
+					logger.error(
+						{ err: error, documentId: params.id },
+						"Document purge cleanup retained for recovery",
+					);
+				},
+			);
 			invalidateDocCache(params.id);
 			invalidateDocListCache(ctx.userId);
 			return { success: true };

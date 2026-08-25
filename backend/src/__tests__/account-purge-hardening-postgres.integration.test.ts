@@ -4,6 +4,7 @@ import { withTenantDatabase } from "@hiai-docs/db/with-tenant";
 import { Elysia } from "elysia";
 import postgres from "postgres";
 import { authRoutes } from "../api/routes/auth";
+import { drainAttachmentStorageCleanupOutbox } from "../lib/attachment-storage-cleanup";
 import { createPersistentLifecycleService } from "../lib/lifecycle-service";
 import { createAccountPipelineCancellation } from "../queue/account-pipeline-cancellation";
 
@@ -51,6 +52,171 @@ function expectFence(error: unknown): void {
 describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 	"account purge hardening PostgreSQL contract",
 	() => {
+		test("a completed personal purge fences stale workspace actors without freezing peer-owned tenant rows", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const runtime = postgres(runtimeDatabaseUrl as string, { max: 2 });
+			const ownerA = crypto.randomUUID();
+			const ownerB = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const folderId = crypto.randomUUID();
+			const categoryId = crypto.randomUUID();
+			const tagId = crypto.randomUUID();
+			const workspaceId = `workspace-${crypto.randomUUID()}`;
+			try {
+				await setup`INSERT INTO public.users (id, email) VALUES
+					(${ownerA}::uuid, ${`${ownerA}@workspace-survivor.invalid`}),
+					(${ownerB}::uuid, ${`${ownerB}@workspace-survivor.invalid`})`;
+				await setup`INSERT INTO public.categories (id, owner_id, workspace_id, name)
+					VALUES (${categoryId}::uuid, ${ownerA}::uuid, ${workspaceId}, 'A category')`;
+				await setup`INSERT INTO public.folders
+					(id, owner_id, workspace_id, category_id, name)
+					VALUES (${folderId}::uuid, ${ownerA}::uuid, ${workspaceId}, ${categoryId}::uuid, 'A folder')`;
+				await setup`INSERT INTO public.tags (id, owner_id, workspace_id, name)
+					VALUES (${tagId}::uuid, ${ownerA}::uuid, ${workspaceId}, 'A tag')`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, workspace_id, folder_id, category_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerA}::uuid, ${workspaceId},
+						${folderId}::uuid, ${categoryId}::uuid, 'A document', '')`;
+				await setup.begin(async (tx) => {
+					await tx`SELECT public.acquire_account_purge_fence_lock(${ownerA}::uuid)`;
+					await tx`INSERT INTO public.lifecycle_operations
+						(actor_user_id, actor_subject_hash, idempotency_key,
+						 operation_kind, status, fence_token_hash, completed_at)
+					VALUES (${ownerA}::uuid, ${subjectHash(ownerA)}, ${crypto.randomUUID()},
+						'purge', 'completed', ${subjectHash(`fence:${ownerA}`)}, now())`;
+				});
+
+				await withRuntimeTenant(runtime, ownerB, workspaceId, async (tx) => {
+					await tx`UPDATE public.documents
+						SET title = 'B retained document', owner_id = ${ownerB}::uuid
+						WHERE id = ${documentId}::uuid`;
+					await tx`UPDATE public.folders SET name = 'B retained folder', owner_id = ${ownerB}::uuid
+						WHERE id = ${folderId}::uuid`;
+					await tx`UPDATE public.categories SET name = 'B retained category', owner_id = ${ownerB}::uuid
+						WHERE id = ${categoryId}::uuid`;
+					await tx`UPDATE public.tags SET name = 'B retained tag', owner_id = ${ownerB}::uuid
+						WHERE id = ${tagId}::uuid`;
+				});
+				let staleActorError: unknown;
+				try {
+					await withRuntimeTenant(
+						runtime,
+						ownerA,
+						workspaceId,
+						(tx) =>
+							tx`UPDATE public.documents SET title = 'stale A'
+							WHERE id = ${documentId}::uuid`,
+					);
+				} catch (error) {
+					staleActorError = error;
+				}
+				expectFence(staleActorError);
+				let foreignUpdated = -1;
+				await withRuntimeTenant(
+					runtime,
+					ownerB,
+					`foreign-${workspaceId}`,
+					async (tx) => {
+						const rows = await tx`UPDATE public.documents SET title = 'foreign'
+							WHERE id = ${documentId}::uuid RETURNING id`;
+						foreignUpdated = rows.length;
+					},
+				);
+				expect(foreignUpdated).toBe(0);
+				const [state] = await setup<
+					Array<{ owner_id: string; title: string }>
+				>`SELECT owner_id::text, title FROM public.documents WHERE id = ${documentId}::uuid`;
+				expect(state).toEqual({
+					owner_id: ownerB,
+					title: "B retained document",
+				});
+			} finally {
+				await setup.begin(async (tx) => {
+					await tx`SET LOCAL session_replication_role = 'replica'`;
+					await tx`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+					await tx`DELETE FROM public.folders WHERE id = ${folderId}::uuid`;
+					await tx`DELETE FROM public.categories WHERE id = ${categoryId}::uuid`;
+					await tx`DELETE FROM public.tags WHERE id = ${tagId}::uuid`;
+					await tx`DELETE FROM public.lifecycle_operations WHERE actor_user_id = ${ownerA}::uuid`;
+					await tx`DELETE FROM public.users WHERE id IN (${ownerA}::uuid, ${ownerB}::uuid)`;
+				});
+				await Promise.all([runtime.end(), setup.end()]);
+			}
+		}, 30_000);
+
+		test("cleanup outbox leases prevent overlapping workers from deleting or releasing twice", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const firstDeleteStarted = deferred<void>();
+			const releaseFirstDelete = deferred<void>();
+			const deletedKeys: string[] = [];
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@cleanup-lease.invalid`})`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'cleanup lease', '')`;
+				for (const index of [0, 1]) {
+					const sourceId = crypto.randomUUID();
+					await setup`INSERT INTO public.attachment_storage_cleanup_outbox
+						(source_kind, source_id, storage_key, document_id,
+						 actor_user_id, owner_user_id, requested_by_user_id,
+						 size, quota_operation_key)
+					VALUES (
+						'uncommitted_upload', ${sourceId}::uuid,
+						${`cleanup-lease/${documentId}/${index}`}, ${documentId}::uuid,
+						${ownerId}::uuid, ${ownerId}::uuid, ${ownerId}::uuid,
+						1, ${`cleanup-operation-${sourceId}`}
+					)`;
+				}
+				const first = drainAttachmentStorageCleanupOutbox({
+					leaseOwner: `first-${crypto.randomUUID()}`,
+					pageSize: 10,
+					deleteObjects: async (keys) => {
+						deletedKeys.push(...keys);
+						firstDeleteStarted.resolve(undefined);
+						await releaseFirstDelete.promise;
+						return keys.length;
+					},
+				});
+				await firstDeleteStarted.promise;
+				const second = await drainAttachmentStorageCleanupOutbox({
+					leaseOwner: `second-${crypto.randomUUID()}`,
+					pageSize: 10,
+					deleteObjects: async (keys) => {
+						deletedKeys.push(...keys);
+						return keys.length;
+					},
+				});
+				expect(second).toEqual({
+					claimed: 0,
+					deleted: 0,
+					deferred: 0,
+					failed: 0,
+				});
+				releaseFirstDelete.resolve(undefined);
+				expect(await first).toMatchObject({
+					claimed: 2,
+					deleted: 2,
+					failed: 0,
+				});
+				expect(new Set(deletedKeys).size).toBe(2);
+				expect(deletedKeys).toHaveLength(2);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count
+					FROM public.attachment_storage_cleanup_outbox
+					WHERE owner_user_id = ${ownerId}::uuid`;
+				expect(remaining?.count).toBe(0);
+			} finally {
+				releaseFirstDelete.resolve(undefined);
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE owner_user_id = ${ownerId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup.end();
+			}
+		}, 30_000);
+
 		test("completed fences reject Better Auth profile and email mutations with the stable public error", async () => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
 			const app = new Elysia().use(authRoutes);

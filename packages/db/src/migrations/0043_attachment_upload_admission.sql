@@ -1,10 +1,51 @@
 ALTER TABLE public.attachments
   ADD COLUMN IF NOT EXISTS uploaded_by uuid;--> statement-breakpoint
 UPDATE public.attachments AS attachment
+SET uploaded_by = candidate.id
+FROM public.users AS candidate
+WHERE attachment.uploaded_by IS NULL
+  AND candidate.id::text = split_part(
+    attachment.storage_key,
+    '/',
+    array_length(string_to_array(attachment.storage_key, '/'), 1) - 2
+  )
+  AND attachment.document_id::text = split_part(
+    attachment.storage_key,
+    '/',
+    array_length(string_to_array(attachment.storage_key, '/'), 1) - 1
+  );--> statement-breakpoint
+-- Historical noncanonical keys have no trustworthy actor segment. Preserve
+-- them by falling back to the parent owner after the canonical right-parse.
+UPDATE public.attachments AS attachment
 SET uploaded_by = parent.owner_id
 FROM public.documents AS parent
 WHERE parent.id = attachment.document_id
   AND attachment.uploaded_by IS NULL;--> statement-breakpoint
+
+-- The exact 0.6.8 runtime omits uploaded_by. Keep rollback/runtime
+-- compatibility without overwriting the actor explicitly supplied by 0.7.
+CREATE OR REPLACE FUNCTION public.fill_legacy_attachment_uploaded_by()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  IF NEW.uploaded_by IS NULL THEN
+    SELECT parent.owner_id INTO NEW.uploaded_by
+    FROM public.documents AS parent
+    WHERE parent.id = NEW.document_id
+    FOR SHARE;
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.fill_legacy_attachment_uploaded_by() FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.fill_legacy_attachment_uploaded_by() TO hiai_app;--> statement-breakpoint
+DROP TRIGGER IF EXISTS attachments_fill_legacy_uploaded_by ON public.attachments;--> statement-breakpoint
+CREATE TRIGGER attachments_fill_legacy_uploaded_by
+  BEFORE INSERT ON public.attachments
+  FOR EACH ROW EXECUTE FUNCTION public.fill_legacy_attachment_uploaded_by();--> statement-breakpoint
 ALTER TABLE public.attachments
   ALTER COLUMN uploaded_by SET NOT NULL;--> statement-breakpoint
 DO $$

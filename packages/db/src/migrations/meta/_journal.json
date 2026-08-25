@@ -330,6 +330,13 @@
 			"when": 1787621600000,
 			"tag": "0043_attachment_upload_admission",
 			"breakpoints": true
+		},
+		{
+			"idx": 47,
+			"version": "7",
+			"when": 1787625200000,
+			"tag": "0044_attachment_storage_cleanup_outbox",
+			"breakpoints": true
 		}
 	]
 }

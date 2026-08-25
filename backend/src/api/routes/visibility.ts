@@ -1,6 +1,10 @@
 import { documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
+import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
 import { recordAuditEvent } from "../../lib/audit";
 import {
 	canAccessContent,
@@ -118,7 +122,11 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 			}).catch(() => {});
 
 			return result.document;
-		} catch {
+		} catch (error) {
+			if (isAccountPurgeFencedError(error)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			set.status = 500;
 			return { error: "Failed to publish document" };
 		}
@@ -230,7 +238,11 @@ export const visibilityRoutes = new Elysia({ prefix: "/api" })
 			}).catch(() => {});
 
 			return result.document;
-		} catch {
+		} catch (error) {
+			if (isAccountPurgeFencedError(error)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			set.status = 500;
 			return { error: "Failed to unpublish document" };
 		}

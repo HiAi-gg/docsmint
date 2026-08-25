@@ -112,8 +112,29 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
-const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 4;
+const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 5;
 const EXPECTED_ADDITIVE_COLUMNS = [
+	"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
+	"attachment_storage_cleanup_outbox.attempt_count:integer:NO:0",
+	"attachment_storage_cleanup_outbox.created_at:timestamp without time zone:NO:now()",
+	"attachment_storage_cleanup_outbox.document_id:uuid:NO:",
+	"attachment_storage_cleanup_outbox.id:uuid:NO:gen_random_uuid()",
+	"attachment_storage_cleanup_outbox.last_error:text:YES:",
+	"attachment_storage_cleanup_outbox.lease_expires_at:timestamp without time zone:YES:",
+	"attachment_storage_cleanup_outbox.lease_owner:text:YES:",
+	"attachment_storage_cleanup_outbox.not_before:timestamp without time zone:NO:now()",
+	"attachment_storage_cleanup_outbox.object_deleted_at:timestamp without time zone:YES:",
+	"attachment_storage_cleanup_outbox.owner_user_id:uuid:NO:",
+	"attachment_storage_cleanup_outbox.quota_operation_key:text:NO:",
+	"attachment_storage_cleanup_outbox.quota_release_kind:text:NO:'none'::text",
+	"attachment_storage_cleanup_outbox.quota_reservation_id:text:YES:",
+	"attachment_storage_cleanup_outbox.requested_by_user_id:uuid:NO:",
+	"attachment_storage_cleanup_outbox.retain_until:timestamp without time zone:YES:",
+	"attachment_storage_cleanup_outbox.size:bigint:NO:",
+	"attachment_storage_cleanup_outbox.source_id:uuid:NO:",
+	"attachment_storage_cleanup_outbox.source_kind:text:NO:",
+	"attachment_storage_cleanup_outbox.storage_key:text:NO:",
+	"attachment_storage_cleanup_outbox.workspace_id:text:YES:",
 	"attachments.uploaded_by:uuid:NO:",
 	"document_pipeline_runs.embedding_context_hash:text:YES:",
 	"document_pipeline_runs.refresh_mode:text:NO:'full'::text",
@@ -126,6 +147,8 @@ const EXPECTED_ADDITIVE_COLUMNS = [
 	"metadata_reembed_outbox.revision:text:NO:",
 	"metadata_reembed_outbox.workspace_id:text:YES:",
 	"pending_attachment_uploads.actor_user_id:uuid:NO:",
+	"pending_attachment_uploads.actual_size:bigint:YES:",
+	"pending_attachment_uploads.attempt_count:integer:NO:0",
 	"pending_attachment_uploads.confirming_at:timestamp without time zone:YES:",
 	"pending_attachment_uploads.created_at:timestamp without time zone:NO:now()",
 	"pending_attachment_uploads.declared_size:bigint:NO:",
@@ -133,10 +156,16 @@ const EXPECTED_ADDITIVE_COLUMNS = [
 	"pending_attachment_uploads.expires_at:timestamp without time zone:NO:",
 	"pending_attachment_uploads.filename:text:NO:",
 	"pending_attachment_uploads.id:uuid:NO:gen_random_uuid()",
+	"pending_attachment_uploads.last_error:text:YES:",
+	"pending_attachment_uploads.lease_expires_at:timestamp without time zone:YES:",
+	"pending_attachment_uploads.lease_owner:text:YES:",
 	"pending_attachment_uploads.mime_type:text:NO:",
+	"pending_attachment_uploads.quota_operation_key:text:NO:",
 	"pending_attachment_uploads.quota_reservation_id:text:YES:",
+	"pending_attachment_uploads.quota_state:text:NO:",
 	"pending_attachment_uploads.storage_key:text:NO:",
 	"pending_attachment_uploads.token_hash:text:NO:",
+	"pending_attachment_uploads.url_issued_at:timestamp without time zone:YES:",
 	"pending_attachment_uploads.workspace_id:text:YES:",
 ];
 
@@ -1502,6 +1531,7 @@ async function databaseSnapshot(ownerUrl: string): Promise<MigrationSnapshot> {
 				AND (
 					(table_name = 'attachments' AND column_name = 'uploaded_by')
 					OR table_name = 'pending_attachment_uploads'
+					OR table_name = 'attachment_storage_cleanup_outbox'
 					OR
 					(table_name = 'documents' AND column_name = 'embedding_context_hash')
 					OR (
@@ -1537,12 +1567,58 @@ async function migrateActual(
 	afterFirst: MigrationSnapshot;
 	afterSecond: MigrationSnapshot;
 }> {
+	const peerActorId = crypto.randomUUID();
+	const workspaceDocumentId = crypto.randomUUID();
+	const workspaceAttachmentId = crypto.randomUUID();
+	const personalDocumentId = crypto.randomUUID();
+	const personalAttachmentId = crypto.randomUUID();
+	const fixture = postgres(prepared.ownerUrl, { max: 1 });
+	try {
+		await fixture`INSERT INTO public.users (id, email)
+			VALUES (${peerActorId}::uuid, ${`${peerActorId}@migration-rehearsal.invalid`})`;
+		await fixture`INSERT INTO public.documents
+			(id, owner_id, workspace_id, title, content)
+		VALUES
+			(${workspaceDocumentId}::uuid, ${prepared.userId}::uuid,
+			 ${prepared.workspaceId}, 'Historical peer attachment', ''),
+			(${personalDocumentId}::uuid, ${prepared.userId}::uuid,
+			 NULL, 'Historical personal attachment', '')`;
+		await fixture`INSERT INTO public.attachments
+			(id, document_id, workspace_id, filename, mime_type, size, storage_key)
+		VALUES
+			(${workspaceAttachmentId}::uuid, ${workspaceDocumentId}::uuid,
+			 ${prepared.workspaceId}, 'peer.png', 'image/png', 8,
+			 ${`${prepared.workspaceId}/${peerActorId}/${workspaceDocumentId}/peer.png`}),
+			(${personalAttachmentId}::uuid, ${personalDocumentId}::uuid,
+			 NULL, 'legacy.png', 'image/png', 8,
+			 ${`noncanonical/${personalDocumentId}/legacy.png`})`;
+	} finally {
+		await fixture.end();
+	}
 	const before = await databaseSnapshot(prepared.ownerUrl);
 	const submoduleRoot = join(prepared.saasRoot, "docsmint-oss");
 	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
 	const afterFirst = await databaseSnapshot(prepared.ownerUrl);
 	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
 	const afterSecond = await databaseSnapshot(prepared.ownerUrl);
+	const verification = postgres(prepared.ownerUrl, { max: 1 });
+	try {
+		const rows = await verification<
+			Array<{ id: string; uploaded_by: string }>
+		>`SELECT id::text, uploaded_by::text
+			FROM public.attachments
+			WHERE id IN (${workspaceAttachmentId}::uuid, ${personalAttachmentId}::uuid)
+			ORDER BY id`;
+		const actors = new Map(rows.map((row) => [row.id, row.uploaded_by]));
+		if (actors.get(workspaceAttachmentId) !== peerActorId) {
+			throw new Error("canonical historical workspace attachment actor was not preserved");
+		}
+		if (actors.get(personalAttachmentId) !== prepared.userId) {
+			throw new Error("noncanonical historical attachment did not fall back to its parent owner");
+		}
+	} finally {
+		await verification.end();
+	}
 	return { before, afterFirst, afterSecond };
 }
 
@@ -2118,6 +2194,51 @@ async function smoke068Actual(
 			content: `${token} body`,
 			categoryId: prepared.categoryA,
 		});
+		// The upgraded schema must remain writable by the exact 0.6.8 runtime,
+		// whose legacy multipart route omits attachments.uploaded_by. Migration
+		// 0043 fills that attribution before the NOT NULL check.
+		const attachmentHeaders = new Headers(
+			assertionHeaders(assertion, prepared.apiKey),
+		);
+		attachmentHeaders.delete("content-type");
+		const attachmentForm = new FormData();
+		attachmentForm.set(
+			"file",
+			new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x36, 0x38])], {
+				type: "image/png",
+			}),
+			`${token}.png`,
+		);
+		const attachmentResponse = await fetch(
+			`${baseUrl}/api/documents/${id}/attachments`,
+			{
+				method: "POST",
+				headers: attachmentHeaders,
+				body: attachmentForm,
+			},
+		);
+		if (attachmentResponse.status !== 201) {
+			throw new Error(
+				`0.6.8 attachment upload returned HTTP ${attachmentResponse.status}: ${await attachmentResponse.text()}`,
+			);
+		}
+		const attachmentId = objectBody(
+			await attachmentResponse.json(),
+			"0.6.8 attachment upload",
+		).id;
+		if (typeof attachmentId !== "string")
+			throw new Error("0.6.8 attachment upload did not return an id");
+		await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				assertion,
+				`/api/attachments/${attachmentId}`,
+				{ method: "DELETE" },
+			),
+			[200, 204],
+			"0.6.8 attachment cleanup",
+		);
 		await assertStatus(
 			apiRequest(baseUrl, prepared.apiKey, assertion, `/api/documents/${id}`),
 			200,

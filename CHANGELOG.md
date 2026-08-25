@@ -64,6 +64,10 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   confirmation and cleanup to an exact signed object key, and keep lifecycle
   purge retryable until issued URLs expire and confirmed or pending SeaweedFS
   objects attributed to the account are durably removed.
+- Commit attachment and hard-purge row deletion with an exact storage-cleanup
+  outbox intent before touching SeaweedFS. Bounded leased recovery makes object
+  deletion and idempotent quota reserve/finalize/release crash-safe across
+  concurrent instances, including late PUTs against an already-issued URL.
 
 ## [0.6.8] - 2026-08-21
 

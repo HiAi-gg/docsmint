@@ -20,113 +20,121 @@ export const CSRF_SECRET = "test-csrf-secret-32-characters-long-xxxxx";
 export const WEBHOOK_SECRET = "test-webhook-secret-32-chars-long-xx";
 
 export interface TestState {
-  users: Map<string, any>;
-  folders: Map<string, any>;
-  documents: Map<string, any>;
-  tags: Map<string, any>;
-  categories: Map<string, any>;
-  pipelineRuns: Map<string, any>;
-  documentTags: Array<{ documentId: string; tagId: string }>;
-  shareLinks: Map<string, any>;
-  guestAccess: any[];
-  versions: any[];
-  attachments: Map<string, any>;
-  documentEmbeddings: any[];
-  metadataReembedOutbox: Map<string, any>;
-  lifecycleOperations: Map<string, any>;
-  pendingAttachmentUploads: Map<string, any>;
-  enqueuedEmbeddings: string[];
-  enqueuedEmbeddingRequests: Array<{
-    id: string;
-    source: string | undefined;
-    workspaceId: string | undefined;
-    options: unknown;
-  }>;
-  calls: Array<{ kind: string; table: string; ids?: string[] }>;
-  queries: string[];
-  insertFailures: Set<string>;
-  outboxInsertShouldThrow: boolean;
+	users: Map<string, any>;
+	folders: Map<string, any>;
+	documents: Map<string, any>;
+	tags: Map<string, any>;
+	categories: Map<string, any>;
+	pipelineRuns: Map<string, any>;
+	documentTags: Array<{ documentId: string; tagId: string }>;
+	shareLinks: Map<string, any>;
+	guestAccess: any[];
+	versions: any[];
+	attachments: Map<string, any>;
+	documentEmbeddings: any[];
+	metadataReembedOutbox: Map<string, any>;
+	lifecycleOperations: Map<string, any>;
+	pendingAttachmentUploads: Map<string, any>;
+	attachmentStorageCleanupOutbox: Map<string, any>;
+	enqueuedEmbeddings: string[];
+	enqueuedEmbeddingRequests: Array<{
+		id: string;
+		source: string | undefined;
+		workspaceId: string | undefined;
+		options: unknown;
+	}>;
+	calls: Array<{ kind: string; table: string; ids?: string[] }>;
+	queries: string[];
+	insertFailures: Set<string>;
+	outboxInsertShouldThrow: boolean;
+	accountPurgeFenceDeleteTables: Set<string>;
 }
 
 function uuid4(): string {
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
+	return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+		const r = (Math.random() * 16) | 0;
+		const v = c === "x" ? r : (r & 0x3) | 0x8;
+		return v.toString(16);
+	});
 }
 
 function createState(): TestState {
-  const state: TestState = {
-    users: new Map(),
-    folders: new Map(),
-    documents: new Map(),
-    tags: new Map(),
-    categories: new Map(),
-    pipelineRuns: new Map(),
-    documentTags: [],
-    shareLinks: new Map(),
-    guestAccess: [],
-    versions: [],
-    attachments: new Map(),
-    documentEmbeddings: [],
-    metadataReembedOutbox: new Map(),
-    lifecycleOperations: new Map(),
-    pendingAttachmentUploads: new Map(),
-    enqueuedEmbeddings: [],
-    enqueuedEmbeddingRequests: [],
-    calls: [],
-    queries: [],
-    insertFailures: new Set(),
-    outboxInsertShouldThrow: false,
-  };
-  state.users.set(OWNER_ID, {
-    id: OWNER_ID,
-    email: "[email protected]",
-    name: "Owner",
-    emailVerified: true,
-  });
-  state.users.set(OTHER_USER_ID, {
-    id: OTHER_USER_ID,
-    email: "[email protected]",
-    name: "Other",
-    emailVerified: true,
-  });
-  return state;
+	const state: TestState = {
+		users: new Map(),
+		folders: new Map(),
+		documents: new Map(),
+		tags: new Map(),
+		categories: new Map(),
+		pipelineRuns: new Map(),
+		documentTags: [],
+		shareLinks: new Map(),
+		guestAccess: [],
+		versions: [],
+		attachments: new Map(),
+		documentEmbeddings: [],
+		metadataReembedOutbox: new Map(),
+		lifecycleOperations: new Map(),
+		pendingAttachmentUploads: new Map(),
+		attachmentStorageCleanupOutbox: new Map(),
+		enqueuedEmbeddings: [],
+		enqueuedEmbeddingRequests: [],
+		calls: [],
+		queries: [],
+		insertFailures: new Set(),
+		outboxInsertShouldThrow: false,
+		accountPurgeFenceDeleteTables: new Set(),
+	};
+	state.users.set(OWNER_ID, {
+		id: OWNER_ID,
+		email: "[email protected]",
+		name: "Owner",
+		emailVerified: true,
+	});
+	state.users.set(OTHER_USER_ID, {
+		id: OTHER_USER_ID,
+		email: "[email protected]",
+		name: "Other",
+		emailVerified: true,
+	});
+	return state;
 }
 
 let state: TestState = createState();
 
 export function getState(): TestState {
-  return state;
+	return state;
 }
 
 export function resetState(): void {
-  state = createState();
-  // The redis store is module-scoped state outside `state`; clear it
-  // so per-test isolation holds for routes that read/write the cache
-  // (see the in-memory store at the bottom of this file). Without this
-  // a key set in one test would leak into the next via `cacheGetOrSet`.
-  resetRedisStore();
+	state = createState();
+	// The redis store is module-scoped state outside `state`; clear it
+	// so per-test isolation holds for routes that read/write the cache
+	// (see the in-memory store at the bottom of this file). Without this
+	// a key set in one test would leak into the next via `cacheGetOrSet`.
+	resetRedisStore();
+	storageMockState.removeObjectCalls = 0;
+	storageMockState.removeObjectShouldThrow = false;
+	storageMockState.removedKeys.length = 0;
+	storageMockState.storedSizes.clear();
 }
 
 /** Seed the minimal document shape used by search-channel integration tests. */
 export function seedSearchDocument(input: {
-  id: string;
-  ownerId: string;
-  title: string;
-  content?: string;
+	id: string;
+	ownerId: string;
+	title: string;
+	content?: string;
 }): void {
-  state.documents.set(input.id, {
-    id: input.id,
-    ownerId: input.ownerId,
-    title: input.title,
-    content: input.content ?? "",
-    folderId: null,
-    categoryId: null,
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-  });
+	state.documents.set(input.id, {
+		id: input.id,
+		ownerId: input.ownerId,
+		title: input.title,
+		content: input.content ?? "",
+		folderId: null,
+		categoryId: null,
+		createdAt: new Date("2026-01-01T00:00:00.000Z"),
+		updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+	});
 }
 
 const TAG_EQ = Symbol("eq");
@@ -152,17 +160,17 @@ const markOr = (...conds: any[]) => ({ [TAG_OR]: true, values: conds });
 const markIsNull = (col: any) => ({ [TAG_IS_NULL]: true, col });
 const markIsNotNull = (col: any) => ({ [TAG_IS_NOT_NULL]: true, col });
 const markInArray = (col: any, vals: any[]) => ({
-  [TAG_IN_ARRAY]: true,
-  col,
-  vals,
+	[TAG_IN_ARRAY]: true,
+	col,
+	vals,
 });
 const markDesc = (col: any) => ({ [TAG_DESC]: true, col });
 const markAsc = (col: any) => ({ [TAG_ASC]: true, col });
 const markCount = (col: any) => ({ [TAG_COUNT]: true, col });
 const markLike = (col: any, pattern: any) => ({
-  [TAG_LIKE]: true,
-  col,
-  pattern,
+	[TAG_LIKE]: true,
+	col,
+	pattern,
 });
 const markNe = (col: any, val: any) => ({ [TAG_NE]: true, col, val });
 const markGt = (col: any, val: any) => ({ [TAG_GT]: true, col, val });
@@ -171,323 +179,326 @@ const markGte = (col: any, val: any) => ({ [TAG_GTE]: true, col, val });
 const markLte = (col: any, val: any) => ({ [TAG_LTE]: true, col, val });
 
 const sql: any = (strings: TemplateStringsArray, ...values: any[]) => ({
-  [TAG_SQL]: true,
-  strings: [...strings],
-  values,
-  as: (name: string) => ({ name }),
+	[TAG_SQL]: true,
+	strings: [...strings],
+	values,
+	as: (name: string) => ({ name }),
 });
 sql.raw = () => "RAW";
 sql.join = (values: any[], separator: any) => ({
-  [TAG_SQL]: true,
-  strings: ["join"],
-  values: [values, separator],
+	[TAG_SQL]: true,
+	strings: ["join"],
+	values: [values, separator],
 });
 
 const OVERRIDES: Record<string, any> = {
-  eq: markEq,
-  and: markAnd,
-  or: markOr,
-  isNull: markIsNull,
-  isNotNull: markIsNotNull,
-  inArray: markInArray,
-  desc: markDesc,
-  asc: markAsc,
-  count: markCount,
-  like: markLike,
-  ne: markNe,
-  gt: markGt,
-  lt: markLt,
-  gte: markGte,
-  lte: markLte,
-  sql,
+	eq: markEq,
+	and: markAnd,
+	or: markOr,
+	isNull: markIsNull,
+	isNotNull: markIsNotNull,
+	inArray: markInArray,
+	desc: markDesc,
+	asc: markAsc,
+	count: markCount,
+	like: markLike,
+	ne: markNe,
+	gt: markGt,
+	lt: markLt,
+	gte: markGte,
+	lte: markLte,
+	sql,
 };
 
 mock.module("drizzle-orm", () => {
-  const real = require("drizzle-orm");
-  return new Proxy(real, {
-    get(target, prop) {
-      if (typeof prop === "string" && prop in OVERRIDES) {
-        return OVERRIDES[prop];
-      }
-      return target[prop];
-    },
-  });
+	const real = require("drizzle-orm");
+	return new Proxy(real, {
+		get(target, prop) {
+			if (typeof prop === "string" && prop in OVERRIDES) {
+				return OVERRIDES[prop];
+			}
+			return target[prop];
+		},
+	});
 });
 
 function snakeToCamel(s: string): string {
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+	return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
 function getColumnName(col: any): string {
-  const snake = col?.name ?? "?";
-  return snakeToCamel(snake);
+	const snake = col?.name ?? "?";
+	return snakeToCamel(snake);
 }
 
 function getTableName(table: any): string {
-  if (table?._?.name) return table._.name;
-  const syms = Object.getOwnPropertySymbols(table ?? {});
-  for (const sym of syms) {
-    const val = table[sym];
-    if (typeof val === "string" && /^[a-z_]+$/.test(val)) return val;
-  }
-  return table?.name ?? "?";
+	if (table?._?.name) return table._.name;
+	const syms = Object.getOwnPropertySymbols(table ?? {});
+	for (const sym of syms) {
+		const val = table[sym];
+		if (typeof val === "string" && /^[a-z_]+$/.test(val)) return val;
+	}
+	return table?.name ?? "?";
 }
 
 function getCollection(name: string): any[] | Map<string, any> {
-  switch (name) {
-    case "users":
-      return state.users;
-    case "folders":
-      return state.folders;
-    case "documents":
-      return state.documents;
-    case "tags":
-      return state.tags;
-    case "categories":
-      return state.categories;
-    case "document_pipeline_runs":
-      return state.pipelineRuns;
-    case "document_tags":
-      return state.documentTags;
-    case "share_links":
-      return state.shareLinks;
-    case "guest_access":
-      return state.guestAccess;
-    case "versions":
-      return state.versions;
-    case "attachments":
-      return state.attachments;
-    case "document_embeddings":
-      return state.documentEmbeddings;
-    case "metadata_reembed_outbox":
-      return state.metadataReembedOutbox;
-    case "lifecycle_operations":
-      return state.lifecycleOperations;
-    case "pending_attachment_uploads":
-      return state.pendingAttachmentUploads;
-    default:
-      throw new Error(`Unknown table in mock DB: ${name}`);
-  }
+	switch (name) {
+		case "users":
+			return state.users;
+		case "folders":
+			return state.folders;
+		case "documents":
+			return state.documents;
+		case "tags":
+			return state.tags;
+		case "categories":
+			return state.categories;
+		case "document_pipeline_runs":
+			return state.pipelineRuns;
+		case "document_tags":
+			return state.documentTags;
+		case "share_links":
+			return state.shareLinks;
+		case "guest_access":
+			return state.guestAccess;
+		case "versions":
+			return state.versions;
+		case "attachments":
+			return state.attachments;
+		case "document_embeddings":
+			return state.documentEmbeddings;
+		case "metadata_reembed_outbox":
+			return state.metadataReembedOutbox;
+		case "lifecycle_operations":
+			return state.lifecycleOperations;
+		case "pending_attachment_uploads":
+			return state.pendingAttachmentUploads;
+		case "attachment_storage_cleanup_outbox":
+			return state.attachmentStorageCleanupOutbox;
+		default:
+			throw new Error(`Unknown table in mock DB: ${name}`);
+	}
 }
 
 function getRows(table: any): any[] {
-  const col = getCollection(getTableName(table));
-  if (col instanceof Map) return Array.from(col.values());
-  return col as any[];
+	const col = getCollection(getTableName(table));
+	if (col instanceof Map) return Array.from(col.values());
+	return col as any[];
 }
 
 function evaluateCondition(row: any, cond: any): boolean {
-  if (cond == null) return true;
-  if (cond[TAG_EQ]) {
-	const value = row[getColumnName(cond.col)];
-	return value instanceof Date && cond.val instanceof Date
-		? value.getTime() === cond.val.getTime()
-		: value === cond.val;
-  }
-  if (cond[TAG_NE]) {
-	const value = row[getColumnName(cond.col)];
-	return value instanceof Date && cond.val instanceof Date
-		? value.getTime() !== cond.val.getTime()
-		: value !== cond.val;
-  }
-  if (cond[TAG_GT]) return row[getColumnName(cond.col)] > cond.val;
-  if (cond[TAG_LT]) return row[getColumnName(cond.col)] < cond.val;
-  if (cond[TAG_GTE]) return row[getColumnName(cond.col)] >= cond.val;
-  if (cond[TAG_LTE]) return row[getColumnName(cond.col)] <= cond.val;
-  if (cond[TAG_AND])
-    return cond.values.every((c: any) => evaluateCondition(row, c));
-  if (cond[TAG_OR])
-    return cond.values.some((c: any) => evaluateCondition(row, c));
-  // PostgreSQL defaults nullable columns to NULL. Older fixtures omit newly
-  // added nullable columns, so treat an absent property as the same value in
-  // this in-memory harness.
-  if (cond[TAG_IS_NULL]) return row[getColumnName(cond.col)] == null;
-  if (cond[TAG_IS_NOT_NULL]) return row[getColumnName(cond.col)] != null;
-  if (cond[TAG_IN_ARRAY])
-    return cond.vals.includes(row[getColumnName(cond.col)]);
-  if (cond[TAG_LIKE]) {
-    const v = row[getColumnName(cond.col)];
-    if (typeof v !== "string") return false;
-    const pattern = String(cond.pattern).replace(/%/g, ".*");
-    return new RegExp(`^${pattern}$`).test(v);
-  }
-  return true;
+	if (cond == null) return true;
+	if (cond[TAG_EQ]) {
+		const value = row[getColumnName(cond.col)];
+		return value instanceof Date && cond.val instanceof Date
+			? value.getTime() === cond.val.getTime()
+			: value === cond.val;
+	}
+	if (cond[TAG_NE]) {
+		const value = row[getColumnName(cond.col)];
+		return value instanceof Date && cond.val instanceof Date
+			? value.getTime() !== cond.val.getTime()
+			: value !== cond.val;
+	}
+	if (cond[TAG_GT]) return row[getColumnName(cond.col)] > cond.val;
+	if (cond[TAG_LT]) return row[getColumnName(cond.col)] < cond.val;
+	if (cond[TAG_GTE]) return row[getColumnName(cond.col)] >= cond.val;
+	if (cond[TAG_LTE]) return row[getColumnName(cond.col)] <= cond.val;
+	if (cond[TAG_AND])
+		return cond.values.every((c: any) => evaluateCondition(row, c));
+	if (cond[TAG_OR])
+		return cond.values.some((c: any) => evaluateCondition(row, c));
+	// PostgreSQL defaults nullable columns to NULL. Older fixtures omit newly
+	// added nullable columns, so treat an absent property as the same value in
+	// this in-memory harness.
+	if (cond[TAG_IS_NULL]) return row[getColumnName(cond.col)] == null;
+	if (cond[TAG_IS_NOT_NULL]) return row[getColumnName(cond.col)] != null;
+	if (cond[TAG_IN_ARRAY])
+		return cond.vals.includes(row[getColumnName(cond.col)]);
+	if (cond[TAG_LIKE]) {
+		const v = row[getColumnName(cond.col)];
+		if (typeof v !== "string") return false;
+		const pattern = String(cond.pattern).replace(/%/g, ".*");
+		return new RegExp(`^${pattern}$`).test(v);
+	}
+	return true;
 }
 
 function applyFieldSelection(rows: any[], fields: any): any[] {
-  if (!fields || typeof fields !== "object") return rows;
-  const keys = Object.keys(fields);
-  const aggregateKeys = keys.filter((k) => fields[k]?.[TAG_COUNT]);
-  const columnKeys = keys.filter((k) => !aggregateKeys.includes(k));
+	if (!fields || typeof fields !== "object") return rows;
+	const keys = Object.keys(fields);
+	const aggregateKeys = keys.filter((k) => fields[k]?.[TAG_COUNT]);
+	const columnKeys = keys.filter((k) => !aggregateKeys.includes(k));
 
-  if (aggregateKeys.length === 0) {
-    return rows.map((row) => {
-      const out: any = {};
-      for (const k of columnKeys) {
-        out[k] = row[getColumnName(fields[k])];
-      }
-      return out;
-    });
-  }
+	if (aggregateKeys.length === 0) {
+		return rows.map((row) => {
+			const out: any = {};
+			for (const k of columnKeys) {
+				out[k] = row[getColumnName(fields[k])];
+			}
+			return out;
+		});
+	}
 
-  return rows.map((row) => {
-    const out: any = {};
-    for (const k of columnKeys) {
-      out[k] = row[getColumnName(fields[k])];
-    }
-    for (const k of aggregateKeys) {
-      if (row.id != null) {
-        out[k] = state.documentTags.filter((dt) => dt.tagId === row.id).length;
-      } else {
-        out[k] = 0;
-      }
-    }
-    return out;
-  });
+	return rows.map((row) => {
+		const out: any = {};
+		for (const k of columnKeys) {
+			out[k] = row[getColumnName(fields[k])];
+		}
+		for (const k of aggregateKeys) {
+			if (row.id != null) {
+				out[k] = state.documentTags.filter((dt) => dt.tagId === row.id).length;
+			} else {
+				out[k] = 0;
+			}
+		}
+		return out;
+	});
 }
 
 interface SelectCtx {
-  type: "select";
-  fields: any;
-  from: any;
-  joins: Array<{ type: string; table: any; cond: any }>;
-  where: any;
-  limit: number | null;
-  offset: number | null;
-  orderBy: any[];
-  groupBy: any[] | null;
+	type: "select";
+	fields: any;
+	from: any;
+	joins: Array<{ type: string; table: any; cond: any }>;
+	where: any;
+	limit: number | null;
+	offset: number | null;
+	orderBy: any[];
+	groupBy: any[] | null;
 }
 
 function buildSelectProxy(ctx: SelectCtx): any {
-  const handler: ProxyHandler<any> = {
-    get(_target, prop) {
-      if (prop === "then") {
-        return (resolve: any, reject: any) => {
-          try {
-            return Promise.resolve(executeSelect(ctx)).then(resolve, reject);
-          } catch (err) {
-            return Promise.reject(err).then(reject, reject);
-          }
-        };
-      }
-      if (prop === "from")
-        return (table: any) => {
-          ctx.from = table;
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "where")
-        return (cond: any) => {
-          ctx.where = cond;
-          return buildSelectProxy(ctx);
-        };
-      // Drizzle's row-locking clause is a no-op for the in-memory harness;
-      // production uses FOR UPDATE on the same transaction connection.
-      if (prop === "for")
-        return (lock: string) => {
-          let rows = getRows(ctx.from);
-          if (ctx.where) rows = rows.filter((row) => evaluateCondition(row, ctx.where));
-          if (ctx.orderBy.length > 0) {
-            rows = [...rows].sort((left, right) => {
-              for (const ordering of ctx.orderBy) {
-                const isDesc = ordering[TAG_DESC] === true;
-                const column = getColumnName(ordering.col ?? ordering);
-                if (left[column] === right[column]) continue;
-                const comparison = left[column] < right[column] ? -1 : 1;
-                return isDesc ? -comparison : comparison;
-              }
-              return 0;
-            });
-          }
-          state.calls.push({
-            kind: `lock:${lock}`,
-            table: getTableName(ctx.from),
-            ids: rows
-              .map((row) => row.id)
-              .filter((id): id is string => typeof id === "string"),
-          });
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "limit")
-        return (n: number) => {
-          ctx.limit = n;
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "offset")
-        return (n: number) => {
-          ctx.offset = n;
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "orderBy")
-        return (...cols: any[]) => {
-          ctx.orderBy = cols;
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "groupBy")
-        return (...cols: any[]) => {
-          ctx.groupBy = cols;
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "leftJoin")
-        return (table: any, cond: any) => {
-          ctx.joins.push({ type: "left", table, cond });
-          return buildSelectProxy(ctx);
-        };
-      if (prop === "innerJoin")
-        return (table: any, cond: any) => {
-          ctx.joins.push({ type: "inner", table, cond });
-          return buildSelectProxy(ctx);
-        };
-      return undefined;
-    },
-  };
-  return new Proxy({}, handler);
+	const handler: ProxyHandler<any> = {
+		get(_target, prop) {
+			if (prop === "then") {
+				return (resolve: any, reject: any) => {
+					try {
+						return Promise.resolve(executeSelect(ctx)).then(resolve, reject);
+					} catch (err) {
+						return Promise.reject(err).then(reject, reject);
+					}
+				};
+			}
+			if (prop === "from")
+				return (table: any) => {
+					ctx.from = table;
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "where")
+				return (cond: any) => {
+					ctx.where = cond;
+					return buildSelectProxy(ctx);
+				};
+			// Drizzle's row-locking clause is a no-op for the in-memory harness;
+			// production uses FOR UPDATE on the same transaction connection.
+			if (prop === "for")
+				return (lock: string) => {
+					let rows = getRows(ctx.from);
+					if (ctx.where)
+						rows = rows.filter((row) => evaluateCondition(row, ctx.where));
+					if (ctx.orderBy.length > 0) {
+						rows = [...rows].sort((left, right) => {
+							for (const ordering of ctx.orderBy) {
+								const isDesc = ordering[TAG_DESC] === true;
+								const column = getColumnName(ordering.col ?? ordering);
+								if (left[column] === right[column]) continue;
+								const comparison = left[column] < right[column] ? -1 : 1;
+								return isDesc ? -comparison : comparison;
+							}
+							return 0;
+						});
+					}
+					state.calls.push({
+						kind: `lock:${lock}`,
+						table: getTableName(ctx.from),
+						ids: rows
+							.map((row) => row.id)
+							.filter((id): id is string => typeof id === "string"),
+					});
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "limit")
+				return (n: number) => {
+					ctx.limit = n;
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "offset")
+				return (n: number) => {
+					ctx.offset = n;
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "orderBy")
+				return (...cols: any[]) => {
+					ctx.orderBy = cols;
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "groupBy")
+				return (...cols: any[]) => {
+					ctx.groupBy = cols;
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "leftJoin")
+				return (table: any, cond: any) => {
+					ctx.joins.push({ type: "left", table, cond });
+					return buildSelectProxy(ctx);
+				};
+			if (prop === "innerJoin")
+				return (table: any, cond: any) => {
+					ctx.joins.push({ type: "inner", table, cond });
+					return buildSelectProxy(ctx);
+				};
+			return undefined;
+		},
+	};
+	return new Proxy({}, handler);
 }
 
 function executeSelect(ctx: SelectCtx): any[] {
-  if (!ctx.from) return [];
-  const tableName = getTableName(ctx.from);
-  state.calls.push({ kind: "select", table: tableName });
-  let rows = getRows(ctx.from);
-  if (ctx.where) rows = rows.filter((r) => evaluateCondition(r, ctx.where));
-  if (ctx.orderBy.length > 0) {
-    rows = [...rows].sort((a, b) => {
-		for (const ordering of ctx.orderBy) {
-			const isDesc = ordering[TAG_DESC] === true;
-			const colName = getColumnName(ordering.col ?? ordering);
-			const av = a[colName];
-			const bv = b[colName];
-			if (av === bv) continue;
-			if (av == null) return 1;
-			if (bv == null) return -1;
-			const cmp = av < bv ? -1 : 1;
-			return isDesc ? -cmp : cmp;
+	if (!ctx.from) return [];
+	const tableName = getTableName(ctx.from);
+	state.calls.push({ kind: "select", table: tableName });
+	let rows = getRows(ctx.from);
+	if (ctx.where) rows = rows.filter((r) => evaluateCondition(r, ctx.where));
+	if (ctx.orderBy.length > 0) {
+		rows = [...rows].sort((a, b) => {
+			for (const ordering of ctx.orderBy) {
+				const isDesc = ordering[TAG_DESC] === true;
+				const colName = getColumnName(ordering.col ?? ordering);
+				const av = a[colName];
+				const bv = b[colName];
+				if (av === bv) continue;
+				if (av == null) return 1;
+				if (bv == null) return -1;
+				const cmp = av < bv ? -1 : 1;
+				return isDesc ? -cmp : cmp;
+			}
+			return 0;
+		});
+	}
+	if (ctx.groupBy && ctx.groupBy.length > 0) {
+		const seen = new Set<string>();
+		const grouped: any[] = [];
+		for (const row of rows) {
+			const key = ctx.groupBy
+				.map((g) => String(row[getColumnName(g)] ?? ""))
+				.join("|");
+			if (!seen.has(key)) {
+				seen.add(key);
+				grouped.push(row);
+			}
 		}
-		return 0;
-    });
-  }
-  if (ctx.groupBy && ctx.groupBy.length > 0) {
-    const seen = new Set<string>();
-    const grouped: any[] = [];
-    for (const row of rows) {
-      const key = ctx.groupBy
-        .map((g) => String(row[getColumnName(g)] ?? ""))
-        .join("|");
-      if (!seen.has(key)) {
-        seen.add(key);
-        grouped.push(row);
-      }
-    }
-    rows = grouped;
-  }
-  if (ctx.offset != null) rows = rows.slice(ctx.offset);
-  if (ctx.limit != null) rows = rows.slice(0, ctx.limit);
-  return applyFieldSelection(rows, ctx.fields);
+		rows = grouped;
+	}
+	if (ctx.offset != null) rows = rows.slice(ctx.offset);
+	if (ctx.limit != null) rows = rows.slice(0, ctx.limit);
+	return applyFieldSelection(rows, ctx.fields);
 }
 
 interface InsertCtx {
-  type: "insert";
-  table: any;
-  values: any[];
+	type: "insert";
+	table: any;
+	values: any[];
 }
 
 function buildInsertProxy(ctx: InsertCtx): any {
@@ -515,303 +526,417 @@ function buildInsertProxy(ctx: InsertCtx): any {
 	};
 	const handler: ProxyHandler<any> = {
 		get(_target, prop) {
-      if (prop === "values")
-        return (v: any) => {
-          ctx.values = Array.isArray(v) ? v : [v];
-          return buildInsertProxy(ctx);
-        };
-      if (prop === "onConflictDoNothing")
-        return (_options?: unknown) => buildInsertProxy(ctx);
-		if (prop === "returning") return () => Promise.resolve(applyInsert());
-		if (prop === "then")
-			return (resolve: any, reject: any) => {
-				try {
-					return Promise.resolve(applyInsert()).then(resolve, reject);
-				} catch (error) {
-					return Promise.reject(error).then(resolve, reject);
-				}
-			};
-      return undefined;
-    },
-  };
-  return new Proxy({}, handler);
+			if (prop === "values")
+				return (v: any) => {
+					ctx.values = Array.isArray(v) ? v : [v];
+					return buildInsertProxy(ctx);
+				};
+			if (prop === "onConflictDoNothing")
+				return (_options?: unknown) => buildInsertProxy(ctx);
+			if (prop === "returning") return () => Promise.resolve(applyInsert());
+			if (prop === "then")
+				return (resolve: any, reject: any) => {
+					try {
+						return Promise.resolve(applyInsert()).then(resolve, reject);
+					} catch (error) {
+						return Promise.reject(error).then(resolve, reject);
+					}
+				};
+			return undefined;
+		},
+	};
+	return new Proxy({}, handler);
 }
 
 interface UpdateCtx {
-  type: "update";
-  table: any;
-  set: any;
-  where: any;
+	type: "update";
+	table: any;
+	set: any;
+	where: any;
 }
 
 function buildUpdateProxy(ctx: UpdateCtx): any {
-  const applyUpdate = () => {
-    state.calls.push({ kind: "update", table: getTableName(ctx.table) });
-    const tableName = getTableName(ctx.table);
-    const collection = getCollection(tableName);
-    const returned: any[] = [];
-    const rows =
-      collection instanceof Map
-        ? Array.from(collection.values())
-        : (collection as any[]);
-    for (const row of rows) {
-      if (!evaluateCondition(row, ctx.where)) continue;
-      Object.assign(row, ctx.set);
-      row.updatedAt = new Date();
-      returned.push({ ...row });
-    }
-    return returned;
-  };
-  const handler: ProxyHandler<any> = {
-    get(_target, prop) {
-      if (prop === "set")
-        return (s: any) => {
-          ctx.set = s;
-          return buildUpdateProxy(ctx);
-        };
-      if (prop === "where")
-        return (cond: any) => {
-          ctx.where = cond;
-          return buildUpdateProxy(ctx);
-        };
-      if (prop === "returning")
-        return () => Promise.resolve(applyUpdate());
-      if (prop === "then")
-        return (resolve: any, reject: any) => {
-          try {
-            return Promise.resolve(applyUpdate()).then(resolve, reject);
-          } catch (err) {
-            return Promise.reject(err).then(reject, reject);
-          }
-        };
-      return undefined;
-    },
-  };
-  return new Proxy({}, handler);
+	const applyUpdate = () => {
+		state.calls.push({ kind: "update", table: getTableName(ctx.table) });
+		const tableName = getTableName(ctx.table);
+		const collection = getCollection(tableName);
+		const returned: any[] = [];
+		const rows =
+			collection instanceof Map
+				? Array.from(collection.values())
+				: (collection as any[]);
+		for (const row of rows) {
+			if (!evaluateCondition(row, ctx.where)) continue;
+			for (const [key, value] of Object.entries(ctx.set ?? {})) {
+				row[key] = (value as any)?.[TAG_SQL]
+					? Number(row[key] ?? 0) + 1
+					: value;
+			}
+			row.updatedAt = new Date();
+			returned.push({ ...row });
+		}
+		return returned;
+	};
+	const handler: ProxyHandler<any> = {
+		get(_target, prop) {
+			if (prop === "set")
+				return (s: any) => {
+					ctx.set = s;
+					return buildUpdateProxy(ctx);
+				};
+			if (prop === "where")
+				return (cond: any) => {
+					ctx.where = cond;
+					return buildUpdateProxy(ctx);
+				};
+			if (prop === "returning") return () => Promise.resolve(applyUpdate());
+			if (prop === "then")
+				return (resolve: any, reject: any) => {
+					try {
+						return Promise.resolve(applyUpdate()).then(resolve, reject);
+					} catch (err) {
+						return Promise.reject(err).then(reject, reject);
+					}
+				};
+			return undefined;
+		},
+	};
+	return new Proxy({}, handler);
 }
 
 interface DeleteCtx {
-  type: "delete";
-  table: any;
-  where: any;
+	type: "delete";
+	table: any;
+	where: any;
 }
 
 function applyDeleteReferentialActions(
-  tableName: string,
-  deletedRows: readonly any[],
+	tableName: string,
+	deletedRows: readonly any[],
 ): void {
-  const deletedIds = new Set(deletedRows.map((row) => row.id));
-  if (tableName === "folders") {
-    for (const document of state.documents.values()) {
-      if (deletedIds.has(document.folderId)) document.folderId = null;
-    }
-    for (const folder of state.folders.values()) {
-      if (deletedIds.has(folder.parentId)) folder.parentId = null;
-    }
-  }
-  if (tableName === "categories") {
-    for (const document of state.documents.values()) {
-      if (deletedIds.has(document.categoryId)) document.categoryId = null;
-    }
-    for (const folder of state.folders.values()) {
-      if (deletedIds.has(folder.categoryId)) folder.categoryId = null;
-    }
-  }
+	const deletedIds = new Set(deletedRows.map((row) => row.id));
+	if (tableName === "folders") {
+		for (const document of state.documents.values()) {
+			if (deletedIds.has(document.folderId)) document.folderId = null;
+		}
+		for (const folder of state.folders.values()) {
+			if (deletedIds.has(folder.parentId)) folder.parentId = null;
+		}
+	}
+	if (tableName === "categories") {
+		for (const document of state.documents.values()) {
+			if (deletedIds.has(document.categoryId)) document.categoryId = null;
+		}
+		for (const folder of state.folders.values()) {
+			if (deletedIds.has(folder.categoryId)) folder.categoryId = null;
+		}
+	}
 }
 
 function buildDeleteProxy(ctx: DeleteCtx): any {
-  const handler: ProxyHandler<any> = {
-    get(_target, prop) {
-      if (prop === "where")
-        return (cond: any) => {
-          ctx.where = cond;
-          return buildDeleteProxy(ctx);
-        };
-      if (prop === "returning")
-        return () => {
-          state.calls.push({ kind: "delete", table: getTableName(ctx.table) });
-          const tableName = getTableName(ctx.table);
-          const collection = getCollection(tableName);
-          const returned: any[] = [];
-          const items =
-            collection instanceof Map
-              ? Array.from(collection.entries())
-              : (collection as any[]).map((r, i) => [i, r]);
-          const kept: any[] = [];
-          for (const [, row] of items as Array<[any, any]>) {
-            if (evaluateCondition(row, ctx.where)) {
-              returned.push({ ...row });
-            } else {
-              kept.push(row);
-            }
-          }
-          if (collection instanceof Map) {
-            for (const r of returned) collection.delete(r.id);
-          } else {
-            (collection as any[]).length = 0;
-            (collection as any[]).push(...kept);
-          }
-          applyDeleteReferentialActions(tableName, returned);
-          return Promise.resolve(returned);
-        };
-      if (prop === "then")
-        return (resolve: any, reject: any) => {
-          try {
-            state.calls.push({
-              kind: "delete",
-              table: getTableName(ctx.table),
-            });
-            const tableName = getTableName(ctx.table);
-            const collection = getCollection(tableName);
-            const items =
-              collection instanceof Map
-                ? Array.from(collection.entries())
-                : (collection as any[]).map((r, i) => [i, r]);
-            const kept: any[] = [];
-            for (const [, row] of items as Array<[any, any]>) {
-              if (!evaluateCondition(row, ctx.where)) kept.push(row);
-            }
-            if (collection instanceof Map) {
-              for (const r of Array.from(collection.values())) {
-                if (!kept.includes(r)) collection.delete(r.id);
-              }
-            } else {
-              (collection as any[]).length = 0;
-              (collection as any[]).push(...kept);
-            }
-            const deletedRows = (items as Array<[any, any]>)
-              .map(([, row]) => row)
-              .filter((row) => !kept.includes(row));
-            applyDeleteReferentialActions(tableName, deletedRows);
-            return Promise.resolve(undefined).then(resolve, reject);
-          } catch (err) {
-            return Promise.reject(err).then(reject, reject);
-          }
-        };
-      return undefined;
-    },
-  };
-  return new Proxy({}, handler);
+	const throwIfFenced = (tableName: string): void => {
+		if (!state.accountPurgeFenceDeleteTables.has(tableName)) return;
+		const error = new Error("account_purge_fenced") as Error & {
+			code: string;
+			constraint: string;
+		};
+		error.code = "55000";
+		error.constraint = "account_purge_fenced";
+		throw error;
+	};
+	const handler: ProxyHandler<any> = {
+		get(_target, prop) {
+			if (prop === "where")
+				return (cond: any) => {
+					ctx.where = cond;
+					return buildDeleteProxy(ctx);
+				};
+			if (prop === "returning")
+				return () => {
+					state.calls.push({ kind: "delete", table: getTableName(ctx.table) });
+					const tableName = getTableName(ctx.table);
+					throwIfFenced(tableName);
+					const collection = getCollection(tableName);
+					const returned: any[] = [];
+					const items =
+						collection instanceof Map
+							? Array.from(collection.entries())
+							: (collection as any[]).map((r, i) => [i, r]);
+					const kept: any[] = [];
+					for (const [, row] of items as Array<[any, any]>) {
+						if (evaluateCondition(row, ctx.where)) {
+							returned.push({ ...row });
+						} else {
+							kept.push(row);
+						}
+					}
+					if (collection instanceof Map) {
+						for (const r of returned) collection.delete(r.id);
+					} else {
+						(collection as any[]).length = 0;
+						(collection as any[]).push(...kept);
+					}
+					applyDeleteReferentialActions(tableName, returned);
+					return Promise.resolve(returned);
+				};
+			if (prop === "then")
+				return (resolve: any, reject: any) => {
+					try {
+						state.calls.push({
+							kind: "delete",
+							table: getTableName(ctx.table),
+						});
+						const tableName = getTableName(ctx.table);
+						throwIfFenced(tableName);
+						const collection = getCollection(tableName);
+						const items =
+							collection instanceof Map
+								? Array.from(collection.entries())
+								: (collection as any[]).map((r, i) => [i, r]);
+						const kept: any[] = [];
+						for (const [, row] of items as Array<[any, any]>) {
+							if (!evaluateCondition(row, ctx.where)) kept.push(row);
+						}
+						if (collection instanceof Map) {
+							for (const r of Array.from(collection.values())) {
+								if (!kept.includes(r)) collection.delete(r.id);
+							}
+						} else {
+							(collection as any[]).length = 0;
+							(collection as any[]).push(...kept);
+						}
+						const deletedRows = (items as Array<[any, any]>)
+							.map(([, row]) => row)
+							.filter((row) => !kept.includes(row));
+						applyDeleteReferentialActions(tableName, deletedRows);
+						return Promise.resolve(undefined).then(resolve, reject);
+					} catch (err) {
+						return Promise.reject(err).then(reject, reject);
+					}
+				};
+			return undefined;
+		},
+	};
+	return new Proxy({}, handler);
 }
 
 function buildMockDb() {
-  return {
-    select(fields?: any) {
-      const ctx: SelectCtx = {
-        type: "select",
-        fields,
-        from: null,
-        joins: [],
-        where: null,
-        limit: null,
-        offset: null,
-        orderBy: [],
-        groupBy: null,
-      };
-      return buildSelectProxy(ctx);
-    },
-    selectDistinct(fields?: any) {
-      const ctx: SelectCtx = {
-        type: "select",
-        fields,
-        from: null,
-        joins: [],
-        where: null,
-        limit: null,
-        offset: null,
-        orderBy: [],
-        groupBy: null,
-      };
-      return buildSelectProxy(ctx);
-    },
-    insert(table: any) {
-      return buildInsertProxy({ type: "insert", table, values: [] });
-    },
-    update(table: any) {
-      return buildUpdateProxy({ type: "update", table, set: {}, where: null });
-    },
-    delete(table: any) {
-      return buildDeleteProxy({ type: "delete", table, where: null });
-    },
-    execute(query: any) {
-      const queryText = Array.isArray(query?.strings)
-        ? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
-        : "";
-      state.queries.push(queryText);
-      if (queryText.includes("docsmint:tenant-topology-lock")) {
-        state.calls.push({ kind: "lock:topology", table: "tenant" });
-        return Promise.resolve([]);
-      }
-      if (queryText.includes("with recursive ancestors")) {
-        state.calls.push({ kind: "resolve:folder-category", table: "folders" });
-        const folderId = query.values?.find(
-          (value: unknown) => typeof value === "string",
-        );
-        if (typeof folderId !== "string") return Promise.resolve([]);
-        const visited = new Set<string>();
-        let current = state.folders.get(folderId);
-        while (current && !visited.has(current.id)) {
-          visited.add(current.id);
-          if (current.ownerId !== OWNER_ID) return Promise.resolve([]);
-          if (current.categoryId) {
-            return Promise.resolve([{ category_id: current.categoryId }]);
-          }
-          current = current.parentId
-            ? state.folders.get(current.parentId)
-            : undefined;
-        }
-        return Promise.resolve([]);
-      }
-      if (queryText.includes("docsmint:metadata-impact:folder")) {
-        const targetId = query.values?.find(
-          (value: unknown) => typeof value === "string",
-        );
-        if (typeof targetId !== "string") return Promise.resolve([]);
-        const ids = new Set<string>();
-        const pending = [targetId];
-        while (pending.length > 0) {
-          const id = pending.shift();
-          if (!id || ids.has(id)) continue;
-          const folder = state.folders.get(id);
-          if (!folder || folder.ownerId !== OWNER_ID) continue;
-          ids.add(id);
-          for (const child of state.folders.values()) {
-            if (child.ownerId === OWNER_ID && child.parentId === id) {
-              pending.push(child.id);
-            }
-          }
-        }
-        return Promise.resolve([...ids].sort().map((id) => ({ id })));
-      }
-      if (queryText.includes("docsmint:metadata-impact:category")) {
-        const targetId = query.values?.find(
-          (value: unknown) => typeof value === "string",
-        );
-        if (typeof targetId !== "string") return Promise.resolve([]);
-        const effectiveCategory = (folderId: string): string | null => {
-          const visited = new Set<string>();
-          let current = state.folders.get(folderId);
-          while (current && !visited.has(current.id)) {
-            visited.add(current.id);
-            if (current.ownerId !== OWNER_ID) return null;
-            if (current.categoryId) return current.categoryId;
-            current = current.parentId
-              ? state.folders.get(current.parentId)
-              : undefined;
-          }
-          return null;
-        };
-        return Promise.resolve(
-          [...state.folders.values()]
-            .filter(
-              (folder) =>
-                folder.ownerId === OWNER_ID &&
-                effectiveCategory(folder.id) === targetId,
-            )
-            .map(({ id }) => ({ id }))
-            .sort((left, right) => left.id.localeCompare(right.id)),
-        );
-      }
+	return {
+		select(fields?: any) {
+			const ctx: SelectCtx = {
+				type: "select",
+				fields,
+				from: null,
+				joins: [],
+				where: null,
+				limit: null,
+				offset: null,
+				orderBy: [],
+				groupBy: null,
+			};
+			return buildSelectProxy(ctx);
+		},
+		selectDistinct(fields?: any) {
+			const ctx: SelectCtx = {
+				type: "select",
+				fields,
+				from: null,
+				joins: [],
+				where: null,
+				limit: null,
+				offset: null,
+				orderBy: [],
+				groupBy: null,
+			};
+			return buildSelectProxy(ctx);
+		},
+		insert(table: any) {
+			return buildInsertProxy({ type: "insert", table, values: [] });
+		},
+		update(table: any) {
+			return buildUpdateProxy({ type: "update", table, set: {}, where: null });
+		},
+		delete(table: any) {
+			return buildDeleteProxy({ type: "delete", table, where: null });
+		},
+		execute(query: any) {
+			const queryText = Array.isArray(query?.strings)
+				? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
+				: "";
+			state.queries.push(queryText);
+			if (
+				queryText.includes(
+					"from public.pending_attachment_uploads as pending",
+				) &&
+				queryText.includes("for update of pending")
+			) {
+				const [id, documentId, storageKey, tokenHash] = query.values ?? [];
+				const now = (query.values ?? []).find(
+					(value: unknown) => value instanceof Date,
+				) as Date | undefined;
+				const pending = state.pendingAttachmentUploads.get(id);
+				const parent = state.documents.get(documentId);
+				if (
+					!pending ||
+					!parent ||
+					pending.documentId !== documentId ||
+					pending.storageKey !== storageKey ||
+					pending.tokenHash !== tokenHash ||
+					!now ||
+					pending.expiresAt <= now ||
+					(pending.leaseExpiresAt != null && pending.leaseExpiresAt > now)
+				)
+					return Promise.resolve([]);
+				return Promise.resolve([
+					{
+						id: pending.id,
+						document_id: pending.documentId,
+						owner_user_id: parent.ownerId,
+						actor_user_id: pending.actorUserId,
+						workspace_id: pending.workspaceId ?? null,
+						storage_key: pending.storageKey,
+						token_hash: pending.tokenHash,
+						filename: pending.filename,
+						mime_type: pending.mimeType,
+						declared_size: pending.declaredSize,
+						quota_reservation_id: pending.quotaReservationId ?? null,
+						quota_operation_key:
+							pending.quotaOperationKey ??
+							`attachment:${pending.documentId}:${pending.storageKey}`,
+						quota_state: pending.quotaState ?? "not_required",
+						actual_size: pending.actualSize ?? null,
+						url_issued_at: pending.urlIssuedAt ?? pending.createdAt ?? null,
+						expires_at: pending.expiresAt,
+						lease_owner: pending.leaseOwner ?? null,
+					},
+				]);
+			}
+			if (
+				queryText.includes(
+					"update public.attachment_storage_cleanup_outbox as cleanup",
+				) &&
+				queryText.includes("for update skip locked")
+			) {
+				const dates = (query.values ?? []).filter(
+					(value: unknown): value is Date => value instanceof Date,
+				);
+				const now = dates[0] ?? new Date();
+				const leaseExpiresAt = dates.at(-1) ?? new Date(now.getTime() + 60_000);
+				const pageSize = (query.values ?? []).find(
+					(value: unknown) => typeof value === "number",
+				) as number | undefined;
+				const leaseOwner = [...(query.values ?? [])]
+					.reverse()
+					.find((value: unknown) => typeof value === "string") as
+					| string
+					| undefined;
+				if (!leaseOwner) return Promise.resolve([]);
+				const rows = [...state.attachmentStorageCleanupOutbox.values()]
+					.filter((row) => row.notBefore == null || row.notBefore <= now)
+					.filter(
+						(row) => row.leaseExpiresAt == null || row.leaseExpiresAt <= now,
+					)
+					.sort((left, right) =>
+						String(left.id).localeCompare(String(right.id)),
+					)
+					.slice(0, pageSize ?? 100);
+				for (const row of rows) {
+					row.leaseOwner = leaseOwner;
+					row.leaseExpiresAt = leaseExpiresAt;
+					row.attemptCount = (row.attemptCount ?? 0) + 1;
+					row.lastError = null;
+				}
+				return Promise.resolve(
+					rows.map((row) => ({
+						id: row.id,
+						storage_key: row.storageKey,
+						document_id: row.documentId,
+						actor_user_id: row.actorUserId,
+						owner_user_id: row.ownerUserId,
+						requested_by_user_id: row.requestedByUserId,
+						workspace_id: row.workspaceId ?? null,
+						size: row.size,
+						quota_operation_key: row.quotaOperationKey,
+						quota_release_kind: row.quotaReleaseKind,
+						quota_reservation_id: row.quotaReservationId ?? null,
+						retain_until: row.retainUntil ?? null,
+					})),
+				);
+			}
+			if (queryText.includes("docsmint:tenant-topology-lock")) {
+				state.calls.push({ kind: "lock:topology", table: "tenant" });
+				return Promise.resolve([]);
+			}
+			if (queryText.includes("with recursive ancestors")) {
+				state.calls.push({ kind: "resolve:folder-category", table: "folders" });
+				const folderId = query.values?.find(
+					(value: unknown) => typeof value === "string",
+				);
+				if (typeof folderId !== "string") return Promise.resolve([]);
+				const visited = new Set<string>();
+				let current = state.folders.get(folderId);
+				while (current && !visited.has(current.id)) {
+					visited.add(current.id);
+					if (current.ownerId !== OWNER_ID) return Promise.resolve([]);
+					if (current.categoryId) {
+						return Promise.resolve([{ category_id: current.categoryId }]);
+					}
+					current = current.parentId
+						? state.folders.get(current.parentId)
+						: undefined;
+				}
+				return Promise.resolve([]);
+			}
+			if (queryText.includes("docsmint:metadata-impact:folder")) {
+				const targetId = query.values?.find(
+					(value: unknown) => typeof value === "string",
+				);
+				if (typeof targetId !== "string") return Promise.resolve([]);
+				const ids = new Set<string>();
+				const pending = [targetId];
+				while (pending.length > 0) {
+					const id = pending.shift();
+					if (!id || ids.has(id)) continue;
+					const folder = state.folders.get(id);
+					if (!folder || folder.ownerId !== OWNER_ID) continue;
+					ids.add(id);
+					for (const child of state.folders.values()) {
+						if (child.ownerId === OWNER_ID && child.parentId === id) {
+							pending.push(child.id);
+						}
+					}
+				}
+				return Promise.resolve([...ids].sort().map((id) => ({ id })));
+			}
+			if (queryText.includes("docsmint:metadata-impact:category")) {
+				const targetId = query.values?.find(
+					(value: unknown) => typeof value === "string",
+				);
+				if (typeof targetId !== "string") return Promise.resolve([]);
+				const effectiveCategory = (folderId: string): string | null => {
+					const visited = new Set<string>();
+					let current = state.folders.get(folderId);
+					while (current && !visited.has(current.id)) {
+						visited.add(current.id);
+						if (current.ownerId !== OWNER_ID) return null;
+						if (current.categoryId) return current.categoryId;
+						current = current.parentId
+							? state.folders.get(current.parentId)
+							: undefined;
+					}
+					return null;
+				};
+				return Promise.resolve(
+					[...state.folders.values()]
+						.filter(
+							(folder) =>
+								folder.ownerId === OWNER_ID &&
+								effectiveCategory(folder.id) === targetId,
+						)
+						.map(({ id }) => ({ id }))
+						.sort((left, right) => left.id.localeCompare(right.id)),
+				);
+			}
 			if (queryText.includes("insert into public.metadata_reembed_outbox")) {
 				state.calls.push({ kind: "snapshot:outbox", table: "documents" });
 				if (state.outboxInsertShouldThrow) {
@@ -833,8 +958,7 @@ function buildMockDb() {
 				if (tagJoin) {
 					const tagCondition = condition?.values?.find(
 						(value: any) =>
-							value?.[TAG_EQ] === true &&
-							getColumnName(value.col) === "tagId",
+							value?.[TAG_EQ] === true && getColumnName(value.col) === "tagId",
 					);
 					const documentIds = new Set(
 						state.documentTags
@@ -911,142 +1035,148 @@ function buildMockDb() {
 					}),
 				);
 			}
-      if (queryText.includes("select id, title, similarity(title")) {
-        const q = query.values?.find((value: unknown) => typeof value === "string");
-        const normalized = typeof q === "string" ? q.trim().toLowerCase() : "";
-        const excludesDeleted = queryText.includes("deleted_at is null");
-        return Promise.resolve(
-          [...state.documents.values()]
-            .filter((document) => document.ownerId === OWNER_ID)
-            .filter((document) => !excludesDeleted || document.deletedAt == null)
-            .filter((document) =>
-              String(document.title ?? "").toLowerCase().includes(normalized),
-            )
-            .slice(0, 5)
-            .map((document) => ({
-              id: document.id,
-              title: document.title,
-              score: 1,
-            })),
-        );
-      }
-      return Promise.resolve([]);
-    },
-    async transaction(fn: any) {
-      const before = structuredClone(state);
-      state.calls.push({ kind: "transaction:begin", table: "database" });
-      try {
-        const result = await fn(this);
-        state.calls.push({ kind: "transaction:commit", table: "database" });
-        return result;
-      } catch (error) {
-        const observedCalls = state.calls;
-        const outboxInsertShouldThrow = state.outboxInsertShouldThrow;
-        state = before;
-        state.calls = observedCalls;
-        state.outboxInsertShouldThrow = outboxInsertShouldThrow;
-        state.calls.push({ kind: "transaction:rollback", table: "database" });
-        throw error;
-      }
-    },
-  };
+			if (queryText.includes("select id, title, similarity(title")) {
+				const q = query.values?.find(
+					(value: unknown) => typeof value === "string",
+				);
+				const normalized = typeof q === "string" ? q.trim().toLowerCase() : "";
+				const excludesDeleted = queryText.includes("deleted_at is null");
+				return Promise.resolve(
+					[...state.documents.values()]
+						.filter((document) => document.ownerId === OWNER_ID)
+						.filter(
+							(document) => !excludesDeleted || document.deletedAt == null,
+						)
+						.filter((document) =>
+							String(document.title ?? "")
+								.toLowerCase()
+								.includes(normalized),
+						)
+						.slice(0, 5)
+						.map((document) => ({
+							id: document.id,
+							title: document.title,
+							score: 1,
+						})),
+				);
+			}
+			return Promise.resolve([]);
+		},
+		async transaction(fn: any) {
+			const before = structuredClone(state);
+			state.calls.push({ kind: "transaction:begin", table: "database" });
+			try {
+				const result = await fn(this);
+				state.calls.push({ kind: "transaction:commit", table: "database" });
+				return result;
+			} catch (error) {
+				const observedCalls = state.calls;
+				const outboxInsertShouldThrow = state.outboxInsertShouldThrow;
+				state = before;
+				state.calls = observedCalls;
+				state.outboxInsertShouldThrow = outboxInsertShouldThrow;
+				state.calls.push({ kind: "transaction:rollback", table: "database" });
+				throw error;
+			}
+		},
+	};
 }
 
 const mockDb = buildMockDb();
 
 mock.module("../../src/lib/config.js", () => ({
-  config: {
-    API_KEY,
-    HIAI_DOCS_API_KEY: API_KEY,
-    OWNER_ID,
-    CSRF_SECRET,
-    WEBHOOK_SECRET,
-    BETTER_AUTH_SECRET: "test-shared-secret-min-32-characters-long-x",
-    BETTER_AUTH_URL: "http://localhost:50700",
-    DATABASE_URL: "postgresql://test:test@localhost:5432/test",
-    REDIS_URL: "redis://localhost:6379",
-    EMBEDDING_BASE_URL: "http://localhost:11434",
-    EMBEDDING_API_KEY: "",
-    EMBEDDING_MODEL: "nomic-embed-text",
-    EMBEDDING_FALLBACK_BASE_URL: "",
-    EMBEDDING_FALLBACK_API_KEY: "",
-    EMBEDDING_FALLBACK_MODEL: "",
-    STORAGE_ENDPOINT: "localhost",
-    STORAGE_PORT: 9000,
-    STORAGE_ACCESS_KEY: "hiai-docs",
-    STORAGE_SECRET_KEY: "hiai-docs",
-    STORAGE_BUCKET: "hiai-docs",
-    STORAGE_REGION: "us-east-1",
-    STORAGE_FORCE_PATH_STYLE: true,
-    STORAGE_PUBLIC_ENDPOINT: "localhost",
-    STORAGE_PUBLIC_PORT: 9000,
-    API_PORT: 50700,
-    FRONTEND_PORT: 50701,
-    CORS_ORIGINS: undefined,
-    NODE_ENV: "test",
-    LOG_LEVEL: "fatal",
-    // Mirror the real config surface so unit tests in src/__tests__ that
-    // share this process can read these fields without seeing `undefined`.
-    // The reembed unit tests rely on FOLDER_REEMBED_BATCH_SIZE being
-    // non-zero (otherwise the helper skips .limit() and returns the
-    // query-builder instead of rows); graph-extract unit tests rely on
-    // GRAPH_EXTRACT_MIN_CONFIDENCE to filter low-confidence entities.
-    VERSION_RETENTION_COUNT: 50,
-    CHUNK_TARGET_TOKENS: 500,
-    CHUNK_OVERLAP_TOKENS: 50,
-    AGE_DATABASE_URL: undefined,
-    GRAPH_EXTRACT_ENABLED: false,
-    GRAPH_SEARCH_ENABLED: false,
-    GRAPH_EXTRACT_MODEL: undefined,
-    GRAPH_EXTRACT_BASE_URL: undefined,
-    GRAPH_EXTRACT_API_KEY: undefined,
-    GRAPH_EXTRACT_FALLBACK_BASE_URL: undefined,
-    GRAPH_EXTRACT_FALLBACK_API_KEY: undefined,
-    GRAPH_EXTRACT_FALLBACK_MODEL: undefined,
-    GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5,
-    ADMIN_CROSS_TENANT: true,
-    HYBRID_TEXT_WEIGHT: 0.4,
-    HYBRID_SEMANTIC_WEIGHT: 0.6,
-    FOLDER_REEMBED_BATCH_SIZE: 2,
-    CATEGORY_REEMBED_BATCH_SIZE: 2,
-    TAG_REEMBED_BATCH_SIZE: 2,
-    // Smart re-embed thresholds + cron intervals (mirrors the real
-    // config-schema.ts defaults). Required so any code path that reads
-    // `config.REEMBED_*` or `config.METADATA_REEMBED_CRON_INTERVAL_MINUTES`
-    // sees the same shape as production — otherwise downstream tests
-    // see `undefined` and crash with cryptic errors.
-    REEMBED_MIN_WORD_CHANGES: 20,
-    REEMBED_MIN_CHAR_CHANGES: 100,
-    REEMBED_MAX_IDLE_HOURS: 24,
-    REEMBED_CRON_INTERVAL_MINUTES: 15,
-    METADATA_REEMBED_CRON_INTERVAL_MINUTES: 1,
-    ATTACHMENT_MAX_SIZE_MB: 25,
-    ATTACHMENT_PRESIGN_EXPIRY_SECONDS: 900,
-  },
+	config: {
+		API_KEY,
+		HIAI_DOCS_API_KEY: API_KEY,
+		OWNER_ID,
+		CSRF_SECRET,
+		WEBHOOK_SECRET,
+		BETTER_AUTH_SECRET: "test-shared-secret-min-32-characters-long-x",
+		BETTER_AUTH_URL: "http://localhost:50700",
+		DATABASE_URL: "postgresql://test:test@localhost:5432/test",
+		REDIS_URL: "redis://localhost:6379",
+		EMBEDDING_BASE_URL: "http://localhost:11434",
+		EMBEDDING_API_KEY: "",
+		EMBEDDING_MODEL: "nomic-embed-text",
+		EMBEDDING_FALLBACK_BASE_URL: "",
+		EMBEDDING_FALLBACK_API_KEY: "",
+		EMBEDDING_FALLBACK_MODEL: "",
+		STORAGE_ENDPOINT: "localhost",
+		STORAGE_PORT: 9000,
+		STORAGE_ACCESS_KEY: "hiai-docs",
+		STORAGE_SECRET_KEY: "hiai-docs",
+		STORAGE_BUCKET: "hiai-docs",
+		STORAGE_REGION: "us-east-1",
+		STORAGE_FORCE_PATH_STYLE: true,
+		STORAGE_PUBLIC_ENDPOINT: "localhost",
+		STORAGE_PUBLIC_PORT: 9000,
+		API_PORT: 50700,
+		FRONTEND_PORT: 50701,
+		CORS_ORIGINS: undefined,
+		NODE_ENV: "test",
+		LOG_LEVEL: "fatal",
+		// Mirror the real config surface so unit tests in src/__tests__ that
+		// share this process can read these fields without seeing `undefined`.
+		// The reembed unit tests rely on FOLDER_REEMBED_BATCH_SIZE being
+		// non-zero (otherwise the helper skips .limit() and returns the
+		// query-builder instead of rows); graph-extract unit tests rely on
+		// GRAPH_EXTRACT_MIN_CONFIDENCE to filter low-confidence entities.
+		VERSION_RETENTION_COUNT: 50,
+		CHUNK_TARGET_TOKENS: 500,
+		CHUNK_OVERLAP_TOKENS: 50,
+		AGE_DATABASE_URL: undefined,
+		GRAPH_EXTRACT_ENABLED: false,
+		GRAPH_SEARCH_ENABLED: false,
+		GRAPH_EXTRACT_MODEL: undefined,
+		GRAPH_EXTRACT_BASE_URL: undefined,
+		GRAPH_EXTRACT_API_KEY: undefined,
+		GRAPH_EXTRACT_FALLBACK_BASE_URL: undefined,
+		GRAPH_EXTRACT_FALLBACK_API_KEY: undefined,
+		GRAPH_EXTRACT_FALLBACK_MODEL: undefined,
+		GRAPH_EXTRACT_MIN_CONFIDENCE: 0.5,
+		ADMIN_CROSS_TENANT: true,
+		HYBRID_TEXT_WEIGHT: 0.4,
+		HYBRID_SEMANTIC_WEIGHT: 0.6,
+		FOLDER_REEMBED_BATCH_SIZE: 2,
+		CATEGORY_REEMBED_BATCH_SIZE: 2,
+		TAG_REEMBED_BATCH_SIZE: 2,
+		// Smart re-embed thresholds + cron intervals (mirrors the real
+		// config-schema.ts defaults). Required so any code path that reads
+		// `config.REEMBED_*` or `config.METADATA_REEMBED_CRON_INTERVAL_MINUTES`
+		// sees the same shape as production — otherwise downstream tests
+		// see `undefined` and crash with cryptic errors.
+		REEMBED_MIN_WORD_CHANGES: 20,
+		REEMBED_MIN_CHAR_CHANGES: 100,
+		REEMBED_MAX_IDLE_HOURS: 24,
+		REEMBED_CRON_INTERVAL_MINUTES: 15,
+		METADATA_REEMBED_CRON_INTERVAL_MINUTES: 1,
+		ATTACHMENT_MAX_SIZE_MB: 25,
+		ATTACHMENT_PRESIGN_EXPIRY_SECONDS: 900,
+	},
 }));
 
 mock.module("../../src/lib/auth.js", () => ({
-  auth: {
-    api: {
-      getSession: async () => null,
-    },
-    handler: async () =>
-      new Response("auth handler not used in tests", { status: 500 }),
-  },
-  Session: undefined,
+	auth: {
+		api: {
+			getSession: async () => null,
+		},
+		handler: async () =>
+			new Response("auth handler not used in tests", { status: 500 }),
+	},
+	Session: undefined,
 }));
 
 mock.module("../../src/lib/db.js", () => ({
-  db: mockDb,
-  // Stub raw postgres-js client. Routes that transitively import
-  // lib/graph/init.ts need this export to exist at module load; the
-  // graph module is mocked separately, so this stub is never invoked.
-  client: (() => {
-    throw new Error(
-      "db.client stub invoked in tests — graph code should be mocked",
-    );
-  }) as any,
-  withTransaction: (fn: any) => fn(mockDb),
+	db: mockDb,
+	// Stub raw postgres-js client. Routes that transitively import
+	// lib/graph/init.ts need this export to exist at module load; the
+	// graph module is mocked separately, so this stub is never invoked.
+	client: (() => {
+		throw new Error(
+			"db.client stub invoked in tests — graph code should be mocked",
+		);
+	}) as any,
+	withTransaction: (fn: any) => fn(mockDb),
 }));
 
 // Safety mock: prevent real DB connection when tests transitively load
@@ -1054,16 +1184,16 @@ mock.module("../../src/lib/db.js", () => ({
 // loading with-tenant.ts triggers client.ts → schema walk → HNSW index
 // JSON parse error (no Postgres available in test environment).
 mock.module("@hiai-docs/db/client", () => ({
-  db: mockDb,
-  client: (() => {
-    throw new Error(
-      "@hiai-docs/db/client stub invoked in tests — DB should be mocked",
-    );
-  }) as any,
+	db: mockDb,
+	client: (() => {
+		throw new Error(
+			"@hiai-docs/db/client stub invoked in tests — DB should be mocked",
+		);
+	}) as any,
 }));
 
 mock.module("@hiai-docs/db", () => ({
-  db: mockDb,
+	db: mockDb,
 }));
 
 // Stateful in-memory store backing the redis mock. `set` writes here,
@@ -1076,77 +1206,81 @@ mock.module("@hiai-docs/db", () => ({
 const redisStore: Map<string, string> = new Map();
 
 export function resetRedisStore(): void {
-  redisStore.clear();
+	redisStore.clear();
 }
 
 mock.module("../../src/lib/redis.js", () => ({
-  redis: {
-    incr: async () => 1,
-    expire: async () => 1,
-    ttl: async () => 60,
-    lpush: async () => 1,
-    brpop: async () => null,
-    get: async (key: string) => redisStore.get(key) ?? null,
-    set: async (key: string, value: string, ..._rest: any[]) => {
-      redisStore.set(key, value);
-      return "OK";
-    },
-    del: async (...keys: string[]) => {
-      let count = 0;
-      for (const key of keys) {
-        if (redisStore.delete(key)) count++;
-      }
-      return count;
-    },
-    scan: async (
-      _cursor: string,
-      _match: string,
-      pattern: string,
-      _count: string,
-      _countN: number,
-    ) => {
-      // Translate the Redis glob (`*` only — that's all our code uses)
-      // to a regex and return the matching keys in one shot. Iteration
-      // ends immediately so the do/while in invalidateDocCache runs
-      // exactly once. This matches the semantic the production
-      // behavior relies on: SCAN eventually returns cursor "0".
-      const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-      const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
-      const matches = [...redisStore.keys()].filter((k) => regex.test(k));
-      return ["0", matches];
-    },
-  },
-  redisHealthCheck: async () => true,
+	redis: {
+		incr: async () => 1,
+		expire: async () => 1,
+		ttl: async () => 60,
+		lpush: async () => 1,
+		brpop: async () => null,
+		get: async (key: string) => redisStore.get(key) ?? null,
+		set: async (key: string, value: string, ..._rest: any[]) => {
+			redisStore.set(key, value);
+			return "OK";
+		},
+		del: async (...keys: string[]) => {
+			let count = 0;
+			for (const key of keys) {
+				if (redisStore.delete(key)) count++;
+			}
+			return count;
+		},
+		scan: async (
+			_cursor: string,
+			_match: string,
+			pattern: string,
+			_count: string,
+			_countN: number,
+		) => {
+			// Translate the Redis glob (`*` only — that's all our code uses)
+			// to a regex and return the matching keys in one shot. Iteration
+			// ends immediately so the do/while in invalidateDocCache runs
+			// exactly once. This matches the semantic the production
+			// behavior relies on: SCAN eventually returns cursor "0".
+			const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+			const regex = new RegExp(`^${escaped.replace(/\*/g, ".*")}$`);
+			const matches = [...redisStore.keys()].filter((k) => regex.test(k));
+			return ["0", matches];
+		},
+	},
+	redisHealthCheck: async () => true,
 }));
 
 mock.module("../../src/lib/logger.js", () => ({
-  createDocsMintLoggerOptions: (
-    environment: { LOG_LEVEL?: string; NODE_ENV?: string } = {},
-    resolveModule: (specifier: string) => string = () => "",
-  ) => {
-    const level = environment.LOG_LEVEL ?? "info";
-    if (environment.NODE_ENV !== "development") return { level, transport: undefined };
-    try {
-      resolveModule("pino-pretty");
-      return { level, transport: { target: "pino-pretty", options: { colorize: true } } };
-    } catch {
-      return { level, transport: undefined };
-    }
-  },
-  logger: {
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-    debug: () => {},
-    fatal: () => {},
-    trace: () => {},
-  },
-  createChildLogger: () => ({
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-    debug: () => {},
-  }),
+	createDocsMintLoggerOptions: (
+		environment: { LOG_LEVEL?: string; NODE_ENV?: string } = {},
+		resolveModule: (specifier: string) => string = () => "",
+	) => {
+		const level = environment.LOG_LEVEL ?? "info";
+		if (environment.NODE_ENV !== "development")
+			return { level, transport: undefined };
+		try {
+			resolveModule("pino-pretty");
+			return {
+				level,
+				transport: { target: "pino-pretty", options: { colorize: true } },
+			};
+		} catch {
+			return { level, transport: undefined };
+		}
+	},
+	logger: {
+		info: () => {},
+		warn: () => {},
+		error: () => {},
+		debug: () => {},
+		fatal: () => {},
+		trace: () => {},
+	},
+	createChildLogger: () => ({
+		info: () => {},
+		warn: () => {},
+		error: () => {},
+		debug: () => {},
+	}),
 }));
 
 // Mutable flags for the storage mock. Tests can flip these to simulate
@@ -1155,38 +1289,38 @@ mock.module("../../src/lib/logger.js", () => ({
 // plausible result so confirm-attachments tests pass without setup.
 const storageMockState: {
 	putObjectFailNext: boolean;
-  statObjectNotFoundNext: boolean;
-  statObjectShouldThrow: boolean;
-  presignedPutObjectFailNext: boolean;
-  removeObjectCalls: number;
-  removeObjectShouldThrow: boolean;
-  removedKeys: string[];
-  getObjectFailNext: boolean;
+	statObjectNotFoundNext: boolean;
+	statObjectShouldThrow: boolean;
+	presignedPutObjectFailNext: boolean;
+	removeObjectCalls: number;
+	removeObjectShouldThrow: boolean;
+	removedKeys: string[];
+	getObjectFailNext: boolean;
 	getObjectShouldThrow: boolean;
 	getObjectCalls: number;
 	getObjectBodyMode: "web-stream" | "async-iterable";
 	putObjectCalls: number;
 	objectSize: number;
-  objectContent?: string;
-  objectBytes: Map<string, Buffer>;
-  storedSizes: Map<string, number | undefined>;
+	objectContent?: string;
+	objectBytes: Map<string, Buffer>;
+	storedSizes: Map<string, number | undefined>;
 } = {
-  putObjectFailNext: false,
-  statObjectNotFoundNext: false,
-  statObjectShouldThrow: false,
-  presignedPutObjectFailNext: false,
-  removeObjectCalls: 0,
-  removeObjectShouldThrow: false,
-  removedKeys: [],
-  getObjectFailNext: false,
-  getObjectShouldThrow: false,
-  getObjectBodyMode: "web-stream",
-  getObjectCalls: 0,
-  putObjectCalls: 0,
-  objectSize: 1024,
-  objectContent: undefined,
-  objectBytes: new Map(),
-  storedSizes: new Map(),
+	putObjectFailNext: false,
+	statObjectNotFoundNext: false,
+	statObjectShouldThrow: false,
+	presignedPutObjectFailNext: false,
+	removeObjectCalls: 0,
+	removeObjectShouldThrow: false,
+	removedKeys: [],
+	getObjectFailNext: false,
+	getObjectShouldThrow: false,
+	getObjectBodyMode: "web-stream",
+	getObjectCalls: 0,
+	putObjectCalls: 0,
+	objectSize: 1024,
+	objectContent: undefined,
+	objectBytes: new Map(),
+	storedSizes: new Map(),
 };
 // Tests can read this object directly to flip behavior, e.g.
 //   getStorageMockState().statObjectNotFoundNext = true;
@@ -1195,125 +1329,130 @@ const storageMockState: {
 // binding because the mock's send CLOSURE reads the property
 // each call.
 export function getStorageMockState() {
-  return storageMockState;
+	return storageMockState;
 }
 
 mock.module("../../src/lib/storage.js", () => ({
-  storage: {
-    send: async (command) => {
-      const cmdName = command.constructor.name;
-      if (cmdName === "PutObjectCommand") {
-        if (storageMockState.putObjectFailNext) {
-          storageMockState.putObjectFailNext = false;
-          throw new Error("Simulated put failure");
-        }
-        storageMockState.putObjectCalls++;
-        return {};
-      } else if (cmdName === "DeleteObjectCommand") {
-        storageMockState.removeObjectCalls++;
-        storageMockState.removedKeys.push(command.input.Key);
-        if (storageMockState.removeObjectShouldThrow) {
-          storageMockState.removeObjectShouldThrow = false;
-          throw new Error("Simulated remove failure");
-        }
-        return {};
-      } else if (cmdName === "HeadObjectCommand") {
-        if (storageMockState.statObjectNotFoundNext) {
-          storageMockState.statObjectNotFoundNext = false;
-          throw new Error("Not found");
-        }
-        if (storageMockState.statObjectShouldThrow) {
-          storageMockState.statObjectShouldThrow = false;
-          throw new Error("Not found");
-        }
-        // Support per-key sizes via storedSizes Map (preferred) and fallback objectSize
-        const key = command.input.Key;
-        const size = storageMockState.storedSizes.has(key)
-          ? storageMockState.storedSizes.get(key)
-          : storageMockState.objectSize;
-        return size === undefined ? {} : { ContentLength: size };
-      } else if (cmdName === "GetObjectCommand") {
-        storageMockState.getObjectCalls++;
-        if (storageMockState.getObjectFailNext) {
-          storageMockState.getObjectFailNext = false;
-          throw new Error("Simulated get failure");
-        }
-        if (storageMockState.getObjectShouldThrow) {
-          storageMockState.getObjectShouldThrow = false;
-          throw new Error("Simulated get failure");
-        }
-        // Support per-key bytes via objectBytes Map (preferred) and fallback string
-        const key = command.input.Key;
-        const bytes = storageMockState.objectBytes.get(key) ?? Buffer.from(storageMockState.objectContent || "");
-        if (storageMockState.getObjectBodyMode === "async-iterable") {
-          return {
-            Body: {
-              [Symbol.asyncIterator]: async function* () {
-                yield new Uint8Array(bytes);
-              },
-            },
-          };
-        }
-        // Return a WHATWG ReadableStream so the route's `.getReader()` works
-        const ts = new TransformStream<Uint8Array>();
-        const writer = ts.writable.getWriter();
-        writer.write(new Uint8Array(bytes));
-        writer.close();
-        return {
-          Body: ts.readable,
-        };
-      }
-      throw new Error(`Unmocked command: ${cmdName}`);
-    },
-  },
-  storagePublic: {
-    send: async (_command) => {
-      return {};
-    },
-  },
-  BUCKET: "hiai-docs",
+	storage: {
+		send: async (command) => {
+			const cmdName = command.constructor.name;
+			if (cmdName === "PutObjectCommand") {
+				if (storageMockState.putObjectFailNext) {
+					storageMockState.putObjectFailNext = false;
+					throw new Error("Simulated put failure");
+				}
+				storageMockState.putObjectCalls++;
+				return {};
+			} else if (cmdName === "DeleteObjectCommand") {
+				storageMockState.removeObjectCalls++;
+				storageMockState.removedKeys.push(command.input.Key);
+				if (storageMockState.removeObjectShouldThrow) {
+					storageMockState.removeObjectShouldThrow = false;
+					throw new Error("Simulated remove failure");
+				}
+				return {};
+			} else if (cmdName === "HeadObjectCommand") {
+				if (storageMockState.statObjectNotFoundNext) {
+					storageMockState.statObjectNotFoundNext = false;
+					throw new Error("Not found");
+				}
+				if (storageMockState.statObjectShouldThrow) {
+					storageMockState.statObjectShouldThrow = false;
+					throw new Error("Not found");
+				}
+				// Support per-key sizes via storedSizes Map (preferred) and fallback objectSize
+				const key = command.input.Key;
+				const size = storageMockState.storedSizes.has(key)
+					? storageMockState.storedSizes.get(key)
+					: storageMockState.objectSize;
+				return size === undefined ? {} : { ContentLength: size };
+			} else if (cmdName === "GetObjectCommand") {
+				storageMockState.getObjectCalls++;
+				if (storageMockState.getObjectFailNext) {
+					storageMockState.getObjectFailNext = false;
+					throw new Error("Simulated get failure");
+				}
+				if (storageMockState.getObjectShouldThrow) {
+					storageMockState.getObjectShouldThrow = false;
+					throw new Error("Simulated get failure");
+				}
+				// Support per-key bytes via objectBytes Map (preferred) and fallback string
+				const key = command.input.Key;
+				const bytes =
+					storageMockState.objectBytes.get(key) ??
+					Buffer.from(storageMockState.objectContent || "");
+				if (storageMockState.getObjectBodyMode === "async-iterable") {
+					return {
+						Body: {
+							[Symbol.asyncIterator]: async function* () {
+								yield new Uint8Array(bytes);
+							},
+						},
+					};
+				}
+				// Return a WHATWG ReadableStream so the route's `.getReader()` works
+				const ts = new TransformStream<Uint8Array>();
+				const writer = ts.writable.getWriter();
+				writer.write(new Uint8Array(bytes));
+				writer.close();
+				return {
+					Body: ts.readable,
+				};
+			}
+			throw new Error(`Unmocked command: ${cmdName}`);
+		},
+	},
+	storagePublic: {
+		send: async (_command) => {
+			return {};
+		},
+	},
+	BUCKET: "hiai-docs",
 }));
 
 mock.module("@aws-sdk/s3-request-presigner", () => ({
-  getSignedUrl: async (_client, command, _options) => {
-    if (storageMockState.presignedPutObjectFailNext) {
-      storageMockState.presignedPutObjectFailNext = false;
-      throw new Error("Simulated presign failure");
-    }
-    return `http://storage.local/hiai-docs/${command.input.Key}?X-Amz-Signature=mock`;
-  },
+	getSignedUrl: async (_client, command, _options) => {
+		if (storageMockState.presignedPutObjectFailNext) {
+			storageMockState.presignedPutObjectFailNext = false;
+			throw new Error("Simulated presign failure");
+		}
+		return `http://storage.local/hiai-docs/${command.input.Key}?X-Amz-Signature=mock`;
+	},
 }));
 
 mock.module("../../src/lib/embedding-queue.js", () => ({
-  enqueueEmbedding: (
-    id: string,
-    source?: string,
-    workspaceId?: string,
-    options?: unknown,
-  ) => {
-    state.enqueuedEmbeddings.push(id);
-    state.enqueuedEmbeddingRequests.push({ id, source, workspaceId, options });
-    return true;
-  },
-  startEmbeddingWorker: () => {},
+	enqueueEmbedding: (
+		id: string,
+		source?: string,
+		workspaceId?: string,
+		options?: unknown,
+	) => {
+		state.enqueuedEmbeddings.push(id);
+		state.enqueuedEmbeddingRequests.push({ id, source, workspaceId, options });
+		return true;
+	},
+	startEmbeddingWorker: () => {},
 }));
 
 // Pipeline producers are mocked to preserve the harness' enqueue assertion
 // while route tests remain independent from Redis and PostgreSQL migrations.
 mock.module("../../src/queue/enqueue.js", () => ({
-  enqueueDocumentPipeline: async ({ documentId }: { documentId: string }) => {
-    state.enqueuedEmbeddings.push(documentId);
-    return { generationId: "00000000-0000-4000-8000-000000000099", deduplicated: false };
-  },
-  enqueueMetadataReembedPrepareJobsBulk: async (
-    jobs: Array<{ outboxId: string; documentId: string }>,
-  ) => {
-    state.enqueuedEmbeddings.push(...jobs.map(({ documentId }) => documentId));
-    return {
-      acceptedIds: jobs.map(({ outboxId }) => outboxId),
-      deduplicatedIds: [],
-    };
-  },
+	enqueueDocumentPipeline: async ({ documentId }: { documentId: string }) => {
+		state.enqueuedEmbeddings.push(documentId);
+		return {
+			generationId: "00000000-0000-4000-8000-000000000099",
+			deduplicated: false,
+		};
+	},
+	enqueueMetadataReembedPrepareJobsBulk: async (
+		jobs: Array<{ outboxId: string; documentId: string }>,
+	) => {
+		state.enqueuedEmbeddings.push(...jobs.map(({ documentId }) => documentId));
+		return {
+			acceptedIds: jobs.map(({ outboxId }) => outboxId),
+			deduplicatedIds: [],
+		};
+	},
 }));
 
 // Mock only the network-calling embedding helpers. The pure utilities
@@ -1325,109 +1464,109 @@ mock.module("../../src/queue/enqueue.js", () => ({
 // 'buildMetadataPreamble' not found".
 const REAL_EMBEDDING_MODULE = await import("../../src/embedding/index");
 mock.module("../../src/embedding/index.js", () => ({
-  getEmbedding: async () => new Array(1024).fill(0),
-  embedDocument: async () => [
-    { chunkText: "mock chunk", embedding: new Array(1024).fill(0) },
-  ],
-  // Forward real exports so any test that pulls them through this mock
-  // path still gets the genuine implementation.
-  buildMetadataPreamble: REAL_EMBEDDING_MODULE.buildMetadataPreamble,
-  EmbeddingMetadata: REAL_EMBEDDING_MODULE.EmbeddingMetadata,
+	getEmbedding: async () => new Array(1024).fill(0),
+	embedDocument: async () => [
+		{ chunkText: "mock chunk", embedding: new Array(1024).fill(0) },
+	],
+	// Forward real exports so any test that pulls them through this mock
+	// path still gets the genuine implementation.
+	buildMetadataPreamble: REAL_EMBEDDING_MODULE.buildMetadataPreamble,
+	EmbeddingMetadata: REAL_EMBEDDING_MODULE.EmbeddingMetadata,
 }));
 
 mock.module("../../src/api/middleware/webhook-verify.js", () => ({
-  verifyWebhookSignature: (body: string, sig: string | null) => {
-    if (!sig) return false;
-    return /^[a-f0-9]{64}$/i.test(sig);
-  },
+	verifyWebhookSignature: (body: string, sig: string | null) => {
+		if (!sig) return false;
+		return /^[a-f0-9]{64}$/i.test(sig);
+	},
 }));
 
 export interface BuiltApp {
-  app: any;
-  csrfToken: string;
+	app: any;
+	csrfToken: string;
 }
 
 let cachedApp: BuiltApp | null = null;
 
 export async function setupHarness(): Promise<BuiltApp> {
-  if (cachedApp) return cachedApp;
+	if (cachedApp) return cachedApp;
 
-  const { Elysia } = await import("elysia");
-  const { csrfMiddleware } = await import("../../src/api/middleware/csrf");
-  const { authMiddleware } = await import("../../src/api/middleware/auth");
-  const { folderRoutes } = await import("../../src/api/routes/folders");
-  const { tagRoutes } = await import("../../src/api/routes/tags");
-  const { searchRoutes } = await import("../../src/api/routes/search");
-  const { shareRoutes } = await import("../../src/api/routes/share");
-  const { documentRoutes } = await import("../../src/api/routes/documents");
-  const { versionRoutes } = await import("../../src/api/routes/versions");
-  const { webhookRoutes } = await import("../../src/api/routes/webhooks");
-  const { categoryRoutes } = await import("../../src/api/routes/categories");
-  const { attachmentRoutes } = await import("../../src/api/routes/attachments");
+	const { Elysia } = await import("elysia");
+	const { csrfMiddleware } = await import("../../src/api/middleware/csrf");
+	const { authMiddleware } = await import("../../src/api/middleware/auth");
+	const { folderRoutes } = await import("../../src/api/routes/folders");
+	const { tagRoutes } = await import("../../src/api/routes/tags");
+	const { searchRoutes } = await import("../../src/api/routes/search");
+	const { shareRoutes } = await import("../../src/api/routes/share");
+	const { documentRoutes } = await import("../../src/api/routes/documents");
+	const { versionRoutes } = await import("../../src/api/routes/versions");
+	const { webhookRoutes } = await import("../../src/api/routes/webhooks");
+	const { categoryRoutes } = await import("../../src/api/routes/categories");
+	const { attachmentRoutes } = await import("../../src/api/routes/attachments");
 
-  const app = new Elysia()
-    .use(csrfMiddleware)
-    .use(authMiddleware)
-    .use(folderRoutes)
-    .use(tagRoutes)
-    .use(shareRoutes)
-    .use(searchRoutes)
-    .use(documentRoutes)
-    .use(versionRoutes)
-    .use(webhookRoutes)
-    .use(categoryRoutes)
-    .use(attachmentRoutes);
+	const app = new Elysia()
+		.use(csrfMiddleware)
+		.use(authMiddleware)
+		.use(folderRoutes)
+		.use(tagRoutes)
+		.use(shareRoutes)
+		.use(searchRoutes)
+		.use(documentRoutes)
+		.use(versionRoutes)
+		.use(webhookRoutes)
+		.use(categoryRoutes)
+		.use(attachmentRoutes);
 
-  const { createHmac, randomBytes } = await import("node:crypto");
-  function signToken(token: string): string {
-    return createHmac("sha256", CSRF_SECRET).update(token).digest("hex");
-  }
-  const raw = randomBytes(32).toString("hex");
-  const csrfToken = `${raw}.${signToken(raw)}`;
+	const { createHmac, randomBytes } = await import("node:crypto");
+	function signToken(token: string): string {
+		return createHmac("sha256", CSRF_SECRET).update(token).digest("hex");
+	}
+	const raw = randomBytes(32).toString("hex");
+	const csrfToken = `${raw}.${signToken(raw)}`;
 
-  cachedApp = { app, csrfToken };
-  return cachedApp;
+	cachedApp = { app, csrfToken };
+	return cachedApp;
 }
 
 export interface ApiResponse<T = any> {
-  status: number;
-  body: T;
-  headers: Headers;
-  raw: Response;
+	status: number;
+	body: T;
+	headers: Headers;
+	raw: Response;
 }
 
 export async function request<T = any>(
-  app: any,
-  path: string,
-  init: RequestInit = {},
+	app: any,
+	path: string,
+	init: RequestInit = {},
 ): Promise<ApiResponse<T>> {
-  const req = new Request(`http://localhost${path}`, init);
-  const res = await app.handle(req);
-  const text = await res.text();
-  let body: T;
-  try {
-    body = text ? (JSON.parse(text) as T) : (undefined as T);
-  } catch {
-    body = text as unknown as T;
-  }
-  return { status: res.status, body, headers: res.headers, raw: res };
+	const req = new Request(`http://localhost${path}`, init);
+	const res = await app.handle(req);
+	const text = await res.text();
+	let body: T;
+	try {
+		body = text ? (JSON.parse(text) as T) : (undefined as T);
+	} catch {
+		body = text as unknown as T;
+	}
+	return { status: res.status, body, headers: res.headers, raw: res };
 }
 
 export function ownerHeaders(
-  extra: Record<string, string> = {},
+	extra: Record<string, string> = {},
 ): Record<string, string> {
-  return {
-    authorization: `Bearer ${API_KEY}`,
-    "content-type": "application/json",
-    ...extra,
-  };
+	return {
+		authorization: `Bearer ${API_KEY}`,
+		"content-type": "application/json",
+		...extra,
+	};
 }
 
 export function noAuthHeaders(
-  extra: Record<string, string> = {},
+	extra: Record<string, string> = {},
 ): Record<string, string> {
-  return {
-    "content-type": "application/json",
-    ...extra,
-  };
+	return {
+		"content-type": "application/json",
+		...extra,
+	};
 }
