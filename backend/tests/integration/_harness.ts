@@ -759,11 +759,24 @@ function buildMockDb() {
 		delete(table: any) {
 			return buildDeleteProxy({ type: "delete", table, where: null });
 		},
-		execute(query: any) {
-			const queryText = Array.isArray(query?.strings)
+			execute(query: any) {
+				const queryText = Array.isArray(query?.strings)
 				? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
-				: "";
-			state.queries.push(queryText);
+					: "";
+				const timestampValues = (query.values ?? [])
+					.map((value: unknown) => {
+						if (value instanceof Date) return value;
+						if (
+							typeof value === "string" &&
+							/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
+						) {
+							const parsed = new Date(value);
+							if (Number.isFinite(parsed.getTime())) return parsed;
+						}
+						return null;
+					})
+					.filter((value: Date | null): value is Date => value !== null);
+				state.queries.push(queryText);
 			if (
 				queryText.includes(
 					"from public.pending_attachment_uploads as pending",
@@ -771,9 +784,7 @@ function buildMockDb() {
 				queryText.includes("for update of pending")
 			) {
 				const [id, documentId, storageKey, tokenHash] = query.values ?? [];
-				const now = (query.values ?? []).find(
-					(value: unknown) => value instanceof Date,
-				) as Date | undefined;
+					const now = timestampValues[0];
 				const pending = state.pendingAttachmentUploads.get(id);
 				const parent = state.documents.get(documentId);
 				if (
@@ -817,17 +828,19 @@ function buildMockDb() {
 				) &&
 				queryText.includes("for update skip locked")
 			) {
-				const dates = (query.values ?? []).filter(
-					(value: unknown): value is Date => value instanceof Date,
-				);
-				const now = dates[0] ?? new Date();
-				const leaseExpiresAt = dates.at(-1) ?? new Date(now.getTime() + 60_000);
+					const now = timestampValues[0] ?? new Date();
+					const leaseExpiresAt =
+						timestampValues.at(-1) ?? new Date(now.getTime() + 60_000);
 				const pageSize = (query.values ?? []).find(
 					(value: unknown) => typeof value === "number",
 				) as number | undefined;
 				const leaseOwner = [...(query.values ?? [])]
 					.reverse()
-					.find((value: unknown) => typeof value === "string") as
+						.find(
+							(value: unknown) =>
+								typeof value === "string" &&
+								!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value),
+						) as
 					| string
 					| undefined;
 				if (!leaseOwner) return Promise.resolve([]);
