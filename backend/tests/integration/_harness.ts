@@ -226,6 +226,31 @@ function snakeToCamel(s: string): string {
 	return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
+function asHarnessDate(value: unknown): Date | null {
+	if (value instanceof Date && Number.isFinite(value.getTime())) return value;
+	if (typeof value === "number" && Number.isFinite(value)) {
+		if (value > 1e12) return new Date(value);
+		if (value > 1e9) return new Date(value * 1_000);
+		return null;
+	}
+	if (
+		typeof value === "string" &&
+		/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
+	) {
+		const parsed = new Date(value);
+		return Number.isFinite(parsed.getTime()) ? parsed : null;
+	}
+	if (
+		value &&
+		typeof value === "object" &&
+		Array.isArray((value as { values?: unknown[] }).values)
+	) {
+		const inner = (value as { values: unknown[] }).values[0];
+		return inner === value ? null : asHarnessDate(inner);
+	}
+	return null;
+}
+
 function getColumnName(col: any): string {
 	const snake = col?.name ?? "?";
 	return snakeToCamel(snake);
@@ -515,6 +540,19 @@ function buildInsertProxy(ctx: InsertCtx): any {
 			if (newRow.id == null) newRow.id = uuid4();
 			if (newRow.createdAt == null) newRow.createdAt = new Date();
 			if (newRow.updatedAt == null) newRow.updatedAt = new Date();
+			for (const key of [
+				"notBefore",
+				"retainUntil",
+				"leaseExpiresAt",
+				"expiresAt",
+				"urlIssuedAt",
+				"confirmingAt",
+				"objectDeletedAt",
+			]) {
+				if (newRow[key] != null) {
+					newRow[key] = asHarnessDate(newRow[key]) ?? newRow[key];
+				}
+			}
 			if (collection instanceof Map) {
 				collection.set(newRow.id, newRow);
 			} else {
@@ -759,24 +797,22 @@ function buildMockDb() {
 		delete(table: any) {
 			return buildDeleteProxy({ type: "delete", table, where: null });
 		},
-			execute(query: any) {
-				const queryText = Array.isArray(query?.strings)
+		execute(query: any) {
+			const queryText = Array.isArray(query?.strings)
 				? query.strings.join(" ").replace(/\s+/g, " ").trim().toLowerCase()
-					: "";
-				const timestampValues = (query.values ?? [])
-					.map((value: unknown) => {
-						if (value instanceof Date) return value;
-						if (
-							typeof value === "string" &&
-							/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value)
-						) {
-							const parsed = new Date(value);
-							if (Number.isFinite(parsed.getTime())) return parsed;
-						}
-						return null;
-					})
-					.filter((value: Date | null): value is Date => value !== null);
-				state.queries.push(queryText);
+				: "";
+			const timestampValues = (query.values ?? [])
+				.map((value: unknown) => asHarnessDate(value))
+				.filter((value: Date | null): value is Date => value !== null);
+			state.queries.push(queryText);
+			if (queryText.includes("docsmint:document-pipeline-lock")) {
+				state.calls.push({ kind: "lock:pipeline", table: "documents" });
+				return Promise.resolve([]);
+			}
+			if (queryText.includes("docsmint:account-purge-fence-locks")) {
+				state.calls.push({ kind: "lock:purge-fence", table: "users" });
+				return Promise.resolve([]);
+			}
 			if (queryText.includes("public.abandon_pending_attachment_upload")) {
 				const [id, documentId, storageKey, tokenHash, leaseOwner] =
 					query.values ?? [];
@@ -829,7 +865,7 @@ function buildMockDb() {
 				queryText.includes("for update of pending")
 			) {
 				const [id, documentId, storageKey, tokenHash] = query.values ?? [];
-					const now = timestampValues[0];
+				const now = timestampValues[0];
 				const pending = state.pendingAttachmentUploads.get(id);
 				const parent = state.documents.get(documentId);
 				if (
@@ -879,21 +915,19 @@ function buildMockDb() {
 				) &&
 				queryText.includes("for update skip locked")
 			) {
-					const now = timestampValues[0] ?? new Date();
-					const leaseExpiresAt =
-						timestampValues.at(-1) ?? new Date(now.getTime() + 60_000);
+				const now = timestampValues[0] ?? new Date();
+				const leaseExpiresAt =
+					timestampValues.at(-1) ?? new Date(now.getTime() + 60_000);
 				const pageSize = (query.values ?? []).find(
 					(value: unknown) => typeof value === "number",
 				) as number | undefined;
 				const leaseOwner = [...(query.values ?? [])]
 					.reverse()
-						.find(
-							(value: unknown) =>
-								typeof value === "string" &&
-								!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value),
-						) as
-					| string
-					| undefined;
+					.find(
+						(value: unknown) =>
+							typeof value === "string" &&
+							!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value),
+					) as string | undefined;
 				if (!leaseOwner) return Promise.resolve([]);
 				const rows = [...state.attachmentStorageCleanupOutbox.values()]
 					.filter((row) => row.notBefore == null || row.notBefore <= now)
