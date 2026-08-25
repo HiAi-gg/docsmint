@@ -1805,9 +1805,14 @@ export async function stopIsolatedRedisServer(
 	await Promise.all([server.stdout, server.stderr]);
 }
 
+export function workspaceEnabledForRuntimeVersion(version: string): "true" | "false" {
+	return version === "0.6.8" ? "false" : "true";
+}
+
 function runtimeEnvironment(
 	prepared: ActualPreparedRehearsal,
 	port: number,
+	version: string,
 ): Record<string, string> {
 	return safeEnvironment({
 		NODE_ENV: "test",
@@ -1833,7 +1838,7 @@ function runtimeEnvironment(
 		WEBHOOK_SECRET: prepared.webhookSecret,
 		HIAI_DOCS_API_KEY: prepared.apiKey,
 		API_KEY_ENCRYPTION_SECRET: prepared.apiKeyEncryptionSecret,
-		DOCSMINT_WORKSPACE_ENABLED: "true",
+		DOCSMINT_WORKSPACE_ENABLED: workspaceEnabledForRuntimeVersion(version),
 		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
 		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
 		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED: "true",
@@ -1852,7 +1857,7 @@ async function launchRuntime(
 	const port = await freePort();
 	const child = Bun.spawn(["bun", "apps/api/src/oss-runtime.ts"], {
 		cwd: root,
-		env: runtimeEnvironment(prepared, port),
+		env: runtimeEnvironment(prepared, port, version),
 		stdin: "ignore",
 		stdout: "pipe",
 		stderr: "pipe",

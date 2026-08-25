@@ -13,6 +13,7 @@ import {
 	verifyNoNewRequiredEnvironment,
 	verifyRuntimeSmoke,
 	verifySaasBaseline,
+	workspaceEnabledForRuntimeVersion,
 } from "./rehearse-saas-0.7-adoption";
 
 async function redisCli(
@@ -43,6 +44,11 @@ async function redisCli(
 }
 
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
+	test("runs the 0.6.8 attachment rollback smoke in compatible personal mode", () => {
+		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("false");
+		expect(workspaceEnabledForRuntimeVersion("0.7.0")).toBe("true");
+	});
+
 	const withAttachmentCleanupColumns = (columns: string[]) =>
 		[
 			...columns,
