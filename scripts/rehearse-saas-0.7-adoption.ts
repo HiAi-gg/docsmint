@@ -956,7 +956,7 @@ async function prepareActualRehearsal(
 		redisUrl: "",
 		storageBucket: `dm-rehearsal-${normalizedToken}`,
 		userId: crypto.randomUUID(),
-		workspaceId: `rehearsal-${normalizedToken}`,
+		workspaceId: crypto.randomUUID(),
 		categoryA: crypto.randomUUID(),
 		categoryB: crypto.randomUUID(),
 		assertionSecret,
@@ -1095,6 +1095,19 @@ async function prepareActualRehearsal(
 			await owner`
 				INSERT INTO public.users (id, email, name)
 				VALUES (${prepared.userId}::uuid, ${`${normalizedToken}@rehearsal.invalid`}, 'Rehearsal User')`;
+			await owner`
+				INSERT INTO public.workspaces
+					(id, slug, name, kind, created_by_user_id, billing_owner_user_id, required_tier)
+				VALUES
+					(${prepared.workspaceId}::uuid, ${`rehearsal-${normalizedToken}`},
+					 'Rehearsal workspace', 'shared', ${prepared.userId}::uuid,
+					 ${prepared.userId}::uuid, 1)`;
+			await owner`
+				INSERT INTO public.workspace_members
+					(workspace_id, user_id, role, status, created_by_user_id)
+				VALUES
+					(${prepared.workspaceId}::uuid, ${prepared.userId}::uuid,
+					 'owner', 'active', ${prepared.userId}::uuid)`;
 			await owner`
 				INSERT INTO public.categories (id, owner_id, workspace_id, name)
 				VALUES
