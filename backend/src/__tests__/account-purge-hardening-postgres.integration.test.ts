@@ -218,6 +218,102 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 			}
 		}, 30_000);
 
+		test("a worker without quota admission leaves quota cleanup immediately available", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const workspaceId = `workspace-${crypto.randomUUID()}`;
+			const plainSourceId = crypto.randomUUID();
+			const quotaSourceId = crypto.randomUUID();
+			const plainKey = `cleanup-capability/${documentId}/plain`;
+			const quotaKey = `cleanup-capability/${documentId}/quota`;
+			const deletedKeys: string[] = [];
+			const releasedReservations: string[] = [];
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@cleanup-capability.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, workspace_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, ${workspaceId},
+						'cleanup capability', '')`;
+				await setup`INSERT INTO public.attachment_storage_cleanup_outbox
+					(source_kind, source_id, storage_key, document_id,
+					 actor_user_id, owner_user_id, requested_by_user_id, workspace_id,
+					 size, quota_operation_key, quota_release_kind, quota_reservation_id)
+				VALUES
+					('uncommitted_upload', ${plainSourceId}::uuid, ${plainKey},
+					 ${documentId}::uuid, ${ownerId}::uuid, ${ownerId}::uuid,
+					 ${ownerId}::uuid, NULL, 1, ${`plain-${plainSourceId}`}, 'none', NULL),
+					('uncommitted_upload', ${quotaSourceId}::uuid, ${quotaKey},
+					 ${documentId}::uuid, ${ownerId}::uuid, ${ownerId}::uuid,
+					 ${ownerId}::uuid, ${workspaceId}, 1, ${`quota-${quotaSourceId}`},
+					 'reservation', 'quota-reservation')`;
+
+				const incapable = await drainAttachmentStorageCleanupOutbox({
+					leaseOwner: `incapable-${crypto.randomUUID()}`,
+					actorUserId: ownerId,
+					pageSize: 10,
+					deleteObjects: async (keys) => {
+						deletedKeys.push(...keys);
+						return keys.length;
+					},
+				});
+				expect(incapable).toEqual({
+					claimed: 1,
+					deleted: 1,
+					deferred: 0,
+					failed: 0,
+				});
+				expect(deletedKeys).toEqual([plainKey]);
+				const [available] = await setup<
+					Array<{
+						attempt_count: number;
+						last_error: string | null;
+						lease_owner: string | null;
+					}>
+				>`SELECT attempt_count, last_error, lease_owner
+					FROM public.attachment_storage_cleanup_outbox
+					WHERE source_id = ${quotaSourceId}::uuid`;
+				expect(available).toEqual({
+					attempt_count: 0,
+					last_error: null,
+					lease_owner: null,
+				});
+
+				const capable = await drainAttachmentStorageCleanupOutbox({
+					leaseOwner: `capable-${crypto.randomUUID()}`,
+					actorUserId: ownerId,
+					pageSize: 10,
+					deleteObjects: async (keys) => {
+						deletedKeys.push(...keys);
+						return keys.length;
+					},
+					quotaAdmission: {
+						reserve: async () => ({ id: "unused" }),
+						finalize: async () => undefined,
+						releaseReservation: async (_context, reservationId) => {
+							releasedReservations.push(reservationId);
+						},
+						releaseCommitted: async () => undefined,
+					},
+				});
+				expect(capable).toEqual({
+					claimed: 1,
+					deleted: 1,
+					deferred: 0,
+					failed: 0,
+				});
+				expect(deletedKeys).toEqual([plainKey, quotaKey]);
+				expect(releasedReservations).toEqual(["quota-reservation"]);
+			} finally {
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE owner_user_id = ${ownerId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup.end();
+			}
+		}, 30_000);
+
 		test("signed admission abandonment is exact, fenced-safe, and concurrent-cleanup idempotent", async () => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
 			const runtime = postgres(runtimeDatabaseUrl as string, { max: 2 });

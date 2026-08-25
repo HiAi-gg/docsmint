@@ -140,6 +140,7 @@ async function claimCleanupPage(
 	leaseOwner: string,
 	now: Date,
 	pageSize: number,
+	quotaReleaseAvailable: boolean,
 	actorUserId?: string,
 ): Promise<readonly ClaimedCleanupRow[]> {
 	// Drizzle's raw postgres-js path does not apply column encoders to bound
@@ -153,6 +154,9 @@ async function claimCleanupPage(
 			OR candidate.requested_by_user_id = ${actorUserId}::uuid
 		)`
 		: sql``;
+	const quotaCapabilityFilter = quotaReleaseAvailable
+		? sql``
+		: sql`AND candidate.quota_release_kind = 'none'`;
 	const rows = await withTenant(
 		CLEANUP_ADMIN_TENANT,
 		async (tx) =>
@@ -166,6 +170,7 @@ async function claimCleanupPage(
 						OR candidate.lease_expires_at <= ${nowTimestamp}
 					)
 					${actorFilter}
+					${quotaCapabilityFilter}
 				ORDER BY candidate.not_before, candidate.created_at, candidate.id
 				FOR UPDATE SKIP LOCKED
 				LIMIT ${pageSize}
@@ -323,6 +328,7 @@ export async function drainAttachmentStorageCleanupOutbox(
 			leaseOwner,
 			now,
 			pageSize,
+			quotaAdmission !== null && quotaAdmission !== undefined,
 			dependencies.actorUserId,
 		);
 		if (rows.length === 0) break;
