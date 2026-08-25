@@ -48,6 +48,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   lock-order deadlocks.
 - Serialize hard document purges and account/benchmark cascade deletion with
   pipeline workers before PostgreSQL locks document pipeline child rows.
+- Authorize hard-purge targets before acquiring document pipeline locks, reset
+  benchmark owners under one globally ordered lock union, and enforce a durable
+  OSS account-purge admission fence. Concurrent document/import/duplicate/
+  restore, workspace, attachment, pipeline, API-key, and auth writes can no
+  longer escape a completed account purge; guarded REST writes return stable
+  `409 ACCOUNT_PURGE_FENCED` responses.
+- Repair historical `0037` installs where the AGE session search path placed
+  `document_create_operations` in `ag_catalog`; migration `0042` moves or
+  creates the durable idempotency table in `public` before enabling its fence.
 
 ## [0.6.8] - 2026-08-21
 

@@ -594,7 +594,8 @@
       "post": {
         "operationId": "postApiDocuments",
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "description": "Account purge fence is active" }
         }
       }
     },
@@ -811,7 +812,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "description": "Account purge fence is active" }
         }
       }
     },
@@ -837,7 +839,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "description": "Account purge fence is active" }
         }
       }
     },
@@ -881,7 +884,8 @@
       "post": {
         "operationId": "postApiDocumentsImport",
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "description": "Account purge fence is active" }
         }
       }
     },
@@ -1031,7 +1035,8 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {},
+          "409": { "description": "Account purge fence is active" }
         }
       }
     },

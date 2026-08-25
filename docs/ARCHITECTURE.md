@@ -16,6 +16,24 @@ The packaged backend composition accepts `{ redisUrl, databaseUrl }`. Each
 instance owns its BullMQ handles and postgres-js pool; `close()` releases only
 those owned resources, so a new instance can be created safely afterward.
 
+## Account purge admission fence
+
+After the host policy gate accepts account deletion, the OSS lifecycle records
+its hashed fence token while locking the actor's durable `users` row. Every
+account-owned `INSERT` or `UPDATE` takes that same row lock before checking the
+durable lifecycle operation. A write already in progress therefore commits
+before the fence snapshot; a later write fails with database constraint
+`account_purge_fenced`. Rejected host gates remain writable, retryable purges
+remain closed, and completed tombstones remain permanently fenced.
+
+The guard covers personal and workspace documents, restore/import/duplicate
+paths, folder/tag/category and sharing metadata, attachments and versions,
+pipeline children, API keys, sessions, and accounts. It never intercepts
+`DELETE`, so tenant-scoped lifecycle cleanup remains possible. Final document
+cleanup snapshots the current owner-wide ID union, acquires the shared pipeline
+advisory locks once in canonical order, and then cascades deletion. Guarded REST
+document mutations return `409` with code `ACCOUNT_PURGE_FENCED`.
+
 ## Monorepo Structure
 
 ```
