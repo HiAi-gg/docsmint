@@ -164,6 +164,59 @@ CREATE POLICY tenant_isolation ON public.pending_attachment_uploads
     OR public.lifecycle_cleanup_authorized(actor_user_id)
   );--> statement-breakpoint
 
+-- Lifecycle cleanup runs in the departing actor's personal tenant context, so
+-- a workspace parent owned by a surviving peer is intentionally hidden by the
+-- documents policy. Resolve only the parent of a child authored by the exact
+-- verified lifecycle subject, and lock that parent until the child cleanup
+-- transaction commits so ownership attribution cannot race the staged intent.
+CREATE OR REPLACE FUNCTION public.lifecycle_child_document_owner(
+  target_document_id uuid,
+  lifecycle_actor_id uuid
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  resolved_owner_id uuid;
+BEGIN
+  IF NOT public.lifecycle_cleanup_authorized(lifecycle_actor_id) THEN
+    RAISE EXCEPTION 'lifecycle_cleanup_not_authorized'
+      USING ERRCODE = '42501';
+  END IF;
+
+  SELECT parent.owner_id
+  INTO resolved_owner_id
+  FROM public.documents AS parent
+  WHERE parent.id = target_document_id
+    AND (
+      (parent.workspace_id IS NULL AND parent.owner_id = lifecycle_actor_id)
+      OR EXISTS (
+        SELECT 1
+        FROM public.attachments AS attachment
+        WHERE attachment.document_id = parent.id
+          AND attachment.uploaded_by = lifecycle_actor_id
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM public.pending_attachment_uploads AS pending
+        WHERE pending.document_id = parent.id
+          AND pending.actor_user_id = lifecycle_actor_id
+      )
+    )
+  FOR SHARE OF parent;
+
+  IF resolved_owner_id IS NULL THEN
+    RAISE EXCEPTION 'lifecycle_child_document_not_authorized'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN resolved_owner_id;
+END;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.lifecycle_child_document_owner(uuid, uuid) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.lifecycle_child_document_owner(uuid, uuid) TO hiai_app;--> statement-breakpoint
+
 -- Workspace rows survive an individual account purge. For tenant-owned
 -- workspace rows the current request actor, not the historical owner column,
 -- is the fenced subject. Personal rows continue to fence their stored owner.

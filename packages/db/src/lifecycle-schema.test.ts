@@ -163,6 +163,14 @@ test("attachment cleanup outbox makes object removal recoverable after DB commit
 	expect(migration).toContain("FORCE ROW LEVEL SECURITY");
 	expect(migration).toContain("attachment_storage_cleanup_outbox_account_purge_fence_insert");
 	expect(migration).toContain("pending_attachment_uploads_account_purge_fence_delete");
+	expect(migration).toContain(
+		"CREATE OR REPLACE FUNCTION public.lifecycle_child_document_owner",
+	);
+	expect(migration).toContain(
+		"REVOKE ALL ON FUNCTION public.lifecycle_child_document_owner(uuid, uuid) FROM PUBLIC",
+	);
+	expect(migration).toContain("SET search_path = pg_catalog, public");
+	expect(migration).toContain("public.lifecycle_cleanup_authorized");
 
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;

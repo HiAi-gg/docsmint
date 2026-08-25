@@ -36,6 +36,7 @@ import {
 	stagePendingAttachmentCleanup,
 } from "./attachment-upload-cleanup";
 import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
+import type { RuntimeAttachmentQuotaAdmission } from "./runtime-options";
 import { getDocsMintRuntimeOptions } from "./runtime-options";
 
 const LEASE_MS = 60_000;
@@ -98,6 +99,8 @@ export type LifecycleRuntimeAdapters = Readonly<{
 		documentIds: readonly string[],
 		signal?: AbortSignal,
 	) => Promise<number>;
+	/** Generic OSS quota saga used while settling workspace attachment cleanup. */
+	attachmentStorageQuotaAdmission?: RuntimeAttachmentQuotaAdmission;
 }>;
 
 /**
@@ -595,7 +598,10 @@ export function createPersistentLifecycleService(
 								.select({
 									id: pendingAttachmentUploads.id,
 									documentId: pendingAttachmentUploads.documentId,
-									ownerUserId: documents.ownerId,
+									ownerUserId: sql<string>`public.lifecycle_child_document_owner(
+										${pendingAttachmentUploads.documentId},
+										${ctx.actorUserId}::uuid
+									)`,
 									actorUserId: pendingAttachmentUploads.actorUserId,
 									workspaceId: pendingAttachmentUploads.workspaceId,
 									storageKey: pendingAttachmentUploads.storageKey,
@@ -613,10 +619,6 @@ export function createPersistentLifecycleService(
 									leaseOwner: pendingAttachmentUploads.leaseOwner,
 								})
 								.from(pendingAttachmentUploads)
-								.innerJoin(
-									documents,
-									eq(pendingAttachmentUploads.documentId, documents.id),
-								)
 								.where(
 									eq(pendingAttachmentUploads.actorUserId, ctx.actorUserId),
 								);
@@ -633,6 +635,7 @@ export function createPersistentLifecycleService(
 							deleteObjects: runtime.deleteObjects,
 							actorUserId: ctx.actorUserId,
 							quotaAdmission:
+								runtime.attachmentStorageQuotaAdmission ??
 								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
 							signal: ctx.signal,
 							maxPages: 1,
@@ -743,28 +746,6 @@ export function createPersistentLifecycleService(
 					deletedByDomain,
 					() => runtime.removeGraphState(documentIds, ctx.signal),
 				);
-				const objectRows = await withCleanupActor((tx) =>
-					tx
-						.select({
-							id: attachments.id,
-							documentId: attachments.documentId,
-							storageKey: attachments.storageKey,
-							size: attachments.size,
-							uploadedBy: attachments.uploadedBy,
-							workspaceId: attachments.workspaceId,
-							ownerUserId: documents.ownerId,
-						})
-						.from(attachments)
-						.innerJoin(documents, eq(attachments.documentId, documents.id))
-						.where(
-							documentIds.length
-								? or(
-										eq(attachments.uploadedBy, ctx.actorUserId),
-										inArray(attachments.documentId, documentIds),
-									)
-								: eq(attachments.uploadedBy, ctx.actorUserId),
-						),
-				);
 				await runStep(
 					operation,
 					ctx.actorUserId,
@@ -772,8 +753,30 @@ export function createPersistentLifecycleService(
 					"delete_attachment_objects",
 					deletedByDomain,
 					async () => {
-						if (objectRows.length === 0) return 0;
 						return withCleanupActor(async (tx) => {
+							const objectRows = await tx
+								.select({
+									id: attachments.id,
+									documentId: attachments.documentId,
+									storageKey: attachments.storageKey,
+									size: attachments.size,
+									uploadedBy: attachments.uploadedBy,
+									workspaceId: attachments.workspaceId,
+									ownerUserId: sql<string>`public.lifecycle_child_document_owner(
+										${attachments.documentId},
+										${ctx.actorUserId}::uuid
+									)`,
+								})
+								.from(attachments)
+								.where(
+									documentIds.length
+										? or(
+												eq(attachments.uploadedBy, ctx.actorUserId),
+												inArray(attachments.documentId, documentIds),
+											)
+										: eq(attachments.uploadedBy, ctx.actorUserId),
+								);
+							if (objectRows.length === 0) return 0;
 							for (const row of objectRows) {
 								await stageAttachmentStorageCleanup(tx, {
 									sourceKind: "attachment",
@@ -813,6 +816,7 @@ export function createPersistentLifecycleService(
 							deleteObjects: runtime.deleteObjects,
 							actorUserId: ctx.actorUserId,
 							quotaAdmission:
+								runtime.attachmentStorageQuotaAdmission ??
 								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
 							signal: ctx.signal,
 							maxPages: 1,

@@ -648,6 +648,24 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 					(id, document_id, workspace_id, uploaded_by, filename, mime_type, size, storage_key) VALUES
 					(${peerAttachmentId}::uuid, ${documentId}::uuid, ${workspaceId}, ${peerB}::uuid, 'peer.png', 'image/png', 4, ${peerKey}),
 					(${ownerAttachmentId}::uuid, ${documentId}::uuid, ${workspaceId}, ${ownerA}::uuid, 'owner.png', 'image/png', 4, ${ownerKey})`;
+				let unverifiedResolverError: unknown;
+				try {
+					await withRuntimeTenant(
+						lifecycleClient.client,
+						peerB,
+						workspaceId,
+						(tx) =>
+							tx`SELECT public.lifecycle_child_document_owner(
+								${documentId}::uuid, ${peerB}::uuid
+							)`,
+					);
+				} catch (error) {
+					unverifiedResolverError = error;
+				}
+				expect(unverifiedResolverError).toBeInstanceOf(Error);
+				expect((unverifiedResolverError as Error).message).toContain(
+					"lifecycle_cleanup_not_authorized",
+				);
 
 				const lifecycle = createPersistentLifecycleService(
 					{
@@ -660,6 +678,12 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 						clearAccountRedisState: async () => 0,
 						removeCollaborationState: async () => 0,
 						removeGraphState: async () => 0,
+						attachmentStorageQuotaAdmission: {
+							reserve: async () => ({ id: "peer-cleanup-reservation" }),
+							finalize: async () => {},
+							releaseReservation: async () => {},
+							releaseCommitted: async () => {},
+						},
 					},
 					{
 						withActorTransaction: (actorUserId, operation) =>

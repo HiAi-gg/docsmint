@@ -1230,14 +1230,21 @@ describe.skipIf(!databaseUrl)(
 				}
 				let workspaceWriteError: unknown;
 				try {
-					await setup`INSERT INTO public.documents
-						(owner_id, workspace_id, title, content)
-						VALUES (
-							${ownerId}::uuid,
-							${workspaceId},
-							'fenced owner workspace document',
-							''
-						)`;
+					await setup.begin(async (tx) => {
+						await tx`SELECT
+							set_config('app.current_user_id', ${ownerId}, true),
+							set_config('app.current_user_role', 'user', true),
+							set_config('app.current_tenant_source', 'external', true),
+							set_config('app.current_workspace_id', ${workspaceId}, true)`;
+						await tx`INSERT INTO public.documents
+							(owner_id, workspace_id, title, content)
+							VALUES (
+								${ownerId}::uuid,
+								${workspaceId},
+								'fenced owner workspace document',
+								''
+							)`;
+					});
 				} catch (error) {
 					workspaceWriteError = error;
 				}
@@ -1246,10 +1253,17 @@ describe.skipIf(!databaseUrl)(
 				);
 				let ownershipEscapeError: unknown;
 				try {
-					await setup`UPDATE public.documents
-						SET owner_id = ${peerOwnerId}::uuid,
-							workspace_id = ${workspaceId}
-						WHERE id = ${originalDocumentId}::uuid`;
+					await setup.begin(async (tx) => {
+						await tx`SELECT
+							set_config('app.current_user_id', ${ownerId}, true),
+							set_config('app.current_user_role', 'user', true),
+							set_config('app.current_tenant_source', 'external', true),
+							set_config('app.current_workspace_id', ${workspaceId}, true)`;
+						await tx`UPDATE public.documents
+							SET owner_id = ${peerOwnerId}::uuid,
+								workspace_id = ${workspaceId}
+							WHERE id = ${originalDocumentId}::uuid`;
+					});
 				} catch (error) {
 					ownershipEscapeError = error;
 				}
