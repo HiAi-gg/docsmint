@@ -2173,16 +2173,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				...cleanup.confirmed.map((row) => row.storageKey),
 				...cleanup.pending.map((row) => row.storageKey),
 			];
+			const quotaAdmission =
+				getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
+			const requiresQuotaRelease =
+				cleanup.confirmed.some((row) => row.workspaceId !== null) ||
+				cleanup.pending.some(
+					(row) => row.workspaceId !== null && row.quotaReservationId !== null,
+				);
+			if (
+				config.DOCSMINT_WORKSPACE_ENABLED &&
+				requiresQuotaRelease &&
+				!quotaAdmission
+			) {
+				set.status = 503;
+				return { error: "Attachment storage quota admission is unavailable" };
+			}
 			for (const key of cleanupKeys) {
 				await storage.send(
 					new DeleteObjectCommand({ Bucket: BUCKET, Key: key }),
 				);
-			}
-			const quotaAdmission =
-				getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
-			if (config.DOCSMINT_WORKSPACE_ENABLED && !quotaAdmission) {
-				set.status = 503;
-				return { error: "Attachment storage quota admission is unavailable" };
 			}
 			if (quotaAdmission) {
 				try {
