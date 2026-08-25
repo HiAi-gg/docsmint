@@ -52,6 +52,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
 			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",
 			"backend/src/__tests__/graph-routes.test.ts",
+			"backend/src/__tests__/storage-lifecycle-concurrency-postgres.integration.test.ts",
 			"packages/db/scripts/query-observer.integration.test.ts",
 		].join(" "),
 	);
