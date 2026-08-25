@@ -122,12 +122,11 @@ jobs:
       LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       CONTENT_ACCESS_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
-      DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.0
+          bun-version: 1.3.14
       - name: Configure workspaces for CI
         run: |
           bun -e "
