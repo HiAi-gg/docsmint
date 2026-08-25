@@ -1633,9 +1633,31 @@ describe("live category-scoped public surfaces", () => {
 				expect(await contractObjectExists(presigned.key)).toBe(true);
 				await Bun.sleep((presigned.expiresIn + 2) * 1_000);
 
-				const completed = await lifecycle.purgeUserData(context, {
-					fenceToken: `peer-pending-fence-${suffix}`,
-				});
+				// The canonical release gate deliberately keeps the Docker API alive
+				// while this source API runs against the same database. Either recovery
+				// worker may therefore hold the cleanup lease at the expiry boundary.
+				// Retry the same durable lifecycle operation for a bounded window; a
+				// crashed lease or failed object/quota cleanup still fails this test.
+				const completionDeadline = Date.now() + 10_000;
+				const completeAfterExpiry = async () => {
+					let lastPendingError: LifecyclePendingAttachmentUploadsError | undefined;
+					while (Date.now() < completionDeadline) {
+						try {
+							return await lifecycle.purgeUserData(context, {
+								fenceToken: `peer-pending-fence-${suffix}`,
+							});
+						} catch (error) {
+							if (!(error instanceof LifecyclePendingAttachmentUploadsError))
+								throw error;
+							lastPendingError = error;
+							await Bun.sleep(100);
+						}
+					}
+					throw (
+						lastPendingError ?? new Error("Attachment cleanup did not complete")
+					);
+				};
+				const completed = await completeAfterExpiry();
 				expect(completed.status).toBe("completed");
 				expect(await contractObjectExists(presigned.key)).toBe(false);
 				const [state] = await database<{
