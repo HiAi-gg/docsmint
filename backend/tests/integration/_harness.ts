@@ -606,9 +606,22 @@ function buildUpdateProxy(ctx: UpdateCtx): any {
 		for (const row of rows) {
 			if (!evaluateCondition(row, ctx.where)) continue;
 			for (const [key, value] of Object.entries(ctx.set ?? {})) {
-				row[key] = (value as any)?.[TAG_SQL]
-					? Number(row[key] ?? 0) + 1
-					: value;
+				if ((value as any)?.[TAG_SQL]) {
+					row[key] = Number(row[key] ?? 0) + 1;
+					continue;
+				}
+				row[key] =
+					[
+						"notBefore",
+						"retainUntil",
+						"leaseExpiresAt",
+						"expiresAt",
+						"urlIssuedAt",
+						"confirmingAt",
+						"objectDeletedAt",
+					].includes(key)
+						? (asHarnessDate(value) ?? value)
+						: value;
 			}
 			row.updatedAt = new Date();
 			returned.push({ ...row });
@@ -910,6 +923,54 @@ function buildMockDb() {
 				]);
 			}
 			if (
+				queryText.includes("update public.pending_attachment_uploads as pending") &&
+				queryText.includes("set lease_expires_at") &&
+				queryText.includes("returning pending.id")
+			) {
+				const [id, leaseOwner, actorUserId] = (query.values ?? []).filter(
+					(value: unknown) => typeof value === "string",
+				);
+				const now = timestampValues.at(-1) ?? new Date();
+				const pending = state.pendingAttachmentUploads.get(id);
+				const leaseExpiresAt = asHarnessDate(pending?.leaseExpiresAt);
+				if (
+					!pending ||
+					pending.leaseOwner !== leaseOwner ||
+					pending.actorUserId !== actorUserId ||
+					(leaseExpiresAt != null && leaseExpiresAt <= now)
+				)
+					return Promise.resolve([]);
+				pending.leaseExpiresAt = new Date(now.getTime() + 5 * 60_000);
+				return Promise.resolve([{ id: pending.id }]);
+			}
+			if (
+				queryText.includes("update public.attachment_storage_cleanup_outbox") &&
+				queryText.includes("set not_before") &&
+				queryText.includes("source_kind") &&
+				!queryText.includes("as cleanup")
+			) {
+				const sourceKind = (query.values ?? []).find(
+					(value: unknown) =>
+						value === "uncommitted_upload" ||
+						value === "pending_upload" ||
+						value === "attachment",
+				);
+				const sourceId = (query.values ?? []).find(
+					(value: unknown) =>
+						typeof value === "string" &&
+						/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+							value,
+						),
+				);
+				const now = timestampValues[0] ?? new Date();
+				for (const row of state.attachmentStorageCleanupOutbox.values()) {
+					if (row.sourceKind === sourceKind && row.sourceId === sourceId) {
+						row.notBefore = now;
+					}
+				}
+				return Promise.resolve([]);
+			}
+			if (
 				queryText.includes(
 					"update public.attachment_storage_cleanup_outbox as cleanup",
 				) &&
@@ -929,11 +990,41 @@ function buildMockDb() {
 							!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value),
 					) as string | undefined;
 				if (!leaseOwner) return Promise.resolve([]);
+				const sourceKind = (query.values ?? []).find(
+					(value: unknown) =>
+						value === "uncommitted_upload" ||
+						value === "pending_upload" ||
+						value === "attachment",
+				) as string | undefined;
+				const sourceId = (query.values ?? []).find(
+					(value: unknown) =>
+						typeof value === "string" &&
+						/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+							value,
+						) &&
+						[...state.attachmentStorageCleanupOutbox.values()].some(
+							(row) => row.sourceId === value,
+						),
+				) as string | undefined;
+				const liveConfirmKeys = new Set(
+					[...state.pendingAttachmentUploads.values()]
+						.filter(
+							(pending) =>
+								typeof pending.leaseOwner === "string" &&
+								pending.leaseOwner.startsWith("confirm:") &&
+								pending.leaseExpiresAt instanceof Date &&
+								pending.leaseExpiresAt > now,
+						)
+						.map((pending) => pending.storageKey),
+				);
 				const rows = [...state.attachmentStorageCleanupOutbox.values()]
 					.filter((row) => row.notBefore == null || row.notBefore <= now)
 					.filter(
 						(row) => row.leaseExpiresAt == null || row.leaseExpiresAt <= now,
 					)
+					.filter((row) => !liveConfirmKeys.has(row.storageKey))
+					.filter((row) => !sourceKind || row.sourceKind === sourceKind)
+					.filter((row) => !sourceId || row.sourceId === sourceId)
 					.sort((left, right) =>
 						String(left.id).localeCompare(String(right.id)),
 					)
