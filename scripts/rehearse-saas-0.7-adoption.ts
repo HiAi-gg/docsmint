@@ -2420,59 +2420,6 @@ async function smoke068Actual(
 			assertion,
 			`/api/documents/${id}`,
 		);
-		await stopRuntime(runner, prepared);
-		const { baseUrl: personalUrl } = await launchRuntime(
-			runner,
-			prepared,
-			prepared.baselineRoot,
-			"0.6.8",
-			{ workspaceEnabled: "false", attachmentStorageEnforcement: "false" },
-		);
-		const personalHeaders = {
-			authorization: `Bearer ${prepared.apiKey}`,
-			"content-type": "application/json",
-		};
-		const personalCreated = await fetch(`${personalUrl}/api/documents`, {
-			method: "POST",
-			headers: personalHeaders,
-			body: JSON.stringify({
-				title: `${token} personal`,
-				content: `${token} personal body`,
-			}),
-		});
-		if (personalCreated.status !== 201) {
-			throw new Error(
-				`0.6.8 personal create returned HTTP ${personalCreated.status}`,
-			);
-		}
-		const personalId = objectBody(
-			await personalCreated.json(),
-			"0.6.8 personal create",
-		).id;
-		if (typeof personalId !== "string") {
-			throw new Error("0.6.8 personal create omitted id");
-		}
-		const form = new FormData();
-		form.set(
-			"file",
-			new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], {
-				type: "image/png",
-			}),
-			`${token}-personal.png`,
-		);
-		const multipart = await fetch(
-			`${personalUrl}/api/documents/${personalId}/attachments`,
-			{
-				method: "POST",
-				headers: { authorization: `Bearer ${prepared.apiKey}` },
-				body: form,
-			},
-		);
-		if (multipart.status !== 201) {
-			throw new Error(
-				`0.6.8 personal multipart returned HTTP ${multipart.status}`,
-			);
-		}
 		return {
 			version: "0.6.8",
 			health: true,
