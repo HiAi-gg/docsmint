@@ -176,8 +176,7 @@ async function main(): Promise<void> {
 			.select({ id: users.id })
 			.from(users)
 			.where(inArray(users.email, benchmarkEmails))
-			.orderBy(users.id)
-			.for("update");
+			.orderBy(users.id);
 		const existingOwnerIds = existingOwners.map(({ id }) => id);
 		if (existingOwnerIds.length > 0) {
 			const ownedDocuments = await tx

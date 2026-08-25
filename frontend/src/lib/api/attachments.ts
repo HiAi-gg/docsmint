@@ -25,6 +25,7 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
 export interface PresignResponse {
 	url: string;
 	key: string;
+	uploadToken: string;
 	maxSize: number;
 	expiresIn: number;
 	/** Opaque quota reservation created by a host storage admission. */
@@ -63,6 +64,7 @@ export function presignAttachment(
 export function confirmAttachment(
 	documentId: string,
 	key: string,
+	uploadToken: string,
 	file: File,
 	quotaReservationId?: string,
 	fetcher?: typeof fetch,
@@ -73,6 +75,7 @@ export function confirmAttachment(
 			method: "POST",
 			body: {
 				key,
+				uploadToken,
 				filename: file.name,
 				contentType: file.type,
 				size: file.size,
@@ -132,6 +135,7 @@ export async function uploadAttachment(
 		await confirmAttachment(
 			documentId,
 			presign.key,
+			presign.uploadToken,
 			file,
 			presign.quotaReservationId,
 			fetcher,
@@ -145,6 +149,7 @@ export async function uploadAttachment(
 		await confirmAttachment(
 			documentId,
 			presign.key,
+			presign.uploadToken,
 			file,
 			presign.quotaReservationId,
 			fetcher,
@@ -161,6 +166,7 @@ export async function uploadAttachment(
 	return confirmAttachment(
 		documentId,
 		presign.key,
+		presign.uploadToken,
 		file,
 		presign.quotaReservationId,
 		fetcher,

@@ -617,6 +617,9 @@ export const attachments = pgTable(
       .notNull()
       .references(() => documents.id, { onDelete: "cascade" }),
     workspaceId: text("workspace_id"),
+    uploadedBy: uuid("uploaded_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
     filename: text("filename").notNull(),
     mimeType: text("mime_type").notNull(),
     size: bigint("size", { mode: "number" }).notNull(),
@@ -627,6 +630,42 @@ export const attachments = pgTable(
     index("attachments_document_id_idx").on(table.documentId),
     uniqueIndex("attachments_storage_key_unique").on(table.storageKey),
   ]
+);
+
+// A direct upload URL can outlive the request that created it. Keeping the
+// exact actor/key/expiry admission durable lets confirmation authenticate the
+// key after session/document disappearance and lets account purge wait through
+// the unrevocable URL lifetime before deleting the exact object.
+export const pendingAttachmentUploads = pgTable(
+  "pending_attachment_uploads",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    workspaceId: text("workspace_id"),
+    storageKey: text("storage_key").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    declaredSize: bigint("declared_size", { mode: "number" }).notNull(),
+    quotaReservationId: text("quota_reservation_id"),
+    confirmingAt: timestamp("confirming_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("pending_attachment_uploads_storage_key_unique").on(table.storageKey),
+    uniqueIndex("pending_attachment_uploads_token_hash_unique").on(table.tokenHash),
+    index("pending_attachment_uploads_actor_expiry_idx").on(
+      table.actorUserId,
+      table.expiresAt,
+    ),
+    index("pending_attachment_uploads_document_idx").on(table.documentId),
+  ],
 );
 
 export const attachmentRelations = relations(attachments, ({ one }) => ({

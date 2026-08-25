@@ -11,13 +11,9 @@ const migrationSource = await Bun.file(
 ).text();
 
 describe("attachment confirm idempotency contract", () => {
-	test("returns an existing document/storage-key row before quota finalization", () => {
-		const existingLookup = routeSource.indexOf(
-			"// A transport retry after a successful confirm must return the",
-		);
-		const headLookup = routeSource.indexOf(
-			"// Verify the object actually exists in SeaweedFS",
-		);
+	test("returns the committed row when the durable admission was already consumed", () => {
+		const existingLookup = routeSource.indexOf("if (!claimed)");
+		const headLookup = routeSource.indexOf("new HeadObjectCommand");
 		expect(existingLookup).toBeGreaterThan(-1);
 		expect(headLookup).toBeGreaterThan(existingLookup);
 		expect(routeSource).toContain("eq(attachments.storageKey, key)");
@@ -27,11 +23,11 @@ describe("attachment confirm idempotency contract", () => {
 		expect(routeSource).toContain(
 			"pg_advisory_xact_lock(hashtextextended(\u0024{key}, 0))",
 		);
-		expect(routeSource).toContain("if (raced) return raced");
+		expect(routeSource).toContain("let result = raced");
 		expect(routeSource).toContain(
 			".onConflictDoNothing({ target: attachments.storageKey })",
 		);
-		expect(routeSource).toContain("return winner ?? null");
+		expect(routeSource).toContain(".delete(pendingAttachmentUploads)");
 	});
 
 	test("adds only a non-destructive unique index migration", () => {

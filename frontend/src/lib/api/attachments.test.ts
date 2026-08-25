@@ -29,6 +29,7 @@ describe("attachment upload quota reservation", () => {
 					return json({
 						url: "https://storage.invalid/upload",
 						key: "attachments/object",
+						uploadToken: "signed-upload-token",
 						maxSize: 1024,
 						expiresIn: 900,
 						quotaReservationId: "reservation-1",
@@ -54,6 +55,7 @@ describe("attachment upload quota reservation", () => {
 		);
 
 		expect(calls.at(-1)?.body.quotaReservationId).toBe("reservation-1");
+		expect(calls.at(-1)?.body.uploadToken).toBe("signed-upload-token");
 	});
 
 	test("uses confirm as the reservation release seam after storage failure", async () => {
@@ -70,6 +72,7 @@ describe("attachment upload quota reservation", () => {
 					return json({
 						url: "https://storage.invalid/upload",
 						key: "attachments/object",
+						uploadToken: "failed-upload-token",
 						maxSize: 1024,
 						expiresIn: 900,
 						quotaReservationId: "reservation-failed",
@@ -92,5 +95,6 @@ describe("attachment upload quota reservation", () => {
 		).rejects.toThrow("Storage upload failed");
 		expect(calls.at(-1)?.path).toEndWith("/confirm");
 		expect(calls.at(-1)?.body.quotaReservationId).toBe("reservation-failed");
+		expect(calls.at(-1)?.body.uploadToken).toBe("failed-upload-token");
 	});
 });

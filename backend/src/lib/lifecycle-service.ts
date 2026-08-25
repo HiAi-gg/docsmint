@@ -8,6 +8,7 @@ import {
 	documents,
 	folders,
 	lifecycleOperations,
+	pendingAttachmentUploads,
 	sessions,
 	shareLinks,
 	tags,
@@ -26,6 +27,7 @@ import type {
 } from "@hiai-docs/sdk";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
+import { getDocsMintRuntimeOptions } from "./runtime-options";
 
 const LEASE_MS = 60_000;
 
@@ -48,6 +50,16 @@ export class LifecycleLeaseLostError extends Error {
 	constructor() {
 		super("Lifecycle operation lease was lost");
 		this.name = "LifecycleLeaseLostError";
+	}
+}
+
+/** An issued direct-upload URL remains usable until its fixed expiry. */
+export class LifecyclePendingAttachmentUploadsError extends Error {
+	readonly code = "pending_attachment_uploads";
+
+	constructor() {
+		super("Pending attachment upload URLs have not expired");
+		this.name = "LifecyclePendingAttachmentUploadsError";
 	}
 }
 
@@ -118,6 +130,8 @@ function safeErrorCode(error: unknown): string {
 		return "aborted";
 	if (error instanceof LifecycleFenceRejectedError) return error.code;
 	if (error instanceof LifecycleLeaseLostError) return error.code;
+	if (error instanceof LifecyclePendingAttachmentUploadsError)
+		return error.code;
 	return "persistence_failed";
 }
 
@@ -513,12 +527,14 @@ export function createPersistentLifecycleService(
 				throwIfAborted(ctx.signal);
 				await runtime.verifyPurgeFence(ctx, gate.fenceToken);
 				await withActor(ctx.actorUserId, async (tx) => {
+					await tx.execute(
+						sql`SELECT public.acquire_account_purge_fence_lock(${ctx.actorUserId}::uuid)`,
+					);
 					const [actor] = await tx
 						.select({ id: users.id })
 						.from(users)
 						.where(eq(users.id, ctx.actorUserId))
-						.limit(1)
-						.for("update");
+						.limit(1);
 					if (!actor) throw new LifecycleLeaseLostError();
 					const updated = await tx
 						.update(lifecycleOperations)
@@ -535,9 +551,21 @@ export function createPersistentLifecycleService(
 						.returning({ id: lifecycleOperations.id });
 					requireLeaseWrite(updated);
 				});
+				const withCleanupActor = <T>(
+					operationAction: (tx: TenantTransaction) => Promise<T>,
+				) =>
+					withActor(ctx.actorUserId, async (tx) => {
+						await tx.execute(
+							sql`SELECT set_config('app.lifecycle_operation_id', ${operation.id}, true)`,
+						);
+						await tx.execute(
+							sql`SELECT set_config('app.lifecycle_lease_owner', ${leaseOwner}, true)`,
+						);
+						return operationAction(tx);
+					});
 				const dbDelete = <T extends { id: string }>(
 					action: (tx: TenantTransaction) => Promise<T[]>,
-				) => withActor(ctx.actorUserId, action).then((rows) => rows.length);
+				) => withCleanupActor(action).then((rows) => rows.length);
 				await runStep(
 					operation,
 					ctx.actorUserId,
@@ -545,6 +573,68 @@ export function createPersistentLifecycleService(
 					"cancel_account_jobs",
 					deletedByDomain,
 					() => runtime.cancelAccountJobs(ctx.actorUserId, ctx.signal),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"settle_pending_attachment_uploads",
+					deletedByDomain,
+					async () => {
+						const pending = await withActor(ctx.actorUserId, (tx) =>
+							tx
+								.select()
+								.from(pendingAttachmentUploads)
+								.where(
+									eq(pendingAttachmentUploads.actorUserId, ctx.actorUserId),
+								),
+						);
+						if (pending.some((row) => row.expiresAt > new Date())) {
+							throw new LifecyclePendingAttachmentUploadsError();
+						}
+						if (pending.length === 0) return 0;
+						const deleted = await runtime.deleteObjects(
+							pending.map((row) => row.storageKey),
+							ctx.signal,
+						);
+						if (deleted < pending.length) {
+							throw new Error("pending_attachment_cleanup_failed");
+						}
+						const quotaAdmission =
+							getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
+						for (const row of pending) {
+							if (
+								!quotaAdmission ||
+								!row.quotaReservationId ||
+								!row.workspaceId
+							)
+								continue;
+							await quotaAdmission.releaseReservation(
+								{
+									workspaceId: row.workspaceId,
+									actorUserId: row.actorUserId,
+									documentId: row.documentId,
+									storageKey: row.storageKey,
+									proposedSize: row.declaredSize,
+									requestId: operation.id,
+									idempotencyKey: `attachment:${row.documentId}:${row.storageKey}`,
+									signal: ctx.signal,
+								},
+								row.quotaReservationId,
+							);
+						}
+						return dbDelete((tx) =>
+							tx
+								.delete(pendingAttachmentUploads)
+								.where(
+									inArray(
+										pendingAttachmentUploads.id,
+										pending.map((row) => row.id),
+									),
+								)
+								.returning({ id: pendingAttachmentUploads.id }),
+						);
+					},
 				);
 				await runStep(
 					operation,
@@ -582,14 +672,19 @@ export function createPersistentLifecycleService(
 					"remove_document_versions",
 					deletedByDomain,
 					() =>
-						documentIds.length
-							? dbDelete((tx) =>
-									tx
-										.delete(versions)
-										.where(inArray(versions.documentId, documentIds))
-										.returning({ id: versions.id }),
+						dbDelete((tx) =>
+							tx
+								.delete(versions)
+								.where(
+									documentIds.length
+										? or(
+												eq(versions.createdBy, ctx.actorUserId),
+												inArray(versions.documentId, documentIds),
+											)
+										: eq(versions.createdBy, ctx.actorUserId),
 								)
-							: Promise.resolve(0),
+								.returning({ id: versions.id }),
+						),
 				);
 				await runStep(
 					operation,
@@ -615,28 +710,70 @@ export function createPersistentLifecycleService(
 					deletedByDomain,
 					() => runtime.removeGraphState(documentIds, ctx.signal),
 				);
-				const objectRows = documentIds.length
-					? await withActor(ctx.actorUserId, (tx) =>
-							tx
-								.select({
-									id: attachments.id,
-									storageKey: attachments.storageKey,
-								})
-								.from(attachments)
-								.where(inArray(attachments.documentId, documentIds)),
-						)
-					: [];
+				const objectRows = await withActor(ctx.actorUserId, (tx) =>
+					tx
+						.select({
+							id: attachments.id,
+							documentId: attachments.documentId,
+							storageKey: attachments.storageKey,
+							size: attachments.size,
+							uploadedBy: attachments.uploadedBy,
+							workspaceId: attachments.workspaceId,
+						})
+						.from(attachments)
+						.where(
+							documentIds.length
+								? or(
+										eq(attachments.uploadedBy, ctx.actorUserId),
+										inArray(attachments.documentId, documentIds),
+									)
+								: eq(attachments.uploadedBy, ctx.actorUserId),
+						),
+				);
 				await runStep(
 					operation,
 					ctx.actorUserId,
 					leaseOwner,
 					"delete_attachment_objects",
 					deletedByDomain,
-					() =>
-						runtime.deleteObjects(
+					async () => {
+						const deleted = await runtime.deleteObjects(
 							objectRows.map((row) => row.storageKey),
 							ctx.signal,
-						),
+						);
+						if (deleted < objectRows.length) {
+							throw new Error("attachment_object_cleanup_failed");
+						}
+						return deleted;
+					},
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"release_attachment_quota",
+					deletedByDomain,
+					async () => {
+						const quotaAdmission =
+							getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
+						if (!quotaAdmission) return 0;
+						let released = 0;
+						for (const row of objectRows) {
+							if (!row.workspaceId) continue;
+							await quotaAdmission.releaseCommitted({
+								workspaceId: row.workspaceId,
+								actorUserId: row.uploadedBy,
+								documentId: row.documentId,
+								storageKey: row.storageKey,
+								proposedSize: row.size,
+								requestId: operation.id,
+								idempotencyKey: `attachment:${row.documentId}:${row.storageKey}`,
+								signal: ctx.signal,
+							});
+							released += 1;
+						}
+						return released;
+					},
 				);
 				await runStep(
 					operation,
@@ -788,6 +925,20 @@ export function createPersistentLifecycleService(
 					operation,
 					ctx.actorUserId,
 					leaseOwner,
+					"remove_subject_audit",
+					deletedByDomain,
+					() =>
+						dbDelete((tx) =>
+							tx
+								.delete(auditLog)
+								.where(eq(auditLog.actorId, ctx.actorUserId))
+								.returning({ id: auditLog.id }),
+						),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
 					"tombstone_subject_user",
 					deletedByDomain,
 					() =>
@@ -812,7 +963,7 @@ export function createPersistentLifecycleService(
 					"write_deletion_audit",
 					deletedByDomain,
 					async () => {
-						await withActor(ctx.actorUserId, (tx) =>
+						await withCleanupActor((tx) =>
 							tx.insert(auditLog).values({
 								actorId: ctx.actorUserId,
 								action: "account_data_purged",

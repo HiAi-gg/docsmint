@@ -1,3 +1,7 @@
+import { lifecycleOperations } from "@hiai-docs/db/schema";
+import { withTenant } from "@hiai-docs/db/with-tenant";
+import { and, eq, isNotNull, ne } from "drizzle-orm";
+
 export const ACCOUNT_PURGE_FENCED_CODE = "ACCOUNT_PURGE_FENCED";
 export const ACCOUNT_PURGE_FENCED_MESSAGE = "Account deletion is in progress";
 
@@ -36,4 +40,44 @@ export function accountPurgeFencedResponse(): {
 		error: ACCOUNT_PURGE_FENCED_MESSAGE,
 		code: ACCOUNT_PURGE_FENCED_CODE,
 	};
+}
+
+/** Canonical route-level translation for the durable database fence. */
+export function translateAccountPurgeFencedError(
+	error: unknown,
+	set: { status?: number | string },
+): ReturnType<typeof accountPurgeFencedResponse> | null {
+	if (!isAccountPurgeFencedError(error)) return null;
+	set.status = 409;
+	return accountPurgeFencedResponse();
+}
+
+/**
+ * Better Auth can perform side effects (for example, sending a change-email
+ * verification) before it reaches a guarded users-table write. Check the
+ * durable actor fence at the delegated-auth boundary so already-fenced
+ * sessions receive the same stable response without starting those effects.
+ * Database triggers remain the race-closing authority for every write.
+ */
+export async function isAccountPurgeFenced(
+	actorUserId: string,
+): Promise<boolean> {
+	return withTenant(
+		{ userId: actorUserId, role: "user", source: "personal" },
+		async (tx) => {
+			const [operation] = await tx
+				.select({ id: lifecycleOperations.id })
+				.from(lifecycleOperations)
+				.where(
+					and(
+						eq(lifecycleOperations.actorUserId, actorUserId),
+						eq(lifecycleOperations.operationKind, "purge"),
+						isNotNull(lifecycleOperations.fenceTokenHash),
+						ne(lifecycleOperations.status, "rejected"),
+					),
+				)
+				.limit(1);
+			return !!operation;
+		},
+	);
 }

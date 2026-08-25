@@ -53,8 +53,8 @@ describe("workspace document-child RLS integration", () => {
 						await tx`INSERT INTO public.document_tags (workspace_id, document_id, tag_id)
 							VALUES (${workspaceId}, ${documentId}::uuid, ${tagId}::uuid)`;
 						await tx`INSERT INTO public.attachments
-							(document_id, workspace_id, filename, mime_type, size, storage_key)
-							VALUES (${documentId}::uuid, ${workspaceId}, 'fixture.txt', 'text/plain', 1, ${`${documentId}/fixture.txt`})`;
+							(document_id, workspace_id, uploaded_by, filename, mime_type, size, storage_key)
+							VALUES (${documentId}::uuid, ${workspaceId}, ${ownerId}::uuid, 'fixture.txt', 'text/plain', 1, ${`${documentId}/fixture.txt`})`;
 						await tx`INSERT INTO public.versions
 							(document_id, workspace_id, content, created_by)
 							VALUES (${documentId}::uuid, ${workspaceId}, 'fixture', ${ownerId}::uuid)`;

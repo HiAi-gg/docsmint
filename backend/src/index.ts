@@ -23,7 +23,9 @@ import { tagRoutes } from "./api/routes/tags";
 import { versionRoutes } from "./api/routes/versions";
 import { visibilityRoutes } from "./api/routes/visibility";
 import { webhookRoutes } from "./api/routes/webhooks";
+import { translateAccountPurgeFencedError } from "./lib/account-purge-fence";
 import { ensureApiKeyOwner } from "./lib/api-key-owner";
+import { startAttachmentUploadCleanup } from "./lib/attachment-upload-cleanup";
 import { config } from "./lib/config";
 import { client } from "./lib/db";
 import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
@@ -92,6 +94,7 @@ const pipelineRuntime = await startRegisteredPipelineWorkers({
 	},
 });
 startMetadataReembedOutboxRecovery();
+const attachmentUploadCleanup = startAttachmentUploadCleanup();
 const reembedCronRuntime = startReembedCron();
 
 ensureBucket(storage, BUCKET).catch((err) => {
@@ -207,6 +210,8 @@ const swaggerConfig = {
 const app = new Elysia()
 	.use(bodySizeLimit)
 	.onError(({ error, set }) => {
+		const purgeFence = translateAccountPurgeFencedError(error, set);
+		if (purgeFence) return purgeFence;
 		if (error instanceof DocsmintWorkspaceContextError) {
 			set.status = error.status;
 			return { error: error.message };
@@ -298,6 +303,7 @@ logger.info({ port: config.API_PORT }, "hiai-docs API started");
 // Graceful shutdown
 export const stopDocsMintApi = async () => {
 	logger.info("Shutting down...");
+	attachmentUploadCleanup.stop();
 	reembedCronRuntime.close();
 	await pipelineRuntime.close();
 	await app.stop();

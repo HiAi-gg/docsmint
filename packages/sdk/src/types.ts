@@ -374,6 +374,8 @@ export interface DocsAttachmentPresignInput {
 export interface DocsAttachmentPresignResponse {
 	url: string;
 	key: string;
+	/** Signed, exact admission identity required by confirmAttachment. */
+	uploadToken: string;
 	/**
 	 * Opaque server-issued reservation. Present only when workspace storage
 	 * enforcement is enabled and required verbatim by confirmAttachment.
@@ -385,6 +387,7 @@ export interface DocsAttachmentPresignResponse {
 
 export interface DocsAttachmentConfirmInput extends DocsAttachmentPresignInput {
 	key: string;
+	uploadToken: string;
 	/** The opaque reservation returned by presignAttachment when present. */
 	quotaReservationId?: string;
 }

@@ -74,4 +74,9 @@ export const auth = betterAuth({
 		},
 		disableOriginCheck: false,
 	},
+	onAPIError: {
+		// Let the Elysia boundary translate the durable purge-fence signature.
+		// The auth route preserves Better Auth APIError responses verbatim.
+		throw: true,
+	},
 });

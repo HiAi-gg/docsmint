@@ -11,7 +11,10 @@ import {
 import { sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import postgres from "postgres";
+import { categoryRoutes } from "../api/routes/categories";
 import { documentRoutes } from "../api/routes/documents";
+import { folderRoutes } from "../api/routes/folders";
+import { tagRoutes } from "../api/routes/tags";
 import { versionRoutes } from "../api/routes/versions";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
@@ -622,6 +625,10 @@ describe.skipIf(!databaseUrl)(
 			const observer = postgres(databaseUrl as string, { max: 1 });
 			const documentId = crypto.randomUUID();
 			const generationId = crypto.randomUUID();
+			const rawKey = crypto.randomUUID();
+			const keyHash = new Bun.CryptoHasher("sha256")
+				.update(rawKey)
+				.digest("hex");
 			const workerReady = deferred<number>();
 			const releaseWorker = deferred<void>();
 			const app = new Elysia().use(documentRoutes);
@@ -631,6 +638,15 @@ describe.skipIf(!databaseUrl)(
 				await setup`INSERT INTO public.users (id, email)
 					VALUES (${config.OWNER_ID}::uuid, ${`${config.OWNER_ID}@purge-lock.invalid`})
 					ON CONFLICT (id) DO NOTHING`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (
+						${config.OWNER_ID}::uuid,
+						'purge lock regression',
+						${keyHash},
+						${rawKey.slice(0, 8)},
+						'["global"]'::jsonb
+					)`;
 				await setup`INSERT INTO public.documents
 					(id, owner_id, title, content, deleted_at)
 					VALUES (
@@ -675,7 +691,7 @@ describe.skipIf(!databaseUrl)(
 					new Request(`http://localhost/api/trash/documents/${documentId}`, {
 						method: "DELETE",
 						headers: {
-							authorization: `Bearer ${config.HIAI_DOCS_API_KEY}`,
+							authorization: `Bearer ${rawKey}`,
 							"x-forwarded-for": `purge-lock-${documentId}`,
 						},
 					}),
@@ -721,6 +737,7 @@ describe.skipIf(!databaseUrl)(
 				await setup`DELETE FROM public.document_pipeline_runs
 					WHERE document_id = ${documentId}::uuid`;
 				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.api_keys WHERE key_hash = ${keyHash}`;
 				await Promise.all([setup.end(), worker.end(), observer.end()]);
 			}
 		});
@@ -944,13 +961,19 @@ describe.skipIf(!databaseUrl)(
 			const originalDocumentId = crypto.randomUUID();
 			const trashedDocumentId = crypto.randomUUID();
 			const versionId = crypto.randomUUID();
+			const tagId = crypto.randomUUID();
 			const rawKey = crypto.randomUUID();
 			const keyHash = new Bun.CryptoHasher("sha256")
 				.update(rawKey)
 				.digest("hex");
 			const graphRemovalEntered = deferred<void>();
 			const releaseGraphRemoval = deferred<void>();
-			const app = new Elysia().use(documentRoutes);
+			const app = new Elysia()
+				.use(documentRoutes)
+				.use(folderRoutes)
+				.use(categoryRoutes)
+				.use(tagRoutes)
+				.use(versionRoutes);
 			let purgeOperation: Promise<unknown> | undefined;
 			try {
 				await setup`INSERT INTO public.users (id, email)
@@ -1005,6 +1028,8 @@ describe.skipIf(!databaseUrl)(
 						'prior version',
 						${ownerId}::uuid
 					)`;
+				await setup`INSERT INTO public.tags (id, owner_id, name)
+					VALUES (${tagId}::uuid, ${ownerId}::uuid, 'purge tag')`;
 
 				const lifecycle = createPersistentLifecycleService(
 					{
@@ -1064,6 +1089,32 @@ describe.skipIf(!databaseUrl)(
 				});
 				const guardedRequests = [
 					{
+						name: "document patch",
+						app,
+						request: new Request(
+							`http://localhost/api/documents/${originalDocumentId}`,
+							{
+								method: "PATCH",
+								headers: {
+									authorization: `Bearer ${rawKey}`,
+									"content-type": "application/json",
+								},
+								body: JSON.stringify({ title: "fenced patch" }),
+							},
+						),
+					},
+					{
+						name: "document soft delete",
+						app,
+						request: new Request(
+							`http://localhost/api/documents/${originalDocumentId}`,
+							{
+								method: "DELETE",
+								headers: { authorization: `Bearer ${rawKey}` },
+							},
+						),
+					},
+					{
 						name: "duplicate",
 						app,
 						request: new Request(
@@ -1071,6 +1122,60 @@ describe.skipIf(!databaseUrl)(
 							{
 								method: "POST",
 								headers: { authorization: `Bearer ${rawKey}` },
+							},
+						),
+					},
+					{
+						name: "folder rename",
+						app,
+						request: new Request(`http://localhost/api/folders/${folderId}`, {
+							method: "PATCH",
+							headers: {
+								authorization: `Bearer ${rawKey}`,
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({ name: "fenced folder rename" }),
+						}),
+					},
+					{
+						name: "category rename",
+						app,
+						request: new Request(
+							`http://localhost/api/categories/${categoryId}`,
+							{
+								method: "PATCH",
+								headers: {
+									authorization: `Bearer ${rawKey}`,
+									"content-type": "application/json",
+								},
+								body: JSON.stringify({ name: "fenced category rename" }),
+							},
+						),
+					},
+					{
+						name: "tag rename",
+						app,
+						request: new Request(`http://localhost/api/tags/${tagId}`, {
+							method: "PATCH",
+							headers: {
+								authorization: `Bearer ${rawKey}`,
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({ name: "fenced tag rename" }),
+						}),
+					},
+					{
+						name: "version snapshot",
+						app,
+						request: new Request(
+							`http://localhost/api/documents/${originalDocumentId}/versions`,
+							{
+								method: "POST",
+								headers: {
+									authorization: `Bearer ${rawKey}`,
+									"content-type": "application/json",
+								},
+								body: JSON.stringify({ label: "fenced snapshot" }),
 							},
 						),
 					},
@@ -1096,6 +1201,17 @@ describe.skipIf(!databaseUrl)(
 							`http://localhost/api/trash/documents/${trashedDocumentId}/restore`,
 							{
 								method: "POST",
+								headers: { authorization: `Bearer ${rawKey}` },
+							},
+						),
+					},
+					{
+						name: "trash hard purge",
+						app,
+						request: new Request(
+							`http://localhost/api/trash/documents/${trashedDocumentId}`,
+							{
+								method: "DELETE",
 								headers: { authorization: `Bearer ${rawKey}` },
 							},
 						),

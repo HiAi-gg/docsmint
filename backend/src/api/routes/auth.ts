@@ -1,18 +1,26 @@
+import { APIError } from "better-auth";
 import { Elysia } from "elysia";
+import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFenced,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
 import { auth } from "../../lib/auth";
 
 // Rate limiting for auth endpoints (5 attempts per minute per IP)
 const authRateLimit = new Map<string, { count: number; resetAt: number }>();
 const AUTH_RATE_MAX = 5;
 const AUTH_RATE_WINDOW = 60_000;
+const FENCE_PREFLIGHT_PATHS = new Set(["/update-user", "/change-email"]);
 
 // Cleanup stale entries every 5 minutes
-setInterval(() => {
+const authRateLimitCleanup = setInterval(() => {
 	const now = Date.now();
 	for (const [key, value] of authRateLimit.entries()) {
 		if (now > value.resetAt) authRateLimit.delete(key);
 	}
 }, 300_000);
+authRateLimitCleanup.unref?.();
 
 function checkAuthRateLimit(ip: string): boolean {
 	const now = Date.now();
@@ -46,7 +54,30 @@ export const authRoutes = new Elysia({ prefix: "/api/auth" }).all(
 			}
 		}
 
-		// Delegate all /api/auth/* requests to Better Auth's handler
-		return auth.handler(request);
+		// Delegate all /api/auth/* requests to Better Auth's handler.
+		try {
+			if (FENCE_PREFLIGHT_PATHS.has(url.pathname.replace("/api/auth", ""))) {
+				const session = await auth.api.getSession({ headers: request.headers });
+				if (session?.user.id && (await isAccountPurgeFenced(session.user.id))) {
+					set.status = 409;
+					return accountPurgeFencedResponse();
+				}
+			}
+			return await auth.handler(request);
+		} catch (error) {
+			if (isAccountPurgeFencedError(error)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
+			if (error instanceof APIError) {
+				const headers = new Headers(error.headers);
+				headers.set("content-type", "application/json");
+				return new Response(JSON.stringify(error.body), {
+					status: error.statusCode,
+					headers,
+				});
+			}
+			throw error;
+		}
 	},
 );

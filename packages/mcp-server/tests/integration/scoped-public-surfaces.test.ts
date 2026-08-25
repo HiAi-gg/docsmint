@@ -25,6 +25,10 @@ import Redis from "ioredis";
 import postgres from "postgres";
 
 import { launchDocsMintApi } from "../../../sdk/dist/backend-launcher.js";
+import {
+	createPersistentLifecycleService,
+	LifecyclePendingAttachmentUploadsError,
+} from "../../../../backend/src/lib/lifecycle-service";
 import { retrieveGraphCandidates } from "../../../../backend/src/search/graph-retriever";
 import { searchDocuments } from "../../../../backend/src/search/orchestrator";
 import { retrieveFastChannels } from "../../../../backend/src/search/retrievers";
@@ -83,6 +87,8 @@ const suffix = crypto.randomUUID();
 const ids = {
 	actorA: crypto.randomUUID(),
 	actorB: crypto.randomUUID(),
+	actorConfirmedUpload: crypto.randomUUID(),
+	actorPendingUpload: crypto.randomUUID(),
 	categoryA: crypto.randomUUID(),
 	categoryOther: crypto.randomUUID(),
 	categoryForeign: crypto.randomUUID(),
@@ -186,6 +192,65 @@ async function contractObjectExists(key: string): Promise<boolean> {
 	}
 }
 
+async function establishTestPurgeFence(actorUserId: string): Promise<string> {
+	const operationId = crypto.randomUUID();
+	const subjectHash = new Bun.CryptoHasher("sha256")
+		.update(actorUserId)
+		.digest("hex");
+	const fenceTokenHash = new Bun.CryptoHasher("sha256")
+		.update(`contract-fence-${operationId}`)
+		.digest("hex");
+	await database.begin(async (tx) => {
+		await tx`SELECT public.acquire_account_purge_fence_lock(${actorUserId}::uuid)`;
+		await tx`INSERT INTO lifecycle_operations
+			(id, actor_user_id, actor_subject_hash, idempotency_key,
+			 operation_kind, status, fence_token_hash)
+			VALUES (
+				${operationId}::uuid,
+				${actorUserId}::uuid,
+				${subjectHash},
+				${`contract-fence-${operationId}`},
+				'purge',
+				'retryable',
+				${fenceTokenHash}
+			)`;
+	});
+	return operationId;
+}
+
+async function removeTestPurgeFence(operationId: string): Promise<void> {
+	await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
+}
+
+function createContractLifecycle() {
+	return createPersistentLifecycleService(
+		{
+			verifyPurgeFence: async () => undefined,
+			deleteObjects: async (keys) => {
+				let deleted = 0;
+				for (const key of keys) {
+					await deleteContractObject(key);
+					deleted += 1;
+				}
+				return deleted;
+			},
+			cancelAccountJobs: async () => 0,
+			clearAccountRedisState: async () => 0,
+			removeCollaborationState: async () => 0,
+			removeGraphState: async () => 0,
+		},
+		{
+			withActorTransaction: (actorUserId, operation) =>
+				withTenantDatabase(
+					observedDatabase.db,
+					{ userId: actorUserId, role: "user", source: "personal" },
+					operation,
+				),
+		},
+		[],
+	);
+}
+
 async function cleanupContractUpload(
 	docs: DocsClient,
 	objectKey: string | undefined,
@@ -238,8 +303,15 @@ function assertionPayload(
 async function createAssertion(
 	permissions?: readonly WorkspaceResourcePermission[],
 ) {
+	return createAssertionForActor(ids.actorA, permissions);
+}
+
+async function createAssertionForActor(
+	actorUserId: string,
+	permissions?: readonly WorkspaceResourcePermission[],
+) {
 	return createDocsmintWorkspaceAssertion(
-		assertionPayload(workspaceA, ids.actorA, permissions),
+		assertionPayload(workspaceA, actorUserId, permissions),
 		workspaceSecret,
 	);
 }
@@ -422,7 +494,12 @@ async function cleanupFixtures(): Promise<void> {
 			graphQuery(`MATCH (entity:Concept {name: ${JSON.stringify(graphEntity)}}) DETACH DELETE entity RETURN 1`),
 		);
 	} finally {
-		await database`DELETE FROM users WHERE id IN (${ids.actorA}::uuid, ${ids.actorB}::uuid)`;
+		await database`DELETE FROM users WHERE id IN (
+			${ids.actorA}::uuid,
+			${ids.actorB}::uuid,
+			${ids.actorConfirmedUpload}::uuid,
+			${ids.actorPendingUpload}::uuid
+		)`;
 	}
 }
 
@@ -1129,6 +1206,7 @@ describe("live category-scoped public surfaces", () => {
 			orphanedObjectKeys.add(uploadedObjectKey);
 			const attachment = await docs.confirmAttachment(ids.docDirectA, {
 				key: presigned.key,
+				uploadToken: presigned.uploadToken,
 				filename,
 				contentType: "image/png",
 				size: bytes.byteLength,
@@ -1187,11 +1265,12 @@ describe("live category-scoped public surfaces", () => {
 			);
 			orphanedObjectKeys.add(sourceObjectKey);
 			await database`INSERT INTO attachments
-				(id, document_id, workspace_id, filename, mime_type, size, storage_key)
+				(id, document_id, workspace_id, uploaded_by, filename, mime_type, size, storage_key)
 				VALUES (
 					${sourceAttachmentId}::uuid,
 					${sourceDocumentId}::uuid,
 					${workspaceA},
+					${ids.actorB}::uuid,
 					'fixture.txt',
 					'text/plain',
 					${bytes.byteLength},
@@ -1267,17 +1346,311 @@ describe("live category-scoped public surfaces", () => {
 			await expect(
 				docs.confirmAttachment(ids.docDirectA, {
 					key: presigned.key,
+					uploadToken: presigned.uploadToken,
 					filename,
 					contentType: "application/octet-stream",
 					size: bytes.byteLength,
 					quotaReservationId: presigned.quotaReservationId,
 				}),
 			).rejects.toMatchObject({ status: 415, code: "http_415" });
+			// Assert production cleanup before the test's defensive finally path.
+			expect(await contractObjectExists(presigned.key)).toBe(false);
 		} finally {
 			await cleanupContractUpload(docs, uploadedObjectKey, attachmentId);
 		}
-		expect(await contractObjectExists(presigned.key)).toBe(false);
 	});
+
+	test("does not grant cleanup authority to a token whose exact key was changed", async () => {
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertion(["read", "edit", "write"]),
+			},
+		});
+		const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x54, 0x4f, 0x4b]);
+		const filename = `task2-tamper-${suffix}.png`;
+		const presigned = await docs.presignAttachment(ids.docDirectA, {
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+		});
+		orphanedObjectKeys.add(presigned.key);
+		try {
+			const upload = await fetch(presigned.url, {
+				method: "PUT",
+				headers: { "content-type": "image/png" },
+				body: bytes,
+			});
+			expect(upload.status).toBe(200);
+			await expect(
+				docs.confirmAttachment(ids.docDirectA, {
+					key: `${presigned.key}.attacker-controlled`,
+					uploadToken: presigned.uploadToken,
+					filename,
+					contentType: "image/png",
+					size: bytes.byteLength,
+					quotaReservationId: presigned.quotaReservationId,
+				}),
+			).rejects.toMatchObject({ status: 400, code: "http_400" });
+			// Authenticity failed before cleanup authority was established, so the
+			// token owner's exact object remains untouched.
+			expect(await contractObjectExists(presigned.key)).toBe(true);
+
+			await expect(
+				docs.confirmAttachment(ids.docDirectA, {
+					key: presigned.key,
+					uploadToken: presigned.uploadToken,
+					filename,
+					contentType: "application/octet-stream",
+					size: bytes.byteLength,
+					quotaReservationId: presigned.quotaReservationId,
+				}),
+			).rejects.toMatchObject({ status: 415, code: "http_415" });
+			expect(await contractObjectExists(presigned.key)).toBe(false);
+		} finally {
+			await deleteContractObject(presigned.key).catch(() => undefined);
+			orphanedObjectKeys.delete(presigned.key);
+		}
+	});
+
+	test("cleans an admitted object when the account is fenced before confirm", async () => {
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertion(["read", "edit", "write"]),
+			},
+		});
+		const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x46, 0x4e, 0x43]);
+		const filename = `task2-fenced-confirm-${suffix}.png`;
+		const presigned = await docs.presignAttachment(ids.docDirectA, {
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+		});
+		let fenceOperationId: string | undefined;
+		orphanedObjectKeys.add(presigned.key);
+		try {
+			const upload = await fetch(presigned.url, {
+				method: "PUT",
+				headers: { "content-type": "image/png" },
+				body: bytes,
+			});
+			expect(upload.status).toBe(200);
+			fenceOperationId = await establishTestPurgeFence(ids.actorA);
+			await expect(
+				docs.confirmAttachment(ids.docDirectA, {
+					key: presigned.key,
+					uploadToken: presigned.uploadToken,
+					filename,
+					contentType: "image/png",
+					size: bytes.byteLength,
+					quotaReservationId: presigned.quotaReservationId,
+				}),
+			).rejects.toMatchObject({
+				status: 409,
+				body: { code: "ACCOUNT_PURGE_FENCED" },
+			});
+			// Production confirm owns cleanup after the signed key is authenticated.
+			expect(await contractObjectExists(presigned.key)).toBe(false);
+			const [pending] = await database<{ count: string }[]>`
+				SELECT count(*)::text AS count FROM pending_attachment_uploads
+				WHERE storage_key = ${presigned.key}`;
+			expect(pending?.count).toBe("0");
+		} finally {
+			if (fenceOperationId) await removeTestPurgeFence(fenceOperationId);
+			await deleteContractObject(presigned.key).catch(() => undefined);
+			orphanedObjectKeys.delete(presigned.key);
+		}
+	});
+
+	test("rejects direct-upload admission after the durable account fence", async () => {
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertion(["read", "edit", "write"]),
+			},
+		});
+		const fenceOperationId = await establishTestPurgeFence(ids.actorA);
+		try {
+			await expect(
+				docs.presignAttachment(ids.docDirectA, {
+					filename: `task2-fenced-presign-${suffix}.png`,
+					contentType: "image/png",
+					size: 8,
+				}),
+			).rejects.toMatchObject({
+				status: 409,
+				body: { code: "ACCOUNT_PURGE_FENCED" },
+			});
+		} finally {
+			await removeTestPurgeFence(fenceOperationId);
+		}
+	});
+
+	test("purges a workspace peer's confirmed attachment and real Seaweed object", async () => {
+		await database`INSERT INTO users (id, email)
+			VALUES (
+				${ids.actorConfirmedUpload}::uuid,
+				${`${ids.actorConfirmedUpload}@contract.invalid`}
+			)`;
+		const docs = new DocsClient({
+			baseUrl,
+			apiKey: serviceApiKey,
+			retries: 1,
+			requestContext: {
+				workspaceAssertion: await createAssertionForActor(
+					ids.actorConfirmedUpload,
+					["read", "edit", "write"],
+				),
+			},
+		});
+		const bytes = new TextEncoder().encode(`peer confirmed ${suffix}`);
+		const filename = `peer-confirmed-${suffix}.png`;
+		const presigned = await docs.presignAttachment(ids.docDirectA, {
+			filename,
+			contentType: "image/png",
+			size: bytes.byteLength,
+		});
+		let operationId: string | undefined;
+		orphanedObjectKeys.add(presigned.key);
+		try {
+			const upload = await fetch(presigned.url, {
+				method: "PUT",
+				headers: { "content-type": "image/png" },
+				body: bytes,
+			});
+			expect(upload.status).toBe(200);
+			const attachment = await docs.confirmAttachment(ids.docDirectA, {
+				key: presigned.key,
+				uploadToken: presigned.uploadToken,
+				filename,
+				contentType: "image/png",
+				size: bytes.byteLength,
+				quotaReservationId: presigned.quotaReservationId,
+			});
+			const result = await createContractLifecycle().purgeUserData(
+				{
+					actorUserId: ids.actorConfirmedUpload,
+					requestId: crypto.randomUUID(),
+					idempotencyKey: `peer-confirmed-purge-${suffix}`,
+					reason: "account_deletion",
+				},
+				{ fenceToken: `peer-confirmed-fence-${suffix}` },
+			);
+			operationId = result.operationId;
+			expect(result.status).toBe("completed");
+			expect(await contractObjectExists(presigned.key)).toBe(false);
+			const [state] = await database<{
+				attachments: number;
+				documents: number;
+			}[]>`
+				SELECT
+					(SELECT count(*)::int FROM attachments
+					 WHERE id = ${attachment.id}::uuid) AS attachments,
+					(SELECT count(*)::int FROM documents
+					 WHERE id = ${ids.docDirectA}::uuid) AS documents`;
+			expect(state).toEqual({ attachments: 0, documents: 1 });
+		} finally {
+			await deleteContractObject(presigned.key).catch(() => undefined);
+			orphanedObjectKeys.delete(presigned.key);
+			if (operationId) {
+				await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
+			}
+			await database`DELETE FROM users WHERE id = ${ids.actorConfirmedUpload}::uuid`;
+		}
+	});
+
+	test(
+		"waits for a peer's issued PUT URL to expire before completing purge",
+		async () => {
+			await database`INSERT INTO users (id, email)
+				VALUES (
+					${ids.actorPendingUpload}::uuid,
+					${`${ids.actorPendingUpload}@contract.invalid`}
+				)`;
+			const docs = new DocsClient({
+				baseUrl,
+				apiKey: serviceApiKey,
+				retries: 1,
+				requestContext: {
+					workspaceAssertion: await createAssertionForActor(
+						ids.actorPendingUpload,
+						["read", "edit", "write"],
+					),
+				},
+			});
+			const bytes = new TextEncoder().encode(`peer pending ${suffix}`);
+			const presigned = await docs.presignAttachment(ids.docDirectA, {
+				filename: `peer-pending-${suffix}.png`,
+				contentType: "image/png",
+				size: bytes.byteLength,
+			});
+			const lifecycle = createContractLifecycle();
+			const context = {
+				actorUserId: ids.actorPendingUpload,
+				requestId: crypto.randomUUID(),
+				idempotencyKey: `peer-pending-purge-${suffix}`,
+				reason: "account_deletion" as const,
+			};
+			let operationId: string | undefined;
+			orphanedObjectKeys.add(presigned.key);
+			try {
+				expect(presigned.expiresIn).toBe(60);
+				await expect(
+					lifecycle.purgeUserData(context, {
+						fenceToken: `peer-pending-fence-${suffix}`,
+					}),
+				).rejects.toBeInstanceOf(LifecyclePendingAttachmentUploadsError);
+				const [retryable] = await database<{ id: string; status: string }[]>`
+					SELECT id, status FROM lifecycle_operations
+					WHERE actor_user_id = ${ids.actorPendingUpload}::uuid
+						AND idempotency_key = ${context.idempotencyKey}`;
+				operationId = retryable?.id;
+				expect(retryable?.status).toBe("retryable");
+
+				// An already-issued URL remains usable after the durable fence. The
+				// lifecycle must therefore wait for its real signature lifetime.
+				const upload = await fetch(presigned.url, {
+					method: "PUT",
+					headers: { "content-type": "image/png" },
+					body: bytes,
+				});
+				expect(upload.status).toBe(200);
+				expect(await contractObjectExists(presigned.key)).toBe(true);
+				await Bun.sleep((presigned.expiresIn + 2) * 1_000);
+
+				const completed = await lifecycle.purgeUserData(context, {
+					fenceToken: `peer-pending-fence-${suffix}`,
+				});
+				expect(completed.status).toBe("completed");
+				expect(await contractObjectExists(presigned.key)).toBe(false);
+				const [state] = await database<{
+					pending: number;
+					documents: number;
+				}[]>`
+					SELECT
+						(SELECT count(*)::int FROM pending_attachment_uploads
+						 WHERE storage_key = ${presigned.key}) AS pending,
+						(SELECT count(*)::int FROM documents
+						 WHERE id = ${ids.docDirectA}::uuid) AS documents`;
+				expect(state).toEqual({ pending: 0, documents: 1 });
+			} finally {
+				await deleteContractObject(presigned.key).catch(() => undefined);
+				orphanedObjectKeys.delete(presigned.key);
+				if (operationId) {
+					await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
+				}
+				await database`DELETE FROM users WHERE id = ${ids.actorPendingUpload}::uuid`;
+			}
+		},
+		90_000,
+	);
 
 	test("executes all 17 MCP tools through one sanitized assertion-bound public client", async () => {
 		const assertion = await createAssertion(["read", "edit", "write"]);

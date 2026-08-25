@@ -9,6 +9,7 @@ import {
 	documents,
 	documentTags,
 	folders,
+	pendingAttachmentUploads,
 	tags,
 	versions,
 } from "@hiai-docs/db/schema";
@@ -30,6 +31,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	accountPurgeFencedResponse,
+	isAccountPurgeFenced,
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
 import { recordAuditEvent } from "../../lib/audit";
@@ -69,6 +71,7 @@ import {
 	metadataReembedPageSize,
 	snapshotDocumentMetadataImpact,
 } from "../../lib/reembed";
+import { getDocsMintRuntimeOptions } from "../../lib/runtime-options";
 import { BUCKET, storage } from "../../lib/storage";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
@@ -1755,6 +1758,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 			return updated;
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err }, "Failed to update document");
 			set.status = 500;
 			return { error: "Failed to update document" };
@@ -1909,6 +1916,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					.values({
 						id: copyId,
 						ownerId: userId,
+						workspaceId: ctx.workspaceId ?? null,
 						folderId: currentPlacement.folderId,
 						categoryId: currentPlacement.categoryId,
 						title: copyTitle,
@@ -1926,6 +1934,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						attachmentPlans.map((plan) => ({
 							id: plan.id,
 							documentId: row.id,
+							workspaceId: ctx.workspaceId ?? null,
+							uploadedBy: userId,
 							filename: plan.filename,
 							mimeType: plan.mimeType,
 							size: plan.size,
@@ -2095,44 +2105,167 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const purged = await withTenant(ctx, async (tx) => {
-			const authorizedCondition = and(
-				eq(documents.id, params.id),
-				tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
-				isNotNull(documents.deletedAt),
-				...(access.restricted
-					? [
-							access.categoryId
-								? effectiveDocumentCategoryCondition(
-										documents.categoryId,
-										documents.folderId,
-										ctx,
-										access.categoryId,
-									)
-								: sql`false`,
-						]
-					: []),
-			);
-			const [authorized] = await tx
-				.select({ id: documents.id })
-				.from(documents)
-				.where(authorizedCondition)
-				.limit(1);
-			if (!authorized) return null;
-			await acquireDocumentPipelineLock(tx, params.id);
-			const result = await tx
-				.delete(documents)
-				.where(authorizedCondition)
-				.returning({ id: documents.id });
-			return result[0] ?? null;
-		});
-		if (!purged) {
-			set.status = 404;
-			return { error: "Document not found" };
+		if (await isAccountPurgeFenced(ctx.userId)) {
+			set.status = 409;
+			return accountPurgeFencedResponse();
 		}
-		invalidateDocCache(params.id);
-		invalidateDocListCache(ctx.userId);
-		return { success: true };
+		const authorizedCondition = and(
+			eq(documents.id, params.id),
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+			isNotNull(documents.deletedAt),
+			...(access.restricted
+				? [
+						access.categoryId
+							? effectiveDocumentCategoryCondition(
+									documents.categoryId,
+									documents.folderId,
+									ctx,
+									access.categoryId,
+								)
+							: sql`false`,
+					]
+				: []),
+		);
+		try {
+			const cleanup = await withTenant(ctx, async (tx) => {
+				const [authorized] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(authorizedCondition)
+					.limit(1);
+				if (!authorized) return null;
+				const confirmed = await tx
+					.select({
+						id: attachments.id,
+						storageKey: attachments.storageKey,
+						size: attachments.size,
+						uploadedBy: attachments.uploadedBy,
+						workspaceId: attachments.workspaceId,
+					})
+					.from(attachments)
+					.where(eq(attachments.documentId, params.id));
+				const pending = await tx
+					.select({
+						id: pendingAttachmentUploads.id,
+						storageKey: pendingAttachmentUploads.storageKey,
+						declaredSize: pendingAttachmentUploads.declaredSize,
+						actorUserId: pendingAttachmentUploads.actorUserId,
+						workspaceId: pendingAttachmentUploads.workspaceId,
+						quotaReservationId: pendingAttachmentUploads.quotaReservationId,
+						expiresAt: pendingAttachmentUploads.expiresAt,
+					})
+					.from(pendingAttachmentUploads)
+					.where(eq(pendingAttachmentUploads.documentId, params.id));
+				return { confirmed, pending };
+			});
+			if (!cleanup) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+			if (cleanup.pending.some((row) => row.expiresAt > new Date())) {
+				set.status = 409;
+				return {
+					error: "Attachment upload URL has not expired",
+					code: "ATTACHMENT_UPLOAD_PENDING",
+				};
+			}
+			const cleanupKeys = [
+				...cleanup.confirmed.map((row) => row.storageKey),
+				...cleanup.pending.map((row) => row.storageKey),
+			];
+			for (const key of cleanupKeys) {
+				await storage.send(
+					new DeleteObjectCommand({ Bucket: BUCKET, Key: key }),
+				);
+			}
+			const quotaAdmission =
+				getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission;
+			if (config.DOCSMINT_WORKSPACE_ENABLED && !quotaAdmission) {
+				set.status = 503;
+				return { error: "Attachment storage quota admission is unavailable" };
+			}
+			if (quotaAdmission) {
+				try {
+					for (const row of cleanup.confirmed) {
+						if (!row.workspaceId) continue;
+						await quotaAdmission.releaseCommitted({
+							workspaceId: row.workspaceId,
+							actorUserId: row.uploadedBy,
+							documentId: params.id,
+							storageKey: row.storageKey,
+							proposedSize: row.size,
+							requestId: row.id,
+							idempotencyKey: `attachment:${params.id}:${row.storageKey}`,
+						});
+					}
+					for (const row of cleanup.pending) {
+						if (!row.workspaceId || !row.quotaReservationId) continue;
+						await quotaAdmission.releaseReservation(
+							{
+								workspaceId: row.workspaceId,
+								actorUserId: row.actorUserId,
+								documentId: params.id,
+								storageKey: row.storageKey,
+								proposedSize: row.declaredSize,
+								requestId: row.id,
+								idempotencyKey: `attachment:${params.id}:${row.storageKey}`,
+							},
+							row.quotaReservationId,
+						);
+					}
+				} catch (error) {
+					logger.error(
+						{ err: error, documentId: params.id },
+						"Failed to release attachment quota during document purge",
+					);
+					set.status = 503;
+					return { error: "Failed to release attachment storage quota" };
+				}
+			}
+			if (cleanup.pending.length > 0) {
+				await withTenant(ctx, (tx) =>
+					tx.delete(pendingAttachmentUploads).where(
+						inArray(
+							pendingAttachmentUploads.id,
+							cleanup.pending.map((row) => row.id),
+						),
+					),
+				);
+			}
+
+			const purged = await withTenant(ctx, async (tx) => {
+				const [authorized] = await tx
+					.select({ id: documents.id })
+					.from(documents)
+					.where(authorizedCondition)
+					.limit(1);
+				if (!authorized) return null;
+				await acquireDocumentPipelineLock(tx, params.id);
+				const result = await tx
+					.delete(documents)
+					.where(authorizedCondition)
+					.returning({ id: documents.id });
+				return result[0] ?? null;
+			});
+			if (!purged) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
+			invalidateDocCache(params.id);
+			invalidateDocListCache(ctx.userId);
+			return { success: true };
+		} catch (error) {
+			if (isAccountPurgeFencedError(error)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
+			logger.error(
+				{ err: error, documentId: params.id },
+				"Failed to purge document",
+			);
+			set.status = 500;
+			return { error: "Failed to purge document" };
+		}
 	})
 
 	// DELETE /api/documents/:id — move document to trash. Use the explicit
@@ -2159,6 +2292,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		if (!canAccessContent(access, "write")) {
 			set.status = 403;
 			return { error: "Forbidden" };
+		}
+		if (await isAccountPurgeFenced(ctx.userId)) {
+			set.status = 409;
+			return accountPurgeFencedResponse();
 		}
 		const userId = ctx.userId;
 		try {
@@ -2233,6 +2370,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 			return { success: true };
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err }, "Failed to delete document");
 			set.status = 500;
 			return { error: "Failed to delete document" };
@@ -2526,6 +2667,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					filename: string;
 					status: "error";
 					error: string;
+					code?: "ACCOUNT_PURGE_FENCED";
 					failureStatus: number;
 				};
 				type SettledImportResult =
@@ -2563,6 +2705,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								filename: file.name,
 								status: "error",
 								error: accountPurgeFencedResponse().error,
+								code: accountPurgeFencedResponse().code,
 								failureStatus: 409,
 							};
 						}
@@ -2644,6 +2787,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							onlyResult?.status === "error"
 								? onlyResult.error
 								: "Failed to import document",
+						...(onlyResult?.status === "error" && onlyResult.code
+							? { code: onlyResult.code }
+							: {}),
 					};
 				} else {
 					const failureStatuses = new Set(
@@ -2656,7 +2802,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							? (failureStatuses.values().next().value ?? 422)
 							: 422;
 				}
+				const allPurgeFenced = settled.every(
+					(result) =>
+						result.status === "error" && result.code === "ACCOUNT_PURGE_FENCED",
+				);
 				return {
+					...(allPurgeFenced ? { code: "ACCOUNT_PURGE_FENCED" as const } : {}),
 					items: settled.map((result) => {
 						if (result.status === "ok") return result;
 						const { failureStatus: _, ...publicResult } = result;

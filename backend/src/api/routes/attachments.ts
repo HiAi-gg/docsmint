@@ -5,10 +5,26 @@ import {
 	PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { attachments, documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import {
+	attachments,
+	documents,
+	folders,
+	pendingAttachmentUploads,
+} from "@hiai-docs/db/schema";
+import type { TenantContext } from "@hiai-docs/db/with-tenant";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
+import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFenced,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
+import {
+	attachmentUploadTokenHash,
+	signAttachmentUploadToken,
+	verifyAttachmentUploadToken,
+} from "../../lib/attachment-upload-token";
 import { config } from "../../lib/config";
 import {
 	canAccessContent,
@@ -318,6 +334,33 @@ async function removeUploadedObject(
 	}
 }
 
+function uploadClaimsTenantContext(claims: {
+	actorUserId: string;
+	workspaceId: string | null;
+}): TenantContext {
+	return claims.workspaceId
+		? {
+				userId: claims.actorUserId,
+				role: "user",
+				workspaceId: claims.workspaceId,
+				source: "external",
+			}
+		: { userId: claims.actorUserId, role: "user", source: "personal" };
+}
+
+async function deleteUploadedObject(
+	key: string,
+	reason: string,
+): Promise<boolean> {
+	try {
+		await storage.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+		return true;
+	} catch (error) {
+		logger.error({ err: error, key }, reason);
+		return false;
+	}
+}
+
 async function getClientIp(request: Request): Promise<string> {
 	return (
 		request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -403,6 +446,16 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// any old records created before presign was introduced.
 			const ext = filename.split(".").pop() ?? "bin";
 			const key = `${attachmentKeyPrefix(ctx, userId, documentId)}/${nanoid()}.${ext}`;
+			const admissionId = crypto.randomUUID();
+			const expiresAt = new Date(Date.now() + PRESIGN_EXPIRY_SECONDS * 1000);
+			const uploadToken = await signAttachmentUploadToken({
+				id: admissionId,
+				documentId,
+				actorUserId: userId,
+				workspaceId: ctx.workspaceId ?? null,
+				storageKey: key,
+				expiresAt: expiresAt.getTime(),
+			});
 			const quotaContext = attachmentQuotaContext(
 				ctx,
 				userId,
@@ -435,6 +488,21 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			try {
+				await withTenant(ctx, async (tx) => {
+					await tx.insert(pendingAttachmentUploads).values({
+						id: admissionId,
+						documentId,
+						actorUserId: userId,
+						workspaceId: ctx.workspaceId ?? null,
+						storageKey: key,
+						tokenHash: attachmentUploadTokenHash(uploadToken),
+						filename,
+						mimeType: contentType,
+						declaredSize: size,
+						quotaReservationId: reservationId ?? null,
+						expiresAt,
+					});
+				});
 				const url = await getSignedUrl(
 					storagePublic,
 					new PutObjectCommand({ Bucket: BUCKET, Key: key }),
@@ -443,6 +511,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				return {
 					url,
 					key,
+					uploadToken,
 					// This opaque value is created by the server-side admission
 					// provider. It must be returned unchanged to confirm so the
 					// original reservation, rather than a second reservation, is
@@ -452,10 +521,19 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					expiresIn: PRESIGN_EXPIRY_SECONDS,
 				};
 			} catch (err) {
+				await withTenant(ctx, (tx) =>
+					tx
+						.delete(pendingAttachmentUploads)
+						.where(eq(pendingAttachmentUploads.id, admissionId)),
+				).catch(() => undefined);
 				if (admission && quotaContext && reservationId) {
 					await admission
 						.releaseReservation(quotaContext, reservationId)
 						.catch(() => undefined);
+				}
+				if (isAccountPurgeFencedError(err)) {
+					set.status = 409;
+					return accountPurgeFencedResponse();
 				}
 				logger.error({ err, key }, "Failed to presign attachment upload");
 				set.status = 500;
@@ -476,37 +554,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 	.post(
 		"/documents/:id/attachments/confirm",
 		async ({ params, request, body, set }) => {
-			const ip = await getClientIp(request);
-			const rl = await writeRateLimiter(ip);
-			if (!rl.allowed) {
-				set.status = 429;
-				set.headers = rateLimitHeaders(0, rl.retryAfter);
-				return { error: "Too many requests" };
-			}
-			set.headers = rateLimitHeaders(rl.remaining);
-
 			const documentId = params.id;
-			const authorization = await authorizeDocument(
-				request,
-				documentId,
-				"edit",
-			);
-			if (authorization.access.ctx.role === "none") {
-				set.status = 401;
-				return { error: "Unauthorized" };
-			}
-			if (!authorization.authorized) {
-				set.status = authorization.row ? 403 : 404;
-				return {
-					error: authorization.row ? "Forbidden" : "Document not found",
-				};
-			}
-			const ctx = authorization.access.ctx;
-			const userId = authorization.access.userId;
-
 			const payload = body as
 				| {
 						key?: unknown;
+						uploadToken?: unknown;
 						filename?: unknown;
 						contentType?: unknown;
 						size?: unknown;
@@ -514,6 +566,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				  }
 				| undefined;
 			const key = typeof payload?.key === "string" ? payload.key : "";
+			const uploadToken =
+				typeof payload?.uploadToken === "string" ? payload.uploadToken : "";
 			const filename =
 				typeof payload?.filename === "string" ? payload.filename : "";
 			const contentType =
@@ -524,226 +578,233 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					? payload.quotaReservationId
 					: "";
 
-			if (!key) {
+			if (!key || !uploadToken) {
 				set.status = 400;
-				return { error: "key is required" };
+				return { error: "key and uploadToken are required" };
 			}
-			// Scope check: the key MUST start with `${userId}/${documentId}/`
-			// so a caller cannot confirm an upload that belongs to a
-			// different user or document. The presign endpoint always
-			// generates keys in that shape; rejecting mismatches here is a
-			// belt-and-braces guard against a hand-crafted request.
-			const expectedPrefix = `${attachmentKeyPrefix(ctx, userId, documentId)}/`;
-			if (!key.startsWith(expectedPrefix)) {
+			const claims = await verifyAttachmentUploadToken(uploadToken);
+			if (
+				!claims ||
+				claims.documentId !== documentId ||
+				claims.storageKey !== key
+			) {
 				set.status = 400;
-				return { error: "key does not match this document/user" };
+				return { error: "uploadToken does not match this upload" };
 			}
-			if (!filename || filename.length > 255) {
-				set.status = 400;
-				return { error: "filename must be a non-empty string ≤ 255 chars" };
-			}
-			if (!contentType.startsWith("image/")) {
-				set.status = 415;
-				return { error: "Only image files are allowed" };
-			}
-			if (!Number.isFinite(size) || size <= 0) {
-				set.status = 400;
-				return { error: "size must be a positive number" };
-			}
-			if (size > ATTACHMENT_MAX_SIZE_BYTES) {
-				set.status = 413;
-				return {
-					error: `File too large. Maximum size: ${ATTACHMENT_MAX_SIZE_BYTES / 1024 / 1024}MB`,
-				};
-			}
-			const quotaContext = attachmentQuotaContext(
-				ctx,
-				userId,
+			const claimCtx = uploadClaimsTenantContext(claims);
+			const authorization = await authorizeDocument(
+				request,
 				documentId,
-				key,
-				size,
+				"edit",
 			);
-			const admission = attachmentQuotaAdmission(set);
-			if (admission === undefined) {
-				return { error: "Attachment storage quota admission is unavailable" };
-			}
-			if (config.DOCSMINT_WORKSPACE_ENABLED && !quotaContext) {
-				set.status = 503;
-				return {
-					error: "Workspace context is required for attachment storage",
-				};
-			}
-			if (admission && quotaContext && !quotaReservationId) {
-				set.status = 400;
-				return { error: "quotaReservationId is required" };
+			const requestIsAuthenticated = authorization.access.ctx.role !== "none";
+			if (
+				requestIsAuthenticated &&
+				(authorization.access.userId !== claims.actorUserId ||
+					(authorization.access.ctx.workspaceId ?? null) !== claims.workspaceId)
+			) {
+				// A valid token presented by a different actor/workspace is not cleanup
+				// authority. In particular, never delete the token owner's object here.
+				set.status = 404;
+				return { error: "Upload not found" };
 			}
 
-			// A transport retry after a successful confirm must return the
-			// original row without finalizing quota or inserting a duplicate.
-			const existing = await withTenant(ctx, async (tx) => {
-				const [row] = await tx
-					.select()
-					.from(attachments)
+			const tokenHash = attachmentUploadTokenHash(uploadToken);
+			const staleClaim = new Date(Date.now() - 5 * 60_000);
+			const [claimed] = await withTenant(claimCtx, (tx) =>
+				tx
+					.update(pendingAttachmentUploads)
+					.set({ confirmingAt: new Date() })
 					.where(
 						and(
-							eq(attachments.documentId, documentId),
-							eq(attachments.storageKey, key),
+							eq(pendingAttachmentUploads.id, claims.id),
+							eq(pendingAttachmentUploads.documentId, documentId),
+							eq(pendingAttachmentUploads.storageKey, key),
+							eq(pendingAttachmentUploads.tokenHash, tokenHash),
+							or(
+								isNull(pendingAttachmentUploads.confirmingAt),
+								lt(pendingAttachmentUploads.confirmingAt, staleClaim),
+							),
 						),
 					)
-					.limit(1);
-				return row ?? null;
-			});
-			if (existing) {
-				set.status = 201;
+					.returning(),
+			);
+			if (!claimed) {
+				const [existing] = await withTenant(claimCtx, (tx) =>
+					tx
+						.select()
+						.from(attachments)
+						.where(eq(attachments.storageKey, key))
+						.limit(1),
+				);
+				if (existing && authorization.authorized) {
+					set.status = 201;
+					return {
+						id: existing.id,
+						filename: existing.filename,
+						mimeType: existing.mimeType,
+						size: existing.size,
+						url: `/api/attachments/${existing.id}/raw`,
+					};
+				}
+				set.status = existing ? 404 : 409;
 				return {
-					id: existing.id,
-					filename: existing.filename,
-					mimeType: existing.mimeType,
-					size: existing.size,
-					url: `/api/attachments/${existing.id}/raw`,
+					error: existing
+						? "Document not found"
+						: "Upload is already being confirmed or was cleaned",
 				};
 			}
 
-			// Verify the object actually exists in SeaweedFS before we record
-			// a row for it. A successful presign + failed PUT (network
-			// blip, user closed tab) should not become a dangling DB row.
-			let headOutput: { ContentLength?: number };
+			const quotaContext = attachmentQuotaContext(
+				claimCtx,
+				claims.actorUserId,
+				documentId,
+				key,
+				claimed.declaredSize,
+			);
+			const admission = attachmentQuotaAdmission(set);
+			let quotaCommitted = false;
+			let confirmed = false;
 			try {
-				headOutput = await storage.send(
-					new HeadObjectCommand({ Bucket: BUCKET, Key: key }),
-				);
-			} catch (err) {
-				if (admission && quotaContext && quotaReservationId) {
-					await admission
-						.releaseReservation(quotaContext, quotaReservationId)
-						.catch(() => undefined);
+				const ip = await getClientIp(request);
+				const rl = await writeRateLimiter(ip);
+				if (!rl.allowed) {
+					set.status = 429;
+					set.headers = rateLimitHeaders(0, rl.retryAfter);
+					return { error: "Too many requests" };
 				}
-				logger.warn({ err, key }, "Confirm failed: object not in storage");
-				set.status = 409;
-				return { error: "Upload not found in storage — please retry upload" };
-			}
-
-			// Sanity-check the size we recorded against the size storage
-			// observed. A client that lies about size gets corrected
-			// here so the DB row reflects what was actually stored.
-			const storedSize = headOutput.ContentLength;
-			if (
-				typeof storedSize !== "number" ||
-				!Number.isFinite(storedSize) ||
-				storedSize <= 0
-			) {
-				await removeUploadedObject(
-					key,
-					"Failed to remove attachment with invalid storage metadata",
-				);
-				if (admission && quotaContext && quotaReservationId) {
-					await admission
-						.releaseReservation(quotaContext, quotaReservationId)
-						.catch(() => undefined);
+				set.headers = rateLimitHeaders(rl.remaining);
+				if (!requestIsAuthenticated || !authorization.authorized) {
+					set.status = authorization.row ? 403 : 404;
+					return {
+						error: authorization.row ? "Forbidden" : "Document not found",
+					};
 				}
-				set.status = 409;
-				return { error: "Upload size could not be verified" };
-			}
-			if (storedSize > ATTACHMENT_MAX_SIZE_BYTES) {
-				await removeUploadedObject(
-					key,
-					"Failed to remove an oversized attachment upload",
-				);
-				if (admission && quotaContext && quotaReservationId) {
-					await admission
-						.releaseReservation(quotaContext, quotaReservationId)
-						.catch(() => undefined);
+				if (
+					!filename ||
+					filename.length > 255 ||
+					filename !== claimed.filename
+				) {
+					set.status = 400;
+					return { error: "filename does not match the admitted upload" };
 				}
-				set.status = 413;
-				return {
-					error: `Uploaded file exceeds the ${config.ATTACHMENT_MAX_SIZE_MB}MB limit`,
-				};
-			}
-
-			if (admission && quotaContext && quotaReservationId) {
-				try {
-					await admission.finalize(quotaContext, {
-						reservationId: quotaReservationId,
-						actualSize: storedSize,
-					});
-				} catch (error) {
-					await admission
-						.releaseReservation(quotaContext, quotaReservationId)
-						.catch(() => undefined);
-					await removeUploadedObject(
-						key,
-						"Failed to remove attachment after quota finalization rejection",
-					);
-					logger.error(
-						{ err: error, documentId },
-						"Attachment storage quota finalization failed",
-					);
+				if (
+					!contentType.startsWith("image/") ||
+					contentType !== claimed.mimeType
+				) {
+					set.status = 415;
+					return { error: "Only the admitted image content type is allowed" };
+				}
+				if (!Number.isFinite(size) || size !== claimed.declaredSize) {
+					set.status = 400;
+					return { error: "size does not match the admitted upload" };
+				}
+				if (admission === undefined) {
+					return { error: "Attachment storage quota admission is unavailable" };
+				}
+				if (config.DOCSMINT_WORKSPACE_ENABLED && !quotaContext) {
 					set.status = 503;
-					return { error: "Attachment storage quota finalization failed" };
+					return {
+						error: "Workspace context is required for attachment storage",
+					};
 				}
-			}
+				if (claimed.quotaReservationId !== (quotaReservationId || null)) {
+					set.status = 400;
+					return {
+						error: "quotaReservationId does not match the admitted upload",
+					};
+				}
 
-			try {
-				const created = await withTenant(ctx, async (tx) => {
-					// Serialize confirms for the same tenant-bound key without deleting
-					// or rewriting any historical rows. The lock is released with this
-					// transaction and makes the lookup+insert pair atomic for retries.
+				let headOutput: { ContentLength?: number };
+				try {
+					headOutput = await storage.send(
+						new HeadObjectCommand({ Bucket: BUCKET, Key: key }),
+					);
+				} catch (err) {
+					logger.warn({ err, key }, "Confirm failed: object not in storage");
+					set.status = 409;
+					return { error: "Upload not found in storage — please retry upload" };
+				}
+				const storedSize = headOutput.ContentLength;
+				if (
+					typeof storedSize !== "number" ||
+					!Number.isFinite(storedSize) ||
+					storedSize <= 0
+				) {
+					set.status = 409;
+					return { error: "Upload size could not be verified" };
+				}
+				if (storedSize > ATTACHMENT_MAX_SIZE_BYTES) {
+					set.status = 413;
+					return {
+						error: `Uploaded file exceeds the ${config.ATTACHMENT_MAX_SIZE_MB}MB limit`,
+					};
+				}
+				if (admission && quotaContext && claimed.quotaReservationId) {
+					try {
+						await admission.finalize(quotaContext, {
+							reservationId: claimed.quotaReservationId,
+							actualSize: storedSize,
+						});
+						quotaCommitted = true;
+					} catch (error) {
+						logger.error(
+							{ err: error, documentId },
+							"Attachment storage quota finalization failed",
+						);
+						set.status = 503;
+						return { error: "Attachment storage quota finalization failed" };
+					}
+				}
+
+				const created = await withTenant(claimCtx, async (tx) => {
 					await tx.execute(
 						sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
 					);
 					const [raced] = await tx
 						.select()
 						.from(attachments)
-						.where(
-							and(
-								eq(attachments.documentId, documentId),
-								eq(attachments.storageKey, key),
-							),
-						)
+						.where(eq(attachments.storageKey, key))
 						.limit(1);
-					if (raced) return raced;
-					const [row] = await tx
-						.insert(attachments)
-						.values({
-							documentId,
-							filename,
-							mimeType: contentType,
-							size: storedSize,
-							storageKey: key,
-						})
-						.onConflictDoNothing({ target: attachments.storageKey })
-						.returning();
-					if (row) return row;
-					const [winner] = await tx
-						.select()
-						.from(attachments)
-						.where(
-							and(
-								eq(attachments.documentId, documentId),
-								eq(attachments.storageKey, key),
-							),
-						)
-						.limit(1);
-					return winner ?? null;
-				});
-
-				if (!created) {
-					if (admission && quotaContext && quotaReservationId) {
-						await admission
-							.releaseCommitted(quotaContext)
-							.catch(() => undefined);
+					let result = raced;
+					if (!result) {
+						[result] = await tx
+							.insert(attachments)
+							.values({
+								documentId,
+								workspaceId: claims.workspaceId,
+								uploadedBy: claims.actorUserId,
+								filename: claimed.filename,
+								mimeType: claimed.mimeType,
+								size: storedSize,
+								storageKey: key,
+							})
+							.onConflictDoNothing({ target: attachments.storageKey })
+							.returning();
 					}
-					await removeUploadedObject(
-						key,
-						"Failed to remove orphaned attachment after DB insertion",
-					);
+					if (!result) {
+						[result] = await tx
+							.select()
+							.from(attachments)
+							.where(eq(attachments.storageKey, key))
+							.limit(1);
+					}
+					if (!result) return null;
+					await tx
+						.delete(pendingAttachmentUploads)
+						.where(
+							and(
+								eq(pendingAttachmentUploads.id, claims.id),
+								eq(pendingAttachmentUploads.tokenHash, tokenHash),
+							),
+						);
+					return result;
+				});
+				if (!created) {
 					set.status = 500;
 					return { error: "Failed to save attachment record" };
 				}
-
-				// Same stable same-origin URL the legacy POST returns, so
-				// the editor can drop it into `setImage({ src })` without
-				// caring which path the upload took.
+				confirmed = true;
 				set.status = 201;
 				return {
 					id: created.id,
@@ -753,16 +814,46 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					url: `/api/attachments/${created.id}/raw`,
 				};
 			} catch (err) {
-				if (admission && quotaContext && quotaReservationId) {
-					await admission.releaseCommitted(quotaContext).catch(() => undefined);
+				if (isAccountPurgeFencedError(err)) {
+					set.status = 409;
+					return accountPurgeFencedResponse();
 				}
-				await removeUploadedObject(
-					key,
-					"Failed to remove orphaned attachment after DB insertion error",
-				);
-				logger.error({ err, key }, "Confirm failed: DB insert error");
+				logger.error({ err, key }, "Confirm failed");
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
+			} finally {
+				if (!confirmed) {
+					let quotaReleased = true;
+					if (admission && quotaContext && claimed.quotaReservationId) {
+						try {
+							if (quotaCommitted)
+								await admission.releaseCommitted(quotaContext);
+							else
+								await admission.releaseReservation(
+									quotaContext,
+									claimed.quotaReservationId,
+								);
+						} catch {
+							quotaReleased = false;
+						}
+					}
+					const objectDeleted = await deleteUploadedObject(
+						key,
+						"Failed to remove unconfirmed direct attachment upload",
+					);
+					if (objectDeleted && quotaReleased) {
+						await withTenant(claimCtx, (tx) =>
+							tx
+								.delete(pendingAttachmentUploads)
+								.where(
+									and(
+										eq(pendingAttachmentUploads.id, claims.id),
+										eq(pendingAttachmentUploads.tokenHash, tokenHash),
+									),
+								),
+						).catch(() => undefined);
+					}
+				}
 			}
 		},
 	)
@@ -877,6 +968,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					.insert(attachments)
 					.values({
 						documentId,
+						workspaceId: ctx.workspaceId ?? null,
+						uploadedBy: userId,
 						filename: file.name,
 						mimeType: file.type,
 						size: file.size,
@@ -915,6 +1008,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					key,
 					"Failed to remove orphaned attachment after upload error",
 				);
+			}
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
 			}
 			logger.error({ err }, "Failed to upload attachment");
 			set.status = 500;
@@ -1013,6 +1110,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
+		if (await isAccountPurgeFenced(ctx.userId)) {
+			set.status = 409;
+			return accountPurgeFencedResponse();
+		}
 		const userId = ctx.userId;
 
 		const attachmentId = params.id;
@@ -1033,6 +1134,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					documentId: attachments.documentId,
 					storageKey: attachments.storageKey,
 					size: attachments.size,
+					uploadedBy: attachments.uploadedBy,
+					workspaceId: attachments.workspaceId,
 					ownerId: documents.ownerId,
 					categoryId: documents.categoryId,
 					folderCategoryId: folders.categoryId,
@@ -1080,8 +1183,8 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Forbidden" };
 		}
 		const quotaContext = attachmentQuotaContext(
-			ctx,
-			userId,
+			{ workspaceId: row.workspaceId ?? undefined },
+			row.uploadedBy,
 			row.documentId,
 			row.storageKey,
 			row.size,
@@ -1095,24 +1198,32 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Workspace context is required for attachment storage" };
 		}
 
-		// Best-effort object removal. A failure here is logged but does
-		// NOT block the DB delete — orphaned storage is cheaper to clean
-		// up out-of-band than a phantom attachment row the user can't
-		// remove.
+		// Retain the durable attachment row when storage deletion fails. A retry
+		// can then recover; deleting the row first would permanently lose the key.
 		try {
 			await storage.send(
 				new DeleteObjectCommand({ Bucket: BUCKET, Key: row.storageKey }),
 			);
 		} catch (err) {
-			logger.warn(
+			logger.error(
 				{ err, key: row.storageKey, attachmentId },
-				"Failed to remove attachment object from storage; proceeding to delete DB row",
+				"Failed to remove attachment object from storage",
 			);
+			set.status = 503;
+			return { error: "Failed to delete attachment object" };
 		}
 
-		await withTenant(ctx, async (tx) => {
-			await tx.delete(attachments).where(eq(attachments.id, attachmentId));
-		});
+		try {
+			await withTenant(ctx, async (tx) => {
+				await tx.delete(attachments).where(eq(attachments.id, attachmentId));
+			});
+		} catch (error) {
+			if (isAccountPurgeFencedError(error)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
+			throw error;
+		}
 		if (admission && quotaContext) {
 			try {
 				await admission.releaseCommitted(quotaContext);

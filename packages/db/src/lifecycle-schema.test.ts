@@ -75,7 +75,7 @@ test("document-create idempotency migration uses a workspace-scoped durable oper
 	expect(migration).toContain("TO hiai_app");
 });
 
-test("account purge fence serializes on users and guards writes without blocking deletes", async () => {
+test("account purge fence globally serializes subjects and limits lifecycle bypasses", async () => {
 	const migration = await readFile(
 		new URL("./migrations/0042_account_purge_fence.sql", import.meta.url),
 		"utf8",
@@ -85,8 +85,9 @@ test("account purge fence serializes on users and guards writes without blocking
 	expect(migration).toContain(
 		"REVOKE ALL ON FUNCTION public.enforce_account_purge_fence() FROM PUBLIC",
 	);
-	expect(migration).toContain("FROM public.users AS account");
-	expect(migration).toContain("FOR UPDATE");
+	expect(migration).toContain("public.acquire_account_purge_fence_lock");
+	expect(migration).toContain("pg_catalog.pg_advisory_xact_lock");
+	expect(migration).not.toContain("FROM public.users AS account");
 	expect(migration).toContain("operation.status <> 'rejected'");
 	expect(migration).toContain("CONSTRAINT = 'account_purge_fenced'");
 	expect(migration).toContain(
@@ -95,18 +96,55 @@ test("account purge fence serializes on users and guards writes without blocking
 	expect(migration).toContain(
 		"CREATE TABLE IF NOT EXISTS public.document_create_operations",
 	);
-	expect(migration).toContain("BEFORE INSERT OR UPDATE ON public.documents");
-	expect(migration).toContain("BEFORE INSERT OR UPDATE ON public.sessions");
+	expect(migration).toContain("REFERENCING NEW TABLE AS new_rows");
+	expect(migration).toContain("REFERENCING OLD TABLE AS old_rows");
+	expect(migration).toContain("FOR EACH STATEMENT");
+	expect(migration).toContain("FOR SHARE");
+	expect(migration).toContain("parent_share_link:share_link_id");
+	expect(migration).toContain("('audit_log', ARRAY['INSERT','UPDATE','DELETE']");
+	expect(migration).toContain("users_account_purge_fence_update");
+	expect(migration).toContain("public.lifecycle_cleanup_authorized");
+	expect(migration).toContain("pg_catalog.sha256(");
+	expect(migration).not.toContain("digest(");
+	expect(migration).toContain("AFTER UPDATE ON public.users");
+	expect(migration).toContain("ARRAY['INSERT','UPDATE','DELETE']");
+	expect(migration).toContain("('documents',");
+	expect(migration).toContain("('sessions',");
 	expect(migration).toContain(
-		"BEFORE INSERT OR UPDATE ON public.document_pipeline_runs",
+		"('document_pipeline_runs', ARRAY['INSERT']",
 	);
-	expect(migration).not.toContain("BEFORE DELETE");
+	expect(migration).not.toContain(
+		"('document_pipeline_runs', ARRAY['INSERT','UPDATE']",
+	);
+	expect(migration).not.toContain("AFTER DELETE ON public.users");
+
+	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+		entries: Array<{ idx: number; tag: string }>;
+	};
+	expect(journal.entries).toContainEqual(expect.objectContaining({
+		idx: 45,
+		tag: "0042_account_purge_fence",
+	}));
+});
+
+test("attachment admission migration durably binds direct uploads to their actor", async () => {
+	const migration = await readFile(
+		new URL("./migrations/0043_attachment_upload_admission.sql", import.meta.url),
+		"utf8",
+	);
+	expect(migration).toContain("CREATE TABLE IF NOT EXISTS public.pending_attachment_uploads");
+	expect(migration).toContain("uploaded_by uuid");
+	expect(migration).toContain("token_hash text NOT NULL");
+	expect(migration).toContain("expires_at timestamp NOT NULL");
+	expect(migration).toContain("FORCE ROW LEVEL SECURITY");
+	expect(migration).toContain("pending_attachment_uploads_account_purge_fence");
+	expect(migration).toContain("attachments_uploaded_by_fkey");
 
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;
 	};
 	expect(journal.entries.at(-1)).toMatchObject({
-		idx: 45,
-		tag: "0042_account_purge_fence",
+		idx: 46,
+		tag: "0043_attachment_upload_admission",
 	});
 });

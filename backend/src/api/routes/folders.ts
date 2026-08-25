@@ -2,6 +2,7 @@ import { categories, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import { translateAccountPurgeFencedError } from "../../lib/account-purge-fence";
 import {
 	canAccessContent,
 	effectiveDocumentCategoryCondition,
@@ -462,6 +463,8 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 201;
 			return created.row;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to create folder");
 			set.status = 500;
 			return { error: "Failed to create folder" };
@@ -691,6 +694,8 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 
 			return result.updated;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to update folder");
 			set.status = 500;
 			return { error: "Failed to update folder" };
@@ -770,6 +775,8 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			);
 			return { success: true };
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to delete folder");
 			set.status = 500;
 			return { error: "Failed to delete folder" };

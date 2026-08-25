@@ -408,6 +408,10 @@ export const versionRoutes = new Elysia({
 			set.status = 201;
 			return snapshot;
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err, docId: params.id }, "Failed to create snapshot");
 			set.status = 500;
 			return { error: "Failed to create snapshot" };

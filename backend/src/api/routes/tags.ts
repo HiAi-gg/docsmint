@@ -2,6 +2,7 @@ import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
 import { and, count, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import { translateAccountPurgeFencedError } from "../../lib/account-purge-fence";
 import {
 	canAccessContent,
 	effectiveDocumentCategoryCondition,
@@ -174,6 +175,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 201;
 			return created.row;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to create tag");
 			set.status = 500;
 			return { error: "Failed to create tag" };
@@ -238,6 +241,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 
 			return updated.row;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to update tag");
 			set.status = 500;
 			return { error: "Failed to update tag" };
@@ -281,6 +286,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 
 			return { success: true };
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to delete tag");
 			set.status = 500;
 			return { error: "Failed to delete tag" };
@@ -371,6 +378,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 201;
 			return { success: true };
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to add tag to document");
 			set.status = 500;
 			return { error: "Failed to add tag to document" };
@@ -459,6 +468,8 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			invalidateDocCache(params.id);
 			return { success: true };
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to remove tag from document");
 			set.status = 500;
 			return { error: "Failed to remove tag" };

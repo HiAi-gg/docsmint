@@ -444,6 +444,7 @@ describe("DocsClient public contract", () => {
 		});
 		await docs.confirmAttachment("doc/one", {
 			key: "owner/doc/key",
+			uploadToken: "signed-upload-token",
 			filename: "image.png",
 			contentType: "image/png",
 			size: 42,

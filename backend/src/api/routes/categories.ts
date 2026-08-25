@@ -2,6 +2,7 @@ import { categories, documents, folders } from "@hiai-docs/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import { translateAccountPurgeFencedError } from "../../lib/account-purge-fence";
 import {
 	canAccessContent,
 	canManageCategories,
@@ -274,6 +275,8 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			set.status = 201;
 			return created.row;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to create category");
 			set.status = 500;
 			return { error: "Failed to create category" };
@@ -405,6 +408,8 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 
 			return updated.row;
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to update category");
 			set.status = 500;
 			return { error: "Failed to update category" };
@@ -492,6 +497,8 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 			);
 			return { success: true };
 		} catch (err) {
+			const purgeFence = translateAccountPurgeFencedError(err, set);
+			if (purgeFence) return purgeFence;
 			logger.error({ err }, "Failed to delete category");
 			set.status = 500;
 			return { error: "Failed to delete category" };

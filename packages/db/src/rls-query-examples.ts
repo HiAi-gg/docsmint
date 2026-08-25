@@ -437,6 +437,7 @@ async function deleteDocument(documentId: string) {
  * fails with a permissions violation.
  */
 async function createAttachment(
+	uploaderId: string,
   documentId: string,
   filename: string,
   mimeType: string,
@@ -447,6 +448,7 @@ async function createAttachment(
     .insert(attachments)
     .values({
       documentId,
+	  uploadedBy: uploaderId,
       filename,
       mimeType,
       size,
