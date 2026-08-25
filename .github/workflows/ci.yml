@@ -122,6 +122,8 @@ jobs:
       LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       CONTENT_ACCESS_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
+      DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
+      REDIS_URL: redis://127.0.0.1:6384/0
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -169,6 +171,20 @@ jobs:
           docker logs postgres
           exit 1
 
+      - name: Start Redis
+        run: |
+          docker run -d --name redis -p 6384:6379 redis:8-alpine
+          for i in $(seq 1 15); do
+            if docker exec redis redis-cli ping | grep PONG; then
+              echo "Redis ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Redis failed to start"
+          docker logs redis
+          exit 1
+
       - run: cd packages/db && bun run db:migrate
         env:
           MIGRATION_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
@@ -209,7 +225,7 @@ jobs:
 
       - name: Stop Postgres
         if: always()
-        run: docker rm --force postgres || true
+        run: docker rm --force postgres redis || true
 
   build:
     name: Build Every Workspace

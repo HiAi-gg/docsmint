@@ -11,6 +11,11 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 	expect(workflow).toContain("LIFECYCLE_TEST_DATABASE_URL:");
 	expect(workflow).toContain("CONTENT_ACCESS_TEST_DATABASE_URL:");
 	expect(workflow).toContain("DOCSMINT_CONTRACT_DATABASE_URL:");
+	expect(workflow).toContain(
+		"DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test",
+	);
+	expect(workflow).toContain("REDIS_URL: redis://127.0.0.1:6384/0");
+	expect(workflow).toContain("docker run -d --name redis");
 	for (const suite of [
 		"pipeline tenant RLS integration",
 		"lifecycle operation persistence integration",
