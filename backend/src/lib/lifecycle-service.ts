@@ -640,20 +640,45 @@ export function createPersistentLifecycleService(
 							staged += page;
 							if (page === 0) break;
 						}
-						for (let page = 0; page < 10_000; page += 1) {
-							const result = await drainAttachmentStorageCleanupOutbox({
-								deleteObjects: runtime.deleteObjects,
-								actorUserId: ctx.actorUserId,
-								quotaAdmission:
-									runtime.attachmentStorageQuotaAdmission ??
-									getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
-								signal: ctx.signal,
-								pageSize: LIFECYCLE_CLEANUP_PAGE_SIZE,
-								maxPages: 1,
-							});
-							if (result.claimed === 0) break;
-							if (result.failed > 0 || result.deferred > 0)
-								throw new LifecyclePendingAttachmentUploadsError();
+						const leftover = await withCleanupActor((tx) =>
+							tx
+								.select({ id: attachmentStorageCleanupOutbox.id })
+								.from(attachmentStorageCleanupOutbox)
+								.where(
+									or(
+										eq(
+											attachmentStorageCleanupOutbox.actorUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.ownerUserId,
+											ctx.actorUserId,
+										),
+										eq(
+											attachmentStorageCleanupOutbox.requestedByUserId,
+											ctx.actorUserId,
+										),
+									),
+								)
+								.limit(1),
+						);
+						if (staged > 0 || leftover.length > 0) {
+							for (let page = 0; page < 10_000; page += 1) {
+								const result = await drainAttachmentStorageCleanupOutbox({
+									deleteObjects: runtime.deleteObjects,
+									actorUserId: ctx.actorUserId,
+									quotaAdmission:
+										runtime.attachmentStorageQuotaAdmission ??
+										getDocsMintRuntimeOptions()
+											?.attachmentStorageQuotaAdmission,
+									signal: ctx.signal,
+									pageSize: LIFECYCLE_CLEANUP_PAGE_SIZE,
+									maxPages: 1,
+								});
+								if (result.claimed === 0) break;
+								if (result.failed > 0 || result.deferred > 0)
+									throw new LifecyclePendingAttachmentUploadsError();
+							}
 						}
 						const retained = await withCleanupActor((tx) =>
 							tx
