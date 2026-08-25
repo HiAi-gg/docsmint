@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { chmod, mkdir, rm } from "node:fs/promises";
 
 import {
+	attachmentStorageEnforcementForRuntimeVersion,
 	redactSecrets,
 	runRehearsalWorkflow,
 	startIsolatedRedisServer,
@@ -46,7 +47,13 @@ async function redisCli(
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 	test("runs the 0.6.8 attachment rollback smoke in compatible personal mode", () => {
 		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("false");
+		expect(attachmentStorageEnforcementForRuntimeVersion("0.6.8")).toBe(
+			"false",
+		);
 		expect(workspaceEnabledForRuntimeVersion("0.7.0")).toBe("true");
+		expect(attachmentStorageEnforcementForRuntimeVersion("0.7.0")).toBe(
+			"true",
+		);
 	});
 
 	const withAttachmentCleanupColumns = (columns: string[]) =>

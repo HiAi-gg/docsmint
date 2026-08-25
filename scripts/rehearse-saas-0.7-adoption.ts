@@ -1809,6 +1809,12 @@ export function workspaceEnabledForRuntimeVersion(version: string): "true" | "fa
 	return version === "0.6.8" ? "false" : "true";
 }
 
+export function attachmentStorageEnforcementForRuntimeVersion(
+	version: string,
+): "true" | "false" {
+	return version === "0.6.8" ? "false" : "true";
+}
+
 function runtimeEnvironment(
 	prepared: ActualPreparedRehearsal,
 	port: number,
@@ -1841,7 +1847,8 @@ function runtimeEnvironment(
 		DOCSMINT_WORKSPACE_ENABLED: workspaceEnabledForRuntimeVersion(version),
 		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
 		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
-		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED: "true",
+		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED:
+			attachmentStorageEnforcementForRuntimeVersion(version),
 		GRAPH_EXTRACT_ENABLED: "false",
 		GRAPH_SEARCH_ENABLED: "false",
 		SEARCH_EXPANSION_ENABLED: "false",
