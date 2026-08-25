@@ -32,6 +32,7 @@ import {
 import { retrieveGraphCandidates } from "../../../../backend/src/search/graph-retriever";
 import { searchDocuments } from "../../../../backend/src/search/orchestrator";
 import { retrieveFastChannels } from "../../../../backend/src/search/retrievers";
+import { documentPipelineLockKey } from "../../../../backend/src/lib/document-pipeline-serialization";
 import { tenantTopologyLockKey } from "../../../../backend/src/lib/topology-serialization";
 import { capabilityCatalog } from "../../src/capabilities.js";
 import { createDocsmintMcpServer } from "../../src/server.js";
@@ -1318,16 +1319,27 @@ describe("live category-scoped public surfaces", () => {
 				code: "http_404",
 			});
 		} finally {
-			for (const key of [copiedObjectKey, sourceObjectKey]) {
-				if (!key) continue;
-				await deleteContractObject(key).catch(() => undefined);
-				orphanedObjectKeys.delete(key);
+				for (const key of [copiedObjectKey, sourceObjectKey]) {
+					if (!key) continue;
+					await deleteContractObject(key).catch(() => undefined);
+					orphanedObjectKeys.delete(key);
+				}
+				await database.begin(async (tx) => {
+					const cleanupDocumentIds = [
+						sourceDocumentId,
+						...(copyId ? [copyId] : []),
+					];
+					const lockKeys = [
+						...new Set(cleanupDocumentIds.map(documentPipelineLockKey)),
+					].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+					for (const lockKey of lockKeys)
+						await tx`SELECT pg_advisory_xact_lock(${String(lockKey)}::bigint)`;
+					await tx`DELETE FROM documents WHERE id IN (
+						${sourceDocumentId}::uuid,
+						${copyId ?? sourceDocumentId}::uuid
+					)`;
+				});
 			}
-			await database`DELETE FROM documents WHERE id IN (
-				${sourceDocumentId}::uuid,
-				${copyId ?? crypto.randomUUID()}::uuid
-			)`;
-		}
 	});
 
 	test("does not leave a direct upload behind when confirmation fails", async () => {
