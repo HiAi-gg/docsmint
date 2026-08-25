@@ -1901,8 +1901,13 @@ function runtimeEnvironment(
 	prepared: ActualPreparedRehearsal,
 	port: number,
 	version: string,
-	options: Readonly<{ workspaceEnabled?: "true" | "false" }> = {},
+	options: Readonly<{
+		workspaceEnabled?: "true" | "false";
+		attachmentStorageEnforcement?: "true" | "false";
+	}> = {},
 ): Record<string, string> {
+	const workspaceEnabled =
+		options.workspaceEnabled ?? workspaceEnabledForRuntimeVersion(version);
 	return safeEnvironment({
 		NODE_ENV: "test",
 		LOG_LEVEL: "error",
@@ -1928,12 +1933,14 @@ function runtimeEnvironment(
 		HIAI_DOCS_API_KEY: prepared.apiKey,
 		API_KEY_ENCRYPTION_SECRET: prepared.apiKeyEncryptionSecret,
 		OWNER_ID: prepared.userId,
-		DOCSMINT_WORKSPACE_ENABLED:
-			options.workspaceEnabled ?? workspaceEnabledForRuntimeVersion(version),
+		DOCSMINT_WORKSPACE_ENABLED: workspaceEnabled,
 		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
 		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
 		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED:
-			attachmentStorageEnforcementForRuntimeVersion(version),
+			workspaceEnabled === "false"
+				? "false"
+				: (options.attachmentStorageEnforcement ??
+					attachmentStorageEnforcementForRuntimeVersion(version)),
 		GRAPH_EXTRACT_ENABLED: "false",
 		GRAPH_SEARCH_ENABLED: "false",
 		SEARCH_EXPANSION_ENABLED: "false",
@@ -1945,7 +1952,10 @@ async function launchRuntime(
 	prepared: ActualPreparedRehearsal,
 	root: string,
 	version: string,
-	options: Readonly<{ workspaceEnabled?: "true" | "false" }> = {},
+	options: Readonly<{
+		workspaceEnabled?: "true" | "false";
+		attachmentStorageEnforcement?: "true" | "false";
+	}> = {},
 ): Promise<{ baseUrl: string; logs: ActiveRuntime }> {
 	const port = await freePort();
 	const child = Bun.spawn(["bun", "apps/api/src/oss-runtime.ts"], {
@@ -2416,7 +2426,7 @@ async function smoke068Actual(
 			prepared,
 			prepared.baselineRoot,
 			"0.6.8",
-			{ workspaceEnabled: "false" },
+			{ workspaceEnabled: "false", attachmentStorageEnforcement: "false" },
 		);
 		const personalHeaders = {
 			authorization: `Bearer ${prepared.apiKey}`,
