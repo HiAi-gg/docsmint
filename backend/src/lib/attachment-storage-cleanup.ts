@@ -8,14 +8,23 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
-import type { RuntimeAttachmentQuotaAdmission } from "./runtime-options";
-import { getDocsMintRuntimeOptions } from "./runtime-options";
+import {
+	getDocsMintRuntimeOptions,
+	isRetryableQuotaError,
+	type RuntimeAttachmentQuotaAdmission,
+} from "./runtime-options";
 import { BUCKET, storage } from "./storage";
 
 const CLEANUP_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 const DEFAULT_PAGE_SIZE = 100;
 const LEASE_MS = 60_000;
 const LEASE_SECONDS = LEASE_MS / 1_000;
+/** Cleanup rows staged before PUT/copy stay unclaimable until the write ends. */
+export const STORAGE_WRITE_HOLD_MS = 5 * 60_000;
+
+export function storageWriteHoldNotBefore(now = new Date()): Date {
+	return new Date(now.getTime() + STORAGE_WRITE_HOLD_MS);
+}
 
 /** Naive UTC timestamp so session TimeZone cannot shift lease/expiry bounds. */
 export function utcTimestampSql(epochSeconds: number) {
@@ -87,6 +96,21 @@ export async function stageAttachmentStorageCleanup(
 		});
 }
 
+/** Make a staged intent claimable after its storage write finished. */
+export async function activateAttachmentStorageCleanup(
+	tx: TenantTransaction,
+	sourceKind: AttachmentCleanupSourceKind,
+	sourceId: string,
+	now = new Date(),
+): Promise<void> {
+	await tx.execute(sql`
+		UPDATE public.attachment_storage_cleanup_outbox
+		SET not_before = ${utcTimestampSql(unixSeconds(now))}
+		WHERE source_kind = ${sourceKind}
+			AND source_id = ${sourceId}::uuid
+	`);
+}
+
 type ClaimedCleanupRow = Readonly<{
 	id: string;
 	storage_key: string;
@@ -137,6 +161,8 @@ type CleanupDependencies = Readonly<{
 	pageSize?: number;
 	maxPages?: number;
 	actorUserId?: string;
+	sourceKind?: AttachmentCleanupSourceKind;
+	sourceId?: string;
 }>;
 
 async function deleteStorageObjects(keys: readonly string[]): Promise<number> {
@@ -153,20 +179,27 @@ async function claimCleanupPage(
 	now: Date,
 	pageSize: number,
 	quotaReleaseAvailable: boolean,
-	actorUserId?: string,
+	filters: Readonly<{
+		actorUserId?: string;
+		sourceKind?: AttachmentCleanupSourceKind;
+		sourceId?: string;
+	}> = {},
 ): Promise<readonly ClaimedCleanupRow[]> {
-	// Drizzle's raw postgres-js path does not apply column encoders to bound
-	// parameters. Bind timestamps as ISO strings rather than JavaScript Dates.
 	const nowEpoch = unixSeconds(now);
 	const nowTimestamp = utcTimestampSql(nowEpoch);
 	const leaseExpiresAt = utcTimestampSql(nowEpoch + LEASE_SECONDS);
-	const actorFilter = actorUserId
+	const actorFilter = filters.actorUserId
 		? sql`AND (
-			candidate.actor_user_id = ${actorUserId}::uuid
-			OR candidate.owner_user_id = ${actorUserId}::uuid
-			OR candidate.requested_by_user_id = ${actorUserId}::uuid
+			candidate.actor_user_id = ${filters.actorUserId}::uuid
+			OR candidate.owner_user_id = ${filters.actorUserId}::uuid
+			OR candidate.requested_by_user_id = ${filters.actorUserId}::uuid
 		)`
 		: sql``;
+	const exactFilter =
+		filters.sourceKind && filters.sourceId
+			? sql`AND candidate.source_kind = ${filters.sourceKind}
+				AND candidate.source_id = ${filters.sourceId}::uuid`
+			: sql``;
 	const quotaCapabilityFilter = quotaReleaseAvailable
 		? sql``
 		: sql`AND candidate.quota_release_kind = 'none'`;
@@ -182,7 +215,16 @@ async function claimCleanupPage(
 						candidate.lease_expires_at IS NULL
 						OR candidate.lease_expires_at <= ${nowTimestamp}
 					)
+					AND NOT EXISTS (
+						SELECT 1
+						FROM public.pending_attachment_uploads AS pending
+						WHERE pending.storage_key = candidate.storage_key
+							AND pending.lease_owner LIKE 'confirm:%'
+							AND pending.lease_expires_at IS NOT NULL
+							AND pending.lease_expires_at > ${nowTimestamp}
+					)
 					${actorFilter}
+					${exactFilter}
 					${quotaCapabilityFilter}
 				ORDER BY candidate.not_before, candidate.created_at, candidate.id
 				FOR UPDATE SKIP LOCKED
@@ -333,7 +375,11 @@ export async function drainAttachmentStorageCleanupOutbox(
 			now,
 			pageSize,
 			quotaAdmission !== null && quotaAdmission !== undefined,
-			dependencies.actorUserId,
+			{
+				actorUserId: dependencies.actorUserId,
+				sourceKind: dependencies.sourceKind,
+				sourceId: dependencies.sourceId,
+			},
 		);
 		if (rows.length === 0) break;
 		claimed += rows.length;
@@ -354,8 +400,16 @@ export async function drainAttachmentStorageCleanupOutbox(
 					await releaseQuota(row, quotaAdmission, dependencies.signal);
 					acknowledged.push(row.id);
 				} catch (error) {
-					failed += 1;
-					await releaseFailedClaims([row], leaseOwner, now, error);
+					if (isRetryableQuotaError(error)) {
+						failed += 1;
+						await releaseFailedClaims([row], leaseOwner, now, error);
+					} else {
+						logger.warn(
+							{ err: error, cleanupId: row.id },
+							"Terminal quota cleanup rejection; retiring intent",
+						);
+						acknowledged.push(row.id);
+					}
 				}
 			}
 			if (acknowledged.length > 0) {
@@ -382,6 +436,21 @@ export async function drainAttachmentStorageCleanupOutbox(
 		if (rows.length < pageSize) break;
 	}
 	return { claimed, deleted, deferred, failed };
+}
+
+/** Drain one exact staged intent after its storage write has finished. */
+export function drainExactAttachmentStorageCleanup(
+	sourceKind: AttachmentCleanupSourceKind,
+	sourceId: string,
+	dependencies: Omit<CleanupDependencies, "sourceKind" | "sourceId"> = {},
+): Promise<AttachmentStorageCleanupDrainResult> {
+	return drainAttachmentStorageCleanupOutbox({
+		...dependencies,
+		sourceKind,
+		sourceId,
+		pageSize: 1,
+		maxPages: 1,
+	});
 }
 
 /** Best-effort post-commit dispatch; retained rows are recovered later. */

@@ -28,6 +28,21 @@ describe("attachment confirm idempotency contract", () => {
 			".onConflictDoNothing({ target: attachments.storageKey })",
 		);
 		expect(routeSource).toContain(".delete(pendingAttachmentUploads)");
+		expect(routeSource).toContain("relockPendingAttachmentUploadForConfirm");
+		expect(routeSource).toContain(
+			"eq(pendingAttachmentUploads.leaseOwner, claimed.leaseOwner)",
+		);
+	});
+
+	test("rejected confirm cleanup targets the exact admission instead of a shared page", () => {
+		expect(routeSource).toContain(
+			'drainExactAttachmentStorageCleanup(\n\t\t\t\t\t"pending_upload",\n\t\t\t\t\tclaims.id',
+		);
+		expect(routeSource).not.toContain(
+			"drainAttachmentStorageCleanupOutbox({ maxPages: 1 })",
+		);
+		expect(routeSource).toContain("abandonRejectedConfirm");
+		expect(routeSource).toContain("releasePendingAttachmentConfirmLease");
 	});
 
 	test("adds only a non-destructive unique index migration", () => {

@@ -64,6 +64,16 @@ test("lease-fenced writes fail closed when a concurrent worker wins", () => {
 	expect(() => requireLeaseWrite([{ id: "operation-1" }])).not.toThrow();
 });
 
+test("account lifecycle stages attachments and pending uploads in bounded pages", async () => {
+	const source = await readFile(
+		new URL("./lifecycle-service.ts", import.meta.url),
+		"utf8",
+	);
+	expect(source).toContain("export const LIFECYCLE_CLEANUP_PAGE_SIZE = 100");
+	expect(source).toContain(".limit(LIFECYCLE_CLEANUP_PAGE_SIZE)");
+	expect(source).toContain("for (let page = 0; page < 10_000; page += 1)");
+});
+
 test("canonical OSS account lifecycle owns profile resources, auth cleanup, and tombstone ordering", async () => {
 	const source = await readFile(
 		new URL("./lifecycle-service.ts", import.meta.url),

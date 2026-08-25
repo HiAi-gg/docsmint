@@ -9,6 +9,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import {
 	drainAttachmentStorageCleanupOutbox,
+	drainExactAttachmentStorageCleanup,
 	stageAttachmentStorageCleanup,
 	utcTimestampSql,
 } from "./attachment-storage-cleanup";
@@ -406,6 +407,51 @@ export async function claimPendingAttachmentUploadForConfirm(
 		: null;
 }
 
+/** Re-lock a live confirm lease before the final attachment insert. */
+export async function relockPendingAttachmentUploadForConfirm(
+	tx: TenantTransaction,
+	input: Readonly<{
+		id: string;
+		leaseOwner: string;
+		actorUserId: string;
+		now?: Date;
+	}>,
+): Promise<boolean> {
+	const now = input.now ?? new Date();
+	const nowEpoch = unixSeconds(now);
+	const nowTimestamp = utcTimestampSql(nowEpoch);
+	const leaseExpiresAt = utcTimestampSql(nowEpoch + 5 * 60);
+	const rows = (await tx.execute(sql`
+		UPDATE public.pending_attachment_uploads AS pending
+		SET lease_expires_at = ${leaseExpiresAt}
+		WHERE pending.id = ${input.id}::uuid
+			AND pending.lease_owner = ${input.leaseOwner}
+			AND pending.actor_user_id = ${input.actorUserId}::uuid
+			AND pending.lease_expires_at IS NOT NULL
+			AND pending.lease_expires_at > ${nowTimestamp}
+		RETURNING pending.id::text
+	`)) as unknown as Array<{ id: string }>;
+	return rows.length === 1;
+}
+
+/** Drop a confirm lease so a retry can reclaim the same admission. */
+export async function releasePendingAttachmentConfirmLease(
+	ctx: TenantContext,
+	input: Readonly<{ id: string; leaseOwner: string }>,
+): Promise<void> {
+	await withTenant(ctx, (tx) =>
+		tx
+			.update(pendingAttachmentUploads)
+			.set({ leaseOwner: null, leaseExpiresAt: new Date() })
+			.where(
+				and(
+					eq(pendingAttachmentUploads.id, input.id),
+					eq(pendingAttachmentUploads.leaseOwner, input.leaseOwner),
+				),
+			),
+	);
+}
+
 /**
  * Atomically abandon one exact signed admission through the DB-owned proof
  * procedure. This remains safe after the actor fence commits and races
@@ -433,7 +479,8 @@ export async function abandonPendingAttachmentUploadByProof(
 	// authenticated, make the first exact-key delete attempt before responding.
 	// The durable row remains authoritative if storage/quota cleanup fails and a
 	// second retained pass still runs at URL expiry to catch a late PUT.
-	if (abandoned) await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
+	if (abandoned)
+		await drainExactAttachmentStorageCleanup("pending_upload", proof.id);
 	return abandoned;
 }
 
@@ -478,7 +525,17 @@ export async function cleanupExpiredAttachmentUploads(): Promise<number> {
 			);
 		}
 	}
-	if (staged > 0) await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
+	for (const original of rows) {
+		await drainExactAttachmentStorageCleanup(
+			"pending_upload",
+			original.id,
+		).catch((error) => {
+			logger.error(
+				{ err: error, admissionId: original.id },
+				"Exact expired-upload cleanup retained for recovery",
+			);
+		});
+	}
 	return staged;
 }
 

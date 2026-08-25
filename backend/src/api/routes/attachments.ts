@@ -22,8 +22,10 @@ import {
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
 import {
-	drainAttachmentStorageCleanupOutbox,
+	activateAttachmentStorageCleanup,
+	drainExactAttachmentStorageCleanup,
 	stageAttachmentStorageCleanup,
+	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
 import {
 	abandonClaimedPendingAttachmentUpload,
@@ -31,6 +33,8 @@ import {
 	type ClaimedPendingAttachmentUploadRow,
 	claimPendingAttachmentUploadForConfirm,
 	type PendingAttachmentUploadRow,
+	releasePendingAttachmentConfirmLease,
+	relockPendingAttachmentUploadForConfirm,
 } from "../../lib/attachment-upload-cleanup";
 import {
 	attachmentUploadTokenHash,
@@ -47,7 +51,10 @@ import {
 import { acquireDocumentPipelineLock } from "../../lib/document-pipeline-serialization";
 import { logger } from "../../lib/logger";
 import { fetchRemoteImage } from "../../lib/remote-image";
-import { getDocsMintRuntimeOptions } from "../../lib/runtime-options";
+import {
+	getDocsMintRuntimeOptions,
+	isRetryableQuotaError,
+} from "../../lib/runtime-options";
 import {
 	documentReferencesRemoteImage,
 	resolveShareDocumentScope,
@@ -495,22 +502,30 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					try {
 						reservationId = (await admission.reserve(quotaContext)).id;
 					} catch (error) {
+						const retryable = isRetryableQuotaError(error);
 						await withTenant(ctx, (tx) =>
 							tx
 								.update(pendingAttachmentUploads)
 								.set({
 									leaseOwner: null,
 									leaseExpiresAt: new Date(),
-									lastError: "quota_reserve_failed",
+									lastError: retryable
+										? "quota_reserve_retryable"
+										: "quota_reserve_terminal",
+									quotaState: retryable ? "reserve_pending" : "not_required",
 								})
 								.where(eq(pendingAttachmentUploads.id, admissionId)),
 						).catch(() => undefined);
 						logger.warn(
-							{ err: error, documentId },
+							{ err: error, documentId, retryable },
 							"Attachment storage quota reservation rejected",
 						);
-						set.status = 413;
-						return { error: "Storage quota exceeded" };
+						set.status = retryable ? 503 : 413;
+						return {
+							error: retryable
+								? "Storage quota admission is unavailable"
+								: "Storage quota exceeded",
+						};
 					}
 					const reservedRows = await withTenant(ctx, (tx) =>
 						tx
@@ -690,9 +705,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						url: `/api/attachments/${existing.id}/raw`,
 					};
 				}
-				await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
-					() => undefined,
-				);
+				await drainExactAttachmentStorageCleanup(
+					"pending_upload",
+					claims.id,
+				).catch(() => undefined);
 				set.status = existing || !authorization.row ? 404 : 409;
 				return {
 					error: existing
@@ -712,6 +728,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			);
 			const admission = attachmentQuotaAdmission(set);
 			let confirmed = false;
+			let abandonRejectedConfirm = true;
 			let cleanupRow: PendingAttachmentUploadRow = claimed;
 			try {
 				const ip = await getClientIp(request);
@@ -832,12 +849,18 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							throw new Error("attachment_admission_lease_lost");
 						cleanupRow = { ...cleanupRow, quotaState: "committed" };
 					} catch (error) {
+						const retryable = isRetryableQuotaError(error);
 						logger.error(
-							{ err: error, documentId },
+							{ err: error, documentId, retryable },
 							"Attachment storage quota finalization failed",
 						);
-						set.status = 503;
-						return { error: "Attachment storage quota finalization failed" };
+						if (retryable) abandonRejectedConfirm = false;
+						set.status = retryable ? 503 : 413;
+						return {
+							error: retryable
+								? "Attachment storage quota finalization failed"
+								: "Storage quota exceeded",
+						};
 					}
 				}
 
@@ -845,16 +868,14 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					await tx.execute(
 						sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
 					);
-					const [activeClaim] = await tx
-						.select({ id: pendingAttachmentUploads.id })
-						.from(pendingAttachmentUploads)
-						.where(
-							and(
-								eq(pendingAttachmentUploads.id, claimed.id),
-								eq(pendingAttachmentUploads.leaseOwner, claimed.leaseOwner),
-							),
-						)
-						.limit(1);
+					const activeClaim = await relockPendingAttachmentUploadForConfirm(
+						tx,
+						{
+							id: claimed.id,
+							leaseOwner: claimed.leaseOwner,
+							actorUserId: claims.actorUserId,
+						},
+					);
 					if (!activeClaim) return null;
 					const [raced] = await tx
 						.select()
@@ -891,6 +912,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							and(
 								eq(pendingAttachmentUploads.id, claims.id),
 								eq(pendingAttachmentUploads.tokenHash, tokenHash),
+								eq(pendingAttachmentUploads.leaseOwner, claimed.leaseOwner),
 							),
 						);
 					return result;
@@ -917,7 +939,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
 			} finally {
-				if (!confirmed) {
+				if (!confirmed && abandonRejectedConfirm) {
 					await abandonClaimedPendingAttachmentUpload(
 						claimCtx,
 						cleanupRow,
@@ -927,6 +949,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							"Failed to stage rejected attachment cleanup",
 						);
 					});
+				} else if (!confirmed) {
+					await releasePendingAttachmentConfirmLease(claimCtx, {
+						id: claimed.id,
+						leaseOwner: claimed.leaseOwner,
+					}).catch(() => undefined);
 				}
 			}
 		},
@@ -1021,6 +1048,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					size: file.size,
 					quotaOperationKey: `attachment:${documentId}:${key}`,
 					quotaReleaseKind: "none",
+					notBefore: storageWriteHoldNotBefore(),
 				}),
 			);
 			// Upload to SeaweedFS
@@ -1047,7 +1075,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// network blip) logs a warning but does not fail the upload.
 			const integrityOk = await verifyUploadIntegrity(buffer, key);
 			if (!integrityOk) {
-				await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
+				await withTenant(ctx, (tx) =>
+					activateAttachmentStorageCleanup(
+						tx,
+						"uncommitted_upload",
+						cleanupSourceId,
+					),
+				);
+				await drainExactAttachmentStorageCleanup(
+					"uncommitted_upload",
+					cleanupSourceId,
+				);
 				set.status = 500;
 				return { error: "Upload integrity check failed" };
 			}
@@ -1081,7 +1119,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			});
 
 			if (!created) {
-				await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
+				await withTenant(ctx, (tx) =>
+					activateAttachmentStorageCleanup(
+						tx,
+						"uncommitted_upload",
+						cleanupSourceId,
+					),
+				);
+				await drainExactAttachmentStorageCleanup(
+					"uncommitted_upload",
+					cleanupSourceId,
+				);
 				set.status = 500;
 				return { error: "Failed to save attachment record" };
 			}
@@ -1099,9 +1147,17 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				url: `/api/attachments/${created.id}/raw`,
 			};
 		} catch (err) {
-			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
-				() => undefined,
-			);
+			await withTenant(ctx, (tx) =>
+				activateAttachmentStorageCleanup(
+					tx,
+					"uncommitted_upload",
+					cleanupSourceId,
+				),
+			).catch(() => undefined);
+			await drainExactAttachmentStorageCleanup(
+				"uncommitted_upload",
+				cleanupSourceId,
+			).catch(() => undefined);
 			if (isAccountPurgeFencedError(err)) {
 				set.status = 409;
 				return accountPurgeFencedResponse();
@@ -1329,7 +1385,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 			throw error;
 		}
-		await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
+		await drainExactAttachmentStorageCleanup("attachment", attachmentId).catch(
 			(error) => {
 				logger.error(
 					{ err: error, attachmentId },

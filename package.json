@@ -251,7 +251,7 @@
     "test:unit": "bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --filter '*' test:unit",
     "test:contract": "bun run --filter '*' test:contract",
     "test:contract:scoped-live": "bun run --filter '@hiai-docs/mcp-server' test:contract:scoped-live",
-    "test:integration": "bun run --filter '@hiai-docs/db' test:integration && bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/content-access-postgres.integration.test.ts backend/src/__tests__/metadata-impact-postgres.integration.test.ts backend/src/__tests__/graph-routes.test.ts packages/db/scripts/query-observer.integration.test.ts",
+    "test:integration": "bun run --filter '@hiai-docs/db' test:integration && bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/content-access-postgres.integration.test.ts backend/src/__tests__/metadata-impact-postgres.integration.test.ts backend/src/__tests__/graph-routes.test.ts backend/src/__tests__/storage-lifecycle-concurrency-postgres.integration.test.ts packages/db/scripts/query-observer.integration.test.ts",
     "start": "docker compose up -d",
     "stop": "docker compose down",
     "build:sdk": "cd packages/sdk && bun run build",
@@ -271,7 +271,10 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "overrides": {
-    "cookie": "1.1.1"
+    "cookie": "1.1.1",
+    "fast-uri": "3.1.5",
+    "brace-expansion": "2.1.3",
+    "esbuild": "0.25.12"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

@@ -37,8 +37,10 @@ import {
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
 import {
-	drainAttachmentStorageCleanupOutbox,
+	activateAttachmentStorageCleanup,
+	drainExactAttachmentStorageCleanup,
 	stageAttachmentStorageCleanup,
+	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
 import {
 	type PendingAttachmentUploadRow,
@@ -81,6 +83,10 @@ import {
 	metadataReembedPageSize,
 	snapshotDocumentMetadataImpact,
 } from "../../lib/reembed";
+import {
+	getDocsMintRuntimeOptions,
+	isRetryableQuotaError,
+} from "../../lib/runtime-options";
 import { BUCKET, storage } from "../../lib/storage";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
@@ -1809,10 +1815,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Forbidden" };
 		}
 		const userId = ctx.userId;
-		const cleanupCopiedStorage = async (): Promise<void> => {
-			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
-				() => undefined,
-			);
+		let attachmentPlans: ReturnType<typeof planDuplicateAttachments> = [];
+		const cleanupCopiedStorage = async (
+			plans: ReturnType<typeof planDuplicateAttachments>,
+		): Promise<void> => {
+			await withTenant(ctx, async (tx) => {
+				for (const plan of plans) {
+					await activateAttachmentStorageCleanup(
+						tx,
+						"uncommitted_upload",
+						plan.id,
+					);
+				}
+			}).catch(() => undefined);
+			for (const plan of plans) {
+				await drainExactAttachmentStorageCleanup(
+					"uncommitted_upload",
+					plan.id,
+				).catch(() => undefined);
+			}
 		};
 		try {
 			const sourceBundle = await withTenant(ctx, async (tx) => {
@@ -1860,40 +1881,193 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			const copyId = crypto.randomUUID();
-			const attachmentPlans = planDuplicateAttachments(
+			attachmentPlans = planDuplicateAttachments(
 				sourceBundle.sourceAttachments,
 				userId,
 				copyId,
 				undefined,
 				ctx.workspaceId,
 			);
-			if (attachmentPlans.length > 0) {
-				await withTenant(ctx, async (tx) => {
-					for (const plan of attachmentPlans) {
-						await stageAttachmentStorageCleanup(tx, {
-							sourceKind: "uncommitted_upload",
-							sourceId: plan.id,
-							storageKey: plan.storageKey,
-							documentId: copyId,
-							actorUserId: userId,
-							ownerUserId: userId,
-							requestedByUserId: userId,
-							workspaceId: ctx.workspaceId ?? null,
-							size: plan.size,
-							quotaOperationKey: `attachment:${copyId}:${plan.storageKey}`,
-							quotaReleaseKind: "none",
+			const quotaAdmission = config.DOCSMINT_WORKSPACE_ENABLED
+				? getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission
+				: null;
+			if (
+				config.DOCSMINT_WORKSPACE_ENABLED &&
+				attachmentPlans.length > 0 &&
+				!quotaAdmission
+			) {
+				set.status = 503;
+				return { error: "Attachment storage quota admission is unavailable" };
+			}
+			const reservations: Array<{
+				plan: (typeof attachmentPlans)[number];
+				reservationId: string;
+			}> = [];
+			let copiedPlans: typeof attachmentPlans = [];
+			const dropStagedIntents = async (): Promise<void> => {
+				if (attachmentPlans.length === 0) return;
+				await withTenant(ctx, (tx) =>
+					tx.delete(attachmentStorageCleanupOutbox).where(
+						and(
+							eq(
+								attachmentStorageCleanupOutbox.sourceKind,
+								"uncommitted_upload",
+							),
+							inArray(
+								attachmentStorageCleanupOutbox.sourceId,
+								attachmentPlans.map((plan) => plan.id),
+							),
+						),
+					),
+				).catch(() => undefined);
+			};
+			try {
+				if (attachmentPlans.length > 0) {
+					await withTenant(ctx, async (tx) => {
+						for (const plan of attachmentPlans) {
+							await stageAttachmentStorageCleanup(tx, {
+								sourceKind: "uncommitted_upload",
+								sourceId: plan.id,
+								storageKey: plan.storageKey,
+								documentId: copyId,
+								actorUserId: userId,
+								ownerUserId: userId,
+								requestedByUserId: userId,
+								workspaceId: ctx.workspaceId ?? null,
+								size: plan.size,
+								quotaOperationKey: `attachment:${copyId}:${plan.storageKey}`,
+								quotaReleaseKind:
+									ctx.workspaceId && quotaAdmission
+										? "reserve_pending"
+										: "none",
+								quotaReservationId: null,
+								notBefore: storageWriteHoldNotBefore(),
+							});
+						}
+					});
+					if (quotaAdmission && ctx.workspaceId) {
+						for (const plan of attachmentPlans) {
+							const context = {
+								workspaceId: ctx.workspaceId,
+								actorUserId: userId,
+								documentId: copyId,
+								storageKey: plan.storageKey,
+								proposedSize: plan.size,
+								requestId: plan.id,
+								idempotencyKey: `attachment:${copyId}:${plan.storageKey}`,
+							};
+							try {
+								const reservation = await quotaAdmission.reserve(context);
+								reservations.push({ plan, reservationId: reservation.id });
+							} catch (error) {
+								for (const held of reservations) {
+									await quotaAdmission
+										.releaseReservation(
+											{
+												workspaceId: ctx.workspaceId,
+												actorUserId: userId,
+												documentId: copyId,
+												storageKey: held.plan.storageKey,
+												proposedSize: held.plan.size,
+												requestId: held.plan.id,
+												idempotencyKey: `attachment:${copyId}:${held.plan.storageKey}`,
+											},
+											held.reservationId,
+										)
+										.catch(() => undefined);
+								}
+								await dropStagedIntents();
+								set.status = isRetryableQuotaError(error) ? 503 : 413;
+								return {
+									error: isRetryableQuotaError(error)
+										? "Storage quota admission is unavailable"
+										: "Storage quota exceeded",
+								};
+							}
+						}
+						await withTenant(ctx, async (tx) => {
+							for (const held of reservations) {
+								await tx
+									.update(attachmentStorageCleanupOutbox)
+									.set({
+										quotaReservationId: held.reservationId,
+										quotaReleaseKind: "reservation",
+									})
+									.where(
+										and(
+											eq(
+												attachmentStorageCleanupOutbox.sourceKind,
+												"uncommitted_upload",
+											),
+											eq(attachmentStorageCleanupOutbox.sourceId, held.plan.id),
+										),
+									);
+							}
 						});
 					}
-				});
-			}
-			for (const plan of attachmentPlans) {
-				await storage.send(
-					new CopyObjectCommand({
-						Bucket: BUCKET,
-						CopySource: encodeS3CopySource(BUCKET, plan.sourceStorageKey),
-						Key: plan.storageKey,
-					}),
-				);
+				}
+				for (const plan of attachmentPlans) {
+					await storage.send(
+						new CopyObjectCommand({
+							Bucket: BUCKET,
+							CopySource: encodeS3CopySource(BUCKET, plan.sourceStorageKey),
+							Key: plan.storageKey,
+						}),
+					);
+					copiedPlans = [...copiedPlans, plan];
+				}
+				if (quotaAdmission && ctx.workspaceId) {
+					for (const held of reservations) {
+						await quotaAdmission.finalize(
+							{
+								workspaceId: ctx.workspaceId,
+								actorUserId: userId,
+								documentId: copyId,
+								storageKey: held.plan.storageKey,
+								proposedSize: held.plan.size,
+								requestId: held.plan.id,
+								idempotencyKey: `attachment:${copyId}:${held.plan.storageKey}`,
+							},
+							{ reservationId: held.reservationId, actualSize: held.plan.size },
+						);
+						await withTenant(ctx, (tx) =>
+							tx
+								.update(attachmentStorageCleanupOutbox)
+								.set({ quotaReleaseKind: "committed" })
+								.where(
+									and(
+										eq(
+											attachmentStorageCleanupOutbox.sourceKind,
+											"uncommitted_upload",
+										),
+										eq(attachmentStorageCleanupOutbox.sourceId, held.plan.id),
+									),
+								),
+						);
+					}
+				}
+			} catch (error) {
+				if (quotaAdmission && ctx.workspaceId) {
+					for (const held of reservations) {
+						await quotaAdmission
+							.releaseReservation(
+								{
+									workspaceId: ctx.workspaceId,
+									actorUserId: userId,
+									documentId: copyId,
+									storageKey: held.plan.storageKey,
+									proposedSize: held.plan.size,
+									requestId: held.plan.id,
+									idempotencyKey: `attachment:${copyId}:${held.plan.storageKey}`,
+								},
+								held.reservationId,
+							)
+							.catch(() => undefined);
+					}
+				}
+				if (copiedPlans.length > 0) await cleanupCopiedStorage(copiedPlans);
+				else await dropStagedIntents();
+				throw error;
 			}
 
 			const source = sourceBundle.source;
@@ -1997,7 +2171,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return row;
 			});
 			if (!copy) {
-				await cleanupCopiedStorage();
+				await cleanupCopiedStorage(attachmentPlans);
 				set.status = 404;
 				return { error: "Document not found" };
 			}
@@ -2015,7 +2189,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 201;
 			return copy;
 		} catch (err) {
-			await cleanupCopiedStorage();
+			await cleanupCopiedStorage(attachmentPlans);
 			if (isAccountPurgeFencedError(err)) {
 				set.status = 409;
 				return accountPurgeFencedResponse();
@@ -2187,7 +2361,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Document not found" };
 			}
 
-			await withTenant(ctx, async (tx) => {
+			const stagedCleanup = await withTenant(ctx, async (tx) => {
 				await acquireDocumentPipelineLock(tx, params.id);
 				const [authorized] = await tx
 					.select({
@@ -2268,16 +2442,33 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					.returning({ id: documents.id });
 				const removed = result[0];
 				if (!removed) throw new DocumentPurgeNotFoundError();
-				return removed;
+				return {
+					confirmedIds: confirmed.map((row) => row.id),
+					pendingIds: pending.map((row) => row.id),
+				};
 			});
-			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
-				(error) => {
+			for (const attachmentId of stagedCleanup.confirmedIds) {
+				await drainExactAttachmentStorageCleanup(
+					"attachment",
+					attachmentId,
+				).catch((error) => {
 					logger.error(
-						{ err: error, documentId: params.id },
-						"Document purge cleanup retained for recovery",
+						{ err: error, documentId: params.id, attachmentId },
+						"Document purge attachment cleanup retained for recovery",
 					);
-				},
-			);
+				});
+			}
+			for (const pendingId of stagedCleanup.pendingIds) {
+				await drainExactAttachmentStorageCleanup(
+					"pending_upload",
+					pendingId,
+				).catch((error) => {
+					logger.error(
+						{ err: error, documentId: params.id, pendingId },
+						"Document purge pending-upload cleanup retained for recovery",
+					);
+				});
+			}
 			invalidateDocCache(params.id);
 			invalidateDocListCache(ctx.userId);
 			return { success: true };

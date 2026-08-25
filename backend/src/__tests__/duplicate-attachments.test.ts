@@ -5,6 +5,10 @@ import {
 	rewriteDuplicateAttachmentReferences,
 } from "../lib/duplicate-attachments";
 
+const documentsRoute = await Bun.file(
+	new URL("../api/routes/documents.ts", import.meta.url),
+).text();
+
 describe("document attachment duplication", () => {
 	test("creates new document-scoped IDs and rewrites Markdown and JSON", () => {
 		const plans = planDuplicateAttachments(
@@ -60,6 +64,29 @@ describe("document attachment duplication", () => {
 		);
 		expect(plan?.storageKey).toBe(
 			"workspace-a/user-a/doc-copy/attachment-a.png",
+		);
+	});
+
+	test("workspace duplication reserves quota before copy and never stages none-kind copies", () => {
+		const duplicateStart = documentsRoute.indexOf(
+			"POST /api/documents/:id/duplicate",
+		);
+		const duplicate = documentsRoute.slice(
+			duplicateStart,
+			documentsRoute.indexOf("// GET /api/trash", duplicateStart),
+		);
+		expect(duplicate).toContain('? "reserve_pending"');
+		expect(duplicate).toContain("quotaAdmission.reserve(context)");
+		expect(duplicate).toContain("quotaAdmission.finalize(");
+		expect(duplicate).toContain('quotaReleaseKind: "reservation"');
+		expect(duplicate).toContain('quotaReleaseKind: "committed"');
+		expect(duplicate).toContain("releaseReservation(");
+		expect(duplicate).toContain("notBefore: storageWriteHoldNotBefore()");
+		expect(duplicate.indexOf("quotaAdmission.reserve")).toBeLessThan(
+			duplicate.indexOf("new CopyObjectCommand"),
+		);
+		expect(duplicate).not.toMatch(
+			/insert\(attachments\)[\s\S]{0,400}quotaReleaseKind:\s*"none"/,
 		);
 	});
 });

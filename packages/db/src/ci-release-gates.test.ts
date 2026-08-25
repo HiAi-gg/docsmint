@@ -11,6 +11,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 	expect(workflow).toContain("LIFECYCLE_TEST_DATABASE_URL:");
 	expect(workflow).toContain("CONTENT_ACCESS_TEST_DATABASE_URL:");
 	expect(workflow).toContain("DOCSMINT_CONTRACT_DATABASE_URL:");
+	expect(workflow).toContain("DATABASE_URL:");
 	for (const suite of [
 		"pipeline tenant RLS integration",
 		"lifecycle operation persistence integration",
@@ -24,11 +25,19 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
 		"keeps concurrent observers isolated and preserves client ownership",
 		"contains observer failures and never exposes query parameters",
 		"does not install PostgreSQL debug instrumentation unless requested",
+		"PUT write-hold keeps cleanup unclaimable until storage write activation",
+		"workspace duplicate quota exhaustion rejects before copied attachments exist",
+		"confirm lease blocks expired-upload cleanup from deleting the object",
+		"account purge pages attachments beyond the cleanup batch size",
+		"restore and hard purge serialize on the document pipeline lock without deadlock",
+		"terminal quota rejection retires cleanup instead of retrying forever",
+		"rejected-confirm exact drain ignores a backlog larger than one page",
+		"account purge and attachment mutation serialize without deadlock",
 	]) {
 		expect(workflow).toContain(suite);
 	}
 	expect(workflow).toContain(
-		"Required integration behavior cases: 18; skipped: 0",
+		"Required integration behavior cases: 26; skipped: 0",
 	);
 });
 

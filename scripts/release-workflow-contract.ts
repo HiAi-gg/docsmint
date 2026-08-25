@@ -72,7 +72,11 @@ const scopedLiveStorageUrl = "http://127.0.0.1:50702";
 const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	lint: ["bun run lint"],
 	typecheck: ["bun run typecheck"],
-	"unit-test": ["bun run test:unit", "bun run test:contract"],
+	"unit-test": [
+		"bun run release:check:audit",
+		"bun run test:unit",
+		"bun run test:contract",
+	],
 	"integration-test": ["bun run test:integration"],
 	"scoped-live-integration": ["bun run test:contract:scoped-live"],
 	build: ["bun run --sequential --filter '*' build"],

@@ -26,7 +26,7 @@ import type {
 	UserDataExportRecord,
 	UserDataLifecycle,
 } from "@hiai-docs/sdk";
-import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
 	drainAttachmentStorageCleanupOutbox,
 	stageAttachmentStorageCleanup,
@@ -40,6 +40,7 @@ import type { RuntimeAttachmentQuotaAdmission } from "./runtime-options";
 import { getDocsMintRuntimeOptions } from "./runtime-options";
 
 const LEASE_MS = 60_000;
+export const LIFECYCLE_CLEANUP_PAGE_SIZE = 100;
 
 type PersistentOperation = typeof lifecycleOperations.$inferSelect;
 
@@ -593,53 +594,62 @@ export function createPersistentLifecycleService(
 					"settle_pending_attachment_uploads",
 					deletedByDomain,
 					async () => {
-						const staged = await withCleanupActor(async (tx) => {
-							const pending = await tx
-								.select({
-									id: pendingAttachmentUploads.id,
-									documentId: pendingAttachmentUploads.documentId,
-									ownerUserId: sql<string>`public.lifecycle_child_document_owner(
-										${pendingAttachmentUploads.documentId},
-										${ctx.actorUserId}::uuid
-									)`,
-									actorUserId: pendingAttachmentUploads.actorUserId,
-									workspaceId: pendingAttachmentUploads.workspaceId,
-									storageKey: pendingAttachmentUploads.storageKey,
-									tokenHash: pendingAttachmentUploads.tokenHash,
-									filename: pendingAttachmentUploads.filename,
-									mimeType: pendingAttachmentUploads.mimeType,
-									declaredSize: pendingAttachmentUploads.declaredSize,
-									quotaReservationId:
-										pendingAttachmentUploads.quotaReservationId,
-									quotaOperationKey: pendingAttachmentUploads.quotaOperationKey,
-									quotaState: pendingAttachmentUploads.quotaState,
-									actualSize: pendingAttachmentUploads.actualSize,
-									urlIssuedAt: pendingAttachmentUploads.urlIssuedAt,
-									expiresAt: pendingAttachmentUploads.expiresAt,
-									leaseOwner: pendingAttachmentUploads.leaseOwner,
-								})
-								.from(pendingAttachmentUploads)
-								.where(
-									eq(pendingAttachmentUploads.actorUserId, ctx.actorUserId),
-								);
-							for (const row of pending) {
-								await stagePendingAttachmentCleanup(
-									tx,
-									row as PendingAttachmentUploadRow,
-									ctx.actorUserId,
-								);
-							}
-							return pending.length;
-						});
-						await drainAttachmentStorageCleanupOutbox({
-							deleteObjects: runtime.deleteObjects,
-							actorUserId: ctx.actorUserId,
-							quotaAdmission:
-								runtime.attachmentStorageQuotaAdmission ??
-								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
-							signal: ctx.signal,
-							maxPages: 1,
-						});
+						let staged = 0;
+						for (;;) {
+							const page = await withCleanupActor(async (tx) => {
+								const pending = await tx
+									.select({
+										id: pendingAttachmentUploads.id,
+										documentId: pendingAttachmentUploads.documentId,
+										ownerUserId: sql<string>`public.lifecycle_child_document_owner(
+											${pendingAttachmentUploads.documentId},
+											${ctx.actorUserId}::uuid
+										)`,
+										actorUserId: pendingAttachmentUploads.actorUserId,
+										workspaceId: pendingAttachmentUploads.workspaceId,
+										storageKey: pendingAttachmentUploads.storageKey,
+										tokenHash: pendingAttachmentUploads.tokenHash,
+										filename: pendingAttachmentUploads.filename,
+										mimeType: pendingAttachmentUploads.mimeType,
+										declaredSize: pendingAttachmentUploads.declaredSize,
+										quotaReservationId:
+											pendingAttachmentUploads.quotaReservationId,
+										quotaOperationKey:
+											pendingAttachmentUploads.quotaOperationKey,
+										quotaState: pendingAttachmentUploads.quotaState,
+										actualSize: pendingAttachmentUploads.actualSize,
+										urlIssuedAt: pendingAttachmentUploads.urlIssuedAt,
+										expiresAt: pendingAttachmentUploads.expiresAt,
+										leaseOwner: pendingAttachmentUploads.leaseOwner,
+									})
+									.from(pendingAttachmentUploads)
+									.where(
+										eq(pendingAttachmentUploads.actorUserId, ctx.actorUserId),
+									)
+									.orderBy(asc(pendingAttachmentUploads.id))
+									.limit(LIFECYCLE_CLEANUP_PAGE_SIZE);
+								for (const row of pending) {
+									await stagePendingAttachmentCleanup(
+										tx,
+										row as PendingAttachmentUploadRow,
+										ctx.actorUserId,
+									);
+								}
+								return pending.length;
+							});
+							staged += page;
+							if (page === 0) break;
+							await drainAttachmentStorageCleanupOutbox({
+								deleteObjects: runtime.deleteObjects,
+								actorUserId: ctx.actorUserId,
+								quotaAdmission:
+									runtime.attachmentStorageQuotaAdmission ??
+									getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
+								signal: ctx.signal,
+								pageSize: LIFECYCLE_CLEANUP_PAGE_SIZE,
+								maxPages: 1,
+							});
+						}
 						const retained = await withCleanupActor((tx) =>
 							tx
 								.select({ id: attachmentStorageCleanupOutbox.id })
@@ -753,56 +763,64 @@ export function createPersistentLifecycleService(
 					"delete_attachment_objects",
 					deletedByDomain,
 					async () => {
-						return withCleanupActor(async (tx) => {
-							const objectRows = await tx
-								.select({
-									id: attachments.id,
-									documentId: attachments.documentId,
-									storageKey: attachments.storageKey,
-									size: attachments.size,
-									uploadedBy: attachments.uploadedBy,
-									workspaceId: attachments.workspaceId,
-									ownerUserId: sql<string>`public.lifecycle_child_document_owner(
-										${attachments.documentId},
-										${ctx.actorUserId}::uuid
-									)`,
-								})
-								.from(attachments)
-								.where(
-									documentIds.length
-										? or(
-												eq(attachments.uploadedBy, ctx.actorUserId),
-												inArray(attachments.documentId, documentIds),
-											)
-										: eq(attachments.uploadedBy, ctx.actorUserId),
-								);
-							if (objectRows.length === 0) return 0;
-							for (const row of objectRows) {
-								await stageAttachmentStorageCleanup(tx, {
-									sourceKind: "attachment",
-									sourceId: row.id,
-									storageKey: row.storageKey,
-									documentId: row.documentId,
-									actorUserId: row.uploadedBy,
-									ownerUserId: row.ownerUserId,
-									requestedByUserId: ctx.actorUserId,
-									workspaceId: row.workspaceId,
-									size: row.size,
-									quotaOperationKey: `attachment:${row.documentId}:${row.storageKey}`,
-									quotaReleaseKind: row.workspaceId ? "committed" : "none",
-								});
-							}
-							const removed = await tx
-								.delete(attachments)
-								.where(
-									inArray(
-										attachments.id,
-										objectRows.map((row) => row.id),
-									),
-								)
-								.returning({ id: attachments.id });
-							return removed.length;
-						});
+						let removed = 0;
+						for (;;) {
+							const page = await withCleanupActor(async (tx) => {
+								const objectRows = await tx
+									.select({
+										id: attachments.id,
+										documentId: attachments.documentId,
+										storageKey: attachments.storageKey,
+										size: attachments.size,
+										uploadedBy: attachments.uploadedBy,
+										workspaceId: attachments.workspaceId,
+										ownerUserId: sql<string>`public.lifecycle_child_document_owner(
+											${attachments.documentId},
+											${ctx.actorUserId}::uuid
+										)`,
+									})
+									.from(attachments)
+									.where(
+										documentIds.length
+											? or(
+													eq(attachments.uploadedBy, ctx.actorUserId),
+													inArray(attachments.documentId, documentIds),
+												)
+											: eq(attachments.uploadedBy, ctx.actorUserId),
+									)
+									.orderBy(asc(attachments.id))
+									.limit(LIFECYCLE_CLEANUP_PAGE_SIZE);
+								if (objectRows.length === 0) return 0;
+								for (const row of objectRows) {
+									await stageAttachmentStorageCleanup(tx, {
+										sourceKind: "attachment",
+										sourceId: row.id,
+										storageKey: row.storageKey,
+										documentId: row.documentId,
+										actorUserId: row.uploadedBy,
+										ownerUserId: row.ownerUserId,
+										requestedByUserId: ctx.actorUserId,
+										workspaceId: row.workspaceId,
+										size: row.size,
+										quotaOperationKey: `attachment:${row.documentId}:${row.storageKey}`,
+										quotaReleaseKind: row.workspaceId ? "committed" : "none",
+									});
+								}
+								const deleted = await tx
+									.delete(attachments)
+									.where(
+										inArray(
+											attachments.id,
+											objectRows.map((row) => row.id),
+										),
+									)
+									.returning({ id: attachments.id });
+								return deleted.length;
+							});
+							removed += page;
+							if (page === 0) break;
+						}
+						return removed;
 					},
 				);
 				await runStep(
@@ -812,15 +830,23 @@ export function createPersistentLifecycleService(
 					"release_attachment_quota",
 					deletedByDomain,
 					async () => {
-						const result = await drainAttachmentStorageCleanupOutbox({
-							deleteObjects: runtime.deleteObjects,
-							actorUserId: ctx.actorUserId,
-							quotaAdmission:
-								runtime.attachmentStorageQuotaAdmission ??
-								getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
-							signal: ctx.signal,
-							maxPages: 1,
-						});
+						let deleted = 0;
+						for (let page = 0; page < 10_000; page += 1) {
+							const result = await drainAttachmentStorageCleanupOutbox({
+								deleteObjects: runtime.deleteObjects,
+								actorUserId: ctx.actorUserId,
+								quotaAdmission:
+									runtime.attachmentStorageQuotaAdmission ??
+									getDocsMintRuntimeOptions()?.attachmentStorageQuotaAdmission,
+								signal: ctx.signal,
+								pageSize: LIFECYCLE_CLEANUP_PAGE_SIZE,
+								maxPages: 1,
+							});
+							deleted += result.deleted;
+							if (result.claimed === 0) break;
+							if (result.failed > 0 || result.deferred > 0)
+								throw new LifecyclePendingAttachmentUploadsError();
+						}
 						const retained = await withCleanupActor((tx) =>
 							tx
 								.select({ id: attachmentStorageCleanupOutbox.id })
@@ -843,9 +869,9 @@ export function createPersistentLifecycleService(
 								)
 								.limit(1),
 						);
-						if (result.failed > 0 || result.deferred > 0 || retained.length > 0)
+						if (retained.length > 0)
 							throw new LifecyclePendingAttachmentUploadsError();
-						return result.deleted;
+						return deleted;
 					},
 				);
 				await runStep(

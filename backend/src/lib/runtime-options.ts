@@ -15,6 +15,25 @@ export type RuntimeAttachmentQuotaContext = Readonly<{
 	signal?: AbortSignal;
 }>;
 
+/** Quota adapter failure. Terminal rejections must not remain retryable. */
+export class AttachmentQuotaError extends Error {
+	readonly retryable: boolean;
+
+	constructor(message: string, retryable: boolean) {
+		super(message);
+		this.name = "AttachmentQuotaError";
+		this.retryable = retryable;
+	}
+}
+
+export function isRetryableQuotaError(error: unknown): boolean {
+	if (error instanceof AttachmentQuotaError) return error.retryable;
+	const message = error instanceof Error ? error.message : String(error);
+	if (/quota[_ ]?(exceeded|rejected|denied)/i.test(message)) return false;
+	if (/\b(403|413)\b/.test(message)) return false;
+	return true;
+}
+
 export type RuntimeAttachmentQuotaAdmission = Readonly<{
 	/** Retry-safe by context.idempotencyKey; returns one stable reservation. */
 	reserve(

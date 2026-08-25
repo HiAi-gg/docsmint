@@ -3,9 +3,9 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 
 import {
 	attachmentStorageEnforcementForRuntimeVersion,
+	type IsolatedRedisServer,
 	redactSecrets,
 	runRehearsalWorkflow,
-	startIsolatedRedisServer,
 	stopIsolatedRedisServer,
 	validateTemporaryRoot,
 	verifyAdditiveMigrationReapply,
@@ -16,33 +16,6 @@ import {
 	verifySaasBaseline,
 	workspaceEnabledForRuntimeVersion,
 } from "./rehearse-saas-0.7-adoption";
-
-async function redisCli(
-	port: number,
-	database: number,
-	...arguments_: string[]
-): Promise<string> {
-	const child = Bun.spawn(
-		[
-			"redis-cli",
-			"-h",
-			"127.0.0.1",
-			"-p",
-			String(port),
-			"-n",
-			String(database),
-			...arguments_,
-		],
-		{ stdout: "pipe", stderr: "pipe" },
-	);
-	const [exitCode, stdout, stderr] = await Promise.all([
-		child.exited,
-		new Response(child.stdout).text(),
-		new Response(child.stderr).text(),
-	]);
-	if (exitCode !== 0) throw new Error(stderr);
-	return stdout.trim();
-}
 
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 	test("runs the 0.6.8 attachment rollback smoke through the quota-aware runtime", () => {
@@ -97,7 +70,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [] as string[],
 		};
 		const afterFirst = {
-			journalEntries: 49,
+			journalEntries: 50,
 			schemaFingerprint: "embedding-context-and-outbox-schema",
 			columns: withAttachmentCleanupColumns([
 				"attachments.uploaded_by:uuid:NO:",
@@ -130,11 +103,11 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 
 		expect(
 			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
-		).toEqual({ addedJournalEntries: 6, secondRunNoOp: true });
+		).toEqual({ addedJournalEntries: 7, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
-				journalEntries: 50,
+				journalEntries: 51,
 			}),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
@@ -329,56 +302,34 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		).toBe("[REDACTED] [REDACTED] [REDACTED]");
 	});
 
-	test("keeps foreign Redis keys after old lease ownership is lost", async () => {
-		const root = `/tmp/docsmint-saas-adoption-${crypto.randomUUID().replaceAll("-", "")}`;
-		const foreignKey = `foreign:${crypto.randomUUID()}`;
-		const staleLeaseKey = `old-rehearsal-lease:${crypto.randomUUID()}`;
-		await mkdir(root);
-		let foreign:
-			| Awaited<ReturnType<typeof startIsolatedRedisServer>>
-			| undefined;
-		let isolated:
-			| Awaited<ReturnType<typeof startIsolatedRedisServer>>
-			| undefined;
+	test("stopIsolatedRedisServer only kills its owned child and never flushes Redis", async () => {
+		const source = await Bun.file(
+			new URL("./rehearse-saas-0.7-adoption.ts", import.meta.url),
+		).text();
+		expect(source).not.toContain("FLUSHALL");
+		expect(source).not.toContain("FLUSHDB");
+		const root = `/tmp/docsmint-saas-adoption-${"a".repeat(24)}`;
+		await mkdir(root, { recursive: true });
+		const signals: string[] = [];
 		try {
-			foreign = await startIsolatedRedisServer(root);
-			expect(
-				await redisCli(foreign.port, 15, "SET", foreignKey, "survives", "EX", "120"),
-			).toBe("OK");
-			expect(
-				await redisCli(
-					foreign.port,
-					15,
-					"SET",
-					staleLeaseKey,
-					"expired",
-					"EX",
-					"120",
-				),
-			).toBe("OK");
-			isolated = await startIsolatedRedisServer(root);
-			const owned = Bun.spawn(
-				["redis-cli", "-u", isolated.url, "SET", "bull:owned", "value"],
-				{ stdout: "pipe", stderr: "pipe" },
-			);
-			expect(await owned.exited).toBe(0);
-			expect(await redisCli(foreign.port, 15, "DEL", staleLeaseKey)).toBe("1");
-
-			await stopIsolatedRedisServer(isolated);
-			isolated = undefined;
-
-			expect(await redisCli(foreign.port, 15, "GET", foreignKey)).toBe(
-				"survives",
-			);
+			const server: IsolatedRedisServer = {
+				root,
+				url: "redis://127.0.0.1:6390/0",
+				port: 6390,
+				child: {
+					kill(signal?: string) {
+						signals.push(signal ?? "SIGTERM");
+					},
+					exited: Promise.resolve(0),
+				} as IsolatedRedisServer["child"],
+				stdout: Promise.resolve(""),
+				stderr: Promise.resolve(""),
+				stopped: false,
+			};
+			await stopIsolatedRedisServer(server);
+			expect(server.stopped).toBe(true);
+			expect(signals).toEqual(["SIGTERM"]);
 		} finally {
-			if (isolated)
-				await stopIsolatedRedisServer(isolated).catch(() => undefined);
-			if (foreign) {
-				await redisCli(foreign.port, 15, "DEL", foreignKey, staleLeaseKey).catch(
-					() => undefined,
-				);
-				await stopIsolatedRedisServer(foreign).catch(() => undefined);
-			}
 			await rm(root, { recursive: true, force: true });
 		}
 	});
@@ -527,7 +478,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			columns: [],
 		};
 		const migrationAfter = {
-			journalEntries: 49,
+			journalEntries: 50,
 			schemaFingerprint: "after",
 			columns: withAttachmentCleanupColumns([
 				"attachments.uploaded_by:uuid:NO:",

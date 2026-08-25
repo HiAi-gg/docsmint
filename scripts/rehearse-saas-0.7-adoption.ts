@@ -112,7 +112,7 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
-const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 6;
+const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 7;
 const EXPECTED_ADDITIVE_COLUMNS = [
 	"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
 	"attachment_storage_cleanup_outbox.attempt_count:integer:NO:0",
@@ -245,7 +245,7 @@ export function verifyAdditiveMigrationReapply(
 		afterFirst.columns.length !== EXPECTED_ADDITIVE_COLUMNS.length
 	) {
 		throw new Error(
-			"first migration run did not apply exactly six additive journal entries",
+			"first migration run did not apply exactly seven additive journal entries",
 		);
 	}
 	if (
@@ -1671,6 +1671,27 @@ async function migrateActual(
 		if (actors.get(personalAttachmentId) !== prepared.userId) {
 			throw new Error("noncanonical historical attachment did not fall back to its parent owner");
 		}
+		const liveWorkspaceAttachmentId = crypto.randomUUID();
+		await verification.begin(async (tx) => {
+			await tx`SELECT set_config('app.current_user_id', ${peerActorId}, true)`;
+			await tx`SELECT set_config('app.current_user_role', 'user', true)`;
+			await tx`SELECT set_config('app.current_workspace_id', ${prepared.workspaceId}, true)`;
+			await tx`INSERT INTO public.attachments
+				(id, document_id, workspace_id, filename, mime_type, size, storage_key)
+				VALUES (
+					${liveWorkspaceAttachmentId}::uuid, ${workspaceDocumentId}::uuid,
+					${prepared.workspaceId}, 'live-peer.png', 'image/png', 4,
+					${`${prepared.workspaceId}/${peerActorId}/${workspaceDocumentId}/live-peer.png`}
+				)`;
+		});
+		const [liveActor] = await verification<Array<{ uploaded_by: string }>>`
+			SELECT uploaded_by::text FROM public.attachments
+			WHERE id = ${liveWorkspaceAttachmentId}::uuid`;
+		if (liveActor?.uploaded_by !== peerActorId) {
+			throw new Error(
+				"workspace legacy insert did not inherit the current request actor",
+			);
+		}
 	} finally {
 		await verification.end();
 	}
@@ -1880,6 +1901,7 @@ function runtimeEnvironment(
 	prepared: ActualPreparedRehearsal,
 	port: number,
 	version: string,
+	options: Readonly<{ workspaceEnabled?: "true" | "false" }> = {},
 ): Record<string, string> {
 	return safeEnvironment({
 		NODE_ENV: "test",
@@ -1905,7 +1927,9 @@ function runtimeEnvironment(
 		WEBHOOK_SECRET: prepared.webhookSecret,
 		HIAI_DOCS_API_KEY: prepared.apiKey,
 		API_KEY_ENCRYPTION_SECRET: prepared.apiKeyEncryptionSecret,
-		DOCSMINT_WORKSPACE_ENABLED: workspaceEnabledForRuntimeVersion(version),
+		OWNER_ID: prepared.userId,
+		DOCSMINT_WORKSPACE_ENABLED:
+			options.workspaceEnabled ?? workspaceEnabledForRuntimeVersion(version),
 		DOCSMINT_WORKSPACE_ISSUER: prepared.issuer,
 		DOCSMINT_WORKSPACE_SECRET: prepared.assertionSecret,
 		DOCSMINT_ATTACHMENT_STORAGE_ENFORCEMENT_ENABLED:
@@ -1921,11 +1945,12 @@ async function launchRuntime(
 	prepared: ActualPreparedRehearsal,
 	root: string,
 	version: string,
+	options: Readonly<{ workspaceEnabled?: "true" | "false" }> = {},
 ): Promise<{ baseUrl: string; logs: ActiveRuntime }> {
 	const port = await freePort();
 	const child = Bun.spawn(["bun", "apps/api/src/oss-runtime.ts"], {
 		cwd: root,
-		env: runtimeEnvironment(prepared, port, version),
+		env: runtimeEnvironment(prepared, port, version, options),
 		stdin: "ignore",
 		stdout: "pipe",
 		stderr: "pipe",
@@ -2385,6 +2410,59 @@ async function smoke068Actual(
 			assertion,
 			`/api/documents/${id}`,
 		);
+		await stopRuntime(runner, prepared);
+		const { baseUrl: personalUrl } = await launchRuntime(
+			runner,
+			prepared,
+			prepared.baselineRoot,
+			"0.6.8",
+			{ workspaceEnabled: "false" },
+		);
+		const personalHeaders = {
+			authorization: `Bearer ${prepared.apiKey}`,
+			"content-type": "application/json",
+		};
+		const personalCreated = await fetch(`${personalUrl}/api/documents`, {
+			method: "POST",
+			headers: personalHeaders,
+			body: JSON.stringify({
+				title: `${token} personal`,
+				content: `${token} personal body`,
+			}),
+		});
+		if (personalCreated.status !== 201) {
+			throw new Error(
+				`0.6.8 personal create returned HTTP ${personalCreated.status}`,
+			);
+		}
+		const personalId = objectBody(
+			await personalCreated.json(),
+			"0.6.8 personal create",
+		).id;
+		if (typeof personalId !== "string") {
+			throw new Error("0.6.8 personal create omitted id");
+		}
+		const form = new FormData();
+		form.set(
+			"file",
+			new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], {
+				type: "image/png",
+			}),
+			`${token}-personal.png`,
+		);
+		const multipart = await fetch(
+			`${personalUrl}/api/documents/${personalId}/attachments`,
+			{
+				method: "POST",
+				headers: { authorization: `Bearer ${prepared.apiKey}` },
+				body: form,
+			},
+		);
+		if (multipart.status !== 201) {
+			throw new Error(
+				`0.6.8 personal multipart returned HTTP ${multipart.status}`,
+			);
+		}
 		return {
 			version: "0.6.8",
 			health: true,

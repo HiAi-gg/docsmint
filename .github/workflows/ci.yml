@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Configure workspaces for CI
         run: |
           bun -e "
@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Configure workspaces for CI
         run: |
           bun -e "
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Configure workspaces for CI
         run: |
           bun -e "
@@ -110,6 +110,7 @@ jobs:
             fs.writeFileSync('frontend/package.json', JSON.stringify(pkg, null, 2));
           "
       - run: bun install --frozen-lockfile
+      - run: bun run release:check:audit
       - run: bun run test:unit
       - run: bun run test:contract
 
@@ -121,11 +122,12 @@ jobs:
       LIFECYCLE_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       CONTENT_ACCESS_TEST_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
+      DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Configure workspaces for CI
         run: |
           bun -e "
@@ -189,14 +191,22 @@ jobs:
             "holds deterministic descendant locks through the document snapshot" \
             "keeps concurrent observers isolated and preserves client ownership" \
             "contains observer failures and never exposes query parameters" \
-            "does not install PostgreSQL debug instrumentation unless requested"; do
+            "does not install PostgreSQL debug instrumentation unless requested" \
+            "PUT write-hold keeps cleanup unclaimable until storage write activation" \
+            "workspace duplicate quota exhaustion rejects before copied attachments exist" \
+            "confirm lease blocks expired-upload cleanup from deleting the object" \
+            "account purge pages attachments beyond the cleanup batch size" \
+            "restore and hard purge serialize on the document pipeline lock without deadlock" \
+            "terminal quota rejection retires cleanup instead of retrying forever" \
+            "rejected-confirm exact drain ignores a backlog larger than one page" \
+            "account purge and attachment mutation serialize without deadlock"; do
             grep --fixed-strings "$suite" /tmp/docsmint-required-integrations.log >/dev/null
           done
           if grep -Eq '\(skip\)|[1-9][0-9]* skip' /tmp/docsmint-required-integrations.log; then
             echo "Required integration suite reported skipped coverage"
             exit 1
           fi
-          echo "Required integration behavior cases: 18; skipped: 0"
+          echo "Required integration behavior cases: 26; skipped: 0"
 
       - name: Stop Postgres
         if: always()
@@ -209,7 +219,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run --sequential --filter '*' build
 
@@ -245,7 +255,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Configure workspaces for CI
         run: |
           bun -e "
@@ -427,7 +437,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Install and build SDK
         run: |
           bun install --frozen-lockfile
@@ -447,7 +457,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - run: bun run release:check:clean
       - run: bun install --frozen-lockfile
       - run: bun run release:check:audit
@@ -501,7 +511,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: Start isolated required services and migrations
         shell: bash
@@ -545,7 +555,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: Install pinned agent-browser without Chrome
         run: bun add --global agent-browser@0.34.0
@@ -600,7 +610,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - run: bun run release:write:gate-result
       - uses: actions/upload-artifact@v4
         with:
@@ -623,7 +633,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Validate committed release version
         run: bun run scripts/release-version-validator.ts "${{ github.ref_name }}"
       - name: Log in to GHCR
@@ -691,7 +701,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
 
       - name: Validate committed release version
         run: bun run scripts/release-version-validator.ts "${{ github.ref_name }}"
@@ -775,7 +785,7 @@ jobs:
           fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Verify exact tag commit and npm provenance
         run: |
           set -euo pipefail
@@ -803,7 +813,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
       - name: Validate committed release version
         run: bun run scripts/release-version-validator.ts "${{ github.ref_name }}"
       - name: Install pinned MCP publisher

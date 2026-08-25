@@ -208,8 +208,27 @@ test("cleanup outbox insert locks the parent document before requester fence sub
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;
 	};
+	expect(journal.entries).toContainEqual(
+		expect.objectContaining({
+			idx: 48,
+			tag: "0045_attachment_cleanup_lock_order",
+		}),
+	);
+});
+
+test("legacy attachment actor fill distinguishes personal owner and workspace actor", async () => {
+	const migration = await readFile(
+		new URL("./migrations/0046_legacy_attachment_actor.sql", import.meta.url),
+		"utf8",
+	);
+	expect(migration).toContain("fill_legacy_attachment_uploaded_by");
+	expect(migration).toContain("parent_workspace_id IS NULL");
+	expect(migration).toContain("COALESCE(current_actor_id, parent_owner_id)");
+	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+		entries: Array<{ idx: number; tag: string }>;
+	};
 	expect(journal.entries.at(-1)).toMatchObject({
-		idx: 48,
-		tag: "0045_attachment_cleanup_lock_order",
+		idx: 49,
+		tag: "0046_legacy_attachment_actor",
 	});
 });
