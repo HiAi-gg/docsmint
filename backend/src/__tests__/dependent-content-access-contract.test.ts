@@ -14,7 +14,7 @@ describe("dependent document route access contracts", () => {
 		expect(source).toContain('authorizeDocument(request, params.id, "read")');
 		expect(source).toContain('canAccessContent(access, "read")');
 		expect(source.match(/effectiveDocumentCategoryCondition\(/g)).toHaveLength(
-			4,
+			5,
 		);
 		expect(source).not.toContain("row.ownerId !== access.userId");
 	});

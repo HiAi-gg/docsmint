@@ -12,13 +12,13 @@ From 0.7.0:
 
 - reusable self-hosted capabilities belong in OSS when they are exposed through
   supported API, SDK, or frontend contracts;
-- SaaS product workflows consume those public contracts rather than importing
+- Host product workflows consume those public contracts rather than importing
   private OSS source or duplicating editor and store implementations;
 - changing or removing an existing export, route, assertion field, role,
   extension slot, or canonical header requires an explicit compatibility
   decision and a new contract baseline;
 - billing, product chat, HTML renditions, usage accounting, Stripe, OAuth, and
-  SaaS workspace overlays remain outside the OSS distribution.
+  host workspace overlays remain outside the OSS distribution.
 
 This is the evergreen maintainer flow for the DocsMint public repository.
 Release-specific evidence belongs in CI
@@ -63,7 +63,7 @@ process environment; it does not read or create a repository environment file.
 The gate coordinates the frozen install, version and workflow validators,
 production audit, tracked-Git-blob secret scan, lint, typecheck, unit and
 contract suites, every workspace build, packed and clean-installed consumers,
-SaaS adoption rehearsal, fresh Docker rebuild, strict port and health checks,
+Host adoption rehearsal, fresh Docker rebuild, strict port and health checks,
 required PostgreSQL and live public integrations, and desktop/mobile
 `agent-browser` flows on Lightpanda. Raw logs and machine-readable results are
 written under `build/release-evidence/local-release-gate/` and are bound to the
@@ -104,13 +104,13 @@ Publishing is a separate, explicitly authorized operation.
 3. Confirm the tag version already matches every manifest, `server.json`,
    Swagger/OpenAPI, CLI/MCP runtime, and PWA deployment identity; do not rewrite
    release metadata from the tag.
-4. Run `bun run scripts/rehearse-saas-0.7-adoption.ts`, then
+4. Run `bun run scripts/rehearse-host-0.7-adoption.ts`, then
    `bun run release:check:contract-evidence`. The rehearsal uses only disposable
-   SaaS copies and isolated local resources; it must leave the real SaaS checkout
+   host copies and isolated local resources; it must leave the real downstream checkout
    clean. The canonical prepublish gate requires the completed migration evidence
    with the exact closed categories for
    additive/idempotent reapply, no new required environment, atomic package and
-   submodule adoption in a disposable SaaS copy, the 0.7 runtime smoke, and the
+   submodule adoption in a disposable host copy, the 0.7 runtime smoke, and the
    0.6.8 rollback-runtime smoke on the same upgraded database. The completion
    also names that exact rehearsal command;
    generic tests and validator self-references are rejected.

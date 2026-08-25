@@ -59,3 +59,18 @@ test("terminal quota cleanup retires the intent instead of retrying forever", ()
 	);
 	expect(cleanupSource).toContain("acknowledged.push(row.id)");
 });
+
+test("attachment DELETE re-checks category authorization after the pipeline lock", () => {
+	const deleteHandler = uploadRoute.slice(
+		uploadRoute.indexOf("// DELETE /api/attachments/:id"),
+	);
+	const lockIndex = deleteHandler.indexOf("acquireDocumentPipelineLock(");
+	expect(lockIndex).toBeGreaterThan(-1);
+	const afterLock = deleteHandler.slice(lockIndex);
+	expect(afterLock).toContain("effectiveDocumentCategoryCondition(");
+	expect(afterLock).toContain("isNull(documents.deletedAt)");
+	expect(afterLock).toContain("tenantOwnerCondition(");
+	expect(afterLock.indexOf("effectiveDocumentCategoryCondition(")).toBeLessThan(
+		afterLock.indexOf('.for("update"'),
+	);
+});

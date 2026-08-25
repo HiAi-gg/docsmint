@@ -57,7 +57,7 @@ export interface CandidateProvenanceEvidence {
 	submoduleStatus: string[];
 }
 
-export interface SaasBaselineEvidence {
+export interface HostBaselineEvidence {
 	expectedCommit: string;
 	baseCommit: string;
 	packageVersions: Record<string, string>;
@@ -111,7 +111,7 @@ export interface RehearsalWorkflowReport {
 }
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
-const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
+const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-host-adoption-[0-9a-f]{8,64}$/;
 const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 7;
 const EXPECTED_ADDITIVE_COLUMNS = [
 	"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
@@ -195,7 +195,7 @@ export function verifyCandidateProvenance(
 	return { commit: evidence.candidateCommit, tree: evidence.headTree };
 }
 
-export function verifySaasBaseline(evidence: SaasBaselineEvidence): {
+export function verifyHostBaseline(evidence: HostBaselineEvidence): {
 	commit: string;
 	version: "0.6.8";
 } {
@@ -209,7 +209,7 @@ export function verifySaasBaseline(evidence: SaasBaselineEvidence): {
 		evidence.launcherVersion === "0.6.8" &&
 		evidence.gitlinkCommit === evidence.expectedSubmoduleCommit &&
 		evidence.submoduleCommit === evidence.expectedSubmoduleCommit;
-	if (!valid) throw new Error("exact SaaS 0.6.8 baseline verification failed");
+	if (!valid) throw new Error("exact host 0.6.8 baseline verification failed");
 	return { commit: evidence.baseCommit, version: "0.6.8" };
 }
 
@@ -421,9 +421,9 @@ export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 }
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "..");
-const SAAS_SOURCE_ROOT = "/mnt/data/projects/docsmint";
+const HOST_SOURCE_ROOT = "/mnt/data/projects/docsmint";
 const OSS_REPOSITORY_ROOT = "/mnt/data/projects/docsmint-oss";
-const BASELINE_SAAS_COMMIT = "31485e6679608a762b6fda4a8ee8f97afbf76577";
+const BASELINE_HOST_COMMIT = "31485e6679608a762b6fda4a8ee8f97afbf76577";
 const BASELINE_OSS_COMMIT = "ea83e5380596567434545ac2a34f65d241a9e75b";
 const PACKAGE_MANIFESTS = [
 	"package.json",
@@ -548,7 +548,7 @@ interface ActiveRuntime {
 interface ActualPreparedRehearsal extends PreparedRehearsal {
 	token: string;
 	candidateCommit: string;
-	saasRoot: string;
+	hostRoot: string;
 	baselineRoot: string;
 	candidateSourceRoot: string;
 	stageRoot: string;
@@ -582,6 +582,8 @@ interface ActualPreparedRehearsal extends PreparedRehearsal {
 	embeddingServer: ReturnType<typeof Bun.serve>;
 	postgresCreated: boolean;
 	storageBucketCreated: boolean;
+	preferredStorageBucket: string;
+	preferredStorageBucketCreated: boolean;
 }
 
 function safeEnvironment(
@@ -629,14 +631,33 @@ function connectionUrl(
 	return `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(password)}@127.0.0.1:${POSTGRES_HOST_PORT}/${encodeURIComponent(database)}`;
 }
 
+export function disposableRehearsalBuckets(input: {
+	preferredBucket: string;
+	selectedBucket: string;
+	preferredCreated: boolean;
+}): string[] {
+	if (!input.preferredCreated) return [];
+	return [input.preferredBucket];
+}
+
 async function ensureWritableRehearsalBucket(input: {
 	preferredBucket: string;
 	fallbackBucket: string;
 	accessKeyId: string;
 	secretAccessKey: string;
-}): Promise<{ bucket: string; created: boolean }> {
-	const { CreateBucketCommand, PutObjectCommand, DeleteObjectCommand, S3Client } =
-		await import("@aws-sdk/client-s3");
+}): Promise<{
+	bucket: string;
+	created: boolean;
+	preferredCreated: boolean;
+	preferredBucket: string;
+}> {
+	const {
+		CreateBucketCommand,
+		PutObjectCommand,
+		DeleteObjectCommand,
+		DeleteBucketCommand,
+		S3Client,
+	} = await import("@aws-sdk/client-s3");
 	const client = new S3Client({
 		endpoint: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
 		region: "us-east-1",
@@ -665,16 +686,42 @@ async function ensureWritableRehearsalBucket(input: {
 			return false;
 		}
 	};
+	const deletePreferred = async (): Promise<boolean> => {
+		try {
+			await client.send(
+				new DeleteBucketCommand({ Bucket: input.preferredBucket }),
+			);
+			return true;
+		} catch (error) {
+			const status =
+				error && typeof error === "object" && "$metadata" in error
+					? (error.$metadata as { httpStatusCode?: number }).httpStatusCode
+					: undefined;
+			return status === 404;
+		}
+	};
 	try {
 		await client.send(
 			new CreateBucketCommand({ Bucket: input.preferredBucket }),
 		);
 		if (await probe(input.preferredBucket)) {
-			return { bucket: input.preferredBucket, created: true };
+			return {
+				bucket: input.preferredBucket,
+				created: true,
+				preferredCreated: true,
+				preferredBucket: input.preferredBucket,
+			};
 		}
 		if (await probe(input.fallbackBucket)) {
-			return { bucket: input.fallbackBucket, created: false };
+			const removed = await deletePreferred();
+			return {
+				bucket: input.fallbackBucket,
+				created: false,
+				preferredCreated: !removed,
+				preferredBucket: input.preferredBucket,
+			};
 		}
+		await deletePreferred();
 		throw new Error(
 			"SeaweedFS accepted no writable rehearsal bucket for attachment PUT",
 		);
@@ -752,11 +799,11 @@ async function dockerPostgres(
 
 async function cloneSubmodule(
 	runner: SafeCommandRunner,
-	saasRoot: string,
+	hostRoot: string,
 	commit: string,
 ): Promise<void> {
 	if (!COMMIT_PATTERN.test(commit)) throw new Error("invalid submodule commit");
-	const destination = join(saasRoot, "docsmint-oss");
+	const destination = join(hostRoot, "docsmint-oss");
 	await runner.run(
 		[
 			"git",
@@ -766,7 +813,7 @@ async function cloneSubmodule(
 			OSS_REPOSITORY_ROOT,
 			destination,
 		],
-		{ cwd: saasRoot, env: safeEnvironment() },
+		{ cwd: hostRoot, env: safeEnvironment() },
 	);
 	await runner.run(["git", "checkout", "--detach", commit], {
 		cwd: destination,
@@ -829,7 +876,7 @@ function dependencyVersion(manifest: {
 	);
 }
 
-function resolvedSaasLockVersion(lockfile: string): string {
+function resolvedHostLockVersion(lockfile: string): string {
 	return (
 		/"@hiai-gg\/docsmint": \["@hiai-gg\/docsmint@([^"]+)"/.exec(
 			lockfile,
@@ -837,10 +884,10 @@ function resolvedSaasLockVersion(lockfile: string): string {
 	);
 }
 
-async function collectSaasBaselineEvidence(
+async function collectHostBaselineEvidence(
 	runner: SafeCommandRunner,
 	root: string,
-): Promise<SaasBaselineEvidence> {
+): Promise<HostBaselineEvidence> {
 	const baseCommit = (
 		await runner.run(["git", "rev-parse", "HEAD"], {
 			cwd: root,
@@ -857,7 +904,7 @@ async function collectSaasBaselineEvidence(
 		};
 		packageVersions[manifestPath] = dependencyVersion(manifest);
 	}
-	const lockfileVersion = resolvedSaasLockVersion(
+	const lockfileVersion = resolvedHostLockVersion(
 		await readFile(join(root, "bun.lock"), "utf8"),
 	);
 	const launcher = await readFile(
@@ -880,7 +927,7 @@ async function collectSaasBaselineEvidence(
 		})
 	).stdout.trim();
 	return {
-		expectedCommit: BASELINE_SAAS_COMMIT,
+		expectedCommit: BASELINE_HOST_COMMIT,
 		baseCommit,
 		packageVersions,
 		lockfileVersion,
@@ -908,7 +955,7 @@ async function runUpstreamMigrations(
 	});
 }
 
-async function runBaselineSaasMigrations(
+async function runBaselineHostMigrations(
 	runner: SafeCommandRunner,
 	baselineRoot: string,
 	ownerUrl: string,
@@ -933,10 +980,10 @@ async function prepareActualRehearsal(
 ): Promise<ActualPreparedRehearsal> {
 	const storageCredential = await localSeaweedCredentials(runner);
 	const root = validateTemporaryRoot(
-		`/tmp/docsmint-saas-adoption-${randomHex(12)}`,
+		`/tmp/docsmint-host-adoption-${randomHex(12)}`,
 	);
 	await mkdir(root);
-	const token = basename(root).slice("docsmint-saas-adoption-".length);
+	const token = basename(root).slice("docsmint-host-adoption-".length);
 	if (!/^[0-9A-Za-z]{6,64}$/.test(token)) {
 		await rm(root, { recursive: true, force: true });
 		throw new Error("temporary root did not contain a unique token");
@@ -995,8 +1042,8 @@ async function prepareActualRehearsal(
 		root,
 		token: normalizedToken,
 		candidateCommit,
-		saasRoot: assertContainedPath(root, join(root, "saas-070")),
-		baselineRoot: assertContainedPath(root, join(root, "saas-068")),
+		hostRoot: assertContainedPath(root, join(root, "host-070")),
+		baselineRoot: assertContainedPath(root, join(root, "host-068")),
 		candidateSourceRoot: assertContainedPath(root, join(root, "oss-candidate")),
 		stageRoot: assertContainedPath(root, join(root, "candidate-stage")),
 		tarballRoot: assertContainedPath(root, join(root, "tarballs")),
@@ -1025,6 +1072,8 @@ async function prepareActualRehearsal(
 		embeddingServer,
 		postgresCreated: false,
 		storageBucketCreated: false,
+		preferredStorageBucket: "",
+		preferredStorageBucketCreated: false,
 	};
 	runner.addSecrets(prepared.ownerUrl, prepared.runtimeUrl);
 	try {
@@ -1038,13 +1087,13 @@ async function prepareActualRehearsal(
 				"clone",
 				"--local",
 				"--no-hardlinks",
-				SAAS_SOURCE_ROOT,
-				prepared.saasRoot,
+				HOST_SOURCE_ROOT,
+				prepared.hostRoot,
 			],
 			{ cwd: root, env: safeEnvironment() },
 		);
-		await runner.run(["git", "checkout", "--detach", BASELINE_SAAS_COMMIT], {
-			cwd: prepared.saasRoot,
+		await runner.run(["git", "checkout", "--detach", BASELINE_HOST_COMMIT], {
+			cwd: prepared.hostRoot,
 			env: safeEnvironment(),
 		});
 		await runner.run(
@@ -1054,17 +1103,17 @@ async function prepareActualRehearsal(
 				"add",
 				"--detach",
 				prepared.baselineRoot,
-				BASELINE_SAAS_COMMIT,
+				BASELINE_HOST_COMMIT,
 			],
-			{ cwd: prepared.saasRoot, env: safeEnvironment() },
+			{ cwd: prepared.hostRoot, env: safeEnvironment() },
 		);
-		await cloneSubmodule(runner, prepared.saasRoot, BASELINE_OSS_COMMIT);
+		await cloneSubmodule(runner, prepared.hostRoot, BASELINE_OSS_COMMIT);
 		await cloneSubmodule(runner, prepared.baselineRoot, BASELINE_OSS_COMMIT);
-		verifySaasBaseline(
-			await collectSaasBaselineEvidence(runner, prepared.saasRoot),
+		verifyHostBaseline(
+			await collectHostBaselineEvidence(runner, prepared.hostRoot),
 		);
-		verifySaasBaseline(
-			await collectSaasBaselineEvidence(runner, prepared.baselineRoot),
+		verifyHostBaseline(
+			await collectHostBaselineEvidence(runner, prepared.baselineRoot),
 		);
 		await runner.run(
 			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
@@ -1086,7 +1135,7 @@ async function prepareActualRehearsal(
 			),
 		) as { version?: string };
 		if (installedBaseline.version !== "0.6.8") {
-			throw new Error("exact SaaS 0.6.8 baseline install verification failed");
+			throw new Error("exact host 0.6.8 baseline install verification failed");
 		}
 		await runner.run(
 			["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
@@ -1121,12 +1170,14 @@ async function prepareActualRehearsal(
 		});
 		prepared.storageBucket = writable.bucket;
 		prepared.storageBucketCreated = writable.created;
+		prepared.preferredStorageBucket = writable.preferredBucket;
+		prepared.preferredStorageBucketCreated = writable.preferredCreated;
 		await runUpstreamMigrations(
 			runner,
 			join(prepared.baselineRoot, "docsmint-oss"),
 			prepared.ownerUrl,
 		);
-		await runBaselineSaasMigrations(
+		await runBaselineHostMigrations(
 			runner,
 			prepared.baselineRoot,
 			prepared.ownerUrl,
@@ -1202,7 +1253,17 @@ async function cleanupActualRehearsal(
 	} catch (error) {
 		failures.push(error instanceof Error ? error.message : String(error));
 	}
-	if (prepared.storageBucketCreated) {
+	const bucketsToDelete = disposableRehearsalBuckets({
+		preferredBucket: prepared.preferredStorageBucket,
+		selectedBucket: prepared.storageBucket,
+		preferredCreated: prepared.preferredStorageBucketCreated,
+	});
+	if (prepared.storageBucketCreated && prepared.storageBucket) {
+		if (!bucketsToDelete.includes(prepared.storageBucket)) {
+			bucketsToDelete.push(prepared.storageBucket);
+		}
+	}
+	if (bucketsToDelete.length > 0) {
 		try {
 			const { DeleteBucketCommand, S3Client } = await import(
 				"@aws-sdk/client-s3"
@@ -1217,16 +1278,18 @@ async function cleanupActualRehearsal(
 				forcePathStyle: true,
 			});
 			try {
-				try {
-					await storageClient.send(
-						new DeleteBucketCommand({ Bucket: prepared.storageBucket }),
-					);
-				} catch (error) {
-					const status =
-						error && typeof error === "object" && "$metadata" in error
-							? (error.$metadata as { httpStatusCode?: number }).httpStatusCode
-							: undefined;
-					if (status !== 404) throw error;
+				for (const bucket of bucketsToDelete) {
+					try {
+						await storageClient.send(
+							new DeleteBucketCommand({ Bucket: bucket }),
+						);
+					} catch (error) {
+						const status =
+							error && typeof error === "object" && "$metadata" in error
+								? (error.$metadata as { httpStatusCode?: number }).httpStatusCode
+								: undefined;
+						if (status !== 404) throw error;
+					}
 				}
 			} finally {
 				storageClient.destroy();
@@ -1405,9 +1468,9 @@ async function packAndAdoptActual(
 		prepared,
 	);
 	for (const manifest of PACKAGE_MANIFESTS) {
-		await updatePackageVersion(join(prepared.saasRoot, manifest));
+		await updatePackageVersion(join(prepared.hostRoot, manifest));
 	}
-	const rootManifestPath = join(prepared.saasRoot, "package.json");
+	const rootManifestPath = join(prepared.hostRoot, "package.json");
 	const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8")) as {
 		overrides?: Record<string, string>;
 	};
@@ -1420,7 +1483,7 @@ async function packAndAdoptActual(
 		`${JSON.stringify(rootManifest, null, 2)}\n`,
 	);
 	const quotaPath = join(
-		prepared.saasRoot,
+		prepared.hostRoot,
 		"apps/api/src/lib/oss-034-quota-launcher.ts",
 	);
 	const oldQuota = await readFile(quotaPath, "utf8");
@@ -1436,17 +1499,17 @@ async function packAndAdoptActual(
 		tarballSha256,
 	};
 	await writeFile(
-		join(prepared.saasRoot, ".docsmint-oss-adoption.json"),
+		join(prepared.hostRoot, ".docsmint-oss-adoption.json"),
 		`${JSON.stringify(provenanceRecord, null, 2)}\n`,
 	);
 	await runner.run(["git", "checkout", "--detach", prepared.candidateCommit], {
-		cwd: join(prepared.saasRoot, "docsmint-oss"),
+		cwd: join(prepared.hostRoot, "docsmint-oss"),
 		env: safeEnvironment(),
 	});
 	await runner.run(
 		["bun", "install", "--frozen-lockfile", "--ignore-scripts"],
 		{
-			cwd: join(prepared.saasRoot, "docsmint-oss"),
+			cwd: join(prepared.hostRoot, "docsmint-oss"),
 			env: safeEnvironment({
 				BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
 				TMPDIR: prepared.root,
@@ -1454,7 +1517,7 @@ async function packAndAdoptActual(
 		},
 	);
 	await runner.run(["bun", "install", "--ignore-scripts"], {
-		cwd: prepared.saasRoot,
+		cwd: prepared.hostRoot,
 		env: safeEnvironment({
 			BUN_INSTALL_CACHE_DIR: prepared.cacheRoot,
 			TMPDIR: prepared.root,
@@ -1462,7 +1525,7 @@ async function packAndAdoptActual(
 	});
 	const status = await runner.run(
 		["git", "status", "--porcelain=v1", "--untracked-files=all"],
-		{ cwd: prepared.saasRoot, env: safeEnvironment() },
+		{ cwd: prepared.hostRoot, env: safeEnvironment() },
 	);
 	const changed = status.stdout
 		.split("\n")
@@ -1488,11 +1551,11 @@ async function packAndAdoptActual(
 	}
 	const installedManifest = JSON.parse(
 		await readFile(
-			join(prepared.saasRoot, "node_modules/@hiai-gg/docsmint/package.json"),
+			join(prepared.hostRoot, "node_modules/@hiai-gg/docsmint/package.json"),
 			"utf8",
 		),
 	) as { version?: string; gitHead?: string };
-	const lockfile = await readFile(join(prepared.saasRoot, "bun.lock"), "utf8");
+	const lockfile = await readFile(join(prepared.hostRoot, "bun.lock"), "utf8");
 	const localTarballResolved =
 		installedManifest.version === "0.7.0" &&
 		lockfile.includes(basename(tarball));
@@ -1500,7 +1563,7 @@ async function packAndAdoptActual(
 		.update(await readFile(tarball))
 		.digest("hex");
 	await runner.run(["git", "add", "--", ...expectedChanges], {
-		cwd: prepared.saasRoot,
+		cwd: prepared.hostRoot,
 		env: safeEnvironment(),
 	});
 	await runner.run(
@@ -1514,24 +1577,24 @@ async function packAndAdoptActual(
 			"-m",
 			"test: adopt local OSS candidate for rehearsal",
 		],
-		{ cwd: prepared.saasRoot, env: safeEnvironment() },
+		{ cwd: prepared.hostRoot, env: safeEnvironment() },
 	);
 	const adoptionCommit = (
 		await runner.run(["git", "rev-parse", "HEAD"], {
-			cwd: prepared.saasRoot,
+			cwd: prepared.hostRoot,
 			env: safeEnvironment(),
 		})
 	).stdout.trim();
 	const submoduleCommit = (
 		await runner.run(["git", "rev-parse", "HEAD"], {
-			cwd: join(prepared.saasRoot, "docsmint-oss"),
+			cwd: join(prepared.hostRoot, "docsmint-oss"),
 			env: safeEnvironment(),
 		})
 	).stdout.trim();
 	const commitFiles = (
 		await runner.run(
 			["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
-			{ cwd: prepared.saasRoot, env: safeEnvironment() },
+			{ cwd: prepared.hostRoot, env: safeEnvironment() },
 		)
 	).stdout
 		.trim()
@@ -1540,7 +1603,7 @@ async function packAndAdoptActual(
 	const packageVersions: Record<string, string> = {};
 	for (const manifest of PACKAGE_MANIFESTS) {
 		const value = JSON.parse(
-			await readFile(join(prepared.saasRoot, manifest), "utf8"),
+			await readFile(join(prepared.hostRoot, manifest), "utf8"),
 		) as {
 			dependencies?: Record<string, string>;
 			devDependencies?: Record<string, string>;
@@ -1651,7 +1714,7 @@ async function migrateActual(
 		await fixture.end();
 	}
 	const before = await databaseSnapshot(prepared.ownerUrl);
-	const submoduleRoot = join(prepared.saasRoot, "docsmint-oss");
+	const submoduleRoot = join(prepared.hostRoot, "docsmint-oss");
 	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
 	const afterFirst = await databaseSnapshot(prepared.ownerUrl);
 	await runUpstreamMigrations(runner, submoduleRoot, prepared.ownerUrl);
@@ -1781,7 +1844,7 @@ async function probeEnvironmentActual(
 			join(prepared.baselineRoot, "docsmint-oss"),
 			input,
 		),
-		runEnvironmentProbe(runner, join(prepared.saasRoot, "docsmint-oss"), input),
+		runEnvironmentProbe(runner, join(prepared.hostRoot, "docsmint-oss"), input),
 	]);
 	return { baseline, candidate };
 }
@@ -2165,7 +2228,7 @@ async function smoke070Actual(
 	const { baseUrl } = await launchRuntime(
 		runner,
 		prepared,
-		prepared.saasRoot,
+		prepared.hostRoot,
 		"0.7.0",
 	);
 	try {
@@ -2463,14 +2526,14 @@ async function main(): Promise<void> {
 							"--untracked-files=all",
 							"--ignore-submodules=none",
 						],
-						{ cwd: SAAS_SOURCE_ROOT, env: safeEnvironment() },
+						{ cwd: HOST_SOURCE_ROOT, env: safeEnvironment() },
 					)
 				).stdout;
 				if (status.trim())
-					throw new Error(`real SaaS checkout is dirty ${phase}`);
+					throw new Error(`real downstream checkout is dirty ${phase}`);
 				if (phase === "before") initialSiblingStatus = status;
 				if (phase === "after" && status !== initialSiblingStatus) {
-					throw new Error("real SaaS checkout status changed during rehearsal");
+					throw new Error("real downstream checkout status changed during rehearsal");
 				}
 			},
 			async prepare() {
@@ -2498,7 +2561,7 @@ async function main(): Promise<void> {
 				migration: report.migration,
 				newRequiredEnvironmentKeys: report.environment.newRequiredKeys,
 				runtimes: [report.runtime070.version, report.runtime068.version],
-				realSaasCheckoutClean: true,
+				realHostCheckoutClean: true,
 				resources: preparedForSummary
 					? {
 							temporaryRoot: preparedForSummary.root,

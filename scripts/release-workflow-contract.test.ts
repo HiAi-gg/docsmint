@@ -233,7 +233,7 @@ test.each(["true", "yes", "on"])(
 			workflowStep(
 				workflow,
 				"release-static-gates",
-				"Reject incomplete contract or SaaS migration evidence",
+				"Reject incomplete contract or host migration evidence",
 			)["continue-on-error"] = value;
 		});
 
@@ -273,8 +273,8 @@ test("workflow validation rejects aliased suppression after YAML parsing", async
 				"name: CI\nx-release-suppression: &release-suppression ${{ true }}\n",
 			)
 			.replace(
-				"      - name: Reject incomplete contract or SaaS migration evidence\n        run: bun run release:check:contract-evidence\n",
-				"      - name: Reject incomplete contract or SaaS migration evidence\n        continue-on-error: *release-suppression\n        run: bun run release:check:contract-evidence\n",
+				"      - name: Reject incomplete contract or host migration evidence\n        run: bun run release:check:contract-evidence\n",
+				"      - name: Reject incomplete contract or host migration evidence\n        continue-on-error: *release-suppression\n        run: bun run release:check:contract-evidence\n",
 			),
 	);
 

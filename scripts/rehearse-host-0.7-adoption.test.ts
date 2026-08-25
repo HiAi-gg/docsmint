@@ -3,6 +3,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 
 import {
 	attachmentStorageEnforcementForRuntimeVersion,
+	disposableRehearsalBuckets,
 	type IsolatedRedisServer,
 	redactSecrets,
 	runRehearsalWorkflow,
@@ -11,13 +12,13 @@ import {
 	verifyAdditiveMigrationReapply,
 	verifyAtomicAdoption,
 	verifyCandidateProvenance,
+	verifyHostBaseline,
 	verifyNoNewRequiredEnvironment,
 	verifyRuntimeSmoke,
-	verifySaasBaseline,
 	workspaceEnabledForRuntimeVersion,
-} from "./rehearse-saas-0.7-adoption";
+} from "./rehearse-host-0.7-adoption";
 
-describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
+describe("DocsMint host 0.7 adoption rehearsal", () => {
 	test("runs the 0.6.8 attachment rollback smoke through the quota-aware runtime", () => {
 		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("true");
 		expect(attachmentStorageEnforcementForRuntimeVersion("0.6.8")).toBe(
@@ -149,7 +150,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		).toThrow("0.7 requires new environment variables: NEW_REQUIRED_SECRET");
 	});
 
-	test("adopts the package and submodule atomically in a disposable SaaS copy", () => {
+	test("adopts the package and submodule atomically in a disposable host copy", () => {
 		const packageManifests = [
 			"package.json",
 			"apps/api/package.json",
@@ -288,10 +289,34 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		).toThrow("0.6.8 runtime smoke failed: search");
 	});
 
+	test("deletes the preferred temporary Seaweed bucket even when rehearsal falls back", () => {
+		expect(
+			disposableRehearsalBuckets({
+				preferredBucket: "dm-rehearsal-preferred",
+				selectedBucket: "hiai-docs",
+				preferredCreated: true,
+			}),
+		).toEqual(["dm-rehearsal-preferred"]);
+		expect(
+			disposableRehearsalBuckets({
+				preferredBucket: "dm-rehearsal-preferred",
+				selectedBucket: "dm-rehearsal-preferred",
+				preferredCreated: true,
+			}),
+		).toEqual(["dm-rehearsal-preferred"]);
+		expect(
+			disposableRehearsalBuckets({
+				preferredBucket: "dm-rehearsal-preferred",
+				selectedBucket: "hiai-docs",
+				preferredCreated: false,
+			}),
+		).toEqual([]);
+	});
+
 	test("rejects cleanup paths outside the unique rehearsal root and redacts secrets", () => {
-		const root = "/tmp/docsmint-saas-adoption-7dbb88a0";
+		const root = "/tmp/docsmint-host-adoption-7dbb88a0";
 		expect(validateTemporaryRoot(root)).toBe(root);
-		expect(() => validateTemporaryRoot("/tmp/docsmint-saas-adoption")).toThrow(
+		expect(() => validateTemporaryRoot("/tmp/docsmint-host-adoption")).toThrow(
 			"unique validated /tmp root",
 		);
 		expect(() => validateTemporaryRoot("/mnt/data/projects/docsmint")).toThrow(
@@ -304,11 +329,11 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 
 	test("stopIsolatedRedisServer only kills its owned child and never flushes Redis", async () => {
 		const source = await Bun.file(
-			new URL("./rehearse-saas-0.7-adoption.ts", import.meta.url),
+			new URL("./rehearse-host-0.7-adoption.ts", import.meta.url),
 		).text();
 		expect(source).not.toContain("FLUSHALL");
 		expect(source).not.toContain("FLUSHDB");
-		const root = `/tmp/docsmint-saas-adoption-${"a".repeat(24)}`;
+		const root = `/tmp/docsmint-host-adoption-${"a".repeat(24)}`;
 		await mkdir(root, { recursive: true });
 		const signals: string[] = [];
 		try {
@@ -336,7 +361,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 
 	test("resolves rehearsal dependencies from the active Compose project", async () => {
 		const resolveComposeServiceContainer = (
-			await import("./rehearse-saas-0.7-adoption")
+			await import("./rehearse-host-0.7-adoption")
 				.catch(() => undefined) as unknown as
 					| {
 							resolveComposeServiceContainer?: (
@@ -349,7 +374,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		expect(typeof resolveComposeServiceContainer).toBe("function");
 		if (!resolveComposeServiceContainer) return;
 
-		const root = `/tmp/docsmint-saas-adoption-${crypto.randomUUID().replaceAll("-", "")}`;
+		const root = `/tmp/docsmint-host-adoption-${crypto.randomUUID().replaceAll("-", "")}`;
 		const bin = `${root}/bin`;
 		await mkdir(bin, { recursive: true });
 		const docker = `${bin}/docker`;
@@ -431,7 +456,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 		).toThrow("candidate index does not match");
 	});
 
-	test("rejects a mixed or mutable 0.6.8 SaaS baseline", () => {
+	test("rejects a mixed or mutable 0.6.8 host baseline", () => {
 		const manifests = {
 			"package.json": "0.6.8",
 			"apps/api/package.json": "0.6.8",
@@ -450,7 +475,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			expectedSubmoduleCommit: "b".repeat(40),
 		};
 
-		expect(verifySaasBaseline(baseline)).toEqual({
+		expect(verifyHostBaseline(baseline)).toEqual({
 			commit: "a".repeat(40),
 			version: "0.6.8",
 		});
@@ -464,8 +489,8 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 			{ gitlinkCommit: "c".repeat(40) },
 			{ submoduleCommit: "c".repeat(40) },
 		]) {
-			expect(() => verifySaasBaseline({ ...baseline, ...mutation })).toThrow(
-				"exact SaaS 0.6.8 baseline",
+			expect(() => verifyHostBaseline({ ...baseline, ...mutation })).toThrow(
+				"exact host 0.6.8 baseline",
 			);
 		}
 	});
@@ -555,7 +580,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 				assertRealCheckoutClean: async (phase) => events.push(`clean:${phase}`),
 				prepare: async () => {
 					events.push("prepare");
-					return { root: "/tmp/docsmint-saas-adoption-deadbeef" };
+					return { root: "/tmp/docsmint-host-adoption-deadbeef" };
 				},
 				packAndAdopt: async () => {
 					events.push("adopt");
@@ -611,7 +636,7 @@ describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
 						events.push(`clean:${phase}`),
 					prepare: async () => {
 						events.push("prepare");
-						return { root: "/tmp/docsmint-saas-adoption-feedface" };
+						return { root: "/tmp/docsmint-host-adoption-feedface" };
 					},
 					packAndAdopt: async () => {
 						throw new Error("adoption failed");

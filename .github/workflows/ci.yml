@@ -479,7 +479,7 @@ jobs:
       - run: bun run release:check:secrets
       - run: bun run scripts/release-version-validator.ts "${{ github.ref_name }}"
       - run: bun run release:check:workflow
-      - name: Reject incomplete contract or SaaS migration evidence
+      - name: Reject incomplete contract or host migration evidence
         run: bun run release:check:contract-evidence
 
   scoped-live-integration:

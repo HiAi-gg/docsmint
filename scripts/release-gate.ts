@@ -88,8 +88,8 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 			command: ["bun", "run", "release:check:docker-smoke"],
 		},
 		{
-			name: "SaaS adoption rehearsal",
-			command: ["bun", "run", "scripts/rehearse-saas-0.7-adoption.ts"],
+			name: "Host adoption rehearsal",
+			command: ["bun", "run", "scripts/rehearse-host-0.7-adoption.ts"],
 		},
 		{
 			name: "required PostgreSQL integrations",

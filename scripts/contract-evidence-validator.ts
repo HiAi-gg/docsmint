@@ -26,7 +26,7 @@ interface MigrationTransition {
 interface ContractEvidenceManifest {
 	schemaVersion: number;
 	release: string;
-	requiresSaasMigration: MigrationTransition;
+	requiresHostMigration: MigrationTransition;
 	questions: EvidenceQuestion[];
 }
 
@@ -48,16 +48,16 @@ const allowedPostpublishMetadata = new Set([
 
 const task3MigrationEvidenceContract = {
 	additiveIdempotentReapply:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#reapplies the additive migration as an idempotent no-op",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#reapplies the additive migration as an idempotent no-op",
 	noNewRequiredEnvironment:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#requires no new environment variables relative to 0.6.8",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#requires no new environment variables relative to 0.6.8",
 	atomicPackageAndSubmoduleAdoption:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#adopts the package and submodule atomically in a disposable SaaS copy",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#adopts the package and submodule atomically in a disposable host copy",
 	runtime070Smoke:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.7 runtime against the upgraded disposable database",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#smokes the 0.7 runtime against the upgraded disposable database",
 	rollback068RuntimeSmoke:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.6.8 runtime against the upgraded disposable database",
-	rehearsalCommand: "command:bun run scripts/rehearse-saas-0.7-adoption.ts",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#smokes the 0.6.8 runtime against the upgraded disposable database",
+	rehearsalCommand: "command:bun run scripts/rehearse-host-0.7-adoption.ts",
 } as const;
 
 const task3QuestionEvidence = new Map<number, string>([
@@ -209,7 +209,7 @@ function validateTask3MigrationEvidence(
 ): string[] {
 	if (!isRecord(value)) {
 		errors.push(
-			"requiresSaasMigration evidence must use the exact Task 3 category contract",
+			"requiresHostMigration evidence must use the exact Task 3 category contract",
 		);
 		return [];
 	}
@@ -220,7 +220,7 @@ function validateTask3MigrationEvidence(
 	for (const category of Object.keys(value)) {
 		if (!(category in expected)) {
 			errors.push(
-				`requiresSaasMigration evidence has unknown category ${category}`,
+				`requiresHostMigration evidence has unknown category ${category}`,
 			);
 		}
 	}
@@ -229,7 +229,7 @@ function validateTask3MigrationEvidence(
 	for (const [category, reference] of Object.entries(expected)) {
 		if (value[category] !== reference) {
 			errors.push(
-				`requiresSaasMigration evidence ${category} must equal ${reference}`,
+				`requiresHostMigration evidence ${category} must equal ${reference}`,
 			);
 			continue;
 		}
@@ -250,25 +250,25 @@ export async function validateContractEvidence(
 	if (value.schemaVersion !== 1) errors.push("schemaVersion must be 1");
 	if (value.release !== "0.7.0") errors.push("release must be exactly 0.7.0");
 
-	const migration = value.requiresSaasMigration;
+	const migration = value.requiresHostMigration;
 	if (!isRecord(migration)) {
-		errors.push("requiresSaasMigration transition is required");
+		errors.push("requiresHostMigration transition is required");
 	} else if (migration.status === "pending_task_3") {
 		if (phase !== "task2") {
-			errors.push("requiresSaasMigration is still pending Task 3");
+			errors.push("requiresHostMigration is still pending Task 3");
 		}
 		if (migration.value !== null) {
-			errors.push("pending Task 3 requiresSaasMigration value must be null");
+			errors.push("pending Task 3 requiresHostMigration value must be null");
 		}
 		if (
 			typeof migration.explanation !== "string" ||
 			migration.explanation.trim().length === 0
 		) {
-			errors.push("pending Task 3 requiresSaasMigration needs an explanation");
+			errors.push("pending Task 3 requiresHostMigration needs an explanation");
 		}
 	} else if (migration.status !== "complete" || migration.value !== true) {
 		errors.push(
-			"requiresSaasMigration must be complete with value true and exact Task 3 evidence",
+			"requiresHostMigration must be complete with value true and exact Task 3 evidence",
 		);
 	} else {
 		const migrationReferences = validateTask3MigrationEvidence(
@@ -277,7 +277,7 @@ export async function validateContractEvidence(
 		);
 		await validateEvidenceReferences(
 			migrationReferences,
-			"requiresSaasMigration",
+			"requiresHostMigration",
 			errors,
 			resolveEvidenceReference,
 		);

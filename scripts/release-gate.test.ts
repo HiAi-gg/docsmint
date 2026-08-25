@@ -76,7 +76,7 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"container port contract",
 		"fresh Docker rebuild",
 		"commit-bound Docker lifecycle evidence",
-		"SaaS adoption rehearsal",
+		"Host adoption rehearsal",
 		"required PostgreSQL integrations",
 		"required live public surfaces",
 		"service health contract",
@@ -84,14 +84,14 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 	]);
 });
 
-test("SaaS rehearsal uses the freshly rebuilt release dependencies", () => {
+test("Host rehearsal uses the freshly rebuilt release dependencies", () => {
 	if (!releaseGate) return;
 	const stepNames = releaseGate.releaseGateSteps("v0.7.0").map(
 		(step: { name: string }) => step.name,
 	);
 	const rebuild = stepNames.indexOf("fresh Docker rebuild");
 	const dependencyStart = stepNames.indexOf("commit-bound Docker lifecycle evidence");
-	const rehearsal = stepNames.indexOf("SaaS adoption rehearsal");
+	const rehearsal = stepNames.indexOf("Host adoption rehearsal");
 
 	expect(rebuild).toBeGreaterThanOrEqual(0);
 	expect(dependencyStart).toBeGreaterThan(rebuild);

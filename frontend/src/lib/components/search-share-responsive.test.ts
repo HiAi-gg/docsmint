@@ -64,7 +64,7 @@ describe("dashboard sharing entry points", () => {
 });
 
 describe("embedded taxonomy refresh bridge", () => {
-	test("refreshes OSS-owned sidebar stores after SaaS document mutations", () => {
+	test("refreshes OSS-owned sidebar stores after host document mutations", () => {
 		const source = read("sidebar/Sidebar.svelte");
 		expect(source).toContain("hiai-docs:documents-updated");
 		expect(source).toContain("refreshFolders()");

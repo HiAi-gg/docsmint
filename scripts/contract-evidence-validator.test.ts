@@ -21,16 +21,16 @@ const genericRepositoryEvidence =
 
 const futureTask3Evidence = {
 	additiveIdempotentReapply:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#reapplies the additive migration as an idempotent no-op",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#reapplies the additive migration as an idempotent no-op",
 	noNewRequiredEnvironment:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#requires no new environment variables relative to 0.6.8",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#requires no new environment variables relative to 0.6.8",
 	atomicPackageAndSubmoduleAdoption:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#adopts the package and submodule atomically in a disposable SaaS copy",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#adopts the package and submodule atomically in a disposable host copy",
 	runtime070Smoke:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.7 runtime against the upgraded disposable database",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#smokes the 0.7 runtime against the upgraded disposable database",
 	rollback068RuntimeSmoke:
-		"test:scripts/rehearse-saas-0.7-adoption.test.ts#smokes the 0.6.8 runtime against the upgraded disposable database",
-	rehearsalCommand: "command:bun run scripts/rehearse-saas-0.7-adoption.ts",
+		"test:scripts/rehearse-host-0.7-adoption.test.ts#smokes the 0.6.8 runtime against the upgraded disposable database",
+	rehearsalCommand: "command:bun run scripts/rehearse-host-0.7-adoption.ts",
 } as const;
 
 const migrationQuestionEvidence = new Map<number, string>([
@@ -48,7 +48,7 @@ function manifest(
 			evidence: string[];
 			explanation: string;
 		}>;
-		requiresSaasMigration?: unknown;
+		requiresHostMigration?: unknown;
 	} = {},
 ) {
 	const questions = Array.from({ length: 89 }, (_, index) => {
@@ -79,8 +79,8 @@ function manifest(
 	return {
 		schemaVersion: 1,
 		release: "0.7.0",
-		requiresSaasMigration:
-			overrides.requiresSaasMigration ?? {
+		requiresHostMigration:
+			overrides.requiresHostMigration ?? {
 				status: "pending_task_3",
 				value: null,
 				explanation:
@@ -92,7 +92,7 @@ function manifest(
 
 function completedManifest(evidence: unknown) {
 	const value = manifest({
-		requiresSaasMigration: {
+		requiresHostMigration: {
 			status: "complete",
 			value: true,
 			evidence,
@@ -148,7 +148,7 @@ describe("0.7.0 contract evidence validator", () => {
 		const prepublish = await runValidator(manifest(), "prepublish");
 		expect(prepublish.exitCode).toBe(1);
 		expect(prepublish.stderr).toContain(
-			"requiresSaasMigration is still pending Task 3",
+			"requiresHostMigration is still pending Task 3",
 		);
 	});
 
@@ -210,7 +210,7 @@ describe("0.7.0 contract evidence validator", () => {
 			resolveEvidenceReference: async () => undefined,
 		});
 		expect(result.errors).toContain(
-			"requiresSaasMigration evidence must use the exact Task 3 category contract",
+			"requiresHostMigration evidence must use the exact Task 3 category contract",
 		);
 		for (const id of migrationQuestionEvidence.keys()) {
 			expect(result.errors.join("\n")).toContain(
@@ -252,7 +252,7 @@ describe("0.7.0 contract evidence validator", () => {
 				{ resolveEvidenceReference: async () => undefined },
 			);
 			expect(rejected.errors.join("\n"), category).toContain(
-				`requiresSaasMigration evidence ${category} must equal`,
+				`requiresHostMigration evidence ${category} must equal`,
 			);
 		}
 
@@ -264,7 +264,7 @@ describe("0.7.0 contract evidence validator", () => {
 			{ resolveEvidenceReference: async () => undefined },
 		);
 		expect(missingResult.errors.join("\n")).toContain(
-			"requiresSaasMigration evidence runtime070Smoke must equal",
+			"requiresHostMigration evidence runtime070Smoke must equal",
 		);
 
 		const extraResult = await validateContractEvidence(
@@ -273,13 +273,13 @@ describe("0.7.0 contract evidence validator", () => {
 			{ resolveEvidenceReference: async () => undefined },
 		);
 		expect(extraResult.errors).toContain(
-			"requiresSaasMigration evidence has unknown category generic",
+			"requiresHostMigration evidence has unknown category generic",
 		);
 	});
 
-	test("requires a completed true SaaS migration declaration before prepublish", async () => {
+	test("requires a completed true host migration declaration before prepublish", async () => {
 		const falseDeclaration = manifest({
-			requiresSaasMigration: {
+			requiresHostMigration: {
 				status: "complete",
 				value: false,
 				evidence: futureTask3Evidence,
@@ -288,7 +288,7 @@ describe("0.7.0 contract evidence validator", () => {
 		const rejected = await runValidator(falseDeclaration, "prepublish");
 		expect(rejected.exitCode).toBe(1);
 		expect(rejected.stderr).toContain(
-			"requiresSaasMigration must be complete with value true",
+			"requiresHostMigration must be complete with value true",
 		);
 	});
 
@@ -313,7 +313,7 @@ describe("0.7.0 contract evidence validator", () => {
 			{ resolveEvidenceReference: async () => undefined },
 		);
 		expect(migration.errors).toContain(
-			"requiresSaasMigration evidence must use the exact Task 3 category contract",
+			"requiresHostMigration evidence must use the exact Task 3 category contract",
 		);
 	});
 

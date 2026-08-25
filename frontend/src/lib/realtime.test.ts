@@ -16,7 +16,7 @@ test("builds one canonical y-websocket endpoint without duplicating documentId",
 	});
 });
 
-test("allows a SaaS host to provide workspace-aware connection coordinates", () => {
+test("allows an external host to provide workspace-aware connection coordinates", () => {
 	expect(
 		resolveCollaborationConnection(
 			"doc-1",
@@ -25,14 +25,14 @@ test("allows a SaaS host to provide workspace-aware connection coordinates", () 
 			"localhost:50701",
 			{
 				resolveRealtimeConnection: ({ documentId, accessToken }) => ({
-					serverUrl: "wss://saas.example.test/api/ws/collab",
+					serverUrl: "wss://host.example.test/api/ws/collab",
 					roomName: `workspace-a:${documentId}`,
 					params: { access: accessToken ?? "" },
 				}),
 			},
 		),
 	).toEqual({
-		serverUrl: "wss://saas.example.test/api/ws/collab",
+		serverUrl: "wss://host.example.test/api/ws/collab",
 		roomName: "workspace-a:doc-1",
 		params: { access: "token" },
 	});

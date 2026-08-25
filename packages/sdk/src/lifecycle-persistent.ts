@@ -27,7 +27,7 @@ export type LifecycleScopedDatabaseExecutor = <T>(
 
 /**
  * Public persistent lifecycle composition contract.  The OSS persistence
- * saga is supplied by the backend runtime; SaaS hosts attach their own steps
+ * saga is supplied by the backend runtime; external hosts attach their own steps
  * and RLS executor without private imports.
  */
 export type LifecycleRuntimeAdapters = Readonly<{

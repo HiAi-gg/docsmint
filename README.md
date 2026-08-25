@@ -51,7 +51,7 @@ server.
 - **Release-safe indexing.** Context-aware embedding generations and recovery
   prevent stale metadata work from becoming active.
 
-This OSS release adds no SaaS RBAC, billing, invitations, or product UI.
+This OSS release adds no host RBAC, billing, invitations, or product UI.
 
 DocsMint 0.7.0 includes the 0.6.8 reliability fixes:
 

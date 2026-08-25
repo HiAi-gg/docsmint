@@ -1346,7 +1346,34 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(attachments)
 					.innerJoin(documents, eq(documents.id, attachments.documentId))
-					.where(eq(attachments.id, attachmentId))
+					.leftJoin(folders, eq(folders.id, documents.folderId))
+					.where(
+						and(
+							eq(attachments.id, attachmentId),
+							...(ctx.source === "external"
+								? [
+										tenantOwnerCondition(
+											documents.ownerId,
+											documents.workspaceId,
+											ctx,
+										),
+									]
+								: []),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
 					.limit(1)
 					.for("update", { of: documents });
 				if (!current) return null;

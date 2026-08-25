@@ -2,7 +2,7 @@
 
 ## Goal
 
-DocsMint OSS 0.7.0 extends the public, generic workspace assertion contract with an optional signed category resource scope. The change reuses the existing category-restricted content-access model and adds no SaaS roles, invitations, billing, quotas, or product UI.
+DocsMint OSS 0.7.0 extends the public, generic workspace assertion contract with an optional signed category resource scope. The change reuses the existing category-restricted content-access model and adds no host roles, invitations, billing, quotas, or product UI.
 
 Unscoped assertions remain workspace-wide and preserve the 0.6.8 behavior.
 
@@ -60,7 +60,7 @@ The verified optional scope travels through the external `TenantContext`. `resol
 
 An assertion without `resourceScope` continues to derive workspace-wide permissions from `actorRole` and has `restricted: false`.
 
-No category scope is inferred from unsigned headers, query parameters, sessions, or SaaS state.
+No category scope is inferred from unsigned headers, query parameters, sessions, or host state.
 
 ## Effective Category and Query Ordering
 
@@ -121,4 +121,4 @@ The completed hardening work and this contract ship together as DocsMint OSS 0.7
 
 The release synchronizes package manifests, Swagger/OpenAPI metadata, changelog, generated SDK declarations, and `server.json`. After all repository, database, package-consumer, Docker, browser, and compatibility gates pass, the authorized release operation pushes `main`, creates and pushes annotated tag `v0.7.0`, and waits for the existing GitHub workflow to publish npm, the official MCP Registry entry, container images, and the GitHub Release.
 
-Post-release verification records the published npm version, official registry version, release commit SHA, and tag for the SaaS team. No third-party catalog changes are required.
+Post-release verification records the published npm version, official registry version, release commit SHA, and tag for the host team. No third-party catalog changes are required.
