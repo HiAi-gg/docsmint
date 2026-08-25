@@ -1,5 +1,6 @@
 import {
 	accounts,
+	apiKeys,
 	attachments,
 	auditLog,
 	categories,
@@ -510,7 +511,15 @@ export function createPersistentLifecycleService(
 			const deletedByDomain = operationCounts(operation);
 			try {
 				throwIfAborted(ctx.signal);
+				await runtime.verifyPurgeFence(ctx, gate.fenceToken);
 				await withActor(ctx.actorUserId, async (tx) => {
+					const [actor] = await tx
+						.select({ id: users.id })
+						.from(users)
+						.where(eq(users.id, ctx.actorUserId))
+						.limit(1)
+						.for("update");
+					if (!actor) throw new LifecycleLeaseLostError();
 					const updated = await tx
 						.update(lifecycleOperations)
 						.set({
@@ -526,7 +535,6 @@ export function createPersistentLifecycleService(
 						.returning({ id: lifecycleOperations.id });
 					requireLeaseWrite(updated);
 				});
-				await runtime.verifyPurgeFence(ctx, gate.fenceToken);
 				const dbDelete = <T extends { id: string }>(
 					action: (tx: TenantTransaction) => Promise<T[]>,
 				) => withActor(ctx.actorUserId, action).then((rows) => rows.length);
@@ -634,6 +642,68 @@ export function createPersistentLifecycleService(
 					operation,
 					ctx.actorUserId,
 					leaseOwner,
+					"remove_attachment_rows",
+					deletedByDomain,
+					() =>
+						objectRows.length
+							? dbDelete((tx) =>
+									tx
+										.delete(attachments)
+										.where(
+											inArray(
+												attachments.id,
+												objectRows.map((row) => row.id),
+											),
+										)
+										.returning({ id: attachments.id }),
+								)
+							: Promise.resolve(0),
+				);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"clear_redis_state",
+					deletedByDomain,
+					() => runtime.clearAccountRedisState(ctx.actorUserId, ctx.signal),
+				);
+				for (const step of orderedSteps)
+					if (step.purge)
+						await runStep(
+							operation,
+							ctx.actorUserId,
+							leaseOwner,
+							`host:${step.id}`,
+							deletedByDomain,
+							async () => (await step.purge?.(ctx))?.deletedCount ?? 0,
+						);
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
+					"remove_subject_documents",
+					deletedByDomain,
+					() =>
+						dbDelete(async (tx) => {
+							const currentDocuments = await tx
+								.select({ id: documents.id })
+								.from(documents)
+								.where(eq(documents.ownerId, ctx.actorUserId));
+							const currentDocumentIds = currentDocuments.map(({ id }) => id);
+							await acquireDocumentPipelineLocks(tx, currentDocumentIds);
+							if (currentDocumentIds.length === 0) return [];
+							return tx
+								.delete(documents)
+								.where(eq(documents.ownerId, ctx.actorUserId))
+								.returning({ id: documents.id });
+						}),
+				);
+				// Parent metadata uses ON DELETE SET NULL. Delete documents first so
+				// those referential actions do not become fenced document UPDATEs.
+				await runStep(
+					operation,
+					ctx.actorUserId,
+					leaseOwner,
 					"remove_subject_folders",
 					deletedByDomain,
 					() =>
@@ -676,63 +746,16 @@ export function createPersistentLifecycleService(
 					operation,
 					ctx.actorUserId,
 					leaseOwner,
-					"remove_attachment_rows",
+					"remove_api_keys",
 					deletedByDomain,
 					() =>
-						objectRows.length
-							? dbDelete((tx) =>
-									tx
-										.delete(attachments)
-										.where(
-											inArray(
-												attachments.id,
-												objectRows.map((row) => row.id),
-											),
-										)
-										.returning({ id: attachments.id }),
-								)
-							: Promise.resolve(0),
+						dbDelete((tx) =>
+							tx
+								.delete(apiKeys)
+								.where(eq(apiKeys.ownerId, ctx.actorUserId))
+								.returning({ id: apiKeys.id }),
+						),
 				);
-				await runStep(
-					operation,
-					ctx.actorUserId,
-					leaseOwner,
-					"remove_subject_documents",
-					deletedByDomain,
-					() =>
-						documentIds.length
-							? dbDelete(async (tx) => {
-									await acquireDocumentPipelineLocks(tx, documentIds);
-									return tx
-										.delete(documents)
-										.where(
-											and(
-												eq(documents.ownerId, ctx.actorUserId),
-												inArray(documents.id, documentIds),
-											),
-										)
-										.returning({ id: documents.id });
-								})
-							: Promise.resolve(0),
-				);
-				await runStep(
-					operation,
-					ctx.actorUserId,
-					leaseOwner,
-					"clear_redis_state",
-					deletedByDomain,
-					() => runtime.clearAccountRedisState(ctx.actorUserId, ctx.signal),
-				);
-				for (const step of orderedSteps)
-					if (step.purge)
-						await runStep(
-							operation,
-							ctx.actorUserId,
-							leaseOwner,
-							`host:${step.id}`,
-							deletedByDomain,
-							async () => (await step.purge?.(ctx))?.deletedCount ?? 0,
-						);
 				await runStep(
 					operation,
 					ctx.actorUserId,

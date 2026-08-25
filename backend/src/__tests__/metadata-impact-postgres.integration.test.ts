@@ -5,15 +5,20 @@ import {
 } from "@hiai-docs/db/client";
 import {
 	type TenantContext,
+	type TenantTransaction,
 	withTenantDatabase,
 } from "@hiai-docs/db/with-tenant";
 import { sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import postgres from "postgres";
 import { documentRoutes } from "../api/routes/documents";
+import { versionRoutes } from "../api/routes/versions";
 import { config } from "../lib/config";
 import { contentHash } from "../lib/content-hash";
-import { createPersistentLifecycleService } from "../lib/lifecycle-service";
+import {
+	createPersistentLifecycleService,
+	LifecycleFenceRejectedError,
+} from "../lib/lifecycle-service";
 import {
 	drainMetadataReembedOutbox,
 	reembedDocsByTag,
@@ -77,6 +82,25 @@ async function waitForSessionBlockedBy(
 		await Bun.sleep(10);
 	}
 	throw new Error("metadata outbox stage did not block on the worker session");
+}
+
+async function waitForApplicationBlockedBy(
+	observer: postgres.Sql,
+	blockerPid: number,
+	applicationName: string,
+): Promise<number> {
+	for (let attempt = 0; attempt < 200; attempt += 1) {
+		const rows = await observer<{ pid: number }[]>`
+			SELECT pid
+			FROM pg_stat_activity
+			WHERE application_name = ${applicationName}
+				AND ${blockerPid} = ANY(pg_blocking_pids(pid))
+			ORDER BY pid
+			LIMIT 1`;
+		if (rows[0]?.pid) return rows[0].pid;
+		await Bun.sleep(10);
+	}
+	throw new Error("benchmark cleanup did not block on the worker session");
 }
 
 function expectedDocumentPipelineLockKey(documentId: string): bigint {
@@ -652,10 +676,18 @@ describe.skipIf(!databaseUrl)(
 						method: "DELETE",
 						headers: {
 							authorization: `Bearer ${config.HIAI_DOCS_API_KEY}`,
+							"x-forwarded-for": `purge-lock-${documentId}`,
 						},
 					}),
 				);
-				const purgePid = await waitForSessionBlockedBy(observer, workerPid);
+				const purgePid = await Promise.race([
+					waitForSessionBlockedBy(observer, workerPid),
+					purgeRequest.then(async (response) => {
+						throw new Error(
+							`hard purge settled before the pipeline lock: ${response.status} ${await response.clone().text()}`,
+						);
+					}),
+				]);
 				const [blocked] = await observer<{ query: string }[]>`
 					SELECT query
 					FROM pg_stat_activity
@@ -690,6 +722,83 @@ describe.skipIf(!databaseUrl)(
 					WHERE document_id = ${documentId}::uuid`;
 				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
 				await Promise.all([setup.end(), worker.end(), observer.end()]);
+			}
+		});
+
+		test("rejects a foreign hard-purge target before acquiring its pipeline lock", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const worker = postgres(databaseUrl as string, { max: 1 });
+			const foreignOwnerId = crypto.randomUUID();
+			const attackerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const rawKey = crypto.randomUUID();
+			const keyHash = new Bun.CryptoHasher("sha256")
+				.update(rawKey)
+				.digest("hex");
+			const workerReady = deferred<void>();
+			const releaseWorker = deferred<void>();
+			const app = new Elysia().use(documentRoutes);
+			let workerTransaction: Promise<unknown> | undefined;
+			let purgeRequest: Promise<Response> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES
+						(${foreignOwnerId}::uuid, ${`${foreignOwnerId}@foreign-purge.invalid`}),
+						(${attackerId}::uuid, ${`${attackerId}@foreign-purge.invalid`})`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (
+						${attackerId}::uuid,
+						'foreign purge regression',
+						${keyHash},
+						${rawKey.slice(0, 8)},
+						'["global"]'::jsonb
+					)`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, deleted_at)
+					VALUES (
+						${documentId}::uuid,
+						${foreignOwnerId}::uuid,
+						'foreign purge regression',
+						'',
+						now()
+					)`;
+
+				workerTransaction = worker.begin(async (tx) => {
+					await tx`SELECT pg_advisory_xact_lock(
+						${expectedDocumentPipelineLockKey(documentId).toString()}::bigint
+					)`;
+					workerReady.resolve(undefined);
+					await releaseWorker.promise;
+				});
+				await workerReady.promise;
+
+				purgeRequest = app.handle(
+					new Request(`http://localhost/api/trash/documents/${documentId}`, {
+						method: "DELETE",
+						headers: { authorization: `Bearer ${rawKey}` },
+					}),
+				);
+				const settled = await Promise.race([
+					purgeRequest.then((response) => ({ response })),
+					Bun.sleep(2_000).then(() => ({ response: null })),
+				]);
+				expect(settled.response).not.toBeNull();
+				expect(settled.response?.status).toBe(404);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.documents
+					WHERE id = ${documentId}::uuid`;
+				expect(remaining?.count).toBe(1);
+			} finally {
+				releaseWorker.resolve(undefined);
+				await Promise.allSettled(
+					[workerTransaction, purgeRequest].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.users
+					WHERE id IN (${foreignOwnerId}::uuid, ${attackerId}::uuid)`;
+				await Promise.all([setup.end(), worker.end()]);
 			}
 		});
 
@@ -821,6 +930,662 @@ describe.skipIf(!databaseUrl)(
 				]);
 			}
 		});
+
+		test("fences personal, workspace, and worker writes until lifecycle final deletion and tombstone", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const lifecycleClient = createDatabaseClient(databaseUrl as string, {
+				max: 2,
+			});
+			const ownerId = crypto.randomUUID();
+			const peerOwnerId = crypto.randomUUID();
+			const workspaceId = `purge-fence-${crypto.randomUUID()}`;
+			const categoryId = crypto.randomUUID();
+			const folderId = crypto.randomUUID();
+			const originalDocumentId = crypto.randomUUID();
+			const trashedDocumentId = crypto.randomUUID();
+			const versionId = crypto.randomUUID();
+			const rawKey = crypto.randomUUID();
+			const keyHash = new Bun.CryptoHasher("sha256")
+				.update(rawKey)
+				.digest("hex");
+			const graphRemovalEntered = deferred<void>();
+			const releaseGraphRemoval = deferred<void>();
+			const app = new Elysia().use(documentRoutes);
+			let purgeOperation: Promise<unknown> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES
+						(${ownerId}::uuid, ${`${ownerId}@lifecycle-create-fence.invalid`}),
+						(${peerOwnerId}::uuid, ${`${peerOwnerId}@lifecycle-create-fence.invalid`})`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (
+						${ownerId}::uuid,
+						'lifecycle create fence regression',
+						${keyHash},
+						${rawKey.slice(0, 8)},
+						'["global"]'::jsonb
+					)`;
+				await setup`INSERT INTO public.categories (id, owner_id, name)
+					VALUES (${categoryId}::uuid, ${ownerId}::uuid, 'purge category')`;
+				await setup`INSERT INTO public.folders
+					(id, owner_id, category_id, name)
+					VALUES (
+						${folderId}::uuid,
+						${ownerId}::uuid,
+						${categoryId}::uuid,
+						'purge folder'
+					)`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, folder_id, category_id, title, content, deleted_at)
+					VALUES
+						(
+							${originalDocumentId}::uuid,
+							${ownerId}::uuid,
+							${folderId}::uuid,
+							${categoryId}::uuid,
+							'pre-fence document',
+							'',
+							NULL
+						),
+						(
+							${trashedDocumentId}::uuid,
+							${ownerId}::uuid,
+							NULL,
+							NULL,
+							'pre-fence trashed document',
+							'',
+							now()
+						)`;
+				await setup`INSERT INTO public.versions
+					(id, document_id, content, created_by)
+					VALUES (
+						${versionId}::uuid,
+						${originalDocumentId}::uuid,
+						'prior version',
+						${ownerId}::uuid
+					)`;
+
+				const lifecycle = createPersistentLifecycleService(
+					{
+						verifyPurgeFence: async () => {},
+						deleteObjects: async (keys) => keys.length,
+						cancelAccountJobs: async () => 0,
+						clearAccountRedisState: async () => 0,
+						removeCollaborationState: async () => 0,
+						removeGraphState: async (documentIds) => {
+							graphRemovalEntered.resolve(undefined);
+							await releaseGraphRemoval.promise;
+							return documentIds.length;
+						},
+					},
+					{
+						withActorTransaction: (actorUserId, operation) =>
+							withTenantDatabase(
+								lifecycleClient.db,
+								{
+									userId: actorUserId,
+									role: "user",
+									source: "personal",
+								},
+								operation,
+							),
+					},
+					[],
+				);
+				purgeOperation = lifecycle.purgeUserData(
+					{
+						actorUserId: ownerId,
+						requestId: crypto.randomUUID(),
+						idempotencyKey: `purge-create-fence-${crypto.randomUUID()}`,
+						reason: "account_deletion",
+					},
+					{ fenceToken: "purge-create-fence" },
+				);
+				await graphRemovalEntered.promise;
+
+				const createResponse = await app.handle(
+					new Request("http://localhost/api/documents", {
+						method: "POST",
+						headers: {
+							authorization: `Bearer ${rawKey}`,
+							"content-type": "application/json",
+						},
+						body: JSON.stringify({
+							title: "late purge race document",
+							content: "must never survive account purge",
+						}),
+					}),
+				);
+				expect(createResponse.status).toBe(409);
+				expect(await createResponse.json()).toEqual({
+					error: "Account deletion is in progress",
+					code: "ACCOUNT_PURGE_FENCED",
+				});
+				const guardedRequests = [
+					{
+						name: "duplicate",
+						app,
+						request: new Request(
+							`http://localhost/api/documents/${originalDocumentId}/duplicate`,
+							{
+								method: "POST",
+								headers: { authorization: `Bearer ${rawKey}` },
+							},
+						),
+					},
+					{
+						name: "import",
+						app,
+						request: new Request("http://localhost/api/documents/import", {
+							method: "POST",
+							headers: {
+								authorization: `Bearer ${rawKey}`,
+								"content-type": "application/json",
+							},
+							body: JSON.stringify({
+								title: "fenced import",
+								content: "blocked",
+							}),
+						}),
+					},
+					{
+						name: "trash restore",
+						app,
+						request: new Request(
+							`http://localhost/api/trash/documents/${trashedDocumentId}/restore`,
+							{
+								method: "POST",
+								headers: { authorization: `Bearer ${rawKey}` },
+							},
+						),
+					},
+				];
+				for (const guarded of guardedRequests) {
+					const response = await guarded.app.handle(guarded.request);
+					expect({ name: guarded.name, status: response.status }).toEqual({
+						name: guarded.name,
+						status: 409,
+					});
+					expect(await response.json()).toEqual({
+						error: "Account deletion is in progress",
+						code: "ACCOUNT_PURGE_FENCED",
+					});
+				}
+				let workspaceWriteError: unknown;
+				try {
+					await setup`INSERT INTO public.documents
+						(owner_id, workspace_id, title, content)
+						VALUES (
+							${ownerId}::uuid,
+							${workspaceId},
+							'fenced owner workspace document',
+							''
+						)`;
+				} catch (error) {
+					workspaceWriteError = error;
+				}
+				expect((workspaceWriteError as Error).message).toContain(
+					"account_purge_fenced",
+				);
+				let ownershipEscapeError: unknown;
+				try {
+					await setup`UPDATE public.documents
+						SET owner_id = ${peerOwnerId}::uuid,
+							workspace_id = ${workspaceId}
+						WHERE id = ${originalDocumentId}::uuid`;
+				} catch (error) {
+					ownershipEscapeError = error;
+				}
+				expect((ownershipEscapeError as Error).message).toContain(
+					"account_purge_fenced",
+				);
+
+				const [peerDocument] = await setup<{ id: string }[]>`
+					INSERT INTO public.documents
+						(owner_id, workspace_id, title, content)
+					VALUES (
+						${peerOwnerId}::uuid,
+						${workspaceId},
+						'peer workspace document remains admitted',
+						''
+					)
+					RETURNING id::text`;
+				let workerWriteError: unknown;
+				try {
+					await setup`INSERT INTO public.document_pipeline_runs
+						(document_id, owner_id, generation_id, revision, source)
+						VALUES (
+							${originalDocumentId}::uuid,
+							${ownerId}::uuid,
+							${crypto.randomUUID()}::uuid,
+							'worker-after-fence',
+							'interactive'
+						)`;
+				} catch (error) {
+					workerWriteError = error;
+				}
+				expect((workerWriteError as Error).message).toContain(
+					"account_purge_fenced",
+				);
+
+				releaseGraphRemoval.resolve(undefined);
+				const purgeResult = await purgeOperation;
+				expect(purgeResult).toMatchObject({ status: "completed" });
+				const [state] = await setup<
+					{
+						documents: number;
+						folders: number;
+						categories: number;
+						sessions: number;
+						accountKeys: number;
+						email: string;
+					}[]
+				>`SELECT
+						(SELECT count(*)::int FROM public.documents WHERE owner_id = ${ownerId}::uuid) AS documents,
+						(SELECT count(*)::int FROM public.folders WHERE owner_id = ${ownerId}::uuid) AS folders,
+						(SELECT count(*)::int FROM public.categories WHERE owner_id = ${ownerId}::uuid) AS categories,
+						(SELECT count(*)::int FROM public.sessions WHERE user_id = ${ownerId}::uuid) AS sessions,
+						(SELECT count(*)::int FROM public.api_keys WHERE owner_id = ${ownerId}::uuid) AS "accountKeys",
+						email
+					FROM public.users WHERE id = ${ownerId}::uuid`;
+				expect(state).toMatchObject({
+					documents: 0,
+					folders: 0,
+					categories: 0,
+					sessions: 0,
+					accountKeys: 0,
+				});
+				expect(state?.email).toMatch(/^deleted-[a-f0-9]{64}@invalid\.local$/);
+				const [peerState] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.documents
+					WHERE id = ${peerDocument?.id ?? crypto.randomUUID()}::uuid`;
+				expect(peerState?.count).toBe(1);
+
+				let completedFenceError: unknown;
+				try {
+					await setup`INSERT INTO public.sessions
+						(user_id, token, expires_at)
+						VALUES (
+							${ownerId}::uuid,
+							${crypto.randomUUID()},
+							now() + interval '1 hour'
+						)`;
+				} catch (error) {
+					completedFenceError = error;
+				}
+				expect(completedFenceError).toBeInstanceOf(Error);
+				expect((completedFenceError as Error).message).toContain(
+					"account_purge_fenced",
+				);
+			} finally {
+				releaseGraphRemoval.resolve(undefined);
+				await Promise.allSettled(
+					[purgeOperation].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.users
+					WHERE id IN (${ownerId}::uuid, ${peerOwnerId}::uuid)`;
+				await Promise.all([setup.end(), lifecycleClient.client.end()]);
+			}
+		}, 30_000);
+
+		test("serializes a pre-fence direct create before the lifecycle snapshot", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const creator = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const applicationName = `lifecycle-fence-${crypto.randomUUID()}`;
+			const lifecycleUrl = new URL(databaseUrl as string);
+			lifecycleUrl.searchParams.set("application_name", applicationName);
+			const lifecycleClient = createDatabaseClient(lifecycleUrl.toString(), {
+				max: 2,
+			});
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const creatorReady = deferred<number>();
+			const releaseCreator = deferred<void>();
+			const cancelEntered = deferred<void>();
+			const releaseCancel = deferred<void>();
+			let creatorTransaction: Promise<unknown> | undefined;
+			let purgeOperation: Promise<unknown> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@pre-fence-create.invalid`})`;
+				creatorTransaction = creator.begin(async (tx) => {
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					await tx`INSERT INTO public.documents (id, owner_id, title, content)
+						VALUES (
+							${documentId}::uuid,
+							${ownerId}::uuid,
+							'commits before lifecycle fence',
+							''
+						)`;
+					creatorReady.resolve(session?.pid ?? 0);
+					await releaseCreator.promise;
+				});
+				const creatorPid = await creatorReady.promise;
+				if (!creatorPid) throw new Error("creator backend PID missing");
+
+				const lifecycle = createPersistentLifecycleService(
+					{
+						verifyPurgeFence: async () => {},
+						deleteObjects: async (keys) => keys.length,
+						cancelAccountJobs: async () => {
+							cancelEntered.resolve(undefined);
+							await releaseCancel.promise;
+							return 0;
+						},
+						clearAccountRedisState: async () => 0,
+						removeCollaborationState: async () => 0,
+						removeGraphState: async (ids) => ids.length,
+					},
+					{
+						withActorTransaction: (actorUserId, operation) =>
+							withTenantDatabase(
+								lifecycleClient.db,
+								{
+									userId: actorUserId,
+									role: "user",
+									source: "personal",
+								},
+								operation,
+							),
+					},
+					[],
+				);
+				purgeOperation = lifecycle.purgeUserData(
+					{
+						actorUserId: ownerId,
+						requestId: crypto.randomUUID(),
+						idempotencyKey: `pre-fence-create-${crypto.randomUUID()}`,
+						reason: "account_deletion",
+					},
+					{ fenceToken: "pre-fence-create" },
+				);
+				await waitForApplicationBlockedBy(
+					observer,
+					creatorPid,
+					applicationName,
+				);
+				releaseCreator.resolve(undefined);
+				await creatorTransaction;
+				await cancelEntered.promise;
+				releaseCancel.resolve(undefined);
+				expect(await purgeOperation).toMatchObject({ status: "completed" });
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count FROM public.documents
+					WHERE id = ${documentId}::uuid`;
+				expect(remaining?.count).toBe(0);
+			} finally {
+				releaseCreator.resolve(undefined);
+				releaseCancel.resolve(undefined);
+				await Promise.allSettled(
+					[creatorTransaction, purgeOperation].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await Promise.all([
+					setup.end(),
+					creator.end(),
+					observer.end(),
+					lifecycleClient.client.end(),
+				]);
+			}
+		}, 30_000);
+
+		test("keeps a rejected host fence unfenced and a retryable local fence closed", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const lifecycleClient = createDatabaseClient(databaseUrl as string, {
+				max: 2,
+			});
+			const rejectedOwnerId = crypto.randomUUID();
+			const retryOwnerId = crypto.randomUUID();
+			const retryDocumentId = crypto.randomUUID();
+			const retryVersionId = crypto.randomUUID();
+			const retryRawKey = crypto.randomUUID();
+			const retryKeyHash = new Bun.CryptoHasher("sha256")
+				.update(retryRawKey)
+				.digest("hex");
+			const versionApp = new Elysia().use(versionRoutes);
+			const executor = {
+				withActorTransaction<T>(
+					actorUserId: string,
+					operation: (tx: TenantTransaction) => Promise<T>,
+				): Promise<T> {
+					return withTenantDatabase(
+						lifecycleClient.db,
+						{ userId: actorUserId, role: "user", source: "personal" },
+						operation,
+					);
+				},
+			};
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES
+						(${rejectedOwnerId}::uuid, ${`${rejectedOwnerId}@rejected-fence.invalid`}),
+						(${retryOwnerId}::uuid, ${`${retryOwnerId}@retry-fence.invalid`})`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (
+						${retryOwnerId}::uuid,
+						'retry fence version restore',
+						${retryKeyHash},
+						${retryRawKey.slice(0, 8)},
+						'["global"]'::jsonb
+					)`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${retryDocumentId}::uuid, ${retryOwnerId}::uuid, 'retry document', 'current')`;
+				await setup`INSERT INTO public.versions
+					(id, document_id, content, created_by)
+					VALUES (
+						${retryVersionId}::uuid,
+						${retryDocumentId}::uuid,
+						'prior',
+						${retryOwnerId}::uuid
+					)`;
+				const rejectedLifecycle = createPersistentLifecycleService(
+					{
+						verifyPurgeFence: async () => {
+							throw new LifecycleFenceRejectedError();
+						},
+						deleteObjects: async () => 0,
+						cancelAccountJobs: async () => 0,
+						clearAccountRedisState: async () => 0,
+						removeCollaborationState: async () => 0,
+						removeGraphState: async () => 0,
+					},
+					executor,
+					[],
+				);
+				let rejectedError: unknown;
+				try {
+					await rejectedLifecycle.purgeUserData(
+						{
+							actorUserId: rejectedOwnerId,
+							requestId: crypto.randomUUID(),
+							idempotencyKey: `rejected-${crypto.randomUUID()}`,
+							reason: "account_deletion",
+						},
+						{ fenceToken: "rejected" },
+					);
+				} catch (error) {
+					rejectedError = error;
+				}
+				expect(rejectedError).toBeInstanceOf(LifecycleFenceRejectedError);
+				await setup`INSERT INTO public.documents (owner_id, title, content)
+					VALUES (${rejectedOwnerId}::uuid, 'rejected remains writable', '')`;
+
+				let failFirstAttempt = true;
+				const retryLifecycle = createPersistentLifecycleService(
+					{
+						verifyPurgeFence: async () => {},
+						deleteObjects: async () => 0,
+						cancelAccountJobs: async () => {
+							if (failFirstAttempt) {
+								failFirstAttempt = false;
+								throw new Error("transient cancellation failure");
+							}
+							return 0;
+						},
+						clearAccountRedisState: async () => 0,
+						removeCollaborationState: async () => 0,
+						removeGraphState: async () => 0,
+					},
+					executor,
+					[],
+				);
+				const retryContext = {
+					actorUserId: retryOwnerId,
+					requestId: crypto.randomUUID(),
+					idempotencyKey: `retry-${crypto.randomUUID()}`,
+					reason: "account_deletion" as const,
+				};
+				await expect(
+					retryLifecycle.purgeUserData(retryContext, {
+						fenceToken: "retry-fence",
+					}),
+				).rejects.toThrow("transient cancellation failure");
+				let retryWriteError: unknown;
+				try {
+					await setup`INSERT INTO public.documents (owner_id, title, content)
+						VALUES (${retryOwnerId}::uuid, 'retryable must remain fenced', '')`;
+				} catch (error) {
+					retryWriteError = error;
+				}
+				expect((retryWriteError as Error).message).toContain(
+					"account_purge_fenced",
+				);
+				const restoreResponse = await versionApp.handle(
+					new Request(
+						`http://localhost/api/documents/${retryDocumentId}/versions/${retryVersionId}/restore`,
+						{
+							method: "POST",
+							headers: { authorization: `Bearer ${retryRawKey}` },
+						},
+					),
+				);
+				expect(restoreResponse.status).toBe(409);
+				expect(await restoreResponse.json()).toEqual({
+					error: "Account deletion is in progress",
+					code: "ACCOUNT_PURGE_FENCED",
+				});
+				expect(
+					await retryLifecycle.purgeUserData(retryContext, {
+						fenceToken: "retry-fence",
+					}),
+				).toMatchObject({ status: "completed" });
+			} finally {
+				await setup`DELETE FROM public.users
+					WHERE id IN (${rejectedOwnerId}::uuid, ${retryOwnerId}::uuid)`;
+				await Promise.all([setup.end(), lifecycleClient.client.end()]);
+			}
+		}, 30_000);
+
+		test("benchmark reset acquires one globally ordered document lock union across aliases", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const worker = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const ownerA = crypto.randomUUID();
+			const ownerB = crypto.randomUUID();
+			let highDocumentId = crypto.randomUUID();
+			let lowDocumentId = crypto.randomUUID();
+			while (
+				expectedDocumentPipelineLockKey(highDocumentId) <=
+				expectedDocumentPipelineLockKey(lowDocumentId)
+			) {
+				highDocumentId = crypto.randomUUID();
+				lowDocumentId = crypto.randomUUID();
+			}
+			const highKey = expectedDocumentPipelineLockKey(highDocumentId);
+			const lowKey = expectedDocumentPipelineLockKey(lowDocumentId);
+			const applicationName = `benchmark-lock-${crypto.randomUUID()}`;
+			const scriptDatabaseUrl = new URL(databaseUrl as string);
+			scriptDatabaseUrl.searchParams.set("application_name", applicationName);
+			const outputDir = `/tmp/docsmint-benchmark-lock-${crypto.randomUUID()}`;
+			const workerReady = deferred<number>();
+			const releaseWorker = deferred<void>();
+			let workerTransaction: Promise<unknown> | undefined;
+			let benchmarkProcess: ReturnType<typeof Bun.spawn> | undefined;
+			try {
+				await setup`DELETE FROM public.users
+					WHERE email IN (
+						'benchmark-owner-a@local.invalid',
+						'benchmark-owner-b@local.invalid'
+					)`;
+				await setup`INSERT INTO public.users (id, email)
+					VALUES
+						(${ownerA}::uuid, 'benchmark-owner-a@local.invalid'),
+						(${ownerB}::uuid, 'benchmark-owner-b@local.invalid')`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES
+						(${highDocumentId}::uuid, ${ownerA}::uuid, 'alias high lock', ''),
+						(${lowDocumentId}::uuid, ${ownerB}::uuid, 'alias low lock', '')`;
+
+				workerTransaction = worker.begin(async (tx) => {
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					if (!session?.pid) throw new Error("worker session has no pid");
+					await tx`SELECT pg_advisory_xact_lock(${lowKey.toString()}::bigint)`;
+					workerReady.resolve(session.pid);
+					await releaseWorker.promise;
+					const [locked] = await tx<{ acquired: boolean }[]>`
+						SELECT pg_try_advisory_xact_lock(${highKey.toString()}::bigint) AS acquired`;
+					expect(locked?.acquired).toBe(true);
+				});
+				const workerPid = await workerReady.promise;
+
+				benchmarkProcess = Bun.spawn(
+					[
+						"bun",
+						"backend/src/scripts/seed-benchmark-search.ts",
+						`--output-dir=${outputDir}`,
+						"--reset",
+					],
+					{
+						cwd: process.cwd(),
+						env: {
+							...Bun.env,
+							DATABASE_URL: scriptDatabaseUrl.toString(),
+						},
+						stdout: "pipe",
+						stderr: "pipe",
+					},
+				);
+				await waitForApplicationBlockedBy(observer, workerPid, applicationName);
+				releaseWorker.resolve(undefined);
+				const workerResult = await workerTransaction;
+				expect(workerResult).toBeUndefined();
+				const exitCode = await benchmarkProcess.exited;
+				if (exitCode !== 0) {
+					const stderr = benchmarkProcess.stderr;
+					throw new Error(
+						`benchmark seed failed: ${
+							typeof stderr === "number" || stderr === undefined
+								? "no stderr"
+								: await new Response(stderr).text()
+						}`,
+					);
+				}
+				expect(exitCode).toBe(0);
+			} finally {
+				releaseWorker.resolve(undefined);
+				benchmarkProcess?.kill();
+				await Promise.allSettled(
+					[workerTransaction, benchmarkProcess?.exited].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.users
+					WHERE email IN (
+						'benchmark-owner-a@local.invalid',
+						'benchmark-owner-b@local.invalid'
+					)`;
+				await Promise.all([setup.end(), worker.end(), observer.end()]);
+			}
+		}, 30_000);
 
 		test("admits two rapid metadata events with unchanged content as distinct generations", async () => {
 			const setup = postgres(databaseUrl as string, { max: 1 });

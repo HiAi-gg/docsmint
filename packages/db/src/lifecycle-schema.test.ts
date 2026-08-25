@@ -74,3 +74,39 @@ test("document-create idempotency migration uses a workspace-scoped durable oper
 	expect(migration).toContain("ENABLE ROW LEVEL SECURITY");
 	expect(migration).toContain("TO hiai_app");
 });
+
+test("account purge fence serializes on users and guards writes without blocking deletes", async () => {
+	const migration = await readFile(
+		new URL("./migrations/0042_account_purge_fence.sql", import.meta.url),
+		"utf8",
+	);
+	expect(migration).toContain("SECURITY DEFINER");
+	expect(migration).toContain("SET search_path = pg_catalog, public");
+	expect(migration).toContain(
+		"REVOKE ALL ON FUNCTION public.enforce_account_purge_fence() FROM PUBLIC",
+	);
+	expect(migration).toContain("FROM public.users AS account");
+	expect(migration).toContain("FOR UPDATE");
+	expect(migration).toContain("operation.status <> 'rejected'");
+	expect(migration).toContain("CONSTRAINT = 'account_purge_fenced'");
+	expect(migration).toContain(
+		"ALTER TABLE ag_catalog.document_create_operations SET SCHEMA public",
+	);
+	expect(migration).toContain(
+		"CREATE TABLE IF NOT EXISTS public.document_create_operations",
+	);
+	expect(migration).toContain("BEFORE INSERT OR UPDATE ON public.documents");
+	expect(migration).toContain("BEFORE INSERT OR UPDATE ON public.sessions");
+	expect(migration).toContain(
+		"BEFORE INSERT OR UPDATE ON public.document_pipeline_runs",
+	);
+	expect(migration).not.toContain("BEFORE DELETE");
+
+	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+		entries: Array<{ idx: number; tag: string }>;
+	};
+	expect(journal.entries.at(-1)).toMatchObject({
+		idx: 45,
+		tag: "0042_account_purge_fence",
+	});
+});

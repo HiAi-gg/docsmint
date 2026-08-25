@@ -316,6 +316,13 @@
 			"when": 1787594400000,
 			"tag": "20260824180000_workspace_child_rls_outbox/migration",
 			"breakpoints": true
+		},
+		{
+			"idx": 45,
+			"version": "7",
+			"when": 1787618000000,
+			"tag": "0042_account_purge_fence",
+			"breakpoints": true
 		}
 	]
 }

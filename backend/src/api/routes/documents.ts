@@ -28,6 +28,10 @@ import {
 } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
+import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
 import { recordAuditEvent } from "../../lib/audit";
 import { config } from "../../lib/config";
 import {
@@ -907,6 +911,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 
 			return created;
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err }, "Failed to create document");
 			set.status = 500;
 			return { error: "Failed to create document" };
@@ -1955,6 +1963,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return copy;
 		} catch (err) {
 			await cleanupCopiedStorage();
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error({ err }, "Failed to duplicate document");
 			set.status = 500;
 			return { error: "Failed to duplicate document" };
@@ -2025,32 +2037,45 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
-		const restored = await withTenant(ctx, async (tx) => {
-			const result = await tx
-				.update(documents)
-				.set({ deletedAt: null, updatedAt: new Date() })
-				.where(
-					and(
-						eq(documents.id, params.id),
-						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
-						isNotNull(documents.deletedAt),
-						...(access.restricted
-							? [
-									access.categoryId
-										? effectiveDocumentCategoryCondition(
-												documents.categoryId,
-												documents.folderId,
-												ctx,
-												access.categoryId,
-											)
-										: sql`false`,
-								]
-							: []),
-					),
-				)
-				.returning({ id: documents.id });
-			return result[0] ?? null;
-		});
+		let restored: { id: string } | null;
+		try {
+			restored = await withTenant(ctx, async (tx) => {
+				const result = await tx
+					.update(documents)
+					.set({ deletedAt: null, updatedAt: new Date() })
+					.where(
+						and(
+							eq(documents.id, params.id),
+							tenantOwnerCondition(
+								documents.ownerId,
+								documents.workspaceId,
+								ctx,
+							),
+							isNotNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
+						),
+					)
+					.returning({ id: documents.id });
+				return result[0] ?? null;
+			});
+		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
+			throw err;
+		}
 		if (!restored) {
 			set.status = 404;
 			return { error: "Document not found" };
@@ -2071,28 +2096,33 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Forbidden" };
 		}
 		const purged = await withTenant(ctx, async (tx) => {
+			const authorizedCondition = and(
+				eq(documents.id, params.id),
+				tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+				isNotNull(documents.deletedAt),
+				...(access.restricted
+					? [
+							access.categoryId
+								? effectiveDocumentCategoryCondition(
+										documents.categoryId,
+										documents.folderId,
+										ctx,
+										access.categoryId,
+									)
+								: sql`false`,
+						]
+					: []),
+			);
+			const [authorized] = await tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(authorizedCondition)
+				.limit(1);
+			if (!authorized) return null;
 			await acquireDocumentPipelineLock(tx, params.id);
 			const result = await tx
 				.delete(documents)
-				.where(
-					and(
-						eq(documents.id, params.id),
-						tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
-						isNotNull(documents.deletedAt),
-						...(access.restricted
-							? [
-									access.categoryId
-										? effectiveDocumentCategoryCondition(
-												documents.categoryId,
-												documents.folderId,
-												ctx,
-												access.categoryId,
-											)
-										: sql`false`,
-								]
-							: []),
-					),
-				)
+				.where(authorizedCondition)
 				.returning({ id: documents.id });
 			return result[0] ?? null;
 		});
@@ -2528,6 +2558,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						enqueueCreated(created);
 						return createdResult(created);
 					} catch (err: unknown) {
+						if (isAccountPurgeFencedError(err)) {
+							return {
+								filename: file.name,
+								status: "error",
+								error: accountPurgeFencedResponse().error,
+								failureStatus: 409,
+							};
+						}
 						if (err instanceof ImportInputError) {
 							return {
 								filename: file.name,
@@ -2650,6 +2688,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				failed: 0,
 			};
 		} catch (err: unknown) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			if (err instanceof ImportInputError) {
 				set.status = err.status;
 				return { error: err.message };

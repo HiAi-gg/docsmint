@@ -22,9 +22,10 @@ import {
 	withTenant,
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
-import { eq } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { embeddingProfileId } from "../embedding/validation";
 import { config } from "../lib/config";
+import { client } from "../lib/db";
 import { acquireDocumentPipelineLocks } from "../lib/document-pipeline-serialization";
 
 const FIXTURE_VERSION = "search-relevance-v1";
@@ -170,23 +171,24 @@ async function main(): Promise<void> {
 	);
 
 	await withTenant(adminTenantContext(ZERO_UUID), async (tx) => {
-		for (const email of ownerEmails.values()) {
-			const existing = await tx
-				.select({ id: users.id })
-				.from(users)
-				.where(eq(users.email, email))
-				.limit(1);
-			if (existing[0]) {
-				const ownedDocuments = await tx
-					.select({ id: documents.id })
-					.from(documents)
-					.where(eq(documents.ownerId, existing[0].id));
-				await acquireDocumentPipelineLocks(
-					tx,
-					ownedDocuments.map(({ id }) => id),
-				);
-				await tx.delete(users).where(eq(users.id, existing[0].id));
-			}
+		const benchmarkEmails = [...ownerEmails.values()];
+		const existingOwners = await tx
+			.select({ id: users.id })
+			.from(users)
+			.where(inArray(users.email, benchmarkEmails))
+			.orderBy(users.id)
+			.for("update");
+		const existingOwnerIds = existingOwners.map(({ id }) => id);
+		if (existingOwnerIds.length > 0) {
+			const ownedDocuments = await tx
+				.select({ id: documents.id })
+				.from(documents)
+				.where(inArray(documents.ownerId, existingOwnerIds));
+			await acquireDocumentPipelineLocks(
+				tx,
+				ownedDocuments.map(({ id }) => id),
+			);
+			await tx.delete(users).where(inArray(users.id, existingOwnerIds));
 		}
 		for (const alias of OWNER_ALIASES) {
 			const [user] = await tx
@@ -284,4 +286,10 @@ async function main(): Promise<void> {
 	);
 }
 
-if (import.meta.main) await main();
+if (import.meta.main) {
+	try {
+		await main();
+	} finally {
+		await client.end();
+	}
+}

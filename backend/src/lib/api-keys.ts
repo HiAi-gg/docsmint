@@ -5,6 +5,7 @@ import {
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
 import { and, desc, eq } from "drizzle-orm";
+import { isAccountPurgeFencedError } from "./account-purge-fence";
 import { decryptApiKey, encryptApiKey } from "./api-key-encryption";
 
 const API_KEY_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
@@ -228,12 +229,19 @@ export async function validateApiKey(key: string): Promise<{
 	if (!scopes) return null;
 
 	// Update last_used_at
-	await withTenant(API_KEY_ADMIN_TENANT, (tx) =>
-		tx
-			.update(apiKeys)
-			.set({ lastUsedAt: new Date() })
-			.where(eq(apiKeys.id, row.id)),
-	);
+	try {
+		await withTenant(API_KEY_ADMIN_TENANT, (tx) =>
+			tx
+				.update(apiKeys)
+				.set({ lastUsedAt: new Date() })
+				.where(eq(apiKeys.id, row.id)),
+		);
+	} catch (error) {
+		// Preserve the authenticated principal so guarded routes return the
+		// stable public fence error. The key row itself remains frozen until
+		// lifecycle cleanup deletes it.
+		if (!isAccountPurgeFencedError(error)) throw error;
+	}
 
 	return {
 		id: row.id,

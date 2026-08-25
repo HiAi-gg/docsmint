@@ -3,6 +3,10 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
+	accountPurgeFencedResponse,
+	isAccountPurgeFencedError,
+} from "../../lib/account-purge-fence";
+import {
 	canAccessContent,
 	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
@@ -629,6 +633,10 @@ export const versionRoutes = new Elysia({
 			);
 			return updated;
 		} catch (err) {
+			if (isAccountPurgeFencedError(err)) {
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			logger.error(
 				{ err, docId: params.id, vid: params.vid },
 				"Failed to restore version",

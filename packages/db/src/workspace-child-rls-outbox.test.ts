@@ -22,7 +22,12 @@ test("registers a durable metadata re-embed outbox in schema and migrations", as
 		entries: Array<{ idx: number; tag: string }>;
 	};
 
-	expect(journal.entries.at(-1)).toMatchObject({
+	expect(
+		journal.entries.find(
+			(entry) =>
+				entry.tag === "20260824180000_workspace_child_rls_outbox/migration",
+		),
+	).toMatchObject({
 		idx: 44,
 		tag: "20260824180000_workspace_child_rls_outbox/migration",
 	});
