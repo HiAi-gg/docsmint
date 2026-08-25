@@ -136,6 +136,18 @@ test("tag publication rejects mismatched npm provenance commit binding", async (
 	);
 });
 
+test("published npm provenance installs frozen verification dependencies", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		const provenance = workflowJob(workflow, "verify-npm-provenance");
+		provenance.steps = provenance.steps?.filter(
+			(step) => step.run !== "bun install --frozen-lockfile",
+		);
+	});
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"verify-npm-provenance must install frozen dependencies",
+	);
+});
+
 test("MCP Registry and GitHub Release cannot bypass npm provenance", async () => {
 	for (const [jobName, dependency] of [
 		["publish-mcp-registry", "publish-npm"],
@@ -174,6 +186,18 @@ test("manual MCP publication proves tag SHA and exact npm provenance", async () 
 	).resolves.toBeUndefined();
 });
 
+test("manual MCP recovery installs frozen verification dependencies", async () => {
+	const path = await mutatedManualWorkflow((workflow) => {
+		const publish = workflowJob(workflow, "publish");
+		publish.steps = publish.steps?.filter(
+			(step) => step.run !== "bun install --frozen-lockfile",
+		);
+	});
+	await expect(validateManualMcpWorkflowContract(path)).rejects.toThrow(
+		"manual MCP workflow must install frozen dependencies",
+	);
+});
+
 test("manual MCP publication rejects removal and mismatch of commit provenance", async () => {
 	for (const mutate of [
 		(workflow: Record<string, unknown>) => {
@@ -193,7 +217,7 @@ test("manual MCP publication rejects removal and mismatch of commit provenance",
 	]) {
 		const path = await mutatedManualWorkflow(mutate);
 		await expect(validateManualMcpWorkflowContract(path)).rejects.toThrow(
-			"manual MCP workflow must prove the exact tag SHA and npm provenance",
+			"manual MCP workflow must install frozen dependencies before proving the exact tag SHA and npm provenance",
 		);
 	}
 });

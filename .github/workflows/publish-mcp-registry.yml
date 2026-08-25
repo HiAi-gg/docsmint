@@ -31,6 +31,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
+      - name: Install verification dependencies
+        run: bun install --frozen-lockfile
       - name: Verify exact tag commit and npm provenance
         run: |
           set -euo pipefail

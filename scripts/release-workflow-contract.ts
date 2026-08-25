@@ -376,6 +376,11 @@ function validatePublishedPackageProvenance(
 	const verification = provenance.steps?.find(
 		(step) => step.name === "Verify exact tag commit and npm provenance",
 	);
+	const verificationIndex = provenance.steps?.indexOf(verification ?? {}) ?? -1;
+	const installIndex =
+		provenance.steps?.findIndex(
+			(step) => step.run === "bun install --frozen-lockfile",
+		) ?? -1;
 	const verificationLines = verification?.run
 		?.split("\n")
 		.map((line) => line.trim());
@@ -386,10 +391,12 @@ function validatePublishedPackageProvenance(
 		) ||
 		!verificationLines.includes(
 			'RELEASE_VERSION="${RELEASE_TAG#v}" bun run scripts/verify-published-package.ts',
-		)
+		) ||
+		installIndex < 0 ||
+		verificationIndex <= installIndex
 	) {
 		throw new Error(
-			"verify-npm-provenance must prove the exact tag commit and published package",
+			"verify-npm-provenance must install frozen dependencies before proving the exact tag commit and published package",
 		);
 	}
 	const upload = provenance.steps?.find(
@@ -510,6 +517,10 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		(step) => step.uses === "actions/checkout@v4",
 	);
 	const verificationIndex = publish?.steps?.indexOf(verification ?? {}) ?? -1;
+	const installIndex =
+		publish?.steps?.findIndex(
+			(step) => step.run === "bun install --frozen-lockfile",
+		) ?? -1;
 	const publicationIndex =
 		publish?.steps?.findIndex((step) => step.run === "mcp-publisher publish") ?? -1;
 	const upload = publish?.steps?.find(
@@ -529,6 +540,8 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		!lines.includes(
 			'RELEASE_VERSION="${RELEASE_TAG#v}" bun run scripts/verify-published-package.ts',
 		) ||
+		installIndex < 0 ||
+		verificationIndex <= installIndex ||
 		verificationIndex < 0 ||
 		publicationIndex <= verificationIndex ||
 		upload?.uses !== "actions/upload-artifact@v4" ||
@@ -539,7 +552,7 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		(publish.steps ?? []).some(hasUnsafeErrorSuppression)
 	) {
 		throw new Error(
-			"manual MCP workflow must prove the exact tag SHA and npm provenance",
+			"manual MCP workflow must install frozen dependencies before proving the exact tag SHA and npm provenance",
 		);
 	}
 }
