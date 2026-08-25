@@ -639,7 +639,9 @@ export function createPersistentLifecycleService(
 							});
 							staged += page;
 							if (page === 0) break;
-							await drainAttachmentStorageCleanupOutbox({
+						}
+						for (let page = 0; page < 10_000; page += 1) {
+							const result = await drainAttachmentStorageCleanupOutbox({
 								deleteObjects: runtime.deleteObjects,
 								actorUserId: ctx.actorUserId,
 								quotaAdmission:
@@ -649,6 +651,9 @@ export function createPersistentLifecycleService(
 								pageSize: LIFECYCLE_CLEANUP_PAGE_SIZE,
 								maxPages: 1,
 							});
+							if (result.claimed === 0) break;
+							if (result.failed > 0 || result.deferred > 0)
+								throw new LifecyclePendingAttachmentUploadsError();
 						}
 						const retained = await withCleanupActor((tx) =>
 							tx
