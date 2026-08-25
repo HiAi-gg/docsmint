@@ -219,7 +219,20 @@ async function establishTestPurgeFence(actorUserId: string): Promise<string> {
 }
 
 async function removeTestPurgeFence(operationId: string): Promise<void> {
-	await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
+	const updated = await database`UPDATE lifecycle_operations
+		SET status = 'rejected',
+			fence_token_hash = NULL,
+			lease_owner = NULL,
+			lease_expires_at = NULL,
+			terminal_result = '{"testCleanup":true}'::jsonb,
+			completed_at = now(),
+			updated_at = now()
+		WHERE id = ${operationId}::uuid
+			AND status = 'retryable'
+		RETURNING id`;
+	if (updated.length !== 1) {
+		throw new Error("test purge fence was not retired");
+	}
 }
 
 function createContractLifecycle() {
@@ -1517,7 +1530,6 @@ describe("live category-scoped public surfaces", () => {
 			contentType: "image/png",
 			size: bytes.byteLength,
 		});
-		let operationId: string | undefined;
 		orphanedObjectKeys.add(presigned.key);
 		try {
 			const upload = await fetch(presigned.url, {
@@ -1543,7 +1555,6 @@ describe("live category-scoped public surfaces", () => {
 				},
 				{ fenceToken: `peer-confirmed-fence-${suffix}` },
 			);
-			operationId = result.operationId;
 			expect(result.status).toBe("completed");
 			expect(await contractObjectExists(presigned.key)).toBe(false);
 			const [state] = await database<{
@@ -1559,9 +1570,8 @@ describe("live category-scoped public surfaces", () => {
 		} finally {
 			await deleteContractObject(presigned.key).catch(() => undefined);
 			orphanedObjectKeys.delete(presigned.key);
-			if (operationId) {
-				await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
-			}
+			// Terminal lifecycle records are intentionally immutable and retained;
+			// deleting the actor applies the production FK redaction to actor_user_id.
 			await database`DELETE FROM users WHERE id = ${ids.actorConfirmedUpload}::uuid`;
 		}
 	});
@@ -1598,7 +1608,6 @@ describe("live category-scoped public surfaces", () => {
 				idempotencyKey: `peer-pending-purge-${suffix}`,
 				reason: "account_deletion" as const,
 			};
-			let operationId: string | undefined;
 			orphanedObjectKeys.add(presigned.key);
 			try {
 				expect(presigned.expiresIn).toBe(60);
@@ -1607,11 +1616,10 @@ describe("live category-scoped public surfaces", () => {
 						fenceToken: `peer-pending-fence-${suffix}`,
 					}),
 				).rejects.toBeInstanceOf(LifecyclePendingAttachmentUploadsError);
-				const [retryable] = await database<{ id: string; status: string }[]>`
-					SELECT id, status FROM lifecycle_operations
+				const [retryable] = await database<{ status: string }[]>`
+					SELECT status FROM lifecycle_operations
 					WHERE actor_user_id = ${ids.actorPendingUpload}::uuid
 						AND idempotency_key = ${context.idempotencyKey}`;
-				operationId = retryable?.id;
 				expect(retryable?.status).toBe("retryable");
 
 				// An already-issued URL remains usable after the durable fence. The
@@ -1643,9 +1651,7 @@ describe("live category-scoped public surfaces", () => {
 			} finally {
 				await deleteContractObject(presigned.key).catch(() => undefined);
 				orphanedObjectKeys.delete(presigned.key);
-				if (operationId) {
-					await database`DELETE FROM lifecycle_operations WHERE id = ${operationId}::uuid`;
-				}
+				// Keep the immutable terminal record and redact its actor through the FK.
 				await database`DELETE FROM users WHERE id = ${ids.actorPendingUpload}::uuid`;
 			}
 		},
