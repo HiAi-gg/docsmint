@@ -9,7 +9,7 @@
  *   - 404 for an unknown attachment id.
  *   - 403 when the attachment is owned by a different user.
  *   - 200 + DB row removed + storage key removed for the owner.
- *   - DB row is still removed when storage throws on removeObject (best-effort).
+ *   - DB row is retained when storage removal fails so a retry keeps the key.
  *
  * Note: the harness's mock db does not process `innerJoin`, so the test
  * seeds the attachment row with an `ownerId` field directly. The route
@@ -167,19 +167,18 @@ describe("DELETE /api/attachments/:id", () => {
     expect(getStorageMockState().removedKeys).toEqual([STORAGE_KEY]);
   });
 
-  it("still deletes the DB row if storage removeObject throws", async () => {
+	it("retains the DB row if storage removeObject throws", async () => {
     seedAttachment();
     getStorageMockState().removeObjectShouldThrow = true;
     const res = await request(app, `/api/attachments/${ATTACHMENT_ID}`, {
       method: "DELETE",
       headers: ownerHeaders(),
     });
-    // The 200 is what the user sees; the storage failure is logged
-    // and surfaced as a follow-up cleanup task, not as an error
-    // to the caller.
-    expect(res.status).toBe(200);
-    expect(getState().attachments.has(ATTACHMENT_ID)).toBe(false);
-    // removeObject was attempted (and threw) before the DB delete.
+		// The durable row must retain the exact object key until a later retry can
+		// remove storage successfully; deleting it here would create an orphan.
+		expect(res.status).toBe(503);
+		expect(getState().attachments.has(ATTACHMENT_ID)).toBe(true);
+		// removeObject was attempted and failed before any DB delete.
     expect(getStorageMockState().removedKeys).toEqual([STORAGE_KEY]);
   });
 });

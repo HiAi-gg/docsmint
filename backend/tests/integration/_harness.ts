@@ -33,6 +33,8 @@ export interface TestState {
   attachments: Map<string, any>;
   documentEmbeddings: any[];
   metadataReembedOutbox: Map<string, any>;
+  lifecycleOperations: Map<string, any>;
+  pendingAttachmentUploads: Map<string, any>;
   enqueuedEmbeddings: string[];
   enqueuedEmbeddingRequests: Array<{
     id: string;
@@ -69,6 +71,8 @@ function createState(): TestState {
     attachments: new Map(),
     documentEmbeddings: [],
     metadataReembedOutbox: new Map(),
+    lifecycleOperations: new Map(),
+    pendingAttachmentUploads: new Map(),
     enqueuedEmbeddings: [],
     enqueuedEmbeddingRequests: [],
     calls: [],
@@ -257,6 +261,10 @@ function getCollection(name: string): any[] | Map<string, any> {
       return state.documentEmbeddings;
     case "metadata_reembed_outbox":
       return state.metadataReembedOutbox;
+    case "lifecycle_operations":
+      return state.lifecycleOperations;
+    case "pending_attachment_uploads":
+      return state.pendingAttachmentUploads;
     default:
       throw new Error(`Unknown table in mock DB: ${name}`);
   }

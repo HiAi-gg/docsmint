@@ -9,7 +9,7 @@
  *   - presign auth: 401 without auth, 200 with auth.
  *   - presign validation: filename, contentType, size.
  *   - presign over-cap: 413 when size > ATTACHMENT_MAX_SIZE_MB.
- *   - presign happy path: returns { url, key, maxSize, expiresIn }.
+ *   - presign happy path: returns durable { url, key, uploadToken, ... } admission.
  *   - confirm: 409 when storage has no object, 201 when statObject returns.
  *   - confirm rejection: key that doesn't match the user's prefix is rejected.
  *   - confirm inserts a row whose `url` points at /api/attachments/:id/raw.
@@ -87,6 +87,7 @@ function presignBody(
 
 function confirmBody(opts: {
   documentId: string;
+  uploadToken: string;
   key?: string;
   filename?: string;
   contentType?: string;
@@ -94,10 +95,30 @@ function confirmBody(opts: {
 }) {
   return {
     key: opts.key ?? `${OWNER_ID}/${opts.documentId}/abc.png`,
+    uploadToken: opts.uploadToken,
     filename: opts.filename ?? "photo.png",
     contentType: opts.contentType ?? "image/png",
     size: opts.size ?? 1024,
   };
+}
+
+async function admitUpload(
+  documentId: string,
+  body: ReturnType<typeof presignBody> = presignBody(),
+): Promise<{ key: string; uploadToken: string }> {
+  const response = await request(
+    app,
+    `/api/documents/${documentId}/attachments/presign`,
+    {
+      method: "POST",
+      headers: ownerHeaders(),
+      body: JSON.stringify(body),
+    },
+  );
+  expect(response.status).toBe(200);
+  const admission = response.body as { key: string; uploadToken: string };
+  expect(admission.uploadToken).toBeString();
+  return admission;
 }
 
 describe("POST /api/documents/:id/attachments/presign", () => {
@@ -166,6 +187,7 @@ describe("POST /api/documents/:id/attachments/presign", () => {
     const body = res.body as {
       url: string;
       key: string;
+      uploadToken: string;
       maxSize: number;
       expiresIn: number;
     };
@@ -176,6 +198,7 @@ describe("POST /api/documents/:id/attachments/presign", () => {
 		expect(new URL(body.url).password).toBe("");
     expect(body.url).toContain(docId);
     expect(body.key.startsWith(`${OWNER_ID}/${docId}/`)).toBe(true);
+    expect(body.uploadToken).toBeString();
     expect(body.maxSize).toBe(25 * 1024 * 1024);
     expect(body.expiresIn).toBe(900);
   });
@@ -254,8 +277,9 @@ describe("POST /api/documents/:id/attachments/presign", () => {
 });
 
 describe("POST /api/documents/:id/attachments/confirm", () => {
-  it("returns 401 with an invalid bearer token", async () => {
+  it("returns a masked 404 for a valid admission with invalid auth", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -268,16 +292,18 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
         body: JSON.stringify(
           confirmBody({
             documentId: docId,
-            key: `${OWNER_ID}/${docId}/abc.png`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
     );
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(404);
   });
 
   it("returns 403 without auth (CSRF blocks first)", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -287,7 +313,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
         body: JSON.stringify(
           confirmBody({
             documentId: docId,
-            key: `${OWNER_ID}/${docId}/abc.png`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
@@ -297,6 +324,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("returns 409 when storage has no object", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     getStorageMockState().statObjectShouldThrow = true;
     const res = await request(
       app,
@@ -307,7 +335,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
         body: JSON.stringify(
           confirmBody({
             documentId: docId,
-            key: `${OWNER_ID}/${docId}/gone.png`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
@@ -319,7 +348,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("returns 201 and inserts a row on happy path", async () => {
     const docId = seedOwnedDocument();
-    const key = `${OWNER_ID}/${docId}/happy.png`;
+    const admission = await admitUpload(docId, presignBody({ size: 4096 }));
+    const key = admission.key;
     // Pre-populate storage's stored-size map so statObject returns a
     // realistic size — in production this would have been written by
     // the PUT that landed just before this confirm call.
@@ -335,6 +365,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
           confirmBody({
             documentId: docId,
             key,
+            uploadToken: admission.uploadToken,
             size: 4096,
           }),
         ),
@@ -364,7 +395,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("deletes an object whose actual stored size exceeds the attachment cap", async () => {
     const docId = seedOwnedDocument();
-    const key = `${OWNER_ID}/${docId}/oversized.png`;
+    const admission = await admitUpload(docId);
+    const key = admission.key;
     const storage = getStorageMockState();
     storage.storedSizes.set(key, 26 * 1024 * 1024);
     const removeCallsBefore = storage.removeObjectCalls;
@@ -375,7 +407,14 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
       {
         method: "POST",
         headers: ownerHeaders(),
-        body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+        body: JSON.stringify(
+          confirmBody({
+            documentId: docId,
+            key,
+            uploadToken: admission.uploadToken,
+            size: 1024,
+          }),
+        ),
       },
     );
 
@@ -388,7 +427,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("deletes an object when storage omits its content length", async () => {
     const docId = seedOwnedDocument();
-    const key = `${OWNER_ID}/${docId}/missing-length.png`;
+    const admission = await admitUpload(docId);
+    const key = admission.key;
     const storage = getStorageMockState();
     storage.storedSizes.set(key, undefined);
     const removeCallsBefore = storage.removeObjectCalls;
@@ -399,7 +439,14 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
       {
         method: "POST",
         headers: ownerHeaders(),
-        body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+        body: JSON.stringify(
+          confirmBody({
+            documentId: docId,
+            key,
+            uploadToken: admission.uploadToken,
+            size: 1024,
+          }),
+        ),
       },
     );
 
@@ -420,7 +467,11 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
       ["zero", 0],
       ["negative", -1],
     ] as const) {
-      const key = `${OWNER_ID}/${docId}/${label}.png`;
+      const admission = await admitUpload(
+        docId,
+        presignBody({ filename: `${label}.png` }),
+      );
+      const key = admission.key;
       storage.storedSizes.set(key, storedSize);
 
       const res = await request(
@@ -429,11 +480,23 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
         {
           method: "POST",
           headers: ownerHeaders(),
-          body: JSON.stringify(confirmBody({ documentId: docId, key, size: 1024 })),
+          body: JSON.stringify(
+            confirmBody({
+              documentId: docId,
+              key,
+              uploadToken: admission.uploadToken,
+              filename: `${label}.png`,
+              size: 1024,
+            }),
+          ),
         },
       );
 
-      expect(res.status).toBe(409);
+      expect({ label, status: res.status, body: res.body }).toEqual({
+        label,
+        status: 409,
+        body: { error: "Upload size could not be verified" },
+      });
       expect(res.body).toEqual({ error: "Upload size could not be verified" });
       expect(storage.removedKeys.at(-1)).toBe(key);
     }
@@ -442,6 +505,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("returns 400 when the key prefix doesn't match the user", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -452,6 +516,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
           confirmBody({
             documentId: docId,
             key: `${OTHER_USER_ID}/${docId}/malicious.png`,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
@@ -461,6 +526,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("returns 400 when the key prefix doesn't match the document", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const otherDoc = "00000000-0000-4000-8000-0000000000aa";
     getState().documents.set(otherDoc, {
       id: otherDoc,
@@ -482,7 +548,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
         body: JSON.stringify(
           confirmBody({
             documentId: otherDoc,
-            key: `${OWNER_ID}/${docId}/crossdoc.png`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
@@ -492,6 +559,7 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
 
   it("returns 415 for a non-image contentType", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -502,7 +570,8 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
           confirmBody({
             documentId: docId,
             contentType: "text/plain",
-            key: `${OWNER_ID}/${docId}/note.txt`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
@@ -510,8 +579,9 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
     expect(res.status).toBe(415);
   });
 
-  it("returns 413 for sizes above the cap", async () => {
+  it("returns 400 when confirm size differs from the admitted size", async () => {
     const docId = seedOwnedDocument();
+    const admission = await admitUpload(docId);
     const res = await request(
       app,
       `/api/documents/${docId}/attachments/confirm`,
@@ -522,12 +592,13 @@ describe("POST /api/documents/:id/attachments/confirm", () => {
           confirmBody({
             documentId: docId,
             size: 26 * 1024 * 1024,
-            key: `${OWNER_ID}/${docId}/big.png`,
+            key: admission.key,
+            uploadToken: admission.uploadToken,
           }),
         ),
       },
     );
-    expect(res.status).toBe(413);
+    expect(res.status).toBe(400);
   });
 });
 
