@@ -179,6 +179,7 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 						return keys.length;
 					},
 				});
+
 				await firstDeleteStarted.promise;
 				const second = await drainAttachmentStorageCleanupOutbox({
 					leaseOwner: `second-${crypto.randomUUID()}`,
@@ -216,6 +217,111 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 				await setup.end();
 			}
 		}, 30_000);
+
+		test("signed admission abandonment is exact, fenced-safe, and concurrent-cleanup idempotent", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const runtime = postgres(runtimeDatabaseUrl as string, { max: 2 });
+			const actorId = crypto.randomUUID();
+			const foreignActorId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const admissionId = crypto.randomUUID();
+			const workspaceId = `workspace-${crypto.randomUUID()}`;
+			const storageKey = `${workspaceId}/${actorId}/${documentId}/proof.png`;
+			const tokenHash = subjectHash(`upload:${admissionId}`);
+			const operationId = crypto.randomUUID();
+			try {
+				await setup`INSERT INTO public.users (id, email) VALUES
+					(${actorId}::uuid, ${`${actorId}@abandon.invalid`}),
+					(${foreignActorId}::uuid, ${`${foreignActorId}@abandon.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, workspace_id, title, content)
+					VALUES (${documentId}::uuid, ${actorId}::uuid, ${workspaceId}, 'Proof doc', '')`;
+				await setup`INSERT INTO public.pending_attachment_uploads
+					(id, document_id, actor_user_id, workspace_id, storage_key,
+					 token_hash, filename, mime_type, declared_size,
+					 quota_operation_key, quota_state, url_issued_at, expires_at)
+					VALUES (${admissionId}::uuid, ${documentId}::uuid, ${actorId}::uuid,
+						${workspaceId}, ${storageKey}, ${tokenHash}, 'proof.png',
+						'image/png', 7, ${`attachment:${documentId}:${storageKey}`},
+						'not_required', now(), now() + interval '15 minutes')`;
+				await setup.begin(async (tx) => {
+					await tx`SELECT public.acquire_account_purge_fence_lock(${actorId}::uuid)`;
+					await tx`INSERT INTO public.lifecycle_operations
+						(id, actor_user_id, actor_subject_hash, idempotency_key,
+						 operation_kind, status, fence_token_hash)
+					VALUES (${operationId}::uuid, ${actorId}::uuid, ${subjectHash(actorId)},
+						${crypto.randomUUID()}, 'purge', 'retryable',
+						${subjectHash(`fence:${actorId}`)})`;
+				});
+
+				let foreignAccepted = true;
+				await withRuntimeTenant(
+					runtime,
+					foreignActorId,
+					workspaceId,
+					async (tx) => {
+						const [row] = await tx<{ abandoned: boolean }[]>`
+						SELECT public.abandon_pending_attachment_upload(
+							${admissionId}::uuid, ${documentId}::uuid, ${storageKey},
+							${tokenHash}, NULL
+						) AS abandoned`;
+						foreignAccepted = row?.abandoned === true;
+					},
+				);
+				expect(foreignAccepted).toBe(false);
+
+				let tamperedAccepted = true;
+				await withRuntimeTenant(runtime, actorId, workspaceId, async (tx) => {
+					const [row] = await tx<{ abandoned: boolean }[]>`
+						SELECT public.abandon_pending_attachment_upload(
+							${admissionId}::uuid, ${documentId}::uuid, ${`${storageKey}.tampered`},
+							${tokenHash}, NULL
+						) AS abandoned`;
+					tamperedAccepted = row?.abandoned === true;
+				});
+				expect(tamperedAccepted).toBe(false);
+
+				const results: boolean[] = [];
+				await Promise.all(
+					[0, 1].map(() =>
+						withRuntimeTenant(runtime, actorId, workspaceId, async (tx) => {
+							const [row] = await tx<{ abandoned: boolean }[]>`
+								SELECT public.abandon_pending_attachment_upload(
+									${admissionId}::uuid, ${documentId}::uuid, ${storageKey},
+									${tokenHash}, NULL
+								) AS abandoned`;
+							results.push(row?.abandoned === true);
+						}),
+					),
+				);
+				expect(results.sort()).toEqual([false, true]);
+				const [counts] = await setup<
+					Array<{ pending: number; cleanup: number; authorizations: number }>
+				>`SELECT
+					(SELECT count(*)::int FROM public.pending_attachment_uploads
+					 WHERE id = ${admissionId}::uuid) AS pending,
+					(SELECT count(*)::int FROM public.attachment_storage_cleanup_outbox
+					 WHERE source_kind = 'pending_upload' AND source_id = ${admissionId}::uuid) AS cleanup,
+					(SELECT count(*)::int FROM public.pending_attachment_cleanup_authorizations
+					 WHERE admission_id = ${admissionId}::uuid) AS authorizations`;
+				expect(counts).toEqual({ pending: 0, cleanup: 1, authorizations: 0 });
+			} finally {
+				await setup`UPDATE public.lifecycle_operations
+					SET status = 'rejected', fence_token_hash = NULL, completed_at = now()
+					WHERE id = ${operationId}::uuid`;
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE source_id = ${admissionId}::uuid`;
+				await setup.begin(async (tx) => {
+					await tx`SET LOCAL session_replication_role = 'replica'`;
+					await tx`DELETE FROM public.pending_attachment_uploads
+						WHERE id = ${admissionId}::uuid`;
+					await tx`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+					await tx`DELETE FROM public.lifecycle_operations WHERE id = ${operationId}::uuid`;
+					await tx`DELETE FROM public.users WHERE id IN (${actorId}::uuid, ${foreignActorId}::uuid)`;
+				});
+				await Promise.all([setup.end(), runtime.end()]);
+			}
+		});
 
 		test("completed fences reject Better Auth profile and email mutations with the stable public error", async () => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });

@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, check, integer, pgEnum, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, bigint, jsonb, index, uniqueIndex, customType, boolean, check, integer, pgEnum, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 
 // pgvector vector type — maps to PostgreSQL vector(n) column
 const vector = customType<{
@@ -753,6 +753,28 @@ export const attachmentStorageCleanupOutbox = pgTable(
       "attachment_storage_cleanup_outbox_reservation_check",
       sql`${table.quotaReleaseKind} NOT IN ('reservation', 'finalize_pending') OR ${table.quotaReservationId} IS NOT NULL`,
     ),
+  ],
+);
+
+// Internal transaction-bound proof used only by the narrow signed-admission
+// abandonment SECURITY DEFINER function. The runtime role has no table grants.
+export const pendingAttachmentCleanupAuthorizations = pgTable(
+  "pending_attachment_cleanup_authorizations",
+  {
+    backendPid: integer("backend_pid").notNull(),
+    transactionId: bigint("transaction_id", { mode: "bigint" }).notNull(),
+    admissionId: uuid("admission_id").notNull(),
+    documentId: uuid("document_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    workspaceId: text("workspace_id"),
+    storageKey: text("storage_key").notNull(),
+    tokenHash: text("token_hash").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.backendPid, table.transactionId, table.admissionId],
+    }),
   ],
 );
 

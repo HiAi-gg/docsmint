@@ -777,6 +777,51 @@ function buildMockDb() {
 					})
 					.filter((value: Date | null): value is Date => value !== null);
 				state.queries.push(queryText);
+			if (queryText.includes("public.abandon_pending_attachment_upload")) {
+				const [id, documentId, storageKey, tokenHash, leaseOwner] =
+					query.values ?? [];
+				const pending = state.pendingAttachmentUploads.get(id);
+				const parent = state.documents.get(documentId);
+				if (
+					!pending ||
+					!parent ||
+					pending.documentId !== documentId ||
+					pending.storageKey !== storageKey ||
+					pending.tokenHash !== tokenHash ||
+					(leaseOwner == null
+						? pending.leaseOwner != null &&
+							(pending.leaseExpiresAt == null ||
+								pending.leaseExpiresAt > new Date())
+						: pending.leaseOwner !== leaseOwner)
+				)
+					return Promise.resolve([{ abandoned: false }]);
+				const cleanupId = uuid4();
+				state.attachmentStorageCleanupOutbox.set(cleanupId, {
+					id: cleanupId,
+					sourceKind: "pending_upload",
+					sourceId: pending.id,
+					storageKey: pending.storageKey,
+					documentId: pending.documentId,
+					actorUserId: pending.actorUserId,
+					ownerUserId: parent.ownerId,
+					requestedByUserId: pending.actorUserId,
+					workspaceId: pending.workspaceId ?? null,
+					size: pending.actualSize ?? pending.declaredSize,
+					quotaOperationKey: pending.quotaOperationKey,
+					quotaReleaseKind:
+						pending.quotaState === "not_required"
+							? "none"
+							: pending.quotaState === "reserved"
+								? "reservation"
+								: pending.quotaState,
+					quotaReservationId: pending.quotaReservationId ?? null,
+					notBefore: new Date(),
+					retainUntil: pending.urlIssuedAt ? pending.expiresAt : null,
+					createdAt: new Date(),
+				});
+				state.pendingAttachmentUploads.delete(pending.id);
+				return Promise.resolve([{ abandoned: true }]);
+			}
 			if (
 				queryText.includes(
 					"from public.pending_attachment_uploads as pending",
@@ -816,8 +861,14 @@ function buildMockDb() {
 							`attachment:${pending.documentId}:${pending.storageKey}`,
 						quota_state: pending.quotaState ?? "not_required",
 						actual_size: pending.actualSize ?? null,
-						url_issued_at: pending.urlIssuedAt ?? pending.createdAt ?? null,
-						expires_at: pending.expiresAt,
+						// Raw production queries return epoch seconds so Drizzle writes
+						// never receive postgres-js timestamp strings.
+						url_issued_at_epoch: pending.urlIssuedAt
+							? pending.urlIssuedAt.getTime() / 1_000
+							: pending.createdAt
+								? pending.createdAt.getTime() / 1_000
+								: null,
+						expires_at_epoch: pending.expiresAt.getTime() / 1_000,
 						lease_owner: pending.leaseOwner ?? null,
 					},
 				]);
@@ -872,7 +923,9 @@ function buildMockDb() {
 						quota_operation_key: row.quotaOperationKey,
 						quota_release_kind: row.quotaReleaseKind,
 						quota_reservation_id: row.quotaReservationId ?? null,
-						retain_until: row.retainUntil ?? null,
+						retain_until_epoch: row.retainUntil
+							? row.retainUntil.getTime() / 1_000
+							: null,
 					})),
 				);
 			}

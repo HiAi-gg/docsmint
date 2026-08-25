@@ -90,6 +90,25 @@ CREATE INDEX IF NOT EXISTS attachment_storage_cleanup_outbox_owner_idx
 CREATE INDEX IF NOT EXISTS attachment_storage_cleanup_outbox_requester_idx
   ON public.attachment_storage_cleanup_outbox (requested_by_user_id, id);--> statement-breakpoint
 
+-- A rejected confirm may need to abandon one exact signed admission after the
+-- actor fence is already active. This table is an internal, transaction-local
+-- proof channel between the narrow SECURITY DEFINER procedure and the generic
+-- statement trigger. The runtime role has no direct privileges on it.
+CREATE TABLE IF NOT EXISTS public.pending_attachment_cleanup_authorizations (
+  backend_pid integer NOT NULL,
+  transaction_id bigint NOT NULL,
+  admission_id uuid NOT NULL,
+  document_id uuid NOT NULL,
+  actor_user_id uuid NOT NULL,
+  owner_user_id uuid NOT NULL,
+  workspace_id text,
+  storage_key text NOT NULL,
+  token_hash text NOT NULL,
+  PRIMARY KEY (backend_pid, transaction_id, admission_id)
+);--> statement-breakpoint
+REVOKE ALL ON public.pending_attachment_cleanup_authorizations FROM PUBLIC;--> statement-breakpoint
+REVOKE ALL ON public.pending_attachment_cleanup_authorizations FROM hiai_app;--> statement-breakpoint
+
 ALTER TABLE public.attachment_storage_cleanup_outbox ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE public.attachment_storage_cleanup_outbox FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 DROP POLICY IF EXISTS tenant_isolation ON public.attachment_storage_cleanup_outbox;--> statement-breakpoint
@@ -245,6 +264,7 @@ DECLARE
   guarded_subject_user_id uuid;
   current_actor_id uuid := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
   cleanup_statement_authorized boolean := false;
+  signed_admission_cleanup_authorized boolean := false;
 BEGIN
   transition_relations := CASE TG_OP
     WHEN 'INSERT' THEN ARRAY['new_rows']
@@ -358,6 +378,48 @@ BEGIN
     ) INTO cleanup_statement_authorized;
   END IF;
 
+  -- Only the SECURITY DEFINER abandonment procedure can create this exact,
+  -- transaction-bound proof. Both statements must match every immutable
+  -- admission/key/tenant field; a caller-set GUC or caller-inserted outbox row
+  -- is never cleanup authority.
+  IF TG_TABLE_NAME = 'attachment_storage_cleanup_outbox' AND TG_OP = 'INSERT' THEN
+    EXECUTE $query$
+      SELECT COALESCE(bool_and(EXISTS (
+        SELECT 1
+        FROM public.pending_attachment_cleanup_authorizations AS cleanup_proof
+        WHERE cleanup_proof.backend_pid = pg_backend_pid()
+          AND cleanup_proof.transaction_id = txid_current()
+          AND cleanup_proof.admission_id = inserted.source_id
+          AND cleanup_proof.document_id = inserted.document_id
+          AND cleanup_proof.actor_user_id = inserted.actor_user_id
+          AND cleanup_proof.owner_user_id = inserted.owner_user_id
+          AND cleanup_proof.workspace_id IS NOT DISTINCT FROM inserted.workspace_id
+          AND cleanup_proof.storage_key = inserted.storage_key
+          AND inserted.source_kind = 'pending_upload'
+          AND inserted.requested_by_user_id = cleanup_proof.actor_user_id
+      )), false)
+      FROM new_rows AS inserted
+    $query$ INTO signed_admission_cleanup_authorized;
+  ELSIF TG_TABLE_NAME = 'pending_attachment_uploads' AND TG_OP = 'DELETE' THEN
+    EXECUTE $query$
+      SELECT COALESCE(bool_and(EXISTS (
+        SELECT 1
+        FROM public.pending_attachment_cleanup_authorizations AS cleanup_proof
+        WHERE cleanup_proof.backend_pid = pg_backend_pid()
+          AND cleanup_proof.transaction_id = txid_current()
+          AND cleanup_proof.admission_id = removed.id
+          AND cleanup_proof.document_id = removed.document_id
+          AND cleanup_proof.actor_user_id = removed.actor_user_id
+          AND cleanup_proof.workspace_id IS NOT DISTINCT FROM removed.workspace_id
+          AND cleanup_proof.storage_key = removed.storage_key
+          AND cleanup_proof.token_hash = removed.token_hash
+      )), false)
+      FROM old_rows AS removed
+    $query$ INTO signed_admission_cleanup_authorized;
+  END IF;
+  cleanup_statement_authorized :=
+    cleanup_statement_authorized OR signed_admission_cleanup_authorized;
+
   FOR guarded_subject_user_id IN
     SELECT DISTINCT candidate.subject_user_id
     FROM unnest(subject_user_ids) AS candidate(subject_user_id)
@@ -435,3 +497,121 @@ CREATE TRIGGER attachment_storage_cleanup_outbox_account_purge_fence_insert
   FOR EACH STATEMENT EXECUTE FUNCTION public.enforce_account_purge_fence(
     'direct:requested_by_user_id'
   );
+
+-- Abandon one exact HMAC-authenticated pending upload. The caller must already
+-- have verified the signed token; the database independently binds that proof
+-- to the current actor/workspace, immutable admission fields, and active lease.
+CREATE OR REPLACE FUNCTION public.abandon_pending_attachment_upload(
+  expected_admission_id uuid,
+  expected_document_id uuid,
+  expected_storage_key text,
+  expected_token_hash text,
+  expected_lease_owner text DEFAULT NULL
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  admission public.pending_attachment_uploads%ROWTYPE;
+  parent_owner_id uuid;
+  current_actor_id uuid := NULLIF(current_setting('app.current_user_id', true), '')::uuid;
+  current_workspace_id text := NULLIF(current_setting('app.current_workspace_id', true), '');
+  authorization_transaction_id bigint := txid_current();
+  exact_intent_exists boolean := false;
+BEGIN
+  IF current_actor_id IS NULL THEN RETURN false; END IF;
+
+  -- Match the global child-write order: lock the parent before the child row so
+  -- concurrent ownership transfer, purge, and admission cleanup cannot invert
+  -- document/child locks.
+  SELECT parent.owner_id
+  INTO parent_owner_id
+  FROM public.documents AS parent
+  WHERE parent.id = expected_document_id
+    AND parent.workspace_id IS NOT DISTINCT FROM current_workspace_id
+    AND (
+      (current_workspace_id IS NULL AND parent.owner_id = current_actor_id)
+      OR current_workspace_id IS NOT NULL
+    )
+  FOR SHARE;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  SELECT pending.*
+  INTO admission
+  FROM public.pending_attachment_uploads AS pending
+  WHERE pending.id = expected_admission_id
+    AND pending.document_id = expected_document_id
+    AND pending.storage_key = expected_storage_key
+    AND pending.token_hash = expected_token_hash
+    AND pending.actor_user_id = current_actor_id
+    AND pending.workspace_id IS NOT DISTINCT FROM current_workspace_id
+    AND (
+      (expected_lease_owner IS NULL AND (
+        pending.lease_owner IS NULL OR pending.lease_expires_at <= now()
+      ))
+      OR pending.lease_owner = expected_lease_owner
+    )
+  FOR UPDATE;
+  IF NOT FOUND THEN RETURN false; END IF;
+
+  INSERT INTO public.pending_attachment_cleanup_authorizations (
+    backend_pid, transaction_id, admission_id, document_id,
+    actor_user_id, owner_user_id, workspace_id, storage_key, token_hash
+  ) VALUES (
+    pg_backend_pid(), authorization_transaction_id, admission.id,
+    admission.document_id, admission.actor_user_id, parent_owner_id,
+    admission.workspace_id, admission.storage_key, admission.token_hash
+  );
+
+  INSERT INTO public.attachment_storage_cleanup_outbox (
+    source_kind, source_id, storage_key, document_id,
+    actor_user_id, owner_user_id, requested_by_user_id, workspace_id,
+    size, quota_operation_key, quota_release_kind, quota_reservation_id,
+    not_before, retain_until
+  ) VALUES (
+    'pending_upload', admission.id, admission.storage_key,
+    admission.document_id, admission.actor_user_id, parent_owner_id,
+    admission.actor_user_id, admission.workspace_id,
+    COALESCE(admission.actual_size, admission.declared_size),
+    admission.quota_operation_key,
+    CASE admission.quota_state
+      WHEN 'not_required' THEN 'none'
+      WHEN 'reserve_pending' THEN 'reserve_pending'
+      WHEN 'reserved' THEN 'reservation'
+      WHEN 'finalize_pending' THEN 'finalize_pending'
+      WHEN 'committed' THEN 'committed'
+    END,
+    admission.quota_reservation_id,
+    now(),
+    CASE WHEN admission.url_issued_at IS NOT NULL THEN admission.expires_at END
+  )
+  ON CONFLICT (source_kind, source_id) DO NOTHING;
+
+  SELECT EXISTS (
+    SELECT 1 FROM public.attachment_storage_cleanup_outbox AS cleanup
+    WHERE cleanup.source_kind = 'pending_upload'
+      AND cleanup.source_id = admission.id
+      AND cleanup.storage_key = admission.storage_key
+      AND cleanup.document_id = admission.document_id
+      AND cleanup.actor_user_id = admission.actor_user_id
+      AND cleanup.owner_user_id = parent_owner_id
+      AND cleanup.workspace_id IS NOT DISTINCT FROM admission.workspace_id
+  ) INTO exact_intent_exists;
+  IF NOT exact_intent_exists THEN
+    RAISE EXCEPTION 'pending_attachment_cleanup_intent_mismatch'
+      USING ERRCODE = '23505';
+  END IF;
+
+  DELETE FROM public.pending_attachment_uploads
+  WHERE id = admission.id;
+  DELETE FROM public.pending_attachment_cleanup_authorizations
+  WHERE backend_pid = pg_backend_pid()
+    AND transaction_id = authorization_transaction_id
+    AND admission_id = admission.id;
+  RETURN true;
+END;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.abandon_pending_attachment_upload(uuid, uuid, text, text, text) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.abandon_pending_attachment_upload(uuid, uuid, text, text, text) TO hiai_app;

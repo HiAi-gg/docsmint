@@ -169,6 +169,18 @@ test("attachment cleanup outbox makes object removal recoverable after DB commit
 	expect(migration).toContain(
 		"REVOKE ALL ON FUNCTION public.lifecycle_child_document_owner(uuid, uuid) FROM PUBLIC",
 	);
+	expect(migration).toContain(
+		"CREATE TABLE IF NOT EXISTS public.pending_attachment_cleanup_authorizations",
+	);
+	expect(migration).toContain(
+		"CREATE OR REPLACE FUNCTION public.abandon_pending_attachment_upload",
+	);
+	expect(migration).toContain(
+		"REVOKE ALL ON FUNCTION public.abandon_pending_attachment_upload(uuid, uuid, text, text, text) FROM PUBLIC",
+	);
+	expect(migration).toContain(
+		"REVOKE ALL ON public.pending_attachment_cleanup_authorizations FROM hiai_app",
+	);
 	expect(migration).toContain("SET search_path = pg_catalog, public");
 	expect(migration).toContain("public.lifecycle_cleanup_authorized");
 

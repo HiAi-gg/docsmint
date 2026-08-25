@@ -52,6 +52,14 @@ export type PendingAttachmentUploadRow = Readonly<{
 export type ClaimedPendingAttachmentUploadRow = PendingAttachmentUploadRow &
 	Readonly<{ leaseOwner: string }>;
 
+export type PendingAttachmentAbandonmentProof = Readonly<{
+	id: string;
+	documentId: string;
+	storageKey: string;
+	tokenHash: string;
+	leaseOwner?: string | null;
+}>;
+
 type PendingRawRow = Readonly<{
 	id: string;
 	document_id: string;
@@ -67,10 +75,16 @@ type PendingRawRow = Readonly<{
 	quota_operation_key: string;
 	quota_state: PendingAttachmentQuotaState;
 	actual_size: number | null;
-	url_issued_at: Date | null;
-	expires_at: Date;
+	url_issued_at_epoch: number | string | null;
+	expires_at_epoch: number | string;
 	lease_owner: string | null;
 }>;
+
+function dateFromEpochSeconds(value: number | string, field: string): Date {
+	const seconds = Number(value);
+	if (!Number.isFinite(seconds)) throw new Error(`${field}_invalid`);
+	return new Date(seconds * 1_000);
+}
 
 function pendingRow(row: PendingRawRow): PendingAttachmentUploadRow {
 	return {
@@ -88,8 +102,17 @@ function pendingRow(row: PendingRawRow): PendingAttachmentUploadRow {
 		quotaOperationKey: row.quota_operation_key,
 		quotaState: row.quota_state,
 		actualSize: row.actual_size === null ? null : Number(row.actual_size),
-		urlIssuedAt: row.url_issued_at,
-		expiresAt: row.expires_at,
+		urlIssuedAt:
+			row.url_issued_at_epoch === null
+				? null
+				: dateFromEpochSeconds(
+						row.url_issued_at_epoch,
+						"pending_attachment_url_issued_at",
+					),
+		expiresAt: dateFromEpochSeconds(
+			row.expires_at_epoch,
+			"pending_attachment_expires_at",
+		),
 		leaseOwner: row.lease_owner,
 	};
 }
@@ -164,8 +187,8 @@ async function claimExpiredPendingUploads(
 				pending.quota_operation_key,
 				pending.quota_state,
 				pending.actual_size::float8 AS actual_size,
-				pending.url_issued_at,
-				pending.expires_at,
+				extract(epoch FROM pending.url_issued_at)::float8 AS url_issued_at_epoch,
+				extract(epoch FROM pending.expires_at)::float8 AS expires_at_epoch,
 				pending.lease_owner
 		`)) as unknown as PendingRawRow[],
 	);
@@ -340,8 +363,8 @@ export async function claimPendingAttachmentUploadForConfirm(
 				pending.quota_operation_key,
 				pending.quota_state,
 				pending.actual_size::float8 AS actual_size,
-				pending.url_issued_at,
-				pending.expires_at,
+				extract(epoch FROM pending.url_issued_at)::float8 AS url_issued_at_epoch,
+				extract(epoch FROM pending.expires_at)::float8 AS expires_at_epoch,
 				pending.lease_owner
 			FROM public.pending_attachment_uploads AS pending
 			JOIN public.documents AS parent ON parent.id = pending.document_id
@@ -373,19 +396,49 @@ export async function claimPendingAttachmentUploadForConfirm(
 		: null;
 }
 
+/**
+ * Atomically abandon one exact signed admission through the DB-owned proof
+ * procedure. This remains safe after the actor fence commits and races
+ * idempotently with lifecycle/expiry cleanup.
+ */
+export async function abandonPendingAttachmentUploadByProof(
+	ctx: TenantContext,
+	proof: PendingAttachmentAbandonmentProof,
+): Promise<boolean> {
+	const rows = await withTenant(
+		ctx,
+		async (tx) =>
+			(await tx.execute(sql`
+				SELECT public.abandon_pending_attachment_upload(
+					${proof.id}::uuid,
+					${proof.documentId}::uuid,
+					${proof.storageKey},
+					${proof.tokenHash},
+					${proof.leaseOwner ?? null}
+				) AS abandoned
+			`)) as unknown as Array<{ abandoned: boolean }>,
+	);
+	const abandoned = rows[0]?.abandoned === true;
+	// Confirmation is synchronous: once the signed admission has been
+	// authenticated, make the first exact-key delete attempt before responding.
+	// The durable row remains authoritative if storage/quota cleanup fails and a
+	// second retained pass still runs at URL expiry to catch a late PUT.
+	if (abandoned) await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
+	return abandoned;
+}
+
 /** Convert a claimed failed confirmation to an exact DB-first cleanup intent. */
 export async function abandonClaimedPendingAttachmentUpload(
 	ctx: TenantContext,
 	row: PendingAttachmentUploadRow,
 ): Promise<void> {
-	await withTenant(ctx, async (tx) => {
-		await stagePendingAttachmentCleanup(tx, row, row.actorUserId);
+	await abandonPendingAttachmentUploadByProof(ctx, {
+		id: row.id,
+		documentId: row.documentId,
+		storageKey: row.storageKey,
+		tokenHash: row.tokenHash,
+		leaseOwner: row.leaseOwner,
 	});
-	// Confirmation is synchronous: once the signed admission has been
-	// authenticated, make the first exact-key delete attempt before responding.
-	// The durable row remains authoritative if storage/quota cleanup fails and a
-	// second retained pass still runs at URL expiry to catch a late PUT.
-	await drainAttachmentStorageCleanupOutbox({ maxPages: 1 });
 }
 
 /** Recover one bounded page of expired/crashed admissions, then drain intents. */

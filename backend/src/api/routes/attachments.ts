@@ -26,6 +26,8 @@ import {
 } from "../../lib/attachment-storage-cleanup";
 import {
 	abandonClaimedPendingAttachmentUpload,
+	abandonPendingAttachmentUploadByProof,
+	type ClaimedPendingAttachmentUploadRow,
 	claimPendingAttachmentUploadForConfirm,
 	type PendingAttachmentUploadRow,
 } from "../../lib/attachment-upload-cleanup";
@@ -649,12 +651,25 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			}
 
 			const tokenHash = attachmentUploadTokenHash(uploadToken);
-			const claimed = await claimPendingAttachmentUploadForConfirm(claimCtx, {
-				id: claims.id,
-				documentId,
-				storageKey: key,
-				tokenHash,
-			});
+			let claimed: ClaimedPendingAttachmentUploadRow | null;
+			try {
+				claimed = await claimPendingAttachmentUploadForConfirm(claimCtx, {
+					id: claims.id,
+					documentId,
+					storageKey: key,
+					tokenHash,
+				});
+			} catch (error) {
+				if (!isAccountPurgeFencedError(error)) throw error;
+				await abandonPendingAttachmentUploadByProof(claimCtx, {
+					id: claims.id,
+					documentId,
+					storageKey: key,
+					tokenHash,
+				});
+				set.status = 409;
+				return accountPurgeFencedResponse();
+			}
 			if (!claimed) {
 				const [existing] = await withTenant(claimCtx, (tx) =>
 					tx

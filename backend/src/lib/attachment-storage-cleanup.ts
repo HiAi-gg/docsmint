@@ -90,6 +90,22 @@ type ClaimedCleanupRow = Readonly<{
 	retain_until: Date | null;
 }>;
 
+type ClaimedCleanupRawRow = Omit<ClaimedCleanupRow, "retain_until"> &
+	Readonly<{ retain_until_epoch: number | string | null }>;
+
+function claimedCleanupRow(row: ClaimedCleanupRawRow): ClaimedCleanupRow {
+	const retainUntilSeconds =
+		row.retain_until_epoch === null ? null : Number(row.retain_until_epoch);
+	if (retainUntilSeconds !== null && !Number.isFinite(retainUntilSeconds)) {
+		throw new Error("attachment_cleanup_retain_until_invalid");
+	}
+	return {
+		...row,
+		retain_until:
+			retainUntilSeconds === null ? null : new Date(retainUntilSeconds * 1_000),
+	};
+}
+
 export type AttachmentStorageCleanupDrainResult = Readonly<{
 	claimed: number;
 	deleted: number;
@@ -137,7 +153,7 @@ async function claimCleanupPage(
 			OR candidate.requested_by_user_id = ${actorUserId}::uuid
 		)`
 		: sql``;
-	return withTenant(
+	const rows = await withTenant(
 		CLEANUP_ADMIN_TENANT,
 		async (tx) =>
 			(await tx.execute(sql`
@@ -173,9 +189,10 @@ async function claimCleanupPage(
 				cleanup.quota_operation_key,
 				cleanup.quota_release_kind,
 				cleanup.quota_reservation_id,
-				cleanup.retain_until
-		`)) as unknown as ClaimedCleanupRow[],
+				extract(epoch FROM cleanup.retain_until)::float8 AS retain_until_epoch
+		`)) as unknown as ClaimedCleanupRawRow[],
 	);
+	return rows.map(claimedCleanupRow);
 }
 
 function quotaContext(row: ClaimedCleanupRow, signal?: AbortSignal) {
