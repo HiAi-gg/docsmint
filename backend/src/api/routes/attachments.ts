@@ -17,6 +17,7 @@ import { Elysia } from "elysia";
 import { nanoid } from "nanoid";
 import {
 	accountPurgeFencedResponse,
+	acquireAccountPurgeFenceLocks,
 	isAccountPurgeFenced,
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
@@ -43,6 +44,7 @@ import {
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
+import { acquireDocumentPipelineLock } from "../../lib/document-pipeline-serialization";
 import { logger } from "../../lib/logger";
 import { fetchRemoteImage } from "../../lib/remote-image";
 import { getDocsMintRuntimeOptions } from "../../lib/runtime-options";
@@ -1275,6 +1277,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		}
 		try {
 			const deleted = await withTenant(ctx, async (tx) => {
+				await acquireDocumentPipelineLock(tx, row.documentId);
 				const [current] = await tx
 					.select({
 						id: attachments.id,
@@ -1288,8 +1291,14 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					.from(attachments)
 					.innerJoin(documents, eq(documents.id, attachments.documentId))
 					.where(eq(attachments.id, attachmentId))
-					.limit(1);
+					.limit(1)
+					.for("update", { of: documents });
 				if (!current) return null;
+				await acquireAccountPurgeFenceLocks(tx, [
+					ctx.userId,
+					current.uploadedBy,
+					...(current.workspaceId ? [] : [current.ownerId]),
+				]);
 				await stageAttachmentStorageCleanup(tx, {
 					sourceKind: "attachment",
 					sourceId: current.id,

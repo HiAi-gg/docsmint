@@ -314,6 +314,62 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 			}
 		}, 30_000);
 
+		test("claims expired cleanup against UTC database time, not session ISO strings", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const sourceId = crypto.randomUUID();
+			const storageKey = `cleanup-utc/${documentId}/expired`;
+			const deletedKeys: string[] = [];
+			try {
+				await setup`SELECT set_config('TimeZone', 'Europe/London', false)`;
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@cleanup-utc.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'utc expiry', '')`;
+				await setup`INSERT INTO public.attachment_storage_cleanup_outbox
+					(source_kind, source_id, storage_key, document_id,
+					 actor_user_id, owner_user_id, requested_by_user_id,
+					 size, quota_operation_key, quota_release_kind,
+					 not_before, retain_until)
+					VALUES (
+						'uncommitted_upload', ${sourceId}::uuid, ${storageKey},
+						${documentId}::uuid, ${ownerId}::uuid, ${ownerId}::uuid,
+						${ownerId}::uuid, 1, ${`utc-${sourceId}`}, 'none',
+						to_timestamp(${Date.now() / 1_000 - 5}) AT TIME ZONE 'UTC',
+						to_timestamp(${Date.now() / 1_000 - 1}) AT TIME ZONE 'UTC'
+					)`;
+				const result = await drainAttachmentStorageCleanupOutbox({
+					leaseOwner: `utc-${crypto.randomUUID()}`,
+					actorUserId: ownerId,
+					pageSize: 10,
+					deleteObjects: async (keys) => {
+						deletedKeys.push(...keys);
+						return keys.length;
+					},
+				});
+				expect(result).toEqual({
+					claimed: 1,
+					deleted: 1,
+					deferred: 0,
+					failed: 0,
+				});
+				expect(deletedKeys).toEqual([storageKey]);
+				const [remaining] = await setup<{ count: number }[]>`
+					SELECT count(*)::int AS count
+					FROM public.attachment_storage_cleanup_outbox
+					WHERE source_id = ${sourceId}::uuid`;
+				expect(remaining?.count).toBe(0);
+			} finally {
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE document_id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup.end();
+			}
+		}, 30_000);
+
 		test("signed admission abandonment is exact, fenced-safe, and concurrent-cleanup idempotent", async () => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
 			const runtime = postgres(runtimeDatabaseUrl as string, { max: 2 });
@@ -813,6 +869,116 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 				await setup`DELETE FROM public.users
 					WHERE id IN (${ownerA}::uuid, ${ownerB}::uuid)`;
 				await Promise.all([setup.end(), writerA.end(), writerB.end()]);
+			}
+		}, 30_000);
+
+		test("cleanup staging locks the parent before requester subjects", async () => {
+			const setup = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const writerA = postgres(runtimeDatabaseUrl as string, { max: 1 });
+			const writerB = postgres(runtimeDatabaseUrl as string, { max: 1 });
+			const observer = postgres(ownerDatabaseUrl as string, { max: 1 });
+			const ownerA = crypto.randomUUID();
+			const actorB = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const attachmentId = crypto.randomUUID();
+			const workspaceId = `cleanup-order-${crypto.randomUUID()}`;
+			const storageKey = `${workspaceId}/${actorB}/${documentId}/race.png`;
+			const staged = deferred<number>();
+			const releaseDelete = deferred<void>();
+			let deleteTransaction: Promise<unknown> | undefined;
+			let updateTransaction: Promise<unknown> | undefined;
+			try {
+				await setup`INSERT INTO public.users (id, email) VALUES
+					(${ownerA}::uuid, ${`${ownerA}@cleanup-order.invalid`}),
+					(${actorB}::uuid, ${`${actorB}@cleanup-order.invalid`})`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, workspace_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerA}::uuid, ${workspaceId},
+						'cleanup lock order', '')`;
+				await setup`INSERT INTO public.attachments
+					(id, document_id, workspace_id, uploaded_by, filename, mime_type, size, storage_key)
+					VALUES (${attachmentId}::uuid, ${documentId}::uuid, ${workspaceId},
+						${actorB}::uuid, 'race.png', 'image/png', 1, ${storageKey})`;
+
+				deleteTransaction = writerA.begin(async (tx) => {
+					await tx`SELECT set_config('app.current_user_id', ${actorB}, true)`;
+					await tx`SELECT set_config('app.current_user_role', 'user', true)`;
+					await tx`SELECT set_config('app.current_workspace_id', ${workspaceId}, true)`;
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					await tx`INSERT INTO public.attachment_storage_cleanup_outbox
+						(source_kind, source_id, storage_key, document_id,
+						 actor_user_id, owner_user_id, requested_by_user_id,
+						 workspace_id, size, quota_operation_key, quota_release_kind)
+						VALUES ('attachment', ${attachmentId}::uuid, ${storageKey},
+							${documentId}::uuid, ${actorB}::uuid, ${ownerA}::uuid,
+							${actorB}::uuid, ${workspaceId}, 1,
+							${`attachment:${documentId}:${storageKey}`}, 'committed')`;
+					if (!session?.pid) throw new Error("delete session has no pid");
+					staged.resolve(session.pid);
+					await releaseDelete.promise;
+					await tx`DELETE FROM public.attachments WHERE id = ${attachmentId}::uuid`;
+				});
+				const deletePid = await staged.promise;
+				updateTransaction = withRuntimeTenant(
+					writerB,
+					actorB,
+					workspaceId,
+					(tx) => tx`UPDATE public.documents
+						SET title = 'cleanup lock order updated'
+						WHERE id = ${documentId}::uuid`,
+				);
+				let updateBlocked = false;
+				for (let attempt = 0; attempt < 200; attempt += 1) {
+					const [row] = await observer<{ waiting: number }[]>`
+						SELECT count(*)::int AS waiting
+						FROM pg_stat_activity
+						WHERE ${deletePid} = ANY(pg_blocking_pids(pid))`;
+					if ((row?.waiting ?? 0) > 0) {
+						updateBlocked = true;
+						break;
+					}
+					await Bun.sleep(10);
+				}
+				expect(updateBlocked).toBe(true);
+				releaseDelete.resolve(undefined);
+				const [deleted, updated] = await Promise.allSettled([
+					deleteTransaction,
+					updateTransaction,
+				]);
+				expect(deleted.status).toBe("fulfilled");
+				expect(updated.status).toBe("fulfilled");
+				const [state] = await setup<
+					Array<{ attachments: number; cleanup: number; title: string }>
+				>`SELECT
+					(SELECT count(*)::int FROM public.attachments
+					 WHERE id = ${attachmentId}::uuid) AS attachments,
+					(SELECT count(*)::int FROM public.attachment_storage_cleanup_outbox
+					 WHERE source_id = ${attachmentId}::uuid) AS cleanup,
+					(SELECT title FROM public.documents WHERE id = ${documentId}::uuid) AS title`;
+				expect(state).toEqual({
+					attachments: 0,
+					cleanup: 1,
+					title: "cleanup lock order updated",
+				});
+			} finally {
+				releaseDelete.resolve(undefined);
+				await Promise.allSettled(
+					[deleteTransaction, updateTransaction].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE document_id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.users
+					WHERE id IN (${ownerA}::uuid, ${actorB}::uuid)`;
+				await Promise.all([
+					setup.end(),
+					writerA.end(),
+					writerB.end(),
+					observer.end(),
+				]);
 			}
 		}, 30_000);
 

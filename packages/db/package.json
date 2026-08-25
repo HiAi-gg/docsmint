@@ -11,7 +11,8 @@
     "./schema": "./src/schema.ts",
     "./client": "./src/client.ts",
     "./with-tenant": "./src/with-tenant.ts",
-    "./document-writer": "./src/document-writer.ts"
+    "./document-writer": "./src/document-writer.ts",
+    "./document-pipeline-serialization": "./src/document-pipeline-serialization.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",

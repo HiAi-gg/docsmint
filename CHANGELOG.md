@@ -68,6 +68,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   outbox intent before touching SeaweedFS. Bounded leased recovery makes object
   deletion and idempotent quota reserve/finalize/release crash-safe across
   concurrent instances, including late PUTs against an already-issued URL.
+- Serialize hard purge and restore on the document pipeline advisory, recheck
+  `deleted_at` only after that lock, and roll back staged cleanup when the
+  final document delete matches zero rows. Attachment deletes join the same
+  lock order. Cleanup-outbox insert locks the parent document before requester
+  fence subjects. Lease and expiry predicates compare UTC database timestamps
+  so a session TimeZone cannot keep an already-expired URL retryable.
 
 ## [0.6.8] - 2026-08-21
 

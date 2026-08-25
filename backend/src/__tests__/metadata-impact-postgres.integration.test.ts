@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+	DeleteObjectCommand,
+	HeadObjectCommand,
+	PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import {
 	createDatabaseClient,
 	type DatabaseQueryObservation,
 } from "@hiai-docs/db/client";
@@ -30,6 +35,7 @@ import {
 	snapshotDocumentMetadataImpact,
 	snapshotMetadataImpact,
 } from "../lib/reembed";
+import { BUCKET, storage } from "../lib/storage";
 import {
 	acquireTenantTopologyLock,
 	tenantTopologyLockKey,
@@ -113,6 +119,18 @@ function expectedDocumentPipelineLockKey(documentId: string): bigint {
 		.slice(0, 16);
 	const unsigned = BigInt(`0x${prefix}`);
 	return unsigned >= 1n << 63n ? unsigned - (1n << 64n) : unsigned;
+}
+
+async function storageObjectExists(key: string): Promise<boolean> {
+	try {
+		await storage.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key }));
+		return true;
+	} catch (error) {
+		const status = (error as { $metadata?: { httpStatusCode?: number } })
+			.$metadata?.httpStatusCode;
+		if (status === 404) return false;
+		throw error;
+	}
 }
 
 describe.skipIf(!databaseUrl)(
@@ -739,6 +757,226 @@ describe.skipIf(!databaseUrl)(
 				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
 				await setup`DELETE FROM public.api_keys WHERE key_hash = ${keyHash}`;
 				await Promise.all([setup.end(), worker.end(), observer.end()]);
+			}
+		});
+
+		test("hard purge and restore cannot commit a partial storage cleanup", async () => {
+			const setup = postgres(databaseUrl as string, { max: 2 });
+			const blocker = postgres(databaseUrl as string, { max: 1 });
+			const observer = postgres(databaseUrl as string, { max: 1 });
+			const documentId = crypto.randomUUID();
+			const attachmentId = crypto.randomUUID();
+			const rawKey = crypto.randomUUID();
+			const keyHash = new Bun.CryptoHasher("sha256")
+				.update(rawKey)
+				.digest("hex");
+			const storageKey = `${config.OWNER_ID}/${documentId}/${attachmentId}.png`;
+			const bytes = new Uint8Array([
+				0x89, 0x50, 0x4e, 0x47, 0x52, 0x41, 0x43, 0x45,
+			]);
+			const blockerReady = deferred<number>();
+			const releaseBlocker = deferred<void>();
+			const app = new Elysia().use(documentRoutes);
+			let blockerTransaction: Promise<unknown> | undefined;
+			let purgeRequest: Promise<Response> | undefined;
+			let restoreRequest: Promise<Response> | undefined;
+			let objectSeeded = false;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${config.OWNER_ID}::uuid, ${`${config.OWNER_ID}@purge-restore.invalid`})
+					ON CONFLICT (id) DO NOTHING`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (${config.OWNER_ID}::uuid, 'purge restore regression',
+						${keyHash}, ${rawKey.slice(0, 8)}, '["global"]'::jsonb)`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, deleted_at)
+					VALUES (${documentId}::uuid, ${config.OWNER_ID}::uuid,
+						'purge restore regression', '', now())`;
+				await setup`INSERT INTO public.attachments
+					(id, document_id, uploaded_by, filename, mime_type, size, storage_key)
+					VALUES (${attachmentId}::uuid, ${documentId}::uuid,
+						${config.OWNER_ID}::uuid, 'race.png', 'image/png',
+						${bytes.byteLength}, ${storageKey})`;
+				try {
+					await storage.send(
+						new PutObjectCommand({
+							Bucket: BUCKET,
+							Key: storageKey,
+							Body: bytes,
+							ContentType: "image/png",
+						}),
+					);
+					objectSeeded = true;
+				} catch {
+					objectSeeded = false;
+				}
+
+				blockerTransaction = blocker.begin(async (tx) => {
+					const [session] = await tx<{ pid: number }[]>`
+						SELECT pg_backend_pid() AS pid`;
+					await tx`SELECT pg_advisory_xact_lock(
+						${expectedDocumentPipelineLockKey(documentId).toString()}::bigint
+					)`;
+					if (!session?.pid) throw new Error("blocker session has no pid");
+					blockerReady.resolve(session.pid);
+					await releaseBlocker.promise;
+				});
+				const blockerPid = await blockerReady.promise;
+				const headers = {
+					authorization: `Bearer ${rawKey}`,
+					"x-forwarded-for": `purge-restore-${documentId}`,
+				};
+				purgeRequest = app.handle(
+					new Request(`http://localhost/api/trash/documents/${documentId}`, {
+						method: "DELETE",
+						headers,
+					}),
+				);
+				await waitForSessionBlockedBy(observer, blockerPid);
+				restoreRequest = app.handle(
+					new Request(
+						`http://localhost/api/trash/documents/${documentId}/restore`,
+						{ method: "POST", headers },
+					),
+				);
+				const earlyRestore = await Promise.race([
+					restoreRequest.then(() => true),
+					Bun.sleep(250).then(() => false),
+				]);
+				expect(earlyRestore).toBe(false);
+
+				releaseBlocker.resolve(undefined);
+				const [purgeResponse, restoreResponse] = await Promise.all([
+					purgeRequest,
+					restoreRequest,
+				]);
+				expect([purgeResponse.status, restoreResponse.status].sort()).toEqual([
+					200, 404,
+				]);
+				const [state] = await setup<
+					Array<{
+						documents: number;
+						active_documents: number;
+						attachments: number;
+						cleanup: number;
+					}>
+				>`SELECT
+					(SELECT count(*)::int FROM public.documents
+					 WHERE id = ${documentId}::uuid) AS documents,
+					(SELECT count(*)::int FROM public.documents
+					 WHERE id = ${documentId}::uuid AND deleted_at IS NULL) AS active_documents,
+					(SELECT count(*)::int FROM public.attachments
+					 WHERE id = ${attachmentId}::uuid) AS attachments,
+					(SELECT count(*)::int FROM public.attachment_storage_cleanup_outbox
+					 WHERE document_id = ${documentId}::uuid) AS cleanup`;
+				if (purgeResponse.status === 200) {
+					expect(state.documents).toBe(0);
+					expect(state.active_documents).toBe(0);
+					expect(state.attachments).toBe(0);
+				} else {
+					expect(state).toEqual({
+						documents: 1,
+						active_documents: 1,
+						attachments: 1,
+						cleanup: 0,
+					});
+				}
+				if (objectSeeded) {
+					const objectExists = await storageObjectExists(storageKey);
+					expect(objectExists).toBe(purgeResponse.status !== 200);
+					if (purgeResponse.status === 200) expect(state.cleanup).toBe(0);
+				}
+			} finally {
+				releaseBlocker.resolve(undefined);
+				await Promise.allSettled(
+					[blockerTransaction, purgeRequest, restoreRequest].filter(
+						(value): value is Promise<unknown> => value !== undefined,
+					),
+				);
+				await storage
+					.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: storageKey }))
+					.catch(() => undefined);
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE document_id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.api_keys WHERE key_hash = ${keyHash}`;
+				await Promise.all([setup.end(), blocker.end(), observer.end()]);
+			}
+		});
+
+		test("rolls back staged cleanup when the authoritative hard purge deletes zero rows", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const documentId = crypto.randomUUID();
+			const attachmentId = crypto.randomUUID();
+			const rawKey = crypto.randomUUID();
+			const keyHash = new Bun.CryptoHasher("sha256")
+				.update(rawKey)
+				.digest("hex");
+			const storageKey = `${config.OWNER_ID}/${documentId}/${attachmentId}.png`;
+			const triggerSuffix = documentId.replaceAll("-", "");
+			const functionName = `suppress_document_delete_${triggerSuffix}`;
+			const triggerName = `suppress_document_delete_${triggerSuffix}`;
+			const app = new Elysia().use(documentRoutes);
+			let triggerInstalled = false;
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${config.OWNER_ID}::uuid, ${`${config.OWNER_ID}@purge-zero.invalid`})
+					ON CONFLICT (id) DO NOTHING`;
+				await setup`INSERT INTO public.api_keys
+					(owner_id, name, key_hash, prefix, scopes)
+					VALUES (${config.OWNER_ID}::uuid, 'purge zero regression',
+						${keyHash}, ${rawKey.slice(0, 8)}, '["global"]'::jsonb)`;
+				await setup`INSERT INTO public.documents
+					(id, owner_id, title, content, deleted_at)
+					VALUES (${documentId}::uuid, ${config.OWNER_ID}::uuid,
+						'purge zero regression', '', now())`;
+				await setup`INSERT INTO public.attachments
+					(id, document_id, uploaded_by, filename, mime_type, size, storage_key)
+					VALUES (${attachmentId}::uuid, ${documentId}::uuid,
+						${config.OWNER_ID}::uuid, 'zero.png', 'image/png', 1, ${storageKey})`;
+				await setup.unsafe(`CREATE FUNCTION public.${functionName}()
+					RETURNS trigger LANGUAGE plpgsql AS $$
+					BEGIN
+						IF OLD.id = '${documentId}'::uuid THEN RETURN NULL; END IF;
+						RETURN OLD;
+					END;
+					$$`);
+				await setup.unsafe(`CREATE TRIGGER ${triggerName}
+					BEFORE DELETE ON public.documents
+					FOR EACH ROW EXECUTE FUNCTION public.${functionName}()`);
+				triggerInstalled = true;
+
+				const response = await app.handle(
+					new Request(`http://localhost/api/trash/documents/${documentId}`, {
+						method: "DELETE",
+						headers: { authorization: `Bearer ${rawKey}` },
+					}),
+				);
+				expect(response.status).toBe(404);
+				expect(await response.json()).toEqual({ error: "Document not found" });
+				const [state] = await setup<
+					Array<{ documents: number; attachments: number; cleanup: number }>
+				>`SELECT
+					(SELECT count(*)::int FROM public.documents
+					 WHERE id = ${documentId}::uuid) AS documents,
+					(SELECT count(*)::int FROM public.attachments
+					 WHERE id = ${attachmentId}::uuid) AS attachments,
+					(SELECT count(*)::int FROM public.attachment_storage_cleanup_outbox
+					 WHERE document_id = ${documentId}::uuid) AS cleanup`;
+				expect(state).toEqual({ documents: 1, attachments: 1, cleanup: 0 });
+			} finally {
+				if (triggerInstalled) {
+					await setup.unsafe(
+						`DROP TRIGGER IF EXISTS ${triggerName} ON public.documents`,
+					);
+				}
+				await setup.unsafe(`DROP FUNCTION IF EXISTS public.${functionName}()`);
+				await setup`DELETE FROM public.attachment_storage_cleanup_outbox
+					WHERE document_id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.documents WHERE id = ${documentId}::uuid`;
+				await setup`DELETE FROM public.api_keys WHERE key_hash = ${keyHash}`;
+				await setup.end();
 			}
 		});
 

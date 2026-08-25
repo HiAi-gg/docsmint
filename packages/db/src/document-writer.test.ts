@@ -11,6 +11,10 @@ function fakeTransaction() {
 	return {
 		actions,
 		tx: {
+			execute: async () => {
+				actions.push({ kind: "pipeline-lock", values: {} });
+				return [];
+			},
 			insert: () => ({
 				values: (values: Record<string, unknown>) => {
 					actions.push({ kind: "insert", values });
@@ -75,6 +79,10 @@ describe("public transactional document writer", () => {
 			documentIds: ["doc-a", "doc-b"],
 		});
 		expect(trashed).toEqual([{ id: "doc-a" }]);
+		expect(fake.actions.slice(-2).map((action) => action.kind)).toEqual([
+			"pipeline-lock",
+			"update",
+		]);
 		expect(fake.actions.at(-1)?.values.deletedAt).toBeInstanceOf(Date);
 	});
 });

@@ -15,6 +15,16 @@ import { BUCKET, storage } from "./storage";
 const CLEANUP_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 const DEFAULT_PAGE_SIZE = 100;
 const LEASE_MS = 60_000;
+const LEASE_SECONDS = LEASE_MS / 1_000;
+
+/** Naive UTC timestamp so session TimeZone cannot shift lease/expiry bounds. */
+export function utcTimestampSql(epochSeconds: number) {
+	return sql`(to_timestamp(${epochSeconds}) AT TIME ZONE 'UTC')`;
+}
+
+function unixSeconds(now: Date): number {
+	return now.getTime() / 1_000;
+}
 
 export type AttachmentCleanupSourceKind =
 	| "attachment"
@@ -64,8 +74,10 @@ export async function stageAttachmentStorageCleanup(
 			quotaOperationKey: intent.quotaOperationKey,
 			quotaReleaseKind: intent.quotaReleaseKind,
 			quotaReservationId: intent.quotaReservationId ?? null,
-			notBefore: intent.notBefore ?? new Date(),
-			retainUntil: intent.retainUntil ?? null,
+			notBefore: utcTimestampSql(unixSeconds(intent.notBefore ?? new Date())),
+			retainUntil: intent.retainUntil
+				? utcTimestampSql(unixSeconds(intent.retainUntil))
+				: null,
 		})
 		.onConflictDoNothing({
 			target: [
@@ -145,8 +157,9 @@ async function claimCleanupPage(
 ): Promise<readonly ClaimedCleanupRow[]> {
 	// Drizzle's raw postgres-js path does not apply column encoders to bound
 	// parameters. Bind timestamps as ISO strings rather than JavaScript Dates.
-	const nowTimestamp = now.toISOString();
-	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS).toISOString();
+	const nowEpoch = unixSeconds(now);
+	const nowTimestamp = utcTimestampSql(nowEpoch);
+	const leaseExpiresAt = utcTimestampSql(nowEpoch + LEASE_SECONDS);
 	const actorFilter = actorUserId
 		? sql`AND (
 			candidate.actor_user_id = ${actorUserId}::uuid
@@ -220,21 +233,18 @@ async function retainUntilFinalPass(
 	now: Date,
 ): Promise<boolean> {
 	if (!row.retain_until || row.retain_until <= now) return false;
+	const retainEpoch = unixSeconds(row.retain_until);
+	const nowEpoch = unixSeconds(now);
 	await withTenant(CLEANUP_ADMIN_TENANT, (tx) =>
-		tx
-			.update(attachmentStorageCleanupOutbox)
-			.set({
-				notBefore: row.retain_until as Date,
-				objectDeletedAt: now,
-				leaseOwner: null,
-				leaseExpiresAt: null,
-			})
-			.where(
-				and(
-					eq(attachmentStorageCleanupOutbox.id, row.id),
-					eq(attachmentStorageCleanupOutbox.leaseOwner, leaseOwner),
-				),
-			),
+		tx.execute(sql`
+			UPDATE public.attachment_storage_cleanup_outbox
+			SET not_before = ${utcTimestampSql(retainEpoch)},
+				object_deleted_at = ${utcTimestampSql(nowEpoch)},
+				lease_owner = NULL,
+				lease_expires_at = NULL
+			WHERE id = ${row.id}::uuid
+				AND lease_owner = ${leaseOwner}
+		`),
 	);
 	return true;
 }
@@ -277,28 +287,22 @@ async function releaseFailedClaims(
 	error: unknown,
 ): Promise<void> {
 	if (rows.length === 0) return;
-	const retryAt = new Date(now.getTime() + LEASE_MS);
+	const retryEpoch = unixSeconds(now) + LEASE_SECONDS;
+	const lastError =
+		error instanceof Error ? error.message.slice(0, 255) : "cleanup_failed";
 	await withTenant(CLEANUP_ADMIN_TENANT, (tx) =>
-		tx
-			.update(attachmentStorageCleanupOutbox)
-			.set({
-				notBefore: retryAt,
-				leaseOwner: null,
-				leaseExpiresAt: null,
-				lastError:
-					error instanceof Error
-						? error.message.slice(0, 255)
-						: "cleanup_failed",
-			})
-			.where(
-				and(
-					inArray(
-						attachmentStorageCleanupOutbox.id,
-						rows.map(({ id }) => id),
-					),
-					eq(attachmentStorageCleanupOutbox.leaseOwner, leaseOwner),
-				),
-			),
+		tx.execute(sql`
+			UPDATE public.attachment_storage_cleanup_outbox
+			SET not_before = ${utcTimestampSql(retryEpoch)},
+				lease_owner = NULL,
+				lease_expires_at = NULL,
+				last_error = ${lastError}
+			WHERE id IN (${sql.join(
+				rows.map(({ id }) => sql`${id}::uuid`),
+				sql`, `,
+			)})
+				AND lease_owner = ${leaseOwner}
+		`),
 	);
 }
 

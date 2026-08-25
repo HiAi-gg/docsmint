@@ -112,7 +112,7 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-saas-adoption-[0-9a-f]{8,64}$/;
-const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 5;
+const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 6;
 const EXPECTED_ADDITIVE_COLUMNS = [
 	"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
 	"attachment_storage_cleanup_outbox.attempt_count:integer:NO:0",
@@ -245,7 +245,7 @@ export function verifyAdditiveMigrationReapply(
 		afterFirst.columns.length !== EXPECTED_ADDITIVE_COLUMNS.length
 	) {
 		throw new Error(
-			"first migration run did not apply exactly four additive journal entries",
+			"first migration run did not apply exactly six additive journal entries",
 		);
 	}
 	if (

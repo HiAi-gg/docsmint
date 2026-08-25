@@ -1,6 +1,6 @@
 import { lifecycleOperations } from "@hiai-docs/db/schema";
-import { withTenant } from "@hiai-docs/db/with-tenant";
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { type TenantTransaction, withTenant } from "@hiai-docs/db/with-tenant";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 
 export const ACCOUNT_PURGE_FENCED_CODE = "ACCOUNT_PURGE_FENCED";
 export const ACCOUNT_PURGE_FENCED_MESSAGE = "Account deletion is in progress";
@@ -50,6 +50,27 @@ export function translateAccountPurgeFencedError(
 	if (!isAccountPurgeFencedError(error)) return null;
 	set.status = 409;
 	return accountPurgeFencedResponse();
+}
+
+/**
+ * Acquire an already-authorized mutation's purge-fence subjects in one global
+ * order. Callers must lock authoritative parent rows first.
+ */
+export async function acquireAccountPurgeFenceLocks(
+	tx: TenantTransaction,
+	actorUserIds: readonly string[],
+): Promise<void> {
+	const subjectIds = [...new Set(actorUserIds)].sort();
+	if (subjectIds.length === 0) return;
+	await tx.execute(sql`
+		/* docsmint:account-purge-fence-locks */
+		SELECT public.acquire_account_purge_fence_lock(subject_id)
+		FROM (
+			SELECT DISTINCT value::uuid AS subject_id
+			FROM jsonb_array_elements_text(${JSON.stringify(subjectIds)}::jsonb)
+		) AS ordered_subjects
+		ORDER BY subject_id
+	`);
 }
 
 /**

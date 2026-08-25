@@ -10,6 +10,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
 	drainAttachmentStorageCleanupOutbox,
 	stageAttachmentStorageCleanup,
+	utcTimestampSql,
 } from "./attachment-storage-cleanup";
 import { logger } from "./logger";
 import {
@@ -21,6 +22,11 @@ const CLEANUP_ADMIN_TENANT = adminTenantContext(ZERO_UUID);
 const CLEANUP_PAGE_SIZE = 100;
 const CLEANUP_INTERVAL_MS = 60_000;
 const LEASE_MS = 60_000;
+const LEASE_SECONDS = LEASE_MS / 1_000;
+
+function unixSeconds(now: Date): number {
+	return now.getTime() / 1_000;
+}
 
 export type PendingAttachmentQuotaState =
 	| "not_required"
@@ -137,8 +143,9 @@ async function claimExpiredPendingUploads(
 	limit: number,
 ): Promise<readonly PendingAttachmentUploadRow[]> {
 	// Raw postgres-js SQL does not run Drizzle's timestamp column encoder.
-	const nowTimestamp = now.toISOString();
-	const leaseExpiresAt = new Date(now.getTime() + LEASE_MS).toISOString();
+	const nowEpoch = unixSeconds(now);
+	const nowTimestamp = utcTimestampSql(nowEpoch);
+	const leaseExpiresAt = utcTimestampSql(nowEpoch + LEASE_SECONDS);
 	const rows = await withTenant(
 		CLEANUP_ADMIN_TENANT,
 		async (tx) =>
@@ -205,7 +212,9 @@ async function recordPendingFailure(
 			.update(pendingAttachmentUploads)
 			.set({
 				leaseOwner: null,
-				leaseExpiresAt: new Date(Date.now() + LEASE_MS),
+				leaseExpiresAt: utcTimestampSql(
+					unixSeconds(new Date()) + LEASE_SECONDS,
+				),
 				lastError:
 					error instanceof Error
 						? error.message.slice(0, 255)
@@ -343,9 +352,10 @@ export async function claimPendingAttachmentUploadForConfirm(
 	}>,
 ): Promise<ClaimedPendingAttachmentUploadRow | null> {
 	const now = new Date();
-	const nowTimestamp = now.toISOString();
+	const nowEpoch = unixSeconds(now);
+	const nowTimestamp = utcTimestampSql(nowEpoch);
 	const leaseOwner = `confirm:${crypto.randomUUID()}`;
-	const leaseExpiresAt = new Date(now.getTime() + 5 * 60_000);
+	const leaseExpiresAt = utcTimestampSql(nowEpoch + 5 * 60);
 	const rows = await withTenant(ctx, async (tx) => {
 		const locked = (await tx.execute(sql`
 			SELECT
@@ -383,7 +393,7 @@ export async function claimPendingAttachmentUploadForConfirm(
 		await tx
 			.update(pendingAttachmentUploads)
 			.set({
-				confirmingAt: now,
+				confirmingAt: utcTimestampSql(nowEpoch),
 				leaseOwner,
 				leaseExpiresAt,
 				attemptCount: sql`${pendingAttachmentUploads.attemptCount} + 1`,

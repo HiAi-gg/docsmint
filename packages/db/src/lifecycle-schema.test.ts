@@ -187,8 +187,29 @@ test("attachment cleanup outbox makes object removal recoverable after DB commit
 	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
 		entries: Array<{ idx: number; tag: string }>;
 	};
+	expect(journal.entries).toContainEqual(
+		expect.objectContaining({
+			idx: 47,
+			tag: "0044_attachment_storage_cleanup_outbox",
+		}),
+	);
+});
+
+test("cleanup outbox insert locks the parent document before requester fence subjects", async () => {
+	const migration = await readFile(
+		new URL("./migrations/0045_attachment_cleanup_lock_order.sql", import.meta.url),
+		"utf8",
+	);
+	expect(migration).toContain(
+		"attachment_storage_cleanup_outbox_account_purge_fence_insert",
+	);
+	expect(migration).toContain("'parent_document:document_id', 'direct:requested_by_user_id'");
+
+	const journal = JSON.parse(await readFile(journalPath, "utf8")) as {
+		entries: Array<{ idx: number; tag: string }>;
+	};
 	expect(journal.entries.at(-1)).toMatchObject({
-		idx: 47,
-		tag: "0044_attachment_storage_cleanup_outbox",
+		idx: 48,
+		tag: "0045_attachment_cleanup_lock_order",
 	});
 });

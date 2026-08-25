@@ -32,6 +32,7 @@ import { Elysia } from "elysia";
 import { z } from "zod";
 import {
 	accountPurgeFencedResponse,
+	acquireAccountPurgeFenceLocks,
 	isAccountPurgeFenced,
 	isAccountPurgeFencedError,
 } from "../../lib/account-purge-fence";
@@ -98,6 +99,13 @@ type SingleDocumentCacheBody =
 			contentJson: unknown;
 			[key: string]: unknown;
 	  }>;
+
+class DocumentPurgeNotFoundError extends Error {
+	constructor() {
+		super("document_purge_not_found");
+		this.name = "DocumentPurgeNotFoundError";
+	}
+}
 
 const createDocumentSchema = z.object({
 	title: z.string().min(1).max(500).default("Untitled"),
@@ -2085,6 +2093,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		let restored: { id: string } | null;
 		try {
 			restored = await withTenant(ctx, async (tx) => {
+				await acquireDocumentPipelineLock(tx, params.id);
 				const result = await tx
 					.update(documents)
 					.set({ deletedAt: null, updatedAt: new Date() })
@@ -2178,14 +2187,19 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Document not found" };
 			}
 
-			const purged = await withTenant(ctx, async (tx) => {
+			await withTenant(ctx, async (tx) => {
+				await acquireDocumentPipelineLock(tx, params.id);
 				const [authorized] = await tx
-					.select({ id: documents.id, ownerId: documents.ownerId })
+					.select({
+						id: documents.id,
+						ownerId: documents.ownerId,
+						workspaceId: documents.workspaceId,
+					})
 					.from(documents)
 					.where(authorizedCondition)
-					.limit(1);
-				if (!authorized) return null;
-				await acquireDocumentPipelineLock(tx, params.id);
+					.limit(1)
+					.for("update");
+				if (!authorized) throw new DocumentPurgeNotFoundError();
 				const confirmed = await tx
 					.select({
 						id: attachments.id,
@@ -2216,6 +2230,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					})
 					.from(pendingAttachmentUploads)
 					.where(eq(pendingAttachmentUploads.documentId, params.id));
+				await acquireAccountPurgeFenceLocks(tx, [
+					ctx.userId,
+					...(authorized.workspaceId ? [] : [authorized.ownerId]),
+					...confirmed.map((row) => row.uploadedBy),
+					...pending.map((row) => row.actorUserId),
+				]);
 				for (const row of confirmed) {
 					await stageAttachmentStorageCleanup(tx, {
 						sourceKind: "attachment",
@@ -2246,12 +2266,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					.delete(documents)
 					.where(authorizedCondition)
 					.returning({ id: documents.id });
-				return result[0] ?? null;
+				const removed = result[0];
+				if (!removed) throw new DocumentPurgeNotFoundError();
+				return removed;
 			});
-			if (!purged) {
-				set.status = 404;
-				return { error: "Document not found" };
-			}
 			await drainAttachmentStorageCleanupOutbox({ maxPages: 1 }).catch(
 				(error) => {
 					logger.error(
@@ -2264,6 +2282,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			invalidateDocListCache(ctx.userId);
 			return { success: true };
 		} catch (error) {
+			if (error instanceof DocumentPurgeNotFoundError) {
+				set.status = 404;
+				return { error: "Document not found" };
+			}
 			if (isAccountPurgeFencedError(error)) {
 				set.status = 409;
 				return accountPurgeFencedResponse();
@@ -2309,6 +2331,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		const userId = ctx.userId;
 		try {
 			const deleted = await withTenant(ctx, async (tx) => {
+				await acquireDocumentPipelineLock(tx, params.id);
 				const existing = await tx
 					.select({ id: documents.id })
 					.from(documents)
@@ -2335,11 +2358,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								: []),
 						),
 					)
-					.limit(1);
+					.limit(1)
+					.for("update");
 				if (existing.length === 0) {
 					return false;
 				}
-				await tx
+				const result = await tx
 					.update(documents)
 					.set({ deletedAt: new Date(), updatedAt: new Date() })
 					.where(
@@ -2352,8 +2376,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							),
 							isNull(documents.deletedAt),
 						),
-					);
-				return true;
+					)
+					.returning({ id: documents.id });
+				return result.length === 1;
 			});
 			if (!deleted) {
 				set.status = 404;

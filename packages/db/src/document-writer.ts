@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import type { Database } from "./client";
+import { acquireDocumentPipelineLocks } from "./document-pipeline-serialization";
 import { documents, versions } from "./schema";
 
 export interface UpdateDocumentWithVersionInput {
@@ -95,6 +96,7 @@ export async function trashDocuments(
 	input: { workspaceId: string; documentIds: readonly string[] },
 ): Promise<Array<{ id: string }>> {
 	if (input.documentIds.length === 0) return [];
+	await acquireDocumentPipelineLocks(tx, input.documentIds);
 	return tx
 		.update(documents)
 		.set({ deletedAt: new Date(), updatedAt: new Date() })
