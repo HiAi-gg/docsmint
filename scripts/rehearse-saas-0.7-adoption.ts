@@ -629,6 +629,60 @@ function connectionUrl(
 	return `postgresql://${encodeURIComponent(role)}:${encodeURIComponent(password)}@127.0.0.1:${POSTGRES_HOST_PORT}/${encodeURIComponent(database)}`;
 }
 
+async function ensureWritableRehearsalBucket(input: {
+	preferredBucket: string;
+	fallbackBucket: string;
+	accessKeyId: string;
+	secretAccessKey: string;
+}): Promise<{ bucket: string; created: boolean }> {
+	const { CreateBucketCommand, PutObjectCommand, DeleteObjectCommand, S3Client } =
+		await import("@aws-sdk/client-s3");
+	const client = new S3Client({
+		endpoint: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
+		region: "us-east-1",
+		credentials: {
+			accessKeyId: input.accessKeyId,
+			secretAccessKey: input.secretAccessKey,
+		},
+		forcePathStyle: true,
+	});
+	const probe = async (bucket: string): Promise<boolean> => {
+		const key = `rehearsal-probe/${crypto.randomUUID()}`;
+		try {
+			await client.send(
+				new PutObjectCommand({
+					Bucket: bucket,
+					Key: key,
+					Body: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+					ContentType: "image/png",
+				}),
+			);
+			await client
+				.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }))
+				.catch(() => undefined);
+			return true;
+		} catch {
+			return false;
+		}
+	};
+	try {
+		await client.send(
+			new CreateBucketCommand({ Bucket: input.preferredBucket }),
+		);
+		if (await probe(input.preferredBucket)) {
+			return { bucket: input.preferredBucket, created: true };
+		}
+		if (await probe(input.fallbackBucket)) {
+			return { bucket: input.fallbackBucket, created: false };
+		}
+		throw new Error(
+			"SeaweedFS accepted no writable rehearsal bucket for attachment PUT",
+		);
+	} finally {
+		client.destroy();
+	}
+}
+
 async function localSeaweedCredentials(
 	runner: SafeCommandRunner,
 ): Promise<{ accessKey: string; secretKey: string }> {
@@ -954,7 +1008,7 @@ async function prepareActualRehearsal(
 		runtimeUrl: connectionUrl(runtimeRole, runtimePassword, databaseName),
 		redisPort: -1,
 		redisUrl: "",
-		storageBucket: `dm-rehearsal-${normalizedToken}`,
+		storageBucket: "",
 		userId: crypto.randomUUID(),
 		workspaceId: crypto.randomUUID(),
 		categoryA: crypto.randomUUID(),
@@ -1059,26 +1113,14 @@ async function prepareActualRehearsal(
 		} finally {
 			await bootstrap.end();
 		}
-		const { CreateBucketCommand, S3Client } = await import(
-			"@aws-sdk/client-s3"
-		);
-		const storageClient = new S3Client({
-			endpoint: `http://127.0.0.1:${STORAGE_HOST_PORT}`,
-			region: "us-east-1",
-			credentials: {
-				accessKeyId: prepared.storageAccessKey,
-				secretAccessKey: prepared.storageSecret,
-			},
-			forcePathStyle: true,
+		const writable = await ensureWritableRehearsalBucket({
+			preferredBucket: `dm-rehearsal-${normalizedToken}`,
+			fallbackBucket: Bun.env.STORAGE_BUCKET?.trim() || "hiai-docs",
+			accessKeyId: prepared.storageAccessKey,
+			secretAccessKey: prepared.storageSecret,
 		});
-		try {
-			prepared.storageBucketCreated = true;
-			await storageClient.send(
-				new CreateBucketCommand({ Bucket: prepared.storageBucket }),
-			);
-		} finally {
-			storageClient.destroy();
-		}
+		prepared.storageBucket = writable.bucket;
+		prepared.storageBucketCreated = writable.created;
 		await runUpstreamMigrations(
 			runner,
 			join(prepared.baselineRoot, "docsmint-oss"),
@@ -2265,6 +2307,7 @@ async function smoke068Actual(
 		}
 		const put = await fetch(uploadUrl, {
 			method: "PUT",
+			headers: { "content-type": "image/png" },
 			body: attachmentBytes,
 		});
 		if (!put.ok) {
