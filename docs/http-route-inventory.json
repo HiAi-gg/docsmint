@@ -56,6 +56,8 @@
   "POST /api/admin/reindex/model",
   "POST /api/admin/reindex/tag/{tagId}",
   "POST /api/admin/reindex/{docId}",
+  "POST /api/auth/change-email",
+  "POST /api/auth/update-user",
   "POST /api/categories",
   "POST /api/categories/{id}/keys",
   "POST /api/documents",

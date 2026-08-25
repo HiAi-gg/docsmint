@@ -36,6 +36,8 @@ const HTTP_METHODS = new Set([
 ]);
 
 const requiredOperations = [
+	["post", "/api/auth/update-user"],
+	["post", "/api/auth/change-email"],
 	["post", "/api/keys/global"],
 	["post", "/api/categories/{id}/keys"],
 	["get", "/api/keys"],
@@ -57,6 +59,8 @@ const requiredOperations = [
 ] as const;
 
 const backendRouteEvidence = [
+	["../api/routes/auth.ts", '"/update-user"'],
+	["../api/routes/auth.ts", '"/change-email"'],
 	["../api/routes/keys.ts", '.post("/keys/global"'],
 	["../api/routes/keys.ts", '.post("/categories/:id/keys"'],
 	["../api/routes/keys.ts", '.get("/keys/:id/secret"'],
