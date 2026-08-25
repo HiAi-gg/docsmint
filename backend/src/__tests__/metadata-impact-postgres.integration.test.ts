@@ -870,6 +870,8 @@ describe.skipIf(!databaseUrl)(
 					 WHERE id = ${attachmentId}::uuid) AS attachments,
 					(SELECT count(*)::int FROM public.attachment_storage_cleanup_outbox
 					 WHERE document_id = ${documentId}::uuid) AS cleanup`;
+				if (!state)
+					throw new Error("purge/restore state query returned no row");
 				if (purgeResponse.status === 200) {
 					expect(state.documents).toBe(0);
 					expect(state.active_documents).toBe(0);
