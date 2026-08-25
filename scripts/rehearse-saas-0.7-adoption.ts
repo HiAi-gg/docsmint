@@ -1806,13 +1806,19 @@ export async function stopIsolatedRedisServer(
 }
 
 export function workspaceEnabledForRuntimeVersion(version: string): "true" | "false" {
-	return version === "0.6.8" ? "false" : "true";
+	if (version !== "0.6.8" && version !== "0.7.0") {
+		throw new Error(`unsupported rehearsal runtime version: ${version}`);
+	}
+	return "true";
 }
 
 export function attachmentStorageEnforcementForRuntimeVersion(
 	version: string,
 ): "true" | "false" {
-	return version === "0.6.8" ? "false" : "true";
+	if (version !== "0.6.8" && version !== "0.7.0") {
+		throw new Error(`unsupported rehearsal runtime version: ${version}`);
+	}
+	return "true";
 }
 
 function runtimeEnvironment(
@@ -2207,36 +2213,75 @@ async function smoke068Actual(
 			categoryId: prepared.categoryA,
 		});
 		// The upgraded schema must remain writable by the exact 0.6.8 runtime,
-		// whose legacy multipart route omits attachments.uploaded_by. Migration
-		// 0043 fills that attribution before the NOT NULL check.
-		const attachmentHeaders = new Headers(
-			assertionHeaders(assertion, prepared.apiKey),
+		// whose quota-aware confirm insert omits attachments.uploaded_by.
+		// Migration 0043 fills that attribution before the NOT NULL check. The
+		// legacy multipart route is deliberately disabled in workspace mode, so
+		// exercise the supported 0.6.8 presign -> PUT -> confirm contract instead.
+		const attachmentBytes = new Uint8Array([
+			0x89, 0x50, 0x4e, 0x47, 0x36, 0x38,
+		]);
+		const filename = `${token}.png`;
+		const presign = await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				assertion,
+				`/api/documents/${id}/attachments/presign`,
+				{
+					method: "POST",
+					body: JSON.stringify({
+						filename,
+						contentType: "image/png",
+						size: attachmentBytes.byteLength,
+					}),
+				},
+			),
+			200,
+			"0.6.8 attachment presign",
 		);
-		attachmentHeaders.delete("content-type");
-		const attachmentForm = new FormData();
-		attachmentForm.set(
-			"file",
-			new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x36, 0x38])], {
-				type: "image/png",
-			}),
-			`${token}.png`,
-		);
-		const attachmentResponse = await fetch(
-			`${baseUrl}/api/documents/${id}/attachments`,
-			{
-				method: "POST",
-				headers: attachmentHeaders,
-				body: attachmentForm,
-			},
-		);
-		if (attachmentResponse.status !== 201) {
+		const presignBody = objectBody(presign.body, "0.6.8 attachment presign");
+		const uploadUrl = presignBody.url;
+		const storageKey = presignBody.key;
+		const quotaReservationId = presignBody.quotaReservationId;
+		if (
+			typeof uploadUrl !== "string" ||
+			typeof storageKey !== "string" ||
+			typeof quotaReservationId !== "string"
+		) {
+			throw new Error("0.6.8 attachment presign omitted upload admission fields");
+		}
+		const put = await fetch(uploadUrl, {
+			method: "PUT",
+			body: attachmentBytes,
+		});
+		if (!put.ok) {
 			throw new Error(
-				`0.6.8 attachment upload returned HTTP ${attachmentResponse.status}: ${await attachmentResponse.text()}`,
+				`0.6.8 attachment PUT returned HTTP ${put.status}: ${await put.text()}`,
 			);
 		}
+		const confirmed = await assertStatus(
+			apiRequest(
+				baseUrl,
+				prepared.apiKey,
+				assertion,
+				`/api/documents/${id}/attachments/confirm`,
+				{
+					method: "POST",
+					body: JSON.stringify({
+						key: storageKey,
+						filename,
+						contentType: "image/png",
+						size: attachmentBytes.byteLength,
+						quotaReservationId,
+					}),
+				},
+			),
+			201,
+			"0.6.8 attachment confirm",
+		);
 		const attachmentId = objectBody(
-			await attachmentResponse.json(),
-			"0.6.8 attachment upload",
+			confirmed.body,
+			"0.6.8 attachment confirm",
 		).id;
 		if (typeof attachmentId !== "string")
 			throw new Error("0.6.8 attachment upload did not return an id");

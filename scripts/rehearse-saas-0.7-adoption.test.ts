@@ -45,10 +45,10 @@ async function redisCli(
 }
 
 describe("DocsMint SaaS 0.7 adoption rehearsal", () => {
-	test("runs the 0.6.8 attachment rollback smoke in compatible personal mode", () => {
-		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("false");
+	test("runs the 0.6.8 attachment rollback smoke through the quota-aware runtime", () => {
+		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("true");
 		expect(attachmentStorageEnforcementForRuntimeVersion("0.6.8")).toBe(
-			"false",
+			"true",
 		);
 		expect(workspaceEnabledForRuntimeVersion("0.7.0")).toBe("true");
 		expect(attachmentStorageEnforcementForRuntimeVersion("0.7.0")).toBe(
