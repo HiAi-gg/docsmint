@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 /**
- * `hiai-docs` — terminal CLI for the hiai-docs knowledge base.
+ * `docsmint` — terminal CLI for the DocsMint knowledge workspace.
  *
  * Built on commander. Each command is a self-contained module under
  * `./commands/`; this file is just the registration table.
+ * The `hiai-docs` binary remains a compatibility alias.
  *
  * Bun-native. ESM-only. No external color/formatting libraries.
  */
@@ -27,7 +28,7 @@ import { registerUpdate } from './commands/update.js';
 const VERSION = '0.7.0';
 
 const program = new Command();
-program.name('hiai-docs').description('CLI for the hiai-docs knowledge base').version(VERSION);
+program.name('docsmint').description('CLI for the DocsMint knowledge workspace').version(VERSION);
 
 const getClient = (): HiaiDocsClient => client;
 

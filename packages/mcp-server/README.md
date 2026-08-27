@@ -46,6 +46,45 @@ The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not
 
 `HIAI_DOCS_URL` defaults to `http://localhost:50700`. The optional API key is sent as a Bearer token. Prefer a category key for a category-bound agent and a global key for trusted owner-wide automation. Category `read`, `edit`, and `write` scopes are explicit rather than hierarchical; configure the combination required by the tools you expose.
 
+One-command install for MCP clients:
+
+```bash
+npx -y @hiai-gg/docsmint docsmint-mcp
+```
+
+## MCP Features
+
+### Tools (17)
+
+- `search_documents`: Hybrid search (full-text + semantic pgvector).
+- `get_document`: Fetch document content and metadata.
+- `create_document`: Create a document with optional markdown, folder, and category.
+- `update_document`: Update title, content, folder, or category.
+- `list_documents`: Paginated document list, optionally filtered by folder or tag.
+- `list_folders`: List folders, optionally under a parent.
+- `create_folder`: Create a folder, optionally nested.
+- `create_snapshot`: Create a named snapshot of the current document.
+- `get_version_history`: List versions, optionally snapshots only.
+- `export_document`: Export a document as Markdown.
+- `list_categories`: List categories visible to the API key.
+- `create_category`: Create a category (workspace key with write access).
+- `list_tags`: List tags in the workspace or bound category.
+- `get_related_documents`: Traverse the knowledge graph from one authorized document.
+- `search_knowledge_graph`: Search connected knowledge from authorized seed documents.
+- `get_document_index_status`: Read indexing and knowledge-pipeline status.
+- `refresh_document_index`: Request reindexing after a document or metadata change.
+
+### Prompts (2)
+
+- `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
+- `research_workspace`: Research a question with hybrid search and GraphRAG citing document IDs.
+
+### Resources (3)
+
+- `docsmint://guide/editor`: Editor usage guide.
+- `docsmint://guide/search`: Search and GraphRAG guide.
+- `docsmint://workspace/catalog`: Live scoped workspace catalog.
+
 ## Tools and REST routes
 
 | MCP tool | REST route |

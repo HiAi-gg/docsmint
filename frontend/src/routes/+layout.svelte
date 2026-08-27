@@ -32,7 +32,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
 </script>
 
 <svelte:head>
-	<meta name="description" content="Self-hosted AI-first documentation platform" />
+	<meta name="description" content="Self-hosted AI-native knowledge workspace with hybrid search, GraphRAG, and MCP" />
 	<meta property="og:type" content="website" />
 	<meta property="og:title" content="DocsMint" />
 	<meta property="og:description" content="Installable self-hosted knowledge workspace with offline reads and semantic search" />

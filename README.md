@@ -1,5 +1,7 @@
 # DocsMint
 
+[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
+
 **A self-hosted AI-native knowledge workspace and installable PWA for people,
 applications, and AI agents.**
 
@@ -17,13 +19,13 @@ server.
 [![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
 [![Bun](https://img.shields.io/badge/Runtime-Bun_1.3-black?logo=bun&logoColor=white)](https://bun.sh)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
 [![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint?style=plastic)](https://lobehub.com/mcp/hiai-gg-docsmint)
+[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
@@ -40,112 +42,22 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in DocsMint 0.7.0?
+## What's new in 0.7.0?
 
 - **Signed workspace assertions.** Trusted server-to-server hosts can restrict
   an assertion to one category with independent `read`, `edit`, and `write`
-  permissions; an omitted scope remains workspace-wide and role-derived.
+  permissions. An omitted scope remains workspace-wide and role-derived.
 - **Consistent effective-category authorization.** Direct and folder-inherited
   categories are enforced before counts, pagination, indexing, search, and
   GraphRAG retrieval. Index status is read-only; refresh requires write.
 - **Release-safe indexing.** Context-aware embedding generations and recovery
   prevent stale metadata work from becoming active.
 
-This OSS release adds no host RBAC, billing, invitations, or product UI.
-
-DocsMint 0.7.0 includes the 0.6.8 reliability fixes:
-
-- **Workspace-safe recovery.** Explicit operator reindexing carries the
-  document's workspace into every durable pipeline stage, including RLS reads.
-- **Consistent operator authentication.** Both documented admin key headers
-  bypass interactive rate limits during maintenance operations.
-
-DocsMint 0.6.8 includes the self-host reliability fixes introduced in 0.6.7:
-
-- **Reliable HTTPS sessions.** Every protected SvelteKit route accepts Better
-  Auth's secure production cookie as well as the local-development cookie.
-- **Cleaner retrieval.** Deleted documents are excluded before exact, lexical,
-  fuzzy, vector, chunk, and graph ranking.
-- **Explicit GraphRAG providers.** Entity extraction requires its own
-  chat-completion URL and never sends chat requests to an embedding endpoint.
-- **Safer self-host defaults.** Auth origins are validated configuration, the
-  SeaweedFS Filer UI binds to loopback, folder moves refresh knowledge
-  metadata, and backups exclude `.env`.
-
-DocsMint 0.6.7 includes the safe index recovery introduced in 0.6.6:
-
-- **Safe explicit index recovery.** Admin document reindexing keeps the active
-  generation searchable until a new generation has passed embedding, graph,
-  summary, and finalize stages.
-- **Truthful queue admission.** Maintenance requests force a replacement
-  generation and report an error when durable enqueue fails instead of
-  returning a false-positive success.
-- **Verified MCP distribution.** The official MCP Registry manifest, npm stdio
-  package, hosted Streamable HTTP endpoint, bundled Skill, prompts, resources,
-  and 17-tool catalog remain one versioned contract.
-
-DocsMint 0.6.6 includes the registry metadata fixes released in 0.6.3-0.6.5
-and the complete MCP foundation introduced in 0.6.2:
-
-- **Official MCP identity.** DocsMint now publishes the verified
-  `io.github.HiAi-gg/docsmint` registry identity for both the npm stdio server
-  and the hosted Streamable HTTP endpoint.
-- **One capability implementation.** The public `@hiai-gg/docsmint/mcp`
-  contract lets hosts provide a scoped API client while reusing the same 17
-  tools, two prompts, three resources, and bundled document-manager Skill.
-- **Current protocol runtime.** The MCP server uses the stable v2 server
-  package and retains compatible stdio negotiation for existing clients.
-
-DocsMint 0.6.2 includes the reliable knowledge refresh and scoped automation
-foundation introduced in 0.6.1:
-
-- **Reliable knowledge refreshes.** Explicit full reindexing now supersedes
-  failed or stuck generations, retries release stale extraction claims, and
-  publishes embeddings, summaries, and graph projections only for the current
-  document generation.
-- **Safer scoped automation.** Global keys can manage the complete document
-  domain, while category keys stay confined to their category, folders,
-  documents, tags, graph traversal, and index operations according to explicit
-  `read`, `edit`, and `write` permissions.
-- **Portable agent integration.** The MCP package exposes 17 document-manager
-  tools, two reusable prompts, three context resources, and a bundled Skill,
-  with Bunx, NPX, and local-checkout installation paths.
-- **Compatible frontend packaging.** Published frontend entrypoints resolve the
-  canonical hiai-ui exports used by the source build and packed consumers.
-
-DocsMint 0.6.1 includes the mobile and PWA foundation introduced in 0.6.0:
-
-- **Installable, update-safe PWA.** A versioned service worker, responsive app
-  shell, install prompt, and deterministic offline fallback make DocsMint feel
-  at home on desktop and mobile browsers.
-- **Private offline reading and explicit drafts.** Identity-partitioned local
-  snapshots keep selected documents readable offline. Drafts autosave locally,
-  then return through a deliberate review-and-apply flow after reconnecting;
-  DocsMint never silently replays offline mutations.
-- **Touch-safe mobile navigation.** Sidebar document actions, Copy controls, and
-  overflow menus remain reachable on touch devices without depending on hover,
-  with accessible targets and narrow-screen layouts.
-- **A flexible editor contract.** Reactive visual/Markdown mode preferences,
-  Minimal toolbar support, and a reusable compact TipTap editor let hosts match
-  the writing surface to the task without forking editor internals.
-- **Stable document discovery.** The public API and TypeScript SDK provide
-  deterministic cursor pagination and global sorting by title, category,
-  folder, or update time, with canonical category and folder metadata.
-- **Safe standalone sharing.** Standalone DocsMint exposes public links with
-  expiry, optional passwords, Copy, and revoke controls. Host-managed consumers
-  retain their existing restricted invitation workflow.
-- **Knowledge built for agents.** REST, the typed SDK, CLI, and MCP server expose
-  scoped document operations, while multilingual hybrid search and GraphRAG
-  help people and AI agents retrieve connected knowledge instead of isolated
-  keyword matches.
-
-DocsMint combines an installable self-hosted PWA knowledge base, mobile document
-workspace, offline reading, local drafts, multilingual semantic search,
-GraphRAG, MCP, a TypeScript SDK, CLI, and composable frontend hosts in one
-open-source system.
-
-For self-hosted customization, see [PWA hosting](docs/PWA_HOSTING.md) and
-[extension points](docs/EXTENDING.md).
+This OSS release adds no host RBAC, billing, invitations, or product UI. The
+0.6.x reliability work — workspace-safe reindex, HTTPS sessions, trash-aware
+retrieval, explicit GraphRAG providers, MCP Registry identity, and the
+installable PWA — ships in this line. See the [changelog](CHANGELOG.md) for
+the complete history and the [roadmap](docs/ROADMAP.md) for what comes next.
 
 ## Fastest installation: give this prompt to your agent
 
@@ -257,7 +169,7 @@ bunx --package @hiai-gg/docsmint docsmint search "project architecture"
 bunx --package @hiai-gg/docsmint docsmint list
 bunx --package @hiai-gg/docsmint docsmint read <document-id>
 bunx --package @hiai-gg/docsmint docsmint create \
-  --title "Release notes" --content "# Version 0.2.9"
+  --title "Release notes" --content "# Highlights"
 ```
 
 Credentials can also be supplied through `HIAI_DOCS_URL` and
@@ -289,6 +201,7 @@ context resources, and a document-manager skill for agent clients.
 Run the server directly to verify the installation:
 
 ```bash
+npx -y @hiai-gg/docsmint docsmint-mcp
 bunx --package @hiai-gg/docsmint docsmint-mcp
 ```
 
@@ -296,6 +209,41 @@ The server uses stdio and works with MCP-capable clients such as Claude
 Desktop, Cursor, and coding agents that accept standard MCP configuration. See
 the [MCP guide](packages/mcp-server/README.md) for its 17 tools, prompts,
 resources, skill, and API routes.
+
+## MCP Features
+
+### Tools (17)
+
+- `search_documents`: Hybrid search (full-text + semantic pgvector).
+- `get_document`: Fetch document content and metadata.
+- `create_document`: Create a document with optional markdown, folder, and category.
+- `update_document`: Update title, content, folder, or category (new version on each save).
+- `list_documents`: Paginated document list, optionally filtered by folder or tag.
+- `list_folders`: List folders, optionally under a parent.
+- `create_folder`: Create a folder, optionally nested.
+- `create_snapshot`: Create a named snapshot of the current document.
+- `get_version_history`: List versions, optionally snapshots only.
+- `export_document`: Export a document as Markdown.
+- `list_categories`: List categories visible to the API key.
+- `create_category`: Create a category (workspace key with write access).
+- `list_tags`: List tags in the workspace or bound category.
+- `get_related_documents`: Traverse the knowledge graph from one authorized document.
+- `search_knowledge_graph`: Search connected knowledge from authorized seed documents.
+- `get_document_index_status`: Read indexing and knowledge-pipeline status.
+- `refresh_document_index`: Request reindexing after a document or metadata change.
+
+### Prompts (2)
+
+- `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
+- `research_workspace`: Research a question with hybrid search and GraphRAG citing document IDs.
+
+### Resources (3)
+
+- `docsmint://guide/editor`: Editor usage guide.
+- `docsmint://guide/search`: Search and GraphRAG guide.
+- `docsmint://workspace/catalog`: Live scoped workspace catalog.
+
+The bundled agent skill is [`docsmint-document-manager`](skills/docsmint-document-manager/SKILL.md).
 
 ## Agent skills after installation
 
@@ -426,6 +374,7 @@ deployment.
 
 - [Documentation index](docs/README.md)
 - [Product usage](docs/USAGE.md)
+- [Roadmap](docs/ROADMAP.md)
 - [REST API](docs/API.md) and [OpenAPI JSON](docs/openapi.json)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Deployment and operations](docs/DEPLOYMENT.md)

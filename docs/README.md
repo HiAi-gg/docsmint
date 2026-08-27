@@ -6,6 +6,7 @@ run. The pages below are the maintained reference set.
 ## Use DocsMint
 
 - [Usage](USAGE.md) — documents, categories, imports, and keyboard shortcuts
+- [Roadmap](ROADMAP.md) — current 0.7.0 line, OSS boundary, and direction
 - [API](API.md) — REST API, authentication, and scoped API keys
 - [OpenAPI specification](openapi.json) — machine-readable HTTP contract
 

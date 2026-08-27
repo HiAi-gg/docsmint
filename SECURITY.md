@@ -4,8 +4,12 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.6.x   | :white_check_mark: |
-| < 0.6   | :x: |
+| 0.7.x   | :white_check_mark: |
+| 0.6.x   | :x:                |
+| < 0.6   | :x:                |
+
+Security fixes land on the current minor line. Upgrade to 0.7.x for supported
+self-hosted deployments.
 
 ## Reporting a Vulnerability
 

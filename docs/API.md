@@ -1,8 +1,10 @@
 # API guide
+
 This guide explains the stable integration model and the most common workflows.
 The exhaustive, machine-readable endpoint contract is
 [`openapi.json`](openapi.json). Use that file when generating clients or when an
 endpoint, field, validation limit, or response schema is not shown here.
+
 ## Base URL and conventions
 The default local API URL is:
 
@@ -47,6 +49,7 @@ Health is public:
 ```bash
 curl -fsS http://localhost:50700/api/health
 ```
+
 ## Authentication and keys
 DocsMint has three separate credential models:
 
@@ -79,6 +82,7 @@ access. A scoped assertion derives access only from its signed category and
 permission array: an empty array grants no content action, and `read`, `edit`,
 and `write` do not imply one another. Never create, forward, or expose a host
 assertion secret in browser code.
+
 ### Scope matrix
 | Credential or scope | Boundary | Read | Edit | Write |
 | --- | --- | :---: | :---: | :---: |
@@ -101,6 +105,7 @@ the category inherited through its folder ancestry. Category keys cannot access
 uncategorized or other-category content, and they cannot manage category
 definitions. Lists and search results are filtered rather than exposing
 forbidden rows.
+
 ### Key lifecycle
 | Method and path | Purpose |
 | --- | --- |
@@ -130,6 +135,7 @@ and at least one of `apiPermissionRead`, `apiPermissionEdit`, or
 Global secrets are returned once and retained only as hashes. Category secrets
 are encrypted at rest and can be revealed by their owning browser session.
 Revocation applies to subsequent validation immediately.
+
 ## Common REST workflows
 All protected examples below assume:
 
@@ -137,6 +143,7 @@ All protected examples below assume:
 export HIAI_DOCS_URL=http://localhost:50700
 export DOCSMINT_USER_API_KEY='…'
 ```
+
 ### Documents and folders
 ```bash
 # List
@@ -167,6 +174,7 @@ document read access; refresh requires write access. For category-scoped
 assertions, each operation checks the document's direct category or its
 effective category inherited from folder ancestry before access. All three
 validate UUID parameters and are rate limited.
+
 ### Search
 ```bash
 curl -G "$HIAI_DOCS_URL/api/search" \
@@ -182,6 +190,7 @@ comma-separated `tags`, `dateFrom`, `dateTo`, and `sort`. Each result includes
 safe explanations; `includeChunks=true` adds up to three matching snippets.
 Provider prompts, credentials, tenant identifiers, and internal scores are not
 returned. Provider or graph failures degrade to the remaining channels.
+
 ### Attachments
 Small image uploads can use the authenticated multipart endpoint:
 
@@ -213,6 +222,7 @@ is stable; unrelated database errors retain their existing status and shape.
 Bearer key. An anonymous share viewer must send a matching `x-share-token`.
 Responses use private caching; missing, expired, foreign, or mismatched access
 is rejected.
+
 ### Shares
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/share" \
@@ -227,6 +237,7 @@ Owners can list, update, and revoke links. Standalone OSS uses public or
 password-protected links, which may target documents or folders and expire
 after `1h`, `1d`, `7d`, `30d`, or `never`. Host-managed consumers retain their
 existing guest email and role workflows.
+
 ### Versions and snapshots
 ```bash
 curl -X POST "$HIAI_DOCS_URL/api/documents/$DOCUMENT_ID/versions" \
@@ -239,6 +250,7 @@ Every create and update records a version. The API can list versions, retrieve
 one version, create a named snapshot, restore a version, and compare versions.
 Named snapshots are retained separately from automatic history pruning. A
 restore first saves the current content and then triggers re-embedding.
+
 ## SDK, CLI, and MCP
 All three clients use the same REST contract and Bearer keys. Prefer a category
 key for a category-bound integration and a global key only for trusted
@@ -280,6 +292,7 @@ client-specific flags and tool schemas:
 - [`packages/sdk/README.md`](../packages/sdk/README.md)
 - [`packages/cli/README.md`](../packages/cli/README.md)
 - [`packages/mcp-server/README.md`](../packages/mcp-server/README.md)
+
 ## Integration notes
 - Server-to-server SDK, CLI, and MCP calls are not affected by browser CORS.
 - Browser integrations must add their exact origin to `CORS_ORIGINS`.
@@ -292,6 +305,7 @@ client-specific flags and tool schemas:
 - The collaboration WebSocket is `WS /api/ws/collab/:documentId`; it is not
   represented in HTTP OpenAPI. The current runtime accepts a session token or
   API key through the `token` query parameter.
+
 ## Complete contract
 [`docs/openapi.json`](openapi.json) is the authoritative endpoint catalogue for
 request bodies, query parameters, response schemas, validation limits, and

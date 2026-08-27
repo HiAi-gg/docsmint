@@ -1,7 +1,7 @@
 # Using DocsMint
 
 This guide covers the main product workflows. For installation, start with the
-[quickstart](../README.md#quick-start). For programmatic access, see the
+[quickstart](../README.md#quickstart). For programmatic access, see the
 [API reference](API.md).
 
 ## Organize documents

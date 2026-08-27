@@ -143,10 +143,13 @@ Peer deps required: `drizzle-orm`, `postgres`.
 Point a Model Context Protocol client (Claude, Cursor, etc.) at the built-in MCP server:
 
 ```bash
-bun run mcp:dev
+HIAI_DOCS_URL=http://localhost:50700 \
+HIAI_DOCS_API_KEY='your-global-or-category-key' \
+bun run packages/mcp-server/src/index.ts
 ```
 
-The server is in `packages/mcp-server/` and exposes DocsMint tools (search, read, write) to AI assistants.
+The server is in `packages/mcp-server/` and exposes the same 17 document-manager
+tools documented in [packages/mcp-server/README.md](packages/mcp-server/README.md).
 
 ### What NOT to add to core
 

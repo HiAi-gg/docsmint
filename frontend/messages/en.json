@@ -1,7 +1,7 @@
 {
   "$schema": "https://inlang.com/schema/message-format",
   "app_name": "DocsMint",
-  "app_description": "AI-first documentation platform",
+  "app_description": "Self-hosted AI-native knowledge workspace",
 
   "nav_dashboard": "Dashboard",
   "nav_documents": "Documents",

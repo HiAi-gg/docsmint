@@ -44,12 +44,26 @@ describe('DocsMint MCP catalog contract', () => {
     const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
     const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
 
-    expect(readme).toContain('lobehub.com/badge/mcp/hiai-gg-docsmint?style=plastic');
+    expect(readme).toContain(
+      '[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)',
+    );
+    expect(readme).toContain('## MCP Features');
+    expect(readme).toContain('### Tools (17)');
+    expect(readme).toContain('### Prompts (2)');
+    expect(readme).toContain('### Resources (3)');
+    expect(readme).toContain('`organize_workspace`');
+    expect(readme).toContain('`research_workspace`');
+    expect(readme).toContain('`docsmint://guide/editor`');
+    expect(readme).toContain('`docsmint://guide/search`');
+    expect(readme).toContain('`docsmint://workspace/catalog`');
+    expect(readme).toContain('npx -y @hiai-gg/docsmint docsmint-mcp');
     expect(mcpReadme).toContain('### Bunx');
     expect(mcpReadme).toContain('### NPX');
     expect(mcpReadme).toContain('### Local checkout');
+    expect(mcpReadme).toContain('## MCP Features');
     expect(await skill.exists()).toBe(true);
     expect(publishedPackage.files).toContain('skills');
+    expect(publishedPackage.license).toBe('Apache-2.0');
     expect(await Bun.file(new URL('LICENSE', root)).text()).toContain('Apache License');
   });
 

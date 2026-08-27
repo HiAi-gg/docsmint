@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "DocsMint API",
-    "description": "Self-hosted AI-first documentation platform. Full-text + semantic search, version history, sharing, and folder organization.",
+    "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
     "version": "0.7.0",
     "contact": {
       "name": "HiAi-gg",

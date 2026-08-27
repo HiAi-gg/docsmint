@@ -33,6 +33,7 @@ export default defineConfig(({ mode }) => {
       manifest: {
         name: "DocsMint",
         short_name: "DocsMint",
+        description: "Self-hosted AI-native knowledge workspace",
         theme_color: "#0f172a",
         background_color: "#ffffff",
         display: "standalone",

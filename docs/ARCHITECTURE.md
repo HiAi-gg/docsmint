@@ -1,62 +1,12 @@
 # Architecture
 
-## Account pipeline cancellation
+DocsMint is a self-hosted knowledge workspace: a SvelteKit editor, an Elysia
+REST API, and a durable embedding/GraphRAG pipeline on PostgreSQL, Redis, and
+SeaweedFS. People write documents; the same authorized corpus is searchable
+through the web app, REST, SDK, CLI, and MCP.
 
-Server hosts compose `cancelAccountPipelineJobs` from
-`@hiai-gg/docsmint/pipeline/cancellation` into the persistent lifecycle
-runtime's `cancelAccountJobs` adapter. The supplied `cancelRuns` callback must
-run in the actor's request/RLS scope and atomically mark every non-terminal
-owned pipeline run `cancelled`. Only BullMQ jobs whose payload contains the
-exact matching `ownerId` are removed, and only while waiting, delayed, paused,
-or prioritized. Active jobs are never force-removed: prepare/embed adapters
-check the durable cancellation fence immediately before each write. Redis
-queue namespaces must never be deleted as an account-cancellation shortcut.
-
-The packaged backend composition accepts `{ redisUrl, databaseUrl }`. Each
-instance owns its BullMQ handles and postgres-js pool; `close()` releases only
-those owned resources, so a new instance can be created safely afterward.
-
-## Account purge admission fence
-
-After the host policy gate accepts account deletion, the OSS lifecycle records
-its hashed fence token under a stable per-subject advisory transaction lock.
-Guarded statements collect every direct actor and parent-derived owner across
-their transition tables, lock parent rows before resolving current ownership,
-then acquire all subject locks once in canonical UUID order. A write already in
-progress therefore commits before the fence snapshot; a later write fails with
-database constraint `account_purge_fenced`. Rejected host gates remain writable,
-retryable purges remain closed, and completed tombstones remain permanently
-fenced.
-
-The guard covers personal and workspace documents, restore/import/duplicate
-paths, folder/tag/category and sharing metadata, attachment uploader and version
-creator attribution, pipeline admission, API keys, sessions, accounts, audit
-actors, and Better Auth user updates. Existing pipeline status rows may still
-transition to cancellation after a fence, while new runs and batches cannot be
-inserted. Lifecycle cleanup uses only an exact running-operation/lease token;
-there is no caller-settable generic bypass. Final document cleanup snapshots the
-current owner-wide ID union, acquires shared pipeline advisory locks once in
-canonical order, and then cascades deletion. Guarded public mutations return
-`409` with code `ACCOUNT_PURGE_FENCED`.
-
-Direct attachment presign first commits a forced-RLS admission row containing
-the exact actor, parent document, workspace, object key, signed-token hash,
-quota reservation, and expiry. Confirm consumes that admission atomically. Once
-the signed key is authenticated, every failed confirm owns deletion of that
-exact object; an unauthenticated or tampered key cannot delete it. Account purge
-also removes workspace-peer objects attributed to the purged uploader, but does
-not complete while any previously issued PUT URL is still valid. Bounded
-startup/periodic recovery removes expired unconfirmed objects without delaying
-API readiness. Presign quota work is also a durable saga: a stable operation key
-is stored before reserve, and each reserve/finalize/release phase is retry-safe.
-
-No attachment mutation deletes an object before its authoritative database
-transaction commits. Attachment delete, document hard purge, lifecycle cleanup,
-legacy upload, and duplicate-copy failure first commit an exact key to
-`attachment_storage_cleanup_outbox`. Workers claim bounded pages with
-`FOR UPDATE SKIP LOCKED`, delete idempotently, release quota by the persisted
-phase, and acknowledge only after both effects succeed. Issued URLs receive a
-second delete pass after expiry so a late PUT cannot recreate an orphan.
+This page describes the runtime layout, search pipeline, and security boundary.
+Host-only lifecycle contracts (account cancellation and purge) are at the end.
 
 ## Monorepo Structure
 
@@ -272,3 +222,66 @@ DocsMint does not publish outbound document webhooks. The deprecated signed
 storage webhook is a no-op compatibility endpoint, not a synchronization
 mechanism. Integrations should use REST, SDK, or MCP and query the durable
 document pipeline endpoint when they need processing readiness.
+
+## Host lifecycle contracts
+
+These contracts are for server hosts that compose the public lifecycle and
+pipeline packages. Standalone self-hosters do not call them directly.
+
+### Account pipeline cancellation
+
+Server hosts compose `cancelAccountPipelineJobs` from
+`@hiai-gg/docsmint/pipeline/cancellation` into the persistent lifecycle
+runtime's `cancelAccountJobs` adapter. The supplied `cancelRuns` callback must
+run in the actor's request/RLS scope and atomically mark every non-terminal
+owned pipeline run `cancelled`. Only BullMQ jobs whose payload contains the
+exact matching `ownerId` are removed, and only while waiting, delayed, paused,
+or prioritized. Active jobs are never force-removed: prepare/embed adapters
+check the durable cancellation fence immediately before each write. Redis
+queue namespaces must never be deleted as an account-cancellation shortcut.
+
+The packaged backend composition accepts `{ redisUrl, databaseUrl }`. Each
+instance owns its BullMQ handles and postgres-js pool; `close()` releases only
+those owned resources, so a new instance can be created safely afterward.
+
+### Account purge admission fence
+
+After the host policy gate accepts account deletion, the OSS lifecycle records
+its hashed fence token under a stable per-subject advisory transaction lock.
+Guarded statements collect every direct actor and parent-derived owner across
+their transition tables, lock parent rows before resolving current ownership,
+then acquire all subject locks once in canonical UUID order. A write already in
+progress therefore commits before the fence snapshot; a later write fails with
+database constraint `account_purge_fenced`. Rejected host gates remain writable,
+retryable purges remain closed, and completed tombstones remain permanently
+fenced.
+
+The guard covers personal and workspace documents, restore/import/duplicate
+paths, folder/tag/category and sharing metadata, attachment uploader and version
+creator attribution, pipeline admission, API keys, sessions, accounts, audit
+actors, and Better Auth user updates. Existing pipeline status rows may still
+transition to cancellation after a fence, while new runs and batches cannot be
+inserted. Lifecycle cleanup uses only an exact running-operation/lease token;
+there is no caller-settable generic bypass. Final document cleanup snapshots the
+current owner-wide ID union, acquires shared pipeline advisory locks once in
+canonical order, and then cascades deletion. Guarded public mutations return
+`409` with code `ACCOUNT_PURGE_FENCED`.
+
+Direct attachment presign first commits a forced-RLS admission row containing
+the exact actor, parent document, workspace, object key, signed-token hash,
+quota reservation, and expiry. Confirm consumes that admission atomically. Once
+the signed key is authenticated, every failed confirm owns deletion of that
+exact object; an unauthenticated or tampered key cannot delete it. Account purge
+also removes workspace-peer objects attributed to the purged uploader, but does
+not complete while any previously issued PUT URL is still valid. Bounded
+startup/periodic recovery removes expired unconfirmed objects without delaying
+API readiness. Presign quota work is also a durable saga: a stable operation key
+is stored before reserve, and each reserve/finalize/release phase is retry-safe.
+
+No attachment mutation deletes an object before its authoritative database
+transaction commits. Attachment delete, document hard purge, lifecycle cleanup,
+legacy upload, and duplicate-copy failure first commit an exact key to
+`attachment_storage_cleanup_outbox`. Workers claim bounded pages with
+`FOR UPDATE SKIP LOCKED`, delete idempotently, release quota by the persisted
+phase, and acknowledge only after both effects succeed. Issued URLs receive a
+second delete pass after expiry so a late PUT cannot recreate an orphan.
