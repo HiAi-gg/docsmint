@@ -25,6 +25,11 @@ server.
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 [![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
 
+[GitHub](https://github.com/HiAi-gg/docsmint) ·
+[Docker Hub](https://hub.docker.com/r/vgalibov/docsmint) ·
+[npm](https://www.npmjs.com/package/@hiai-gg/docsmint) ·
+[LobeHub MCP](https://lobehub.com/mcp/hiai-gg-docsmint)
+
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
 ## Why DocsMint?
@@ -97,6 +102,20 @@ bash scripts/quickstart.sh
 On its first run, the script creates an ignored root `.env`, generates the
 database, authentication, and storage secrets, builds the PostgreSQL image,
 applies migrations, and starts the complete application.
+
+Published application images are on
+[Docker Hub](https://hub.docker.com/r/vgalibov/docsmint). There is no untagged
+`latest` image; pull the role-specific tags:
+
+```bash
+docker pull vgalibov/docsmint:api-latest
+docker pull vgalibov/docsmint:web-latest
+docker pull vgalibov/docsmint:caddy-latest
+```
+
+Use versioned tags such as `api-v0.7.1` for reproducible deploys. The
+quickstart still builds the Compose stack from this repository so PostgreSQL,
+Redis, and SeaweedFS start together with the application.
 
 For OpenRouter, add one value to `.env` and run the script again:
 

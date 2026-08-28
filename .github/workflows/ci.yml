@@ -681,7 +681,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.7.0
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.7.1
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}
@@ -833,6 +833,8 @@ jobs:
           bun-version: 1.4.0
       - name: Validate committed release version
         run: bun run scripts/release-version-validator.ts "${{ github.ref_name }}"
+      - name: Validate MCP catalog manifests
+        run: bun run scripts/validate-mcp-catalog.ts
       - name: Install pinned MCP publisher
         env:
           MCP_PUBLISHER_VERSION: v1.8.1

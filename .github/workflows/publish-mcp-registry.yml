@@ -43,6 +43,8 @@ jobs:
           test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"
           bun run scripts/release-version-validator.ts "$RELEASE_TAG"
           RELEASE_VERSION="${RELEASE_TAG#v}" bun run scripts/verify-published-package.ts
+      - name: Validate MCP catalog manifests
+        run: bun run scripts/validate-mcp-catalog.ts
       - name: Upload commit-bound npm provenance evidence
         uses: actions/upload-artifact@v4
         with:

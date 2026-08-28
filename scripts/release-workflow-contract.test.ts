@@ -148,6 +148,18 @@ test("published npm provenance installs frozen verification dependencies", async
 	);
 });
 
+test("MCP Registry publication validates catalog manifests before publishing", async () => {
+	const path = await mutatedWorkflow((workflow) => {
+		const job = workflowJob(workflow, "publish-mcp-registry");
+		job.steps = job.steps?.filter(
+			(step) => step.run !== "bun run scripts/validate-mcp-catalog.ts",
+		);
+	});
+	await expect(validateReleaseWorkflowContract(path)).rejects.toThrow(
+		"publish-mcp-registry must validate MCP catalog manifests",
+	);
+});
+
 test("MCP Registry and GitHub Release cannot bypass npm provenance", async () => {
 	for (const [jobName, dependency] of [
 		["publish-mcp-registry", "publish-npm"],
@@ -184,6 +196,18 @@ test("manual MCP publication proves tag SHA and exact npm provenance", async () 
 			),
 		),
 	).resolves.toBeUndefined();
+});
+
+test("manual MCP recovery validates catalog manifests before publishing", async () => {
+	const path = await mutatedManualWorkflow((workflow) => {
+		const publish = workflowJob(workflow, "publish");
+		publish.steps = publish.steps?.filter(
+			(step) => step.run !== "bun run scripts/validate-mcp-catalog.ts",
+		);
+	});
+	await expect(validateManualMcpWorkflowContract(path)).rejects.toThrow(
+		"manual MCP workflow must install frozen dependencies",
+	);
 });
 
 test("manual MCP recovery installs frozen verification dependencies", async () => {

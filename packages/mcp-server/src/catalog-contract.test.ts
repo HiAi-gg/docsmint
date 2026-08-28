@@ -79,6 +79,11 @@ describe('DocsMint MCP catalog contract', () => {
 
     expect(publishedPackage.mcpName).toBe('io.github.HiAi-gg/docsmint');
     expect(publishedPackage.files).toContain('server.json');
+    const glama = await Bun.file(new URL('glama.json', root)).json();
+    expect(glama).toMatchObject({
+      $schema: 'https://glama.ai/mcp/schemas/connector.json',
+      maintainers: [{ email: 'app.croco.team@gmail.com' }],
+    });
     expect(publishedPackage.exports['./mcp']).toEqual({
       import: './dist/mcp-server.js',
       types: './dist/mcp-server.d.ts',
@@ -87,16 +92,21 @@ describe('DocsMint MCP catalog contract', () => {
       $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
       name: 'io.github.HiAi-gg/docsmint',
       version: publishedPackage.version,
+      websiteUrl: 'https://docsmint.com/docs/mcp',
       repository: {
         url: 'https://github.com/HiAi-gg/docsmint',
         source: 'github',
+        subfolder: 'packages/mcp-server',
       },
       packages: [
         {
           registryType: 'npm',
+          registryBaseUrl: 'https://registry.npmjs.org',
           identifier: '@hiai-gg/docsmint',
           version: publishedPackage.version,
+          runtimeHint: 'npx',
           transport: { type: 'stdio' },
+          packageArguments: [{ type: 'positional', value: 'docsmint-mcp' }],
         },
       ],
       remotes: [
@@ -105,6 +115,12 @@ describe('DocsMint MCP catalog contract', () => {
           url: 'https://docsmint.com/mcp',
         },
       ],
+    });
+    expect(publishedPackage.license).toBe('Apache-2.0');
+    expect(registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided']).toMatchObject({
+      license: 'Apache-2.0',
+      licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
+      documentationUrl: 'https://docsmint.com/docs/mcp',
     });
   });
 
@@ -125,6 +141,9 @@ describe('DocsMint MCP catalog contract', () => {
   test('publishes the official registry manifest only after the complete release gate', async () => {
     const root = new URL('../../../', import.meta.url);
     const workflow = await Bun.file(new URL('.github/workflows/ci.yml', root)).text();
+    const manualRegistryWorkflow = await Bun.file(
+      new URL('.github/workflows/publish-mcp-registry.yml', root),
+    ).text();
 
     expect(workflow).toContain('publish-mcp-registry:');
     expect(workflow).toContain('release-static-gates:');
@@ -133,6 +152,8 @@ describe('DocsMint MCP catalog contract', () => {
 		expect(workflow).toContain('verify-npm-provenance:');
 		expect(workflow).toContain('needs: [verify-npm-provenance]');
 		expect(workflow).toContain('bun run scripts/verify-published-package.ts');
+    expect(workflow).toContain('bun run scripts/validate-mcp-catalog.ts');
+    expect(manualRegistryWorkflow).toContain('bun run scripts/validate-mcp-catalog.ts');
     expect(workflow).toContain('mcp-publisher login github-oidc');
     expect(workflow).toContain('mcp-publisher publish');
     expect(workflow).toContain(

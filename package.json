@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -246,7 +246,7 @@
     "build": "docker compose build",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run typecheck:scripts && bun run --filter '*' typecheck",
-    "typecheck:scripts": "bunx tsc --ignoreConfig --noEmit --strict --skipLibCheck --allowImportingTsExtensions --typeRoots packages/mcp-server/node_modules/@types --types bun --target ESNext --module ESNext --moduleResolution Bundler scripts/release-browser-e2e.ts scripts/release-clean-state.ts scripts/release-docker-smoke.ts scripts/release-gate.ts scripts/release-workflow-contract.ts scripts/secret-scan.ts scripts/verify-published-package.ts scripts/write-release-gate-result.ts",
+    "typecheck:scripts": "bunx tsc --ignoreConfig --noEmit --strict --skipLibCheck --allowImportingTsExtensions --typeRoots packages/mcp-server/node_modules/@types --types bun --target ESNext --module ESNext --moduleResolution Bundler scripts/release-browser-e2e.ts scripts/release-clean-state.ts scripts/release-docker-smoke.ts scripts/release-gate.ts scripts/release-workflow-contract.ts scripts/secret-scan.ts scripts/validate-mcp-catalog.ts scripts/verify-published-package.ts scripts/write-release-gate-result.ts",
     "test": "bun run test:unit && bun run test:contract",
     "test:unit": "bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --filter '*' test:unit",
     "test:contract": "bun run --filter '*' test:contract",

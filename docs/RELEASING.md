@@ -149,16 +149,25 @@ runs the same npm provenance verifier before publishing. Keep the
 manifest locally before tagging:
 
 ```bash
+bun run scripts/validate-mcp-catalog.ts
 mcp-publisher validate server.json
 ```
 
 The [LobeHub listing](https://lobehub.com/mcp/hiai-gg-docsmint) is a secondary
 catalog entry. The README badge links to the canonical listing. Organization
 ownership claims require an interactive maintainer login; complete that step in
-LobeHub after the release if its organization claim flow is available. The
-repository license is Apache-2.0; catalog UIs that show `Other` must be corrected
-from the detected `LICENSE` and package metadata rather than changing the
-project license.
+LobeHub after the release if its organization claim flow is available.
+
+The [Glama connector](https://glama.ai/mcp/connectors/io.github.HiAi-gg/docsmint)
+indexes the hosted Streamable HTTP URL from `server.json`. Anonymous health
+probes receive HTTP 401 because hosted MCP is API-key only; that does not mean
+the remote is down. After tagging, claim the listing with root `glama.json` using the Glama
+connector schema and public contact `app.croco.team@gmail.com`. That email must
+match the Glama account. Supply private test credentials in Glama so the
+connector can move from Unhealthy to Healthy. Do not put personal GitHub
+usernames in that file. The repository license is
+Apache-2.0; catalog UIs that show `Other` must be corrected from the detected
+`LICENSE` and package metadata rather than changing the project license.
 
 Never push, tag, publish npm, publish containers, or create a GitHub Release
 without explicit authorization for that release.
@@ -169,7 +178,8 @@ without explicit authorization for that release.
 - Smoke login, document creation, import, search, share, images, and export.
 - Verify SDK, CLI, and MCP against the released API.
 - Verify all three documented MCP installation methods, the hosted
-  `https://docsmint.com/mcp` transport, prompts, resources, and the bundled
-  document-manager skill.
+  `https://docsmint.com/mcp` transport, the public docs at
+  `https://docsmint.com/docs/mcp`, Apache-2.0 license metadata, prompts,
+  resources, and the bundled document-manager skill.
 - Record discovered regressions as new work; do not rewrite historical release
   evidence in this guide.

@@ -3,20 +3,44 @@
   "name": "io.github.HiAi-gg/docsmint",
   "title": "DocsMint",
   "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
+  "websiteUrl": "https://docsmint.com/docs/mcp",
   "repository": {
     "url": "https://github.com/HiAi-gg/docsmint",
     "source": "github",
-    "id": "1249550690"
+    "id": "1249550690",
+    "subfolder": "packages/mcp-server"
   },
-  "version": "0.7.0",
+  "version": "0.7.1",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
+      "mimeType": "image/png",
+      "sizes": ["256x256"],
+      "theme": "light"
+    },
+    {
+      "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo.png",
+      "mimeType": "image/png",
+      "sizes": ["256x256"],
+      "theme": "dark"
+    }
+  ],
   "packages": [
     {
       "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.7.0",
+      "version": "0.7.1",
+      "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
       },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "docsmint-mcp"
+        }
+      ],
       "environmentVariables": [
         {
           "name": "HIAI_DOCS_URL",
@@ -45,11 +69,24 @@
         },
         {
           "name": "X-Docsmint-Workspace",
-          "description": "Optional workspace override for a workspace scoped key.",
+          "description": "Canonical workspace slug. Bound workspace keys may omit this header.",
           "isRequired": false,
           "isSecret": false
         }
       ]
     }
-  ]
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "license": "Apache-2.0",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "licenseFile": "https://github.com/HiAi-gg/docsmint/blob/main/LICENSE",
+      "documentationUrl": "https://docsmint.com/docs/mcp",
+      "catalog": {
+        "tools": 17,
+        "prompts": 2,
+        "resources": 3
+      }
+    }
+  }
 }

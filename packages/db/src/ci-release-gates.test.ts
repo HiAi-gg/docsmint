@@ -71,6 +71,9 @@ test("every release publication path validates committed version metadata", asyn
 		"bun run scripts/verify-published-package.ts",
 	);
 	expect(manualRegistryWorkflow).toContain(
+		"bun run scripts/validate-mcp-catalog.ts",
+	);
+	expect(manualRegistryWorkflow).toContain(
 		'test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$RELEASE_COMMIT"',
 	);
 	expect(releaseHelper).toContain("scripts/release-version-validator.ts");
@@ -88,7 +91,7 @@ test("tagged web publication receives the validated canonical PWA identity", asy
 	const validator = await Bun.file(
 		new URL("../../../scripts/release-version-validator.ts", import.meta.url),
 	).text();
-	const canonicalDeploymentId = "docsmint-oss-0.7.0";
+	const canonicalDeploymentId = "docsmint-oss-0.7.1";
 
 	expect(vite).toContain(canonicalDeploymentId);
 	expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);

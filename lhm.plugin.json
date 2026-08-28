@@ -1,0 +1,418 @@
+{
+  "identifier": "hiai-gg-docsmint",
+  "name": "DocsMint",
+  "version": "0.7.1",
+  "author": "HiAi-gg",
+  "authorUrl": "https://github.com/HiAi-gg",
+  "category": "developer",
+  "homepage": "https://github.com/HiAi-gg/docsmint",
+  "cloudEndpoint": "https://docsmint.com/mcp",
+  "icon": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
+  "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
+  "tags": [
+    "knowledge-base",
+    "mcp",
+    "rag",
+    "graphrag",
+    "semantic-search",
+    "wiki",
+    "self-hosted",
+    "documents"
+  ],
+  "tools": [
+    {
+      "name": "search_documents",
+      "description": "Hybrid search across documents (full-text + semantic). Supports filtering by folder and tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query string."
+          },
+          "folder": {
+            "type": "string",
+            "description": "Optional folder ID to scope the search to."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional tag IDs to filter by."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum number of results to return (default 20)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "get_document",
+      "description": "Fetch a single document by ID. Returns full content, metadata, and tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Document ID."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "create_document",
+      "description": "Create a new document. Optionally provide initial markdown content and a folder ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Document title."
+          },
+          "content": {
+            "type": "string",
+            "description": "Initial markdown content for the document."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "Optional folder ID to place the document in."
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Optional category ID. Category keys are always rebound to their configured category."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "update_document",
+      "description": "Update an existing document's title and/or content. The server creates a new version on each update.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Document ID to update."
+          },
+          "title": {
+            "type": "string",
+            "description": "New title for the document."
+          },
+          "content": {
+            "type": "string",
+            "description": "New markdown content for the document."
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Move the document to a folder."
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Move the document to a category. Category keys cannot escape their configured category."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "list_documents",
+      "description": "List documents with pagination, optionally filtered by folder or tag.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Optional folder ID to filter by."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Optional tag ID to filter by."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Page number (1-indexed, default 1)."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Items per page (default 20, max 100)."
+          }
+        }
+      }
+    },
+    {
+      "name": "list_folders",
+      "description": "List folders, optionally scoped to a parent folder. Returns a flat list of immediate children.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "Optional parent folder ID. Omit to list top-level (root) folders."
+          }
+        }
+      }
+    },
+    {
+      "name": "create_folder",
+      "description": "Create a new folder, optionally nested under a parent folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Folder name."
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Optional parent folder ID for nesting."
+          },
+          "categoryId": {
+            "type": "string",
+            "description": "Optional category ID. Category keys are always rebound to their configured category."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "create_snapshot",
+      "description": "Create a named snapshot (labelled version) of a document from its current content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "description": "Document ID to snapshot."
+          },
+          "label": {
+            "type": "string",
+            "description": "Short label for the snapshot (e.g. 'v1.0-release')."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional longer description of the snapshot."
+          }
+        },
+        "required": [
+          "documentId",
+          "label"
+        ]
+      }
+    },
+    {
+      "name": "get_version_history",
+      "description": "List the version history for a document. Optionally restrict to named snapshots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "description": "Document ID whose versions should be listed."
+          },
+          "onlySnapshots": {
+            "type": "boolean",
+            "description": "When true, only return named snapshots (skip auto-saved revisions)."
+          }
+        },
+        "required": [
+          "documentId"
+        ]
+      }
+    },
+    {
+      "name": "export_document",
+      "description": "Export a document as markdown. Returns the rendered markdown content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Document ID to export."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "list_categories",
+      "description": "List categories visible to the API key. Category keys receive only their bound category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "create_category",
+      "description": "Create a category. Requires a workspace key with write access; category keys cannot mutate categories.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "list_tags",
+      "description": "List tags visible in the workspace or bound category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_related_documents",
+      "description": "Traverse the knowledge graph from one authorized document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "documentId"
+        ]
+      }
+    },
+    {
+      "name": "search_knowledge_graph",
+      "description": "Search connected knowledge using authorized seed documents. Category keys may use only documents in their category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "docIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          }
+        },
+        "required": [
+          "query",
+          "docIds"
+        ]
+      }
+    },
+    {
+      "name": "get_document_index_status",
+      "description": "Read the current indexing and knowledge-pipeline status of a document.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "documentId"
+        ]
+      }
+    },
+    {
+      "name": "refresh_document_index",
+      "description": "Request reindexing after a document or metadata change. Requires write access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "documentId"
+        ]
+      }
+    }
+  ],
+  "prompts": [
+    {
+      "name": "organize_workspace",
+      "description": "Plan safe document organization using DocsMint categories and folders."
+    },
+    {
+      "name": "research_workspace",
+      "description": "Research a question with hybrid search and GraphRAG while citing DocsMint document IDs."
+    }
+  ],
+  "resources": [
+    {
+      "name": "editor-guide",
+      "description": "Editor usage guide: read before update, preserve language and structure, refresh the index when needed.",
+      "uri": "docsmint://guide/editor"
+    },
+    {
+      "name": "search-guide",
+      "description": "Search and GraphRAG guide: hybrid retrieval first, graph only from authorized document IDs.",
+      "uri": "docsmint://guide/search"
+    },
+    {
+      "name": "workspace-catalog",
+      "description": "Live scoped workspace catalog of categories, folders, and tags visible to the API key.",
+      "uri": "docsmint://workspace/catalog"
+    }
+  ]
+}

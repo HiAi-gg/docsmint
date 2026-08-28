@@ -420,6 +420,14 @@ function validatePublishedPackageProvenance(
 		}
 	}
 
+	if (
+		!jobCommands(jobs["publish-mcp-registry"] ?? {}).some((command) =>
+			command.includes("bun run scripts/validate-mcp-catalog.ts"),
+		)
+	) {
+		throw new Error("publish-mcp-registry must validate MCP catalog manifests");
+	}
+
 	const publishNpm = jobs["publish-npm"];
 	if (
 		!jobCommands(publishNpm ?? {}).some((command) =>
@@ -521,6 +529,10 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		publish?.steps?.findIndex(
 			(step) => step.run === "bun install --frozen-lockfile",
 		) ?? -1;
+	const catalogIndex =
+		publish?.steps?.findIndex(
+			(step) => step.run === "bun run scripts/validate-mcp-catalog.ts",
+		) ?? -1;
 	const publicationIndex =
 		publish?.steps?.findIndex((step) => step.run === "mcp-publisher publish") ?? -1;
 	const upload = publish?.steps?.find(
@@ -543,7 +555,8 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		installIndex < 0 ||
 		verificationIndex <= installIndex ||
 		verificationIndex < 0 ||
-		publicationIndex <= verificationIndex ||
+		catalogIndex <= verificationIndex ||
+		publicationIndex <= catalogIndex ||
 		upload?.uses !== "actions/upload-artifact@v4" ||
 		upload.with?.name !==
 			"manual-mcp-npm-provenance-${{ inputs.release_commit }}" ||

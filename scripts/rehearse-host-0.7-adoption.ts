@@ -2,6 +2,8 @@ import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import postgres from "postgres";
 
+const OSS_CANDIDATE_VERSION = "0.7.1";
+
 export interface MigrationSnapshot {
 	journalEntries: number;
 	schemaFingerprint: string;
@@ -296,7 +298,7 @@ export function verifyNoNewRequiredEnvironment(
 export function verifyAtomicAdoption(
 	evidence: AtomicAdoptionEvidence,
 	expected: { candidateCommit: string; packageManifests: string[] },
-): { adoptionCommit: string; version: "0.7.0" } {
+): { adoptionCommit: string; version: string } {
 	if (!COMMIT_PATTERN.test(evidence.adoptionCommit)) {
 		throw new Error("atomic adoption commit is not a full Git SHA");
 	}
@@ -310,8 +312,8 @@ export function verifyAtomicAdoption(
 		);
 	}
 	for (const manifest of expected.packageManifests) {
-		if (evidence.packageVersions[manifest] !== "0.7.0") {
-			throw new Error(`atomic adoption did not pin ${manifest} to 0.7.0`);
+		if (evidence.packageVersions[manifest] !== OSS_CANDIDATE_VERSION) {
+			throw new Error(`atomic adoption did not pin ${manifest} to ${OSS_CANDIDATE_VERSION}`);
 		}
 		if (!evidence.commitFiles.includes(manifest)) {
 			throw new Error(`atomic adoption commit is missing ${manifest}`);
@@ -326,8 +328,8 @@ export function verifyAtomicAdoption(
 			throw new Error(`atomic adoption commit is missing ${path}`);
 		}
 	}
-	if (evidence.lockfileVersion !== "0.7.0") {
-		throw new Error("atomic adoption lockfile does not resolve 0.7.0");
+	if (evidence.lockfileVersion !== OSS_CANDIDATE_VERSION) {
+		throw new Error(`atomic adoption lockfile does not resolve ${OSS_CANDIDATE_VERSION}`);
 	}
 	if (!evidence.localTarballResolved) {
 		throw new Error(
@@ -354,7 +356,7 @@ export function verifyAtomicAdoption(
 			"atomic adoption provenance record is not bound to the candidate",
 		);
 	}
-	return { adoptionCommit: evidence.adoptionCommit, version: "0.7.0" };
+	return { adoptionCommit: evidence.adoptionCommit, version: OSS_CANDIDATE_VERSION };
 }
 
 export function verifyRuntimeSmoke(
@@ -1391,10 +1393,10 @@ async function stageCandidateTarball(
 	) as { name: string; version: string; files: string[]; gitHead?: string };
 	if (
 		publicManifest.name !== "@hiai-gg/docsmint" ||
-		publicManifest.version !== "0.7.0" ||
+		publicManifest.version !== OSS_CANDIDATE_VERSION ||
 		!Array.isArray(publicManifest.files)
 	) {
-		throw new Error("candidate public manifest is not @hiai-gg/docsmint@0.7.0");
+		throw new Error(`candidate public manifest is not @hiai-gg/docsmint@${OSS_CANDIDATE_VERSION}`);
 	}
 	publicManifest.gitHead = prepared.candidateCommit;
 	await mkdir(prepared.stageRoot, { recursive: true });
@@ -1455,7 +1457,7 @@ async function updatePackageVersion(path: string): Promise<void> {
 			? "devDependencies"
 			: undefined;
 	if (!field) throw new Error(`${path} has no @hiai-gg/docsmint dependency`);
-	(manifest[field] as Record<string, string>)["@hiai-gg/docsmint"] = "0.7.0";
+	(manifest[field] as Record<string, string>)["@hiai-gg/docsmint"] = OSS_CANDIDATE_VERSION;
 	await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
@@ -1557,7 +1559,7 @@ async function packAndAdoptActual(
 	) as { version?: string; gitHead?: string };
 	const lockfile = await readFile(join(prepared.hostRoot, "bun.lock"), "utf8");
 	const localTarballResolved =
-		installedManifest.version === "0.7.0" &&
+		installedManifest.version === OSS_CANDIDATE_VERSION &&
 		lockfile.includes(basename(tarball));
 	const verifiedTarballSha256 = new Bun.CryptoHasher("sha256")
 		.update(await readFile(tarball))
@@ -1945,7 +1947,7 @@ export async function stopIsolatedRedisServer(
 }
 
 export function workspaceEnabledForRuntimeVersion(version: string): "true" | "false" {
-	if (version !== "0.6.8" && version !== "0.7.0") {
+	if (version !== "0.6.8" && !/^0\.7\.\d+$/.test(version)) {
 		throw new Error(`unsupported rehearsal runtime version: ${version}`);
 	}
 	return "true";
@@ -1954,7 +1956,7 @@ export function workspaceEnabledForRuntimeVersion(version: string): "true" | "fa
 export function attachmentStorageEnforcementForRuntimeVersion(
 	version: string,
 ): "true" | "false" {
-	if (version !== "0.6.8" && version !== "0.7.0") {
+	if (version !== "0.6.8" && !/^0\.7\.\d+$/.test(version)) {
 		throw new Error(`unsupported rehearsal runtime version: ${version}`);
 	}
 	return "true";
@@ -2229,7 +2231,7 @@ async function smoke070Actual(
 		runner,
 		prepared,
 		prepared.hostRoot,
-		"0.7.0",
+		OSS_CANDIDATE_VERSION,
 	);
 	try {
 		const unscoped = await signAssertion(prepared);
@@ -2318,7 +2320,7 @@ async function smoke070Actual(
 			`/api/documents/${allowedId}`,
 		);
 		return {
-			version: "0.7.0",
+			version: OSS_CANDIDATE_VERSION,
 			health: true,
 			crud: {
 				create: true,

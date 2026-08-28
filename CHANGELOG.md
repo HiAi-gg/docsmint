@@ -7,9 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-08-28
+
+### Changed
+
+- Publish MCP catalog metadata for hosted docs (`https://docsmint.com/docs/mcp`),
+  Apache-2.0 license, theme icons, the `npx … docsmint-mcp` stdio entry, and
+  Glama connector contact `app.croco.team@gmail.com`.
+- Keep `publish-mcp-registry` from tagging until `server.json` and `glama.json`
+  pass the catalog validator.
+
 ### Documentation
 
-- Tighten the public README around DocsMint 0.7.0, add a product roadmap, and
+- Tighten the public README around DocsMint 0.7.x, add a product roadmap, and
   align security, usage, architecture, OpenAPI, and CLI display copy with the
   current knowledge-workspace identity.
 - Publish the LobeHub claim badge, Apache-2.0 license contract, and an explicit
@@ -18,6 +28,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Use `npx -y @hiai-gg/docsmint docsmint-mcp` as the primary MCP install command
   and list the bundled `docsmint-document-manager` Skill so marketplace
   validators can handshake over Node and count the skill.
+- Link Docker Hub (`vgalibov/docsmint`) from the README with role-specific
+  `docker pull` tags so marketplace listings can treat Docker as an active
+  source, matching the GitHub repository link.
 
 ## [0.7.0] - 2026-08-24
 
