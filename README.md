@@ -185,8 +185,8 @@ context resources, and a document-manager skill for agent clients.
 {
   "mcpServers": {
     "docsmint": {
-      "command": "bunx",
-      "args": ["--package", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "command": "npx",
+      "args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"
@@ -200,8 +200,11 @@ Run the server directly to verify the installation:
 
 ```bash
 npx -y @hiai-gg/docsmint docsmint-mcp
-bunx --package @hiai-gg/docsmint docsmint-mcp
 ```
+
+`npx` is the install path LobeHub and Node MCP clients validate. Bun checkouts can use
+`bunx --package @hiai-gg/docsmint docsmint-mcp` instead. The process speaks MCP on
+stdio and advertises tools, prompts, and resources without a running DocsMint API.
 
 The server uses stdio and works with MCP-capable clients such as Claude
 Desktop, Cursor, and coding agents that accept standard MCP configuration. See
@@ -241,7 +244,13 @@ resources, skill, and API routes.
 - `docsmint://guide/search`: Search and GraphRAG guide.
 - `docsmint://workspace/catalog`: Live scoped workspace catalog.
 
-The bundled agent skill is [`docsmint-document-manager`](skills/docsmint-document-manager/SKILL.md).
+### Skills (1)
+
+- [`docsmint-document-manager`](skills/docsmint-document-manager/SKILL.md):
+  create, organize, edit, and research DocsMint documents through the 17 MCP
+  tools, including hybrid search, GraphRAG, and index refresh.
+
+The same Skill ships in the npm package under `skills/docsmint-document-manager/SKILL.md`.
 
 ## Agent skills after installation
 

@@ -15,6 +15,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Publish the LobeHub claim badge, Apache-2.0 license contract, and an explicit
   MCP Features catalog (17 tools, 2 prompts, 3 resources) for marketplace
   scanners.
+- Use `npx -y @hiai-gg/docsmint docsmint-mcp` as the primary MCP install command
+  and list the bundled `docsmint-document-manager` Skill so marketplace
+  validators can handshake over Node and count the skill.
 
 ## [0.7.0] - 2026-08-24
 

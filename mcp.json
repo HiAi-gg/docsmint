@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "docsmint": {
+      "command": "npx",
+      "args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "env": {
+        "HIAI_DOCS_URL": "http://localhost:50700",
+        "HIAI_DOCS_API_KEY": "your-global-or-category-key"
+      }
+    }
+  }
+}

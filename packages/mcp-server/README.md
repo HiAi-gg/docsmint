@@ -33,8 +33,8 @@ The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not
 {
   "mcpServers": {
     "docsmint": {
-      "command": "bunx",
-      "args": ["--package", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "command": "npx",
+      "args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"
@@ -84,6 +84,12 @@ npx -y @hiai-gg/docsmint docsmint-mcp
 - `docsmint://guide/editor`: Editor usage guide.
 - `docsmint://guide/search`: Search and GraphRAG guide.
 - `docsmint://workspace/catalog`: Live scoped workspace catalog.
+
+### Skills (1)
+
+- [`docsmint-document-manager`](../../skills/docsmint-document-manager/SKILL.md):
+  create, organize, edit, and research DocsMint documents through the 17 MCP
+  tools.
 
 ## Tools and REST routes
 

@@ -57,6 +57,11 @@ describe('DocsMint MCP catalog contract', () => {
     expect(readme).toContain('`docsmint://guide/search`');
     expect(readme).toContain('`docsmint://workspace/catalog`');
     expect(readme).toContain('npx -y @hiai-gg/docsmint docsmint-mcp');
+    expect(readme).toContain('"command": "npx"');
+    expect(readme).toContain('"args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"]');
+    expect(readme).toContain('### Skills (1)');
+    expect(readme).toContain('skills/docsmint-document-manager/SKILL.md');
+    expect(mcpReadme).toContain('"command": "npx"');
     expect(mcpReadme).toContain('### Bunx');
     expect(mcpReadme).toContain('### NPX');
     expect(mcpReadme).toContain('### Local checkout');
