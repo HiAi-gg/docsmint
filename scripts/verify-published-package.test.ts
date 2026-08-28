@@ -7,6 +7,11 @@ import { join } from "node:path";
 import { verifyPublishedPackage } from "./verify-published-package";
 
 const releaseCommit = "0123456789abcdef0123456789abcdef01234567";
+const committedPublicPackage = (await Bun.file(
+	new URL("../package.public.json", import.meta.url),
+).json()) as { version: string };
+const releaseVersion = committedPublicPackage.version;
+const releaseTag = `v${releaseVersion}`;
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -34,7 +39,7 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 		"LICENSE": "Apache-2.0 fixture\n",
 		"README.md": "# DocsMint fixture\n",
 		"dist/index.d.ts": "export declare const version: string;\n",
-		"dist/index.js": 'export const version = "0.7.0";\n',
+		"dist/index.js": `export const version = "${releaseVersion}";\n`,
 		"packages/cli/src/index.ts": '#!/usr/bin/env bun\nconsole.log("cli");\n',
 		"packages/mcp-server/src/index.ts":
 			'#!/usr/bin/env bun\nconsole.log("mcp");\n',
@@ -42,7 +47,7 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 	};
 	const manifest = {
 		name: "@hiai-gg/docsmint",
-		version: mutation.manifestVersion ?? "0.7.0",
+		version: mutation.manifestVersion ?? releaseVersion,
 		main: "./dist/index.js",
 		types: "./dist/index.d.ts",
 		exports: {
@@ -62,7 +67,7 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 		await Bun.write(path, contents);
 	}
 
-	const tarballPath = join(directory, "docsmint-0.7.0.tgz");
+	const tarballPath = join(directory, `docsmint-${releaseVersion}.tgz`);
 	const tar = Bun.spawn(["tar", "-czf", tarballPath, "-C", directory, "package"]);
 	if ((await tar.exited) !== 0) throw new Error("failed to create package fixture");
 	const bytes = new Uint8Array(await Bun.file(tarballPath).arrayBuffer());
@@ -83,12 +88,12 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 			}
 			return Response.json({
 				name: "@hiai-gg/docsmint",
-				version: "0.7.0",
+				version: releaseVersion,
 				...(mutation.omitGitHead
 					? {}
 					: { gitHead: mutation.gitHead ?? releaseCommit }),
 				dist: {
-					tarball: `${server.url.origin}/docsmint-0.7.0.tgz`,
+					tarball: `${server.url.origin}/docsmint-${releaseVersion}.tgz`,
 					integrity: mutation.integrity ?? actualIntegrity,
 					shasum: mutation.shasum ?? actualShasum,
 				},
@@ -109,8 +114,8 @@ test("verifies exact newly published and already-existing package provenance", a
 				packageName: "@hiai-gg/docsmint",
 				registryUrl: fixture.server.url.origin,
 				releaseCommit,
-				releaseTag: "v0.7.0",
-				releaseVersion: "0.7.0",
+				releaseTag,
+				releaseVersion,
 				runCleanConsumer: async (tarballPath) => {
 					consumerTarball = tarballPath;
 					expect(await Bun.file(tarballPath).exists()).toBeTrue();
@@ -152,8 +157,8 @@ test.each([
 				packageName: "@hiai-gg/docsmint",
 				registryUrl: fixture.server.url.origin,
 				releaseCommit,
-				releaseTag: "v0.7.0",
-				releaseVersion: "0.7.0",
+				releaseTag,
+				releaseVersion,
 				runCleanConsumer: async () => {},
 			}),
 		).rejects.toThrow(message);
