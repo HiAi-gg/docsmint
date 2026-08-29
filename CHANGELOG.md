@@ -7,6 +7,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-08-30
+
+### Fixed
+
+- Shorten the MCP Registry server description to the 100-character
+  `_meta.io.description` limit so `mcp-publisher validate` accepts the catalog
+  entry.
+
 ## [0.7.3] - 2026-08-30
 
 ### Fixed

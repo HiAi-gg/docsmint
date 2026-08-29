@@ -48,7 +48,10 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	}
 
 	const catalogDescription =
-		"Self-hosted AI-native knowledge workspace. Manage scoped documents, folders, categories, hybrid search, GraphRAG, and indexing through MCP.";
+		"Self-hosted AI-native knowledge workspace with hybrid search, GraphRAG, and MCP.";
+	if (catalogDescription.length > 100) {
+		throw new Error("MCP registry description must be at most 100 characters");
+	}
 	if (asString(registry.description, "server.json description") !== catalogDescription) {
 		throw new Error("server.json description must use the current product-aligned MCP copy");
 	}
