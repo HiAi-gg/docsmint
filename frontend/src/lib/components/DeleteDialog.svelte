@@ -5,6 +5,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -95,6 +96,7 @@ function handleOpenChange(next: boolean) {
 	bind:open
 	onOpenChange={handleOpenChange}
 >
+	<DialogContent>
 	{#if success}
 		<DialogHeader>
 			<DialogTitle>{successTitle}</DialogTitle>
@@ -145,4 +147,5 @@ function handleOpenChange(next: boolean) {
 			{success ? doneLabel : confirmLabel}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>

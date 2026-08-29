@@ -12,6 +12,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// be delivered as a response header to protect the rendered application.
 	response.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
 	response.headers.set("X-Frame-Options", "DENY");
+	// HTML shells must not stick in the browser after a hashed-asset deploy.
+	// A cached `/login` document still pointing at `./_app/...` 404s CSS/JS
+	// and renders the unstyled page.
+	if (response.headers.get("content-type")?.includes("text/html")) {
+		response.headers.set("Cache-Control", "no-store");
+	}
 	return response;
 };
 

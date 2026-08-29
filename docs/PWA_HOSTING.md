@@ -45,7 +45,8 @@ The custom `src/pwa/sw.ts` must:
    `/offline.html` shell.
 5. Use the required host/deployment cache prefix and clear only that prefix on
    logout or an explicit `CLEAR_HOST_CACHES` message.
-6. Accept `SKIP_WAITING` only through the user-controlled update flow.
+6. Accept `SKIP_WAITING` from the in-app update prompt, and skip waiting on
+   install so a broken previous shell (404 hashed CSS/JS) can recover.
 
 Document and folder snapshots are stored in identity-partitioned Dexie after a
 successful read when offline access is enabled. The service worker itself does

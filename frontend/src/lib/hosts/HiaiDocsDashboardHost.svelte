@@ -73,6 +73,7 @@ import {
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
+import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
 import * as m from "$lib/paraglide/messages.js";
 import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
 import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
@@ -95,6 +96,7 @@ const { data, extensionContext = { pathname: "/" } } = $props<{
 const frontendExtensions = getFrontendExtensions();
 const route = getDocsmintRouteAdapter();
 const request = getDocsmintRequestAdapter();
+const share = getDocsmintShareAdapter();
 const dashboardWidgets = $derived.by(() =>
 	resolveExtensions(frontendExtensions.dashboardWidgets, extensionContext),
 );
@@ -1081,6 +1083,7 @@ const isFolderEmpty = $derived(
 {#if shareTarget}
   <ShareDialog
     bind:open={showShareDialog}
+    displayMode={share.displayMode}
     documentId={shareTarget.kind === "document" ? shareTarget.documentId : ""}
     documentTitle={shareTarget.kind === "document" ? shareTarget.title : ""}
     folderId={shareTarget.kind === "folder" ? shareTarget.folderId : ""}

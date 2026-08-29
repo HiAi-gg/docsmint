@@ -7,10 +7,29 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-08-30
+
+### Fixed
+
+- Keep nested routes from loading relative `./_app` CSS that 404s on `/login`
+  and `/docs/:id`. Asset URLs now resolve from the origin root.
+- Restore modal chrome after `@hiai-gg/hiai-ui` 0.1 split `Dialog` from
+  `DialogContent`, so settings, folder, category, and related dialogs no longer
+  dump into the sidebar and dashboard.
+- Keep category-dialog focus rings inside the scroll region instead of clipping
+  off the left edge.
+- Add Share to Recent document menus, using the same public-link dialog as the
+  folder tree.
+
 ### Changed
 
+- Default the OSS share contour to a public token link everywhere (dashboard,
+  sidebar document/folder/category, editor, Recent). Hosts may opt into
+  restricted "Specific people" once via `DocsmintAppShellHost` `share`.
 - Consume `@hiai-gg/hiai-ui` 0.1.3 for the circular theme spread and Inter
   `--font-sans` token; the app still loads Inter Variable webfont files.
+- Activate a newly installed service worker immediately and do not cache HTML
+  shells, so a hashed-asset deploy cannot leave an unstyled previous shell.
 
 ## [0.7.2] - 2026-08-29
 

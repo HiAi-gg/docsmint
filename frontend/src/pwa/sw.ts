@@ -18,6 +18,17 @@ const deploymentId =
 export const CACHE_PREFIX = `${appId}::${deploymentId}::pwa-v1`;
 setCacheNameDetails({ prefix: CACHE_PREFIX });
 
+self.addEventListener("install", () => {
+	// A broken previous shell cannot show the in-app update prompt because
+	// its JS/CSS already 404. Activate this worker without waiting for
+	// every tab to close.
+	void self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+	event.waitUntil(self.clients.claim());
+});
+
 // Precache shell/static assets injected by vite-plugin-pwa
 precacheAndRoute(self.__WB_MANIFEST);
 

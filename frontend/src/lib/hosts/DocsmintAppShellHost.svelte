@@ -24,22 +24,26 @@ import {
 	provideDocsmintRequestAdapter,
 	provideDocsmintRouteAdapter,
 } from "./route-context";
+import { provideDocsmintShareAdapter } from "./share-context";
 import type {
 	DocsmintRealtimeAdapter,
 	DocsmintRequestAdapter,
 	DocsmintRouteAdapter,
+	DocsmintShareAdapter,
 } from "./types";
 
 const {
 	route,
 	request = { fetch },
 	realtime,
+	share,
 	extensions = {},
 	children,
 }: {
 	route: DocsmintRouteAdapter;
 	request?: DocsmintRequestAdapter;
 	realtime?: DocsmintRealtimeAdapter;
+	share?: DocsmintShareAdapter;
 	extensions?: Partial<DocsmintFrontendExtensions>;
 	children: Snippet;
 } = $props();
@@ -65,6 +69,11 @@ provideDocsmintRequestAdapter({
 });
 const realtimeAdapter = untrack(() => realtime);
 if (realtimeAdapter) provideDocsmintRealtimeAdapter(realtimeAdapter);
+provideDocsmintShareAdapter({
+	get displayMode() {
+		return share?.displayMode ?? "standalone";
+	},
+});
 
 editorPreferences.init();
 searchPreferences.init();

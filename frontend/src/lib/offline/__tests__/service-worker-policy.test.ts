@@ -30,8 +30,11 @@ describe("service worker offline fallback policy", () => {
 		expect(config).toContain('src: "/pwa-192x192.png"');
 		expect(config).toContain('src: "/pwa-512x512.png"');
 		expect(config).toContain('src: "/maskable-icon.png"');
-		expect(config).toContain('"docsmint-oss-0.7.2"');
+		expect(config).toContain('"docsmint-oss-0.7.3"');
 		expect(hooks).toContain('register("/sw.js", { scope: "/" })');
+		expect(hooks).toContain('postMessage({ type: "SKIP_WAITING" })');
+		expect(worker).toContain("void self.skipWaiting()");
+		expect(worker).toContain("self.clients.claim()");
 		expect(worker).toContain(
 			'registerRoute(({ url }) => url.pathname.startsWith("/api/"), new NetworkOnly())',
 		);
@@ -45,7 +48,7 @@ describe("service worker offline fallback policy", () => {
 			expect(existsSync(new URL(icon, frontendRoot)), icon).toBe(true);
 		}
 		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:");
-		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.2");
+		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.3");
 	});
 
 	it("ships a data-free offline HTML shell", async () => {
@@ -73,6 +76,13 @@ describe("service worker offline fallback policy", () => {
 			'globPatterns: ["**/*.{html,js,css,ico,png,svg,webp,woff2}"]',
 		);
 		expect(config).not.toContain("additionalManifestEntries");
+	});
+
+	it("does not cache HTML shells after a hashed-asset deploy", async () => {
+		const hooks = await Bun.file(
+			new URL("src/hooks.server.ts", frontendRoot),
+		).text();
+		expect(hooks).toContain('Cache-Control", "no-store"');
 	});
 
 	it("does not add the generated web manifest to the precache twice", async () => {

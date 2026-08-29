@@ -17,6 +17,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -352,6 +353,7 @@ function handleDialogOpenChange(next: boolean) {
 </script>
 
 <Dialog bind:open onOpenChange={handleDialogOpenChange}>
+  <DialogContent>
   <DialogHeader>
     <DialogTitle>{title}</DialogTitle>
     {#if deletedCategoryName}
@@ -424,7 +426,7 @@ function handleDialogOpenChange(next: boolean) {
     <form
       data-category-dialog-scroll
       onsubmit={handleSubmit}
-      class="max-h-[calc(100dvh-12rem)] space-y-4 overflow-y-auto overscroll-contain pr-1"
+      class="max-h-[calc(100dvh-12rem)] space-y-4 overflow-y-auto overscroll-contain px-1"
     >
       <div class="space-y-2">
         <Label for="category-dialog-name">{m.categories_name_placeholder()}</Label>
@@ -624,4 +626,5 @@ function handleDialogOpenChange(next: boolean) {
       {createdCategoryName || deletedCategoryName ? 'Done' : submitLabel}
     </Button>
   </DialogFooter>
+  </DialogContent>
 </Dialog>

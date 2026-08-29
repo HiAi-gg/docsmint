@@ -3,6 +3,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -191,6 +192,7 @@ $effect(() => {
 </script>
 
 <Dialog bind:open onOpenChange={handleOpenChange}>
+  <DialogContent>
   <DialogHeader>
     <DialogTitle>{dialogTitle}</DialogTitle>
     <DialogDescription>{m.tags_name_placeholder()}</DialogDescription>
@@ -283,4 +285,5 @@ $effect(() => {
       {submitLabel}
     </Button>
   </DialogFooter>
+  </DialogContent>
 </Dialog>

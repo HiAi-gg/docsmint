@@ -2,6 +2,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -139,6 +140,7 @@ function close() {
 </script>
 
 <Dialog bind:open onOpenChange={(next) => { if (!next) close(); }}>
+	<DialogContent>
 	<DialogHeader>
 		<DialogTitle>{itemType === "folder" ? m.folders_move() : m.doc_move_to_folder()}</DialogTitle>
 		<DialogDescription>
@@ -196,4 +198,5 @@ function close() {
 			{m.action_save()}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>

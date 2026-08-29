@@ -175,6 +175,7 @@ function close() {
 </script>
 
 <Dialog.Dialog bind:open>
+	<Dialog.DialogContent>
 	<Dialog.DialogHeader>
 		<Dialog.DialogTitle>{m.settings_title()}</Dialog.DialogTitle>
 		<Dialog.DialogDescription>
@@ -445,6 +446,7 @@ function close() {
 		{/if}
 		<Button variant="outline" onclick={close} class="w-full sm:w-auto">{m.action_close()}</Button>
 	</Dialog.DialogFooter>
+	</Dialog.DialogContent>
 </Dialog.Dialog>
 
 <style>

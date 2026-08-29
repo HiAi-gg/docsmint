@@ -9,5 +9,8 @@ export type {
 	DocsmintRealtimeAdapter,
 	DocsmintRequestAdapter,
 	DocsmintRouteAdapter,
+	DocsmintShareAdapter,
+	DocsmintShareDisplayMode,
 } from "../../../frontend/src/lib/hosts/types";
 export { getDocsmintRealtimeAdapter } from "../../../frontend/src/lib/hosts/realtime-context";
+export { getDocsmintShareAdapter } from "../../../frontend/src/lib/hosts/share-context";

@@ -7,6 +7,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -134,6 +135,7 @@ function handleLabelKeydown(e: KeyboardEvent) {
 </script>
 
 <Dialog bind:open onOpenChange={handleOpenChange}>
+	<DialogContent>
 	<DialogHeader>
 		<DialogTitle>{m.version_snapshot_dialog_title()}</DialogTitle>
 		<DialogDescription>
@@ -215,4 +217,5 @@ function handleLabelKeydown(e: KeyboardEvent) {
 			{/if}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>

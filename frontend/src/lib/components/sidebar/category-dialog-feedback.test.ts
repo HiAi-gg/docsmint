@@ -39,6 +39,7 @@ describe("category dialog mobile layout", () => {
 		expect(source).toContain("data-category-dialog-scroll");
 		expect(source).toContain("max-h-[calc(100dvh-12rem)]");
 		expect(source).toContain("overflow-y-auto");
+		expect(source).toContain("overscroll-contain px-1");
 		expect(source).toContain("max-sm:flex-col");
 	});
 });

@@ -55,7 +55,12 @@ export type {
 	SharedDocumentExtensionCapability,
 	SharedDocumentExtensionContext,
 } from "./extensions/types";
-export type { DocsmintRealtimeAdapter, DocsmintRouteAdapter } from "./hosts";
+export type {
+	DocsmintRealtimeAdapter,
+	DocsmintRouteAdapter,
+	DocsmintShareAdapter,
+	DocsmintShareDisplayMode,
+} from "./hosts";
 export {
 	DocsmintAppShellHost,
 	DocsmintDashboardHost,
@@ -63,6 +68,7 @@ export {
 	DocsmintSearchHost,
 	DocsmintSharedDocumentHost,
 	getDocsmintRealtimeAdapter,
+	getDocsmintShareAdapter,
 	HiaiDocsDashboardHost,
 	HiaiDocsExtensionProvider,
 	HiaiDocsSearchHost,

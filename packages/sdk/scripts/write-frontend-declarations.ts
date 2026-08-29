@@ -16,7 +16,9 @@ export interface DocsmintRequestAdapter { fetch: typeof fetch; }
 export interface DocsmintRealtimeConnection { serverUrl: string; roomName: string; params?: Record<string, string>; }
 export interface DocsmintRealtimeAdapter { resolveRealtimeConnection(input: { documentId: string; accessToken?: string }): DocsmintRealtimeConnection; }
 export declare function getDocsmintRealtimeAdapter(): DocsmintRealtimeAdapter | undefined;
-export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; request?: DocsmintRequestAdapter; realtime?: DocsmintRealtimeAdapter; extensions?: Record<string, unknown>; children: Snippet; }
+export interface DocsmintShareAdapter { displayMode: "host-managed" | "standalone"; }
+export declare function getDocsmintShareAdapter(): DocsmintShareAdapter;
+export interface DocsmintAppShellHostProps { route: DocsmintRouteAdapter; request?: DocsmintRequestAdapter; realtime?: DocsmintRealtimeAdapter; share?: DocsmintShareAdapter; extensions?: Record<string, unknown>; children: Snippet; }
 export declare const DocsmintAppShellHost: Component<DocsmintAppShellHostProps>;
 export declare function getDocsmintRequestAdapter(): DocsmintRequestAdapter;
 `,

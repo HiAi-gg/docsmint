@@ -57,6 +57,7 @@ import ShareDialog from "$lib/components/ShareDialog.svelte";
 import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
 import { getFrontendExtensions } from "$lib/extensions/context";
 import { resolveExtensions } from "$lib/extensions/resolve";
+import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
 import * as m from "$lib/paraglide/messages.js";
 import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
 import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
@@ -69,6 +70,7 @@ import {
 import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
 
 const { data } = $props();
+const share = getDocsmintShareAdapter();
 
 let title = $state("");
 let content = $state("");
@@ -1301,7 +1303,7 @@ $effect(() => {
     {/if}
     </div>
 
-    <ShareDialog bind:open={showShareDialog} displayMode="standalone" documentId={data.document.id} documentTitle={title} />
+    <ShareDialog bind:open={showShareDialog} displayMode={share.displayMode} documentId={data.document.id} documentTitle={title} />
     <FolderDialog
       bind:open={showCreateFolderDialog}
       mode="create"

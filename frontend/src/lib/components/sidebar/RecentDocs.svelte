@@ -3,6 +3,7 @@ import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -25,7 +26,9 @@ import {
 	listDocuments,
 	updateDocument,
 } from "$lib/api/documents";
+import ShareDialog from "$lib/components/ShareDialog.svelte";
 import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
+import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	getDocRefreshNonce,
@@ -36,6 +39,7 @@ import { copyToClipboard } from "$lib/utils/clipboard.js";
 import { cn } from "$lib/utils.js";
 
 const request = getDocsmintRequestAdapter();
+const share = getDocsmintShareAdapter();
 let recentDocs = $state<Document[]>([]);
 let activeId = $state<string | null>(null);
 let loadError = $state<string | null>(null);
@@ -59,6 +63,16 @@ let renameSubmitting = $state(false);
 let showDeleteDialog = $state(false);
 let deleteTarget = $state<{ id: string; title: string } | null>(null);
 let deleteBusy = $state(false);
+
+let showShareDialog = $state(false);
+let shareDocumentId = $state("");
+let shareDocumentTitle = $state("");
+
+function openShareDialogForDocument(id: string, title: string) {
+	shareDocumentId = id;
+	shareDocumentTitle = title;
+	showShareDialog = true;
+}
 
 async function fetchRecentDocs() {
 	try {
@@ -302,6 +316,9 @@ async function confirmDelete() {
           <DropdownMenuItem onSelect={() => startRename(doc.id, doc.title)}>
             {m.folders_rename()}
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => openShareDialogForDocument(doc.id, doc.title)}>
+            {m.doc_share()}
+          </DropdownMenuItem>
           <DropdownMenuItem
             class="text-destructive focus:text-destructive"
             onSelect={() => startDelete(doc.id, doc.title)}
@@ -321,6 +338,7 @@ async function confirmDelete() {
     if (!next) closeRenameDialog();
   }}
 >
+  <DialogContent>
   <DialogHeader>
     <DialogTitle>{m.folders_rename()}</DialogTitle>
     <DialogDescription>{m.doc_title_label()}</DialogDescription>
@@ -361,6 +379,7 @@ async function confirmDelete() {
       {renameSubmitting ? m.action_loading() : m.action_save()}
     </Button>
   </DialogFooter>
+  </DialogContent>
 </Dialog>
 
 <!-- Delete confirmation -->
@@ -374,6 +393,13 @@ async function confirmDelete() {
   busy={deleteBusy}
   onConfirm={confirmDelete}
   onCancel={cancelDelete}
+/>
+
+<ShareDialog
+  bind:open={showShareDialog}
+  displayMode={share.displayMode}
+  documentId={shareDocumentId}
+  documentTitle={shareDocumentTitle}
 />
 
 <style>

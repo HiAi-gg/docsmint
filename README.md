@@ -45,6 +45,16 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
+## What's new in 0.7.3?
+
+- **One public-link share dialog in OSS.** Dashboard, sidebar (including Recent),
+  and the editor open the same public token share. Hosts can opt into restricted
+  admission from `DocsmintAppShellHost`.
+- **Dialogs stay in their overlays** after hiai-ui 0.1, and nested routes load
+  CSS from `/_app` instead of `./_app`.
+- **hiai-ui 0.1.3** for circular theme spread; Inter remains the product UI
+  typeface.
+
 ## What's new in 0.7.2?
 
 - **Share view matches the editor.** Twitter/Twemoji SVG emoji images no longer
@@ -122,7 +132,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.2` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.3` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 

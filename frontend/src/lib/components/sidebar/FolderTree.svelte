@@ -19,6 +19,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -86,6 +87,7 @@ import {
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
 } from "$lib/hosts/route-context";
+import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
 import * as m from "$lib/paraglide/messages.js";
 import {
 	acknowledgeDocumentPlacement,
@@ -111,6 +113,7 @@ import { type DndEvent, dndzone } from "$lib/utils/dndzone";
 
 const route = getDocsmintRouteAdapter();
 const request = getDocsmintRequestAdapter();
+const share = getDocsmintShareAdapter();
 
 // Rename/delete target shared by folders and documents in the tree.
 type EntityKind = "folder" | "doc";
@@ -1979,6 +1982,7 @@ const buckets = $derived.by(() => {
     if (!next) closeRenameDialog();
   }}
 >
+  <DialogContent>
   <DialogHeader>
     <DialogTitle>{m.folders_rename()}</DialogTitle>
     <DialogDescription>
@@ -2021,6 +2025,7 @@ const buckets = $derived.by(() => {
       {renameSubmitting ? m.action_loading() : m.action_save()}
     </Button>
   </DialogFooter>
+  </DialogContent>
 </Dialog>
 
 <!-- Delete confirmation (folders and documents) -->
@@ -2055,7 +2060,7 @@ const buckets = $derived.by(() => {
 
 <ShareDialog
   bind:open={showShareDialog}
-	 displayMode="standalone"
+  displayMode={share.displayMode}
   documentId={shareDocumentId}
   documentTitle={shareDocumentTitle}
   folderId={shareFolderId}

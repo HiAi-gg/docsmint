@@ -44,4 +44,8 @@ describe("supported reverse-proxy deployment", () => {
 		expect(csrf?.checkOrigin).not.toBe(false);
 		expect(csrf?.trustedOrigins ?? []).not.toContain("*");
 	});
+
+	test("emits origin-root asset URLs so nested routes can load CSS", () => {
+		expect(svelteConfig.kit?.paths?.relative).toBe(false);
+	});
 });

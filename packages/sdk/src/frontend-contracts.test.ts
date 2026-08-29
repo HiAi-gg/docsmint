@@ -36,3 +36,17 @@ test("ShareDialog publishes an additive standalone display mode", () => {
 	);
 	expect(declarations).toContain('displayMode?: "host-managed" | "standalone"');
 });
+
+test("AppShellHost share adapter is opt-in host-managed", () => {
+	const declarations = readFileSync(
+		new URL("../scripts/write-frontend-declarations.ts", import.meta.url),
+		"utf8",
+	);
+	expect(declarations).toContain(
+		'export interface DocsmintShareAdapter { displayMode: "host-managed" | "standalone"; }',
+	);
+	expect(declarations).toContain("share?: DocsmintShareAdapter");
+	expect(declarations).toContain(
+		"export declare function getDocsmintShareAdapter(): DocsmintShareAdapter;",
+	);
+});

@@ -2,6 +2,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -130,6 +131,7 @@ function close() {
 </script>
 
 <Dialog bind:open onOpenChange={(next) => { if (!next) close(); }}>
+	<DialogContent>
 	<DialogHeader>
 		<DialogTitle>Save as Copy</DialogTitle>
 		<DialogDescription>
@@ -205,4 +207,5 @@ function close() {
 			{m.action_save()}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>

@@ -54,6 +54,13 @@ describe("dashboard sharing entry points", () => {
 		expect(documentCard).toContain("opacity-100 transition-opacity");
 	});
 
+	test("recent document menus can open the shared dialog", () => {
+		const source = read("sidebar/RecentDocs.svelte");
+		expect(source).toContain("openShareDialogForDocument(doc.id, doc.title)");
+		expect(source).toContain("displayMode={share.displayMode}");
+		expect(source).toContain("documentId={shareDocumentId}");
+	});
+
 	test("dashboard category sections expose category sharing", () => {
 		const source = read("../hosts/HiaiDocsDashboardHost.svelte");
 		expect(source).toContain("openShareDialogForCategory");

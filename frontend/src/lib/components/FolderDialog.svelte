@@ -3,6 +3,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -95,6 +96,7 @@ function close(force = false) {
 </script>
 
 <Dialog bind:open onOpenChange={(next) => { if (!next) close(); }}>
+	<DialogContent>
 	<DialogHeader>
 		<DialogTitle>{title}</DialogTitle>
 		<DialogDescription>
@@ -163,4 +165,5 @@ function close(force = false) {
 			{createdFolderName ? "Done" : submitLabel}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>

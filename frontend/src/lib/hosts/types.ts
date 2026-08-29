@@ -30,4 +30,14 @@ export interface DocsmintRequestAdapter {
 	fetch: typeof fetch;
 }
 
+/**
+ * Host-owned share dialog contour. OSS defaults to a public token link.
+ * Product hosts may opt into the restricted "Specific people" UI.
+ */
+export type DocsmintShareDisplayMode = "host-managed" | "standalone";
+
+export interface DocsmintShareAdapter {
+	displayMode: DocsmintShareDisplayMode;
+}
+
 export type { DocsmintRealtimeAdapter } from "../realtime";

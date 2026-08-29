@@ -3,6 +3,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
+	DialogContent,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
@@ -85,6 +86,7 @@ function handleApply() {
 </script>
 
 <Dialog bind:open>
+	<DialogContent>
 	<DialogHeader>
 		<DialogTitle>{m.editor_toolbar_link()}</DialogTitle>
 	</DialogHeader>
@@ -109,6 +111,7 @@ function handleApply() {
 			{m.action_save()}
 		</Button>
 	</DialogFooter>
+	</DialogContent>
 </Dialog>
 
 <style>
