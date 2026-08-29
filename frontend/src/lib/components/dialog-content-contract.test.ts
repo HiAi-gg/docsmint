@@ -14,8 +14,7 @@ describe("hiai-ui DialogContent host contract", () => {
 			if (!source.includes("@hiai-gg/hiai-ui" + "/components/ui/dialog"))
 				continue;
 			const opensDialog =
-				/<Dialog(?:\.Dialog)?[\s>]/.test(source) ||
-				/<Dialog\n/.test(source);
+				/<Dialog(?:\.Dialog)?[\s>]/.test(source) || /<Dialog\n/.test(source);
 			if (!opensDialog) continue;
 			const hasContent =
 				source.includes("<DialogContent") ||
