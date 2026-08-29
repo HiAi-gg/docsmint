@@ -7,6 +7,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-08-29
+
+### Fixed
+
+- Keep the public share view from stretching Twitter and Twemoji SVG emoji
+  images across the full column. Those imported image nodes now render as
+  Unicode glyphs so shared HTML matches the editor.
+- Constrain leftover unsized SVG images in share, print, and editor CSS so a
+  viewBox-only graphic cannot fill the reading column.
+
+### Changed
+
+- Load Inter Variable as the product UI typeface and map `--font-sans` to it so
+  the sidebar matches docsmint.com instead of the operating-system sans stack.
+- Publish MCP Registry, LobeHub, CLI, Swagger, OpenAPI, and PWA identity as
+  0.7.2 with the dark catalog logo (`frontend/static/logo-dark.png`) and the
+  current product-aligned MCP description.
+
 ## [0.7.1] - 2026-08-28
 
 ### Changed

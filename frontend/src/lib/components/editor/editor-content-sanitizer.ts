@@ -1,4 +1,10 @@
 const ATTACHMENT_RAW_URL = /^\/api\/attachments\/[0-9a-f-]+\/raw$/i;
+const EMOJI_IMAGE_HOST =
+	/(?:abs\.twimg\.com\/emoji\/|twemoji\.maxcdn\.com\/|(?:cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net)\/(?:ajax\/libs\/)?twemoji)/i;
+const EMOJI_SVG_CODEPOINTS =
+	/\/(?:emoji\/v2\/svg|twemoji\/[\d.]+\/(?:svg|72x72))\/([0-9a-f][0-9a-f-]*)\.svg(?:[?#].*)?$/i;
+/** Matches the editor image-resize floor; larger explicit sizes stay photos. */
+const EMOJI_IMAGE_MAX_PX = 96;
 
 type EditorNode = {
 	type?: string;
@@ -7,6 +13,66 @@ type EditorNode = {
 	text?: string;
 	[key: string]: unknown;
 };
+
+function isEmojiGrapheme(segment: string): boolean {
+	return (
+		/^[\d#*]\uFE0F?\u20E3$/u.test(segment) ||
+		/^\p{Extended_Pictographic}/u.test(segment)
+	);
+}
+
+function isEmojiOnlyText(value: string): boolean {
+	if (!value) return false;
+	try {
+		const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+		let count = 0;
+		for (const { segment } of segmenter.segment(value)) {
+			if (!isEmojiGrapheme(segment)) return false;
+			count += 1;
+		}
+		return count > 0;
+	} catch {
+		return /^(?:\p{Extended_Pictographic}|\d\uFE0F?\u20E3)+$/u.test(value);
+	}
+}
+
+function glyphFromEmojiSrc(src: string): string | null {
+	const match = src.match(EMOJI_SVG_CODEPOINTS);
+	if (!match?.[1] || !/(?:\/emoji\/|\/twemoji\/)/i.test(src)) return null;
+	try {
+		return match[1]
+			.split("-")
+			.map((hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+			.join("");
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Twitter / Twemoji paste the glyph as an SVG image. Share CSS then stretches
+ * those viewBox-only SVGs to the full column. Return the Unicode glyph instead
+ * unless the operator explicitly resized the node into a photo.
+ */
+export function emojiGlyphFromImageAttrs(
+	attrs?: Record<string, unknown> | null,
+): string | null {
+	if (!attrs) return null;
+	const src = typeof attrs.src === "string" ? attrs.src.trim() : "";
+	const alt = typeof attrs.alt === "string" ? attrs.alt.trim() : "";
+	const width = Number(attrs.width);
+	const height = Number(attrs.height);
+	const looksLikePhoto =
+		Number.isFinite(width) &&
+		width >= EMOJI_IMAGE_MAX_PX &&
+		Number.isFinite(height) &&
+		height >= EMOJI_IMAGE_MAX_PX;
+	if (looksLikePhoto) return null;
+	const fromSrc = glyphFromEmojiSrc(src);
+	if (!EMOJI_IMAGE_HOST.test(src) && fromSrc === null) return null;
+	const fromAlt = isEmojiOnlyText(alt) ? alt : null;
+	return fromAlt ?? fromSrc;
+}
 
 function isAttachmentImage(node: EditorNode): boolean {
 	return (
@@ -32,7 +98,13 @@ function isLoadableImage(node: EditorNode): boolean {
 	return isSafeEditorImageSource(node.attrs?.src);
 }
 
+function emojiParagraph(glyph: string): EditorNode {
+	return { type: "paragraph", content: [{ type: "text", text: glyph }] };
+}
+
 function sanitizeNode(node: EditorNode): EditorNode[] {
+	const emojiGlyph = emojiGlyphFromImageAttrs(node.attrs);
+	if (node.type === "image" && emojiGlyph) return [emojiParagraph(emojiGlyph)];
 	if (!isLoadableImage(node)) return [];
 	if (!node.content) return [node];
 	const children = node.content.flatMap((child) => sanitizeNode(child));
@@ -48,7 +120,7 @@ function sanitizeNode(node: EditorNode): EditorNode[] {
 			inline = [];
 		};
 		for (const child of children) {
-			if (child.type === "image") {
+			if (child.type === "image" || child.type === "paragraph") {
 				flushInline();
 				normalized.push(child);
 			} else {

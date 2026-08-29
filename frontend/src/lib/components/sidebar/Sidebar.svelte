@@ -159,7 +159,7 @@ function persistCollapsed() {
   tabindex="-1"
   inert={mobile && !mobileOpen}
   class={cn(
-	"flex flex-col border-r border-border bg-card",
+	"flex flex-col border-r border-border bg-card font-sans",
 	mobile && "fixed inset-y-0 left-0 z-50 h-full w-[80%] max-w-[320px] shadow-xl transition-transform duration-300 ease-out",
 	mobile && (mobileOpen ? "translate-x-0" : "-translate-x-full"),
 	!mobile && "relative h-screen",

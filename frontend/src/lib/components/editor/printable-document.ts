@@ -68,6 +68,8 @@ table { border-collapse: collapse; width: 100%; margin: 16px 0; }
 th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
 th { background-color: #f4f4f4; }
 img { max-width: 100%; height: auto; }
+img[src$=".svg"]:not([width]) { width: 1.25em; height: 1.25em; display: inline; margin: 0 0.1em; vertical-align: text-bottom; }
+.shared-emoji { margin: 0.15em 0; font-size: 1.15em; line-height: 1.2; }
 @media print { body { padding: 0; } }
 `;
 

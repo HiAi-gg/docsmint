@@ -1,14 +1,14 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
   "homepage": "https://github.com/HiAi-gg/docsmint",
   "cloudEndpoint": "https://docsmint.com/mcp",
   "icon": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
-  "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
+  "description": "Self-hosted AI-native knowledge workspace. Manage scoped documents, folders, categories, hybrid search, GraphRAG, and indexing through MCP.",
   "tags": [
     "knowledge-base",
     "mcp",

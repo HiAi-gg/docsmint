@@ -24,6 +24,10 @@ test("rejects a Glama claim file without the public maintainer contact", async (
 			await Bun.file(new URL("../package.public.json", import.meta.url)).arrayBuffer(),
 		);
 		await Bun.write(
+			new URL("lhm.plugin.json", root),
+			await Bun.file(new URL("../lhm.plugin.json", import.meta.url)).arrayBuffer(),
+		);
+		await Bun.write(
 			new URL("glama.json", root),
 			`${JSON.stringify({ $schema: glamaSchema, maintainers: [{ email: "other@example.com" }] })}\n`,
 		);

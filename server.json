@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.HiAi-gg/docsmint",
   "title": "DocsMint",
-  "description": "Manage scoped DocsMint documents, folders, categories, search, GraphRAG, and indexing through MCP.",
+  "description": "Self-hosted AI-native knowledge workspace. Manage scoped documents, folders, categories, hybrid search, GraphRAG, and indexing through MCP.",
   "websiteUrl": "https://docsmint.com/docs/mcp",
   "repository": {
     "url": "https://github.com/HiAi-gg/docsmint",
@@ -10,7 +10,7 @@
     "id": "1249550690",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.7.1",
+  "version": "0.7.2",
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
@@ -30,7 +30,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.7.1",
+      "version": "0.7.2",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

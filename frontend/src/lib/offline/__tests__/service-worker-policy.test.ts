@@ -30,7 +30,7 @@ describe("service worker offline fallback policy", () => {
 		expect(config).toContain('src: "/pwa-192x192.png"');
 		expect(config).toContain('src: "/pwa-512x512.png"');
 		expect(config).toContain('src: "/maskable-icon.png"');
-		expect(config).toContain('"docsmint-oss-0.7.1"');
+		expect(config).toContain('"docsmint-oss-0.7.2"');
 		expect(hooks).toContain('register("/sw.js", { scope: "/" })');
 		expect(worker).toContain(
 			'registerRoute(({ url }) => url.pathname.startsWith("/api/"), new NetworkOnly())',
@@ -45,7 +45,7 @@ describe("service worker offline fallback policy", () => {
 			expect(existsSync(new URL(icon, frontendRoot)), icon).toBe(true);
 		}
 		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:");
-		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.1");
+		expect(compose).toContain("PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.2");
 	});
 
 	it("ships a data-free offline HTML shell", async () => {

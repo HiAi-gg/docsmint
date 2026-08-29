@@ -777,6 +777,16 @@ function handleWrapperClick(event: MouseEvent) {
     border-radius: 0.5rem;
   }
 
+  .editor-content :global(.tiptap img.doc-image[src$=".svg"]:not([width])),
+  .editor-content :global(.tiptap img.doc-image[src*=".svg?"]:not([width])) {
+    width: 1.25em;
+    height: 1.25em;
+    display: inline;
+    margin: 0 0.1em;
+    vertical-align: text-bottom;
+    border-radius: 0;
+  }
+
   .editor-content :global(.tiptap [data-resize-wrapper]) {
     max-width: 100%;
   }

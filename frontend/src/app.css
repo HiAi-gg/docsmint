@@ -1,5 +1,6 @@
 @import "./lib/styles/layer-contract.css";
 @import "tailwindcss";
+@import "@fontsource-variable/inter/wght.css";
 
 /* The application theme store toggles `.dark` on the root element. Tailwind v4
  * otherwise resolves `dark:` from the operating-system media query, which
@@ -10,6 +11,21 @@
  * of truth lives in @hiai-gg/hiai-ui. This file is intentionally minimal: docs-specific
  * additions only. To change tokens, edit packages/hiai-ui/src/styles/tokens.css. */
 @import "@hiai-gg/hiai-ui/styles/tokens.css";
+
+/* Product UI typeface. docsmint.com nav uses Inter; Tailwind's default
+ * --font-sans is the OS stack (Segoe / Ubuntu / San Francisco), which is why
+ * the sidebar looked foreign next to the public site. */
+@theme {
+	--font-sans:
+		"Inter Variable", Inter, ui-sans-serif, system-ui, sans-serif,
+		"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+html {
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
 
 /* Persistent editor chrome must never cover a modal. Some shared dialogs
  * place the semantic dialog inside a full-screen z-50 wrapper, while others

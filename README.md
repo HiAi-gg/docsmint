@@ -45,6 +45,15 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
+## What's new in 0.7.2?
+
+- **Share view matches the editor.** Twitter/Twemoji SVG emoji images no longer
+  expand across the public share column; they render as ordinary glyphs.
+- **Inter in the workspace chrome.** The sidebar uses the same Inter UI typeface
+  as docsmint.com instead of the operating-system sans stack.
+- **MCP catalog 0.7.2.** Registry, LobeHub, and runtime metadata ship the dark
+  catalog logo and the current product-aligned description.
+
 ## What's new in 0.7.0?
 
 - **Signed workspace assertions.** Trusted server-to-server hosts can restrict
@@ -113,7 +122,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.1` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.2` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 

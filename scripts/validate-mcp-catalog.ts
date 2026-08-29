@@ -42,6 +42,17 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 		throw new Error("public package license must be Apache-2.0");
 	}
 
+	const publishedVersion = asString(published.version, "package.public.json version");
+	if (asString(registry.version, "server.json version") !== publishedVersion) {
+		throw new Error("server.json version must match the public package version");
+	}
+
+	const catalogDescription =
+		"Self-hosted AI-native knowledge workspace. Manage scoped documents, folders, categories, hybrid search, GraphRAG, and indexing through MCP.";
+	if (asString(registry.description, "server.json description") !== catalogDescription) {
+		throw new Error("server.json description must use the current product-aligned MCP copy");
+	}
+
 	const meta = asObject(
 		asObject(registry._meta, "server.json _meta")[
 			"io.modelcontextprotocol.registry/publisher-provided"
@@ -73,6 +84,38 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	const firstArgument = asObject(packageArguments[0], "packageArguments[0]");
 	if (firstArgument.type !== "positional" || firstArgument.value !== "docsmint-mcp") {
 		throw new Error("stdio package must invoke the docsmint-mcp binary");
+	}
+	if (asString(npmPackage.version, "server.json packages[0].version") !== publishedVersion) {
+		throw new Error("MCP npm package version must match the public package version");
+	}
+
+	const icons = asArray(registry.icons, "server.json icons");
+	const lightIcon = asObject(
+		icons.find((icon) => asObject(icon, "icon").theme === "light") ?? icons[0],
+		"server.json light icon",
+	);
+	if (
+		asString(lightIcon.src, "server.json light icon src") !==
+		"https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png"
+	) {
+		throw new Error("MCP light catalog icon must be frontend/static/logo-dark.png");
+	}
+
+	const lobehub = asObject(
+		await Bun.file(new URL("lhm.plugin.json", root)).json(),
+		"lhm.plugin.json",
+	);
+	if (asString(lobehub.version, "lhm.plugin.json version") !== publishedVersion) {
+		throw new Error("LobeHub catalog version must match the public package version");
+	}
+	if (asString(lobehub.description, "lhm.plugin.json description") !== catalogDescription) {
+		throw new Error("LobeHub description must match server.json");
+	}
+	if (
+		asString(lobehub.icon, "lhm.plugin.json icon") !==
+		"https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png"
+	) {
+		throw new Error("LobeHub icon must be the dark catalog logo");
 	}
 
 	if (glama.$schema !== "https://glama.ai/mcp/schemas/connector.json") {

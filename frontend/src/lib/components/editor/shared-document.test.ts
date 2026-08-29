@@ -143,6 +143,31 @@ describe("shared document renderer", () => {
 		});
 	});
 
+	test("renders Twitter emoji images as glyphs instead of column-width SVGs", () => {
+		const html = renderSharedDocument({
+			type: "doc",
+			content: [
+				{
+					type: "image",
+					attrs: {
+						src: "https://abs.twimg.com/emoji/v2/svg/1f916.svg",
+						alt: "🤖",
+					},
+				},
+				{
+					type: "image",
+					attrs: {
+						src: "https://pbs.twimg.com/media/photo.jpg",
+						alt: "photo",
+					},
+				},
+			],
+		});
+		expect(html).toContain('<p class="shared-emoji">🤖</p>');
+		expect(html).not.toContain("abs.twimg.com/emoji");
+		expect(html).toContain('src="https://pbs.twimg.com/media/photo.jpg"');
+	});
+
 	test("preserves resized image dimensions in shared and PDF HTML", () => {
 		const html = renderSharedDocument({
 			type: "doc",

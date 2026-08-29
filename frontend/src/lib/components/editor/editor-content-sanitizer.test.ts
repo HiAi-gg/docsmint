@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	emojiGlyphFromImageAttrs,
 	removeUnavailableAttachmentImages,
 	sanitizeEditorContent,
 } from "./editor-content-sanitizer";
@@ -36,6 +37,71 @@ describe("editor content sanitizer", () => {
 				},
 			},
 			{ type: "image", attrs: { src: "https://cdn.example.com/image.png" } },
+		]);
+	});
+
+	test("turns Twitter emoji SVGs into Unicode glyphs", () => {
+		expect(
+			emojiGlyphFromImageAttrs({
+				src: "https://abs.twimg.com/emoji/v2/svg/1f916.svg",
+				alt: "🤖",
+			}),
+		).toBe("🤖");
+		expect(
+			emojiGlyphFromImageAttrs({
+				src: "https://abs.twimg.com/emoji/v2/svg/33-20e3.svg",
+				alt: "",
+			}),
+		).toBe("3⃣");
+		expect(
+			emojiGlyphFromImageAttrs({
+				src: "https://pbs.twimg.com/profile_images/photo.jpg",
+				alt: "",
+			}),
+		).toBeNull();
+		expect(
+			emojiGlyphFromImageAttrs({
+				src: "https://example.com/robot.png",
+				alt: "🤖",
+			}),
+		).toBeNull();
+		expect(
+			emojiGlyphFromImageAttrs({
+				src: "https://abs.twimg.com/emoji/v2/svg/1f916.svg",
+				alt: "🤖",
+				width: 248,
+				height: 248,
+			}),
+		).toBeNull();
+
+		const result = sanitizeEditorContent({
+			type: "doc",
+			content: [
+				{
+					type: "image",
+					attrs: {
+						src: "https://abs.twimg.com/emoji/v2/svg/1f916.svg",
+						alt: "🤖",
+					},
+				},
+				{
+					type: "image",
+					attrs: {
+						src: "https://pbs.twimg.com/profile_images/photo.jpg",
+						alt: "",
+					},
+				},
+			],
+		});
+		expect(result.content).toEqual([
+			{ type: "paragraph", content: [{ type: "text", text: "🤖" }] },
+			{
+				type: "image",
+				attrs: {
+					src: "https://pbs.twimg.com/profile_images/photo.jpg",
+					alt: "",
+				},
+			},
 		]);
 	});
 

@@ -1,3 +1,5 @@
+import { emojiGlyphFromImageAttrs } from "./editor-content-sanitizer";
+
 export type ProseMirrorNode = {
 	type: string;
 	text?: string;
@@ -148,6 +150,10 @@ export function renderSharedDocument(doc: ProseMirrorDoc): string {
 			case "image": {
 				const src = (node.attrs?.src as string) ?? "";
 				const alt = (node.attrs?.alt as string) ?? "";
+				const emoji = emojiGlyphFromImageAttrs(node.attrs);
+				if (emoji) {
+					return `<p class="shared-emoji">${escapeHtml(emoji)}</p>`;
+				}
 				const width = Number(node.attrs?.width);
 				const height = Number(node.attrs?.height);
 				const dimensions = `${Number.isFinite(width) && width > 0 ? ` width="${Math.round(width)}"` : ""}${Number.isFinite(height) && height > 0 ? ` height="${Math.round(height)}"` : ""}`;

@@ -27,6 +27,7 @@ import {
 	normalizeDocxDocumentJson,
 } from "$lib/components/editor/docx-export";
 import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
+import { sanitizeEditorContent } from "$lib/components/editor/editor-content-sanitizer";
 import { editorExtensions } from "$lib/components/editor/editorExtensions";
 import { markdownToJson } from "$lib/components/editor/markdown";
 import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
@@ -390,12 +391,16 @@ function renderDocumentContent(doc: {
 }): string {
 	const docJson = doc.contentJson as { content?: unknown } | null | undefined;
 	if (docJson && Array.isArray(docJson.content)) {
-		return renderSharedDocument(docJson as ProseMirrorDoc);
+		return renderSharedDocument(
+			sanitizeEditorContent(docJson) as ProseMirrorDoc,
+		);
 	}
 	const md = doc.content;
 	if (md && md.length > 0) {
 		try {
-			return renderSharedDocument(markdownToJson(md) as ProseMirrorDoc);
+			return renderSharedDocument(
+				sanitizeEditorContent(markdownToJson(md)) as ProseMirrorDoc,
+			);
 		} catch {
 			return renderSharedDocument({
 				type: "doc",
@@ -834,6 +839,21 @@ $effect(() => {
     border-radius: 6px;
     margin: 0.75rem 0;
     display: block;
+  }
+  /* ViewBox-only SVGs (Twemoji leftovers) otherwise fill the column in Firefox. */
+  .shared-doc-body :global(img[src$=".svg"]:not([width])),
+  .shared-doc-body :global(img[src*=".svg?"]:not([width])) {
+    width: 1.25em;
+    height: 1.25em;
+    display: inline;
+    margin: 0 0.1em;
+    vertical-align: text-bottom;
+    border-radius: 0;
+  }
+  .shared-doc-body :global(.shared-emoji) {
+    margin: 0.15em 0;
+    font-size: 1.15em;
+    line-height: 1.2;
   }
   .shared-doc-body :global(mark) {
     background-color: var(--highlight-default, #fde68a);
