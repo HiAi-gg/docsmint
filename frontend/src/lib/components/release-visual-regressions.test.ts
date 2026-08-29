@@ -7,9 +7,10 @@ const read = (path: string) =>
 describe("0.3.5 visual regression contracts", () => {
 	test("uses Inter as the product UI typeface like docsmint.com", () => {
 		const appCss = read("../../app.css");
-		expect(appCss).toContain('@import "@fontsource-variable/inter/wght.css"');
-		expect(appCss).toContain('"Inter Variable"');
-		expect(appCss).toContain("--font-sans");
+		const frontendPkg = read("../../../package.json");
+		expect(appCss).toContain('@import "@hiai-gg/hiai-ui/styles/tokens.css"');
+		expect(appCss).toContain("@fontsource-variable/inter/wght.css");
+		expect(frontendPkg).toContain('"@hiai-gg/hiai-ui": "^0.1.3"');
 	});
 
 	test("keeps the title favicon synchronized with the resolved app theme", () => {

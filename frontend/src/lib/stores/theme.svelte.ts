@@ -1,6 +1,12 @@
+import {
+	runThemeSpread as spreadFromClick,
+	type ThemeSpreadOrigin,
+} from "@hiai-gg/hiai-ui/lib/theme-spread";
+import { tick } from "svelte";
 import { browser } from "$app/environment";
 
 export type Theme = "light" | "dark" | "system";
+export type { ThemeSpreadOrigin };
 
 const STORAGE_KEY = "hiai-docs-theme";
 
@@ -70,6 +76,29 @@ function setTheme(value: Theme) {
 	notify();
 }
 
+/**
+ * Product wrapper around hiai-ui `runThemeSpread`. Keeps light/dark/system
+ * policy here; the circular View Transition lives in the design package.
+ */
+async function runThemeSpread(
+	next: Theme,
+	origin?: ThemeSpreadOrigin,
+): Promise<void> {
+	if (!browser) {
+		setTheme(next);
+		return;
+	}
+	if (theme === next) return;
+	if (resolveIsDark(theme) === resolveIsDark(next) || !origin) {
+		setTheme(next);
+		return;
+	}
+	await spreadFromClick(async () => {
+		setTheme(next);
+		await tick();
+	}, origin);
+}
+
 function getTheme(): Theme {
 	return theme;
 }
@@ -94,6 +123,14 @@ export const themeStore = {
 	},
 	init: initTheme,
 	set: setTheme,
+	spread: runThemeSpread,
 };
 
-export { getIsDark, getTheme, initTheme, setTheme, subscribeTheme };
+export {
+	getIsDark,
+	getTheme,
+	initTheme,
+	runThemeSpread,
+	setTheme,
+	subscribeTheme,
+};

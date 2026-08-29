@@ -7,6 +7,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Consume `@hiai-gg/hiai-ui` 0.1.3 for the circular theme spread and Inter
+  `--font-sans` token; the app still loads Inter Variable webfont files.
+
 ## [0.7.2] - 2026-08-29
 
 ### Fixed

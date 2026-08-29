@@ -139,8 +139,11 @@ async function changePassword() {
 	}
 }
 
-function pickTheme(value: Theme) {
-	themeStore.set(value);
+function pickTheme(value: Theme, event?: MouseEvent) {
+	void themeStore.spread(
+		value,
+		event ? { x: event.clientX, y: event.clientY } : undefined,
+	);
 }
 
 const themeOptions: Array<{ value: Theme; label: string; key: string }> = [
@@ -334,7 +337,7 @@ function close() {
 					{#each themeOptions as opt (opt.key)}
 						<button
 							type="button"
-							onclick={() => pickTheme(opt.value)}
+							onclick={(event) => pickTheme(opt.value, event)}
 							class={[
 								"rounded-md border px-3 py-2 text-sm font-medium transition-colors",
 								themeStore.value === opt.value
