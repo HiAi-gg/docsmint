@@ -48,86 +48,24 @@ TypeScript SDK, CLI, and MCP server.
 
 ## What's new in 0.8.1?
 
-- **GraphRAG expansion is connection-safe.** AGE reads pin `ag_catalog` on the
-  same pooled connection as `cypher()`, so scoped search keeps graph neighbors
-  even when the connection did not already have AGE first in `search_path`.
+- **Reliable GraphRAG on pooled connections.** AGE expansion pins
+  `ag_catalog` on the same PostgreSQL connection as `cypher()`, so scoped
+  search keeps graph neighbors regardless of the connection's previous
+  `search_path`.
+- **Better answers after hybrid retrieval.** Cross-encoder rerank promotes the
+  most relevant results after RRF while remaining fail-open when a provider is
+  unavailable. In the labeled live evaluation, MRR reached **1.000** and
+  nDCG@10 reached **0.986**, with Recall@10 unchanged at **1.000**.
+- **Resilient AI providers.** Embeddings, entity extraction, query expansion,
+  and rerank each support a primary model plus two fallbacks, so one provider
+  outage does not remove an entire retrieval channel.
+- **Secure agent access.** Signed workspace assertions can limit REST, SDK,
+  CLI, and MCP clients to one category with independent `read`, `edit`, and
+  `write` permissions.
 
-## What's new in 0.7.9?
-
-- **GraphRAG on category/share search keeps inherited-folder neighbors.** The
-  allowed document list is the ACL; category is not applied a second time.
-
-## What's new in 0.7.8?
-
-- **GraphRAG still contributes after rerank.** Neighbors already in the fused
-  prefix keep the graph channel, so scoped search does not lose graph evidence.
-- **Public API identity is DocsMint.** Health reports `service: "docsmint"`;
-  startup and SDK errors no longer say `hiai-docs`.
-
-## What's new in 0.7.7?
-
-- **Cross-encoder rerank is on by default.** After RRF, search reranks the
-  original query against the fused prefix with Voyage `rerank-2.5` (Cohere
-  and NVIDIA fallbacks). Provider failures keep RRF order. Set
-  `SEARCH_RERANK_ENABLED=false` to turn it off.
-- **Live retrieval improved first-hit ranking.** On a 24-document labeled
-  corpus, RRF+rerank moved MRR 0.969 → 1.000 and nDCG@10 0.958 → 0.986.
-  Recall@10 stayed 1.0. The paraphrase query “operator API key header”
-  moved the API-key document from rank 2 to rank 1 (MRR 0.50 → 1.00).
-- **Three-model fallbacks** for embeddings, extraction, expansion, and
-  rerank so a single provider outage does not drop the channel.
-
-## What's new in 0.7.6?
-
-- **Better Auth 1.6 rollback remains possible** after the issuer migration by
-  deriving the legacy account issuer in a database trigger.
-
-## What's new in 0.7.5?
-
-- **Runtime and dependency graph** to Bun 1.4, TypeScript 6, Better Auth 1.7,
-  and current compatible editor/queue packages, with fail-closed issuer
-  identity.
-
-## What's new in 0.7.4?
-
-- **MCP Registry description fits the 100-character limit**, so official
-  catalog publication can complete after 0.7.3 reached npm.
-
-## What's new in 0.7.3?
-
-- **One public-link share dialog in OSS.** Dashboard, sidebar (including Recent),
-  and the editor open the same public token share. Hosts can opt into restricted
-  admission from `DocsmintAppShellHost`.
-- **Dialogs stay in their overlays** after hiai-ui 0.1, and nested routes load
-  CSS from `/_app` instead of `./_app`.
-- **hiai-ui 0.1.3** for circular theme spread; Inter remains the product UI
-  typeface.
-
-## What's new in 0.7.2?
-
-- **Share view matches the editor.** Twitter/Twemoji SVG emoji images no longer
-  expand across the public share column; they render as ordinary glyphs.
-- **Inter in the workspace chrome.** The sidebar uses the same Inter UI typeface
-  as docsmint.com instead of the operating-system sans stack.
-- **MCP catalog 0.7.2.** Registry, LobeHub, and runtime metadata ship the dark
-  catalog logo and the current product-aligned description.
-
-## What's new in 0.7.0?
-
-- **Signed workspace assertions.** Trusted server-to-server hosts can restrict
-  an assertion to one category with independent `read`, `edit`, and `write`
-  permissions. An omitted scope remains workspace-wide and role-derived.
-- **Consistent effective-category authorization.** Direct and folder-inherited
-  categories are enforced before counts, pagination, indexing, search, and
-  GraphRAG retrieval. Index status is read-only; refresh requires write.
-- **Release-safe indexing.** Context-aware embedding generations and recovery
-  prevent stale metadata work from becoming active.
-
-This OSS release adds no host RBAC, billing, invitations, or product UI. The
-0.6.x reliability work — workspace-safe reindex, HTTPS sessions, trash-aware
-retrieval, explicit GraphRAG providers, MCP Registry identity, and the
-installable PWA — ships in this line. See the [changelog](CHANGELOG.md) for
-the complete history and the [roadmap](docs/ROADMAP.md) for what comes next.
+Read the complete release history in the [changelog](CHANGELOG.md) or
+[GitHub Releases](https://github.com/HiAi-gg/docsmint/releases). See the
+[roadmap](docs/ROADMAP.md) for what comes next.
 
 ## Fastest installation: give this prompt to your agent
 
