@@ -77,12 +77,12 @@ npx -y @hiai-gg/docsmint docsmint-mcp
 ### Prompts (2)
 
 - `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
-- `research_workspace`: Research a question with hybrid search and GraphRAG citing document IDs.
+- `research_workspace`: Research a question with hybrid search, GraphRAG, and rerank citing document IDs.
 
 ### Resources (3)
 
 - `docsmint://guide/editor`: Editor usage guide.
-- `docsmint://guide/search`: Search and GraphRAG guide.
+- `docsmint://guide/search`: Search, GraphRAG, and rerank guide.
 - `docsmint://workspace/catalog`: Live scoped workspace catalog.
 
 ### Skills (1)

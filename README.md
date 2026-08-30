@@ -6,9 +6,9 @@ applications, and AI agents.**
 DocsMint stores documents in a structured JSON editor model first. Markdown is
 the convenient second format for editing, importing, and exporting content.
 Automatic chunking, 1024-dimensional embeddings, multilingual hybrid search,
-and GraphRAG make the same knowledge base useful to people, applications, and
-agents through the web application, REST API, TypeScript SDK, CLI, and MCP
-server.
+GraphRAG, and cross-encoder rerank make the same knowledge base useful to
+people, applications, and agents through the web application, REST API,
+TypeScript SDK, CLI, and MCP server.
 
 [![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
@@ -36,7 +36,8 @@ server.
 
 - **Write naturally** in a rich visual editor or raw Markdown.
 - **Find meaning, not only keywords** with exact, lexical, fuzzy, vector,
-  multilingual expansion, and graph retrieval fused through RRF.
+  multilingual expansion, and graph retrieval fused through RRF, then
+  reranked with a cross-encoder (Voyage rerank-2.5 in the reference profile).
 - **Keep retrieval current** with automatic, incremental chunking and
   re-embedding after document or metadata changes.
 - **Connect agents directly** through REST, a typed SDK, CLI, or MCP.
@@ -45,7 +46,31 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
+## What's new in 0.7.7?
+
+- **Cross-encoder rerank is on by default.** After RRF, search reranks the
+  original query against the fused prefix with Voyage `rerank-2.5` (Cohere
+  and NVIDIA fallbacks). Provider failures keep RRF order. Set
+  `SEARCH_RERANK_ENABLED=false` to turn it off.
+- **Live retrieval improved first-hit ranking.** On a 24-document labeled
+  corpus, RRF+rerank moved MRR 0.969 → 1.000 and nDCG@10 0.958 → 0.986.
+  Recall@10 stayed 1.0. The paraphrase query “operator API key header”
+  moved the API-key document from rank 2 to rank 1 (MRR 0.50 → 1.00).
+- **Three-model fallbacks** for embeddings, extraction, expansion, and
+  rerank so a single provider outage does not drop the channel.
+
 ## What's new in 0.7.6?
+
+- **Better Auth 1.6 rollback remains possible** after the issuer migration by
+  deriving the legacy account issuer in a database trigger.
+
+## What's new in 0.7.5?
+
+- **Runtime and dependency graph** to Bun 1.4, TypeScript 6, Better Auth 1.7,
+  and current compatible editor/queue packages, with fail-closed issuer
+  identity.
+
+## What's new in 0.7.4?
 
 - **MCP Registry description fits the 100-character limit**, so official
   catalog publication can complete after 0.7.3 reached npm.
@@ -137,7 +162,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.6` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.7` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
@@ -279,19 +304,19 @@ resources, skill, and API routes.
 ### Prompts (2)
 
 - `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
-- `research_workspace`: Research a question with hybrid search and GraphRAG citing document IDs.
+- `research_workspace`: Research a question with hybrid search, GraphRAG, and rerank citing document IDs.
 
 ### Resources (3)
 
 - `docsmint://guide/editor`: Editor usage guide.
-- `docsmint://guide/search`: Search and GraphRAG guide.
+- `docsmint://guide/search`: Search, GraphRAG, and rerank guide.
 - `docsmint://workspace/catalog`: Live scoped workspace catalog.
 
 ### Skills (1)
 
 - [`docsmint-document-manager`](skills/docsmint-document-manager/SKILL.md):
   create, organize, edit, and research DocsMint documents through the 17 MCP
-  tools, including hybrid search, GraphRAG, and index refresh.
+  tools, including hybrid search, GraphRAG, rerank, and index refresh.
 
 The same Skill ships in the npm package under `skills/docsmint-document-manager/SKILL.md`.
 
@@ -382,8 +407,12 @@ previous valid generation remains searchable if a provider call fails.
 Search combines exact title matches, multilingual lexical search, typo-tolerant
 fuzzy matching, semantic vectors, adaptive query expansion, and Apache AGE
 graph neighbors. Reciprocal rank fusion combines the channels without allowing
-one weak provider result to dominate. Authorization is applied before retrieval
-and again before results are returned.
+one weak provider result to dominate. A cross-encoder then reranks the fused
+prefix against the original query (Voyage rerank-2.5 by default). On a labeled
+24-document corpus that moved MRR 0.969 → 1.000 and nDCG@10 0.958 → 0.986
+versus RRF-only. Rerank, expansion, embeddings, and AGE failures keep the
+remaining channels. Authorization is applied before retrieval and again before
+results are returned.
 
 GraphRAG is part of the normal search path in the reference configuration. It
 extracts entities after embeddings are ready and finds related documents beyond

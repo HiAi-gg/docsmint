@@ -26,6 +26,7 @@ import {
 	type ChatProviderConfig,
 	requestStructuredChat,
 	resolveChatProviderKey,
+	uniqueChatProviders,
 } from "../openai-compatible-chat";
 import { redis } from "../redis";
 import {
@@ -361,8 +362,62 @@ function hasConfiguredGraphProvider(options: ExtractEntitiesOptions): boolean {
 	return Boolean(
 		options.llmBaseUrl ||
 			config.GRAPH_EXTRACT_BASE_URL ||
-			config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
+			config.GRAPH_EXTRACT_FALLBACK_BASE_URL ||
+			config.GRAPH_EXTRACT_FALLBACK_2_BASE_URL,
 	);
+}
+
+function graphExtractProviders(
+	options: ExtractEntitiesOptions,
+): ChatProviderConfig[] {
+	const timeoutMs = config.GRAPH_EXTRACT_TIMEOUT_MS;
+	const primaryModel =
+		options.llmModel ?? config.GRAPH_EXTRACT_MODEL ?? "gpt-4o-mini";
+	const slots: Array<{
+		baseUrl?: string;
+		explicitKey?: string;
+		model?: string;
+		reasoningEffort?: ChatProviderConfig["reasoningEffort"];
+	}> = [
+		{
+			baseUrl: options.llmBaseUrl ?? config.GRAPH_EXTRACT_BASE_URL,
+			explicitKey: options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY,
+			model: primaryModel,
+			reasoningEffort:
+				options.reasoningEffort ?? config.GRAPH_EXTRACT_REASONING_EFFORT,
+		},
+		{
+			baseUrl: config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
+			explicitKey: config.GRAPH_EXTRACT_FALLBACK_API_KEY,
+			model: config.GRAPH_EXTRACT_FALLBACK_MODEL ?? primaryModel,
+			reasoningEffort: config.GRAPH_EXTRACT_REASONING_EFFORT,
+		},
+		{
+			baseUrl: config.GRAPH_EXTRACT_FALLBACK_2_BASE_URL,
+			explicitKey: config.GRAPH_EXTRACT_FALLBACK_2_API_KEY,
+			model: config.GRAPH_EXTRACT_FALLBACK_2_MODEL,
+			reasoningEffort: config.GRAPH_EXTRACT_REASONING_EFFORT,
+		},
+	];
+	return uniqueChatProviders(
+		slots.map((slot) => {
+			if (!slot.baseUrl || !slot.model) return undefined;
+			return {
+				baseUrl: slot.baseUrl,
+				apiKey: resolveGraphProviderKey(slot.baseUrl, slot.explicitKey),
+				model: slot.model,
+				timeoutMs,
+				reasoningEffort: slot.reasoningEffort,
+			};
+		}),
+	);
+}
+
+/** Test-only: inspect the GraphRAG chat provider chain without AGE. */
+export function _graphExtractProvidersForTests(
+	options: ExtractEntitiesOptions = {},
+): ChatProviderConfig[] {
+	return graphExtractProviders(options);
 }
 
 // ---------------------------------------------------------------------
@@ -413,51 +468,13 @@ async function callEntityExtractionLLM(
 	text: string,
 	options: ExtractEntitiesOptions,
 ): Promise<ExtractedEntity[] | null> {
-	const primaryBase = options.llmBaseUrl ?? config.GRAPH_EXTRACT_BASE_URL;
-	const primaryExplicitKey = options.llmApiKey ?? config.GRAPH_EXTRACT_API_KEY;
-	const primaryModel =
-		options.llmModel ?? config.GRAPH_EXTRACT_MODEL ?? "gpt-4o-mini";
-	const primaryKey = primaryBase
-		? resolveGraphProviderKey(primaryBase, primaryExplicitKey)
-		: "";
-
-	const fallbackBase = config.GRAPH_EXTRACT_FALLBACK_BASE_URL;
-	const fallbackExplicitKey = config.GRAPH_EXTRACT_FALLBACK_API_KEY;
-	const fallbackModel = config.GRAPH_EXTRACT_FALLBACK_MODEL ?? primaryModel;
-	const fallbackKey = fallbackBase
-		? resolveGraphProviderKey(fallbackBase, fallbackExplicitKey)
-		: "";
-	const providers: ChatProviderConfig[] = [];
-	if (primaryBase) {
-		providers.push({
-			baseUrl: primaryBase,
-			apiKey: primaryKey,
-			model: primaryModel,
-			timeoutMs: config.GRAPH_EXTRACT_TIMEOUT_MS,
-			reasoningEffort:
-				options.reasoningEffort ?? config.GRAPH_EXTRACT_REASONING_EFFORT,
-		});
-	}
-	if (
-		fallbackBase &&
-		(fallbackBase !== primaryBase ||
-			fallbackKey !== primaryKey ||
-			fallbackModel !== primaryModel)
-	) {
-		providers.push({
-			baseUrl: fallbackBase,
-			apiKey: fallbackKey,
-			model: fallbackModel,
-			timeoutMs: config.GRAPH_EXTRACT_TIMEOUT_MS,
-			reasoningEffort: config.GRAPH_EXTRACT_REASONING_EFFORT,
-		});
-	}
-	const [primary, fallback] = providers;
+	const providers = graphExtractProviders(options);
+	const [primary, ...fallbacks] = providers;
 	if (!primary) return null;
 
 	const result = await requestStructuredChat({
 		primary,
-		fallback,
+		fallbacks,
 		messages: [
 			{ role: "system", content: SYSTEM_PROMPT },
 			{ role: "user", content: text },

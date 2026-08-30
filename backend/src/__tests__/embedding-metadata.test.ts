@@ -28,6 +28,9 @@ const originalEmbeddingConfig = {
 	fallbackBaseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
 	fallbackApiKey: config.EMBEDDING_FALLBACK_API_KEY,
 	fallbackModel: config.EMBEDDING_FALLBACK_MODEL,
+	fallback2BaseUrl: config.EMBEDDING_FALLBACK_2_BASE_URL,
+	fallback2ApiKey: config.EMBEDDING_FALLBACK_2_API_KEY,
+	fallback2Model: config.EMBEDDING_FALLBACK_2_MODEL,
 };
 
 const { buildMetadataPreamble, embedDocument } = await import(
@@ -100,6 +103,9 @@ describe("embedDocument metadata behaviour", () => {
 			EMBEDDING_FALLBACK_BASE_URL: undefined,
 			EMBEDDING_FALLBACK_API_KEY: undefined,
 			EMBEDDING_FALLBACK_MODEL: undefined,
+			EMBEDDING_FALLBACK_2_BASE_URL: undefined,
+			EMBEDDING_FALLBACK_2_API_KEY: undefined,
+			EMBEDDING_FALLBACK_2_MODEL: undefined,
 		});
 		try {
 			await expect(
@@ -117,6 +123,9 @@ describe("embedDocument metadata behaviour", () => {
 				EMBEDDING_FALLBACK_BASE_URL: originalEmbeddingConfig.fallbackBaseUrl,
 				EMBEDDING_FALLBACK_API_KEY: originalEmbeddingConfig.fallbackApiKey,
 				EMBEDDING_FALLBACK_MODEL: originalEmbeddingConfig.fallbackModel,
+				EMBEDDING_FALLBACK_2_BASE_URL: originalEmbeddingConfig.fallback2BaseUrl,
+				EMBEDDING_FALLBACK_2_API_KEY: originalEmbeddingConfig.fallback2ApiKey,
+				EMBEDDING_FALLBACK_2_MODEL: originalEmbeddingConfig.fallback2Model,
 			});
 		}
 	});

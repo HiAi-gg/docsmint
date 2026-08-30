@@ -11,6 +11,7 @@ const files: string[] = [];
 const optionalLiveSmokes = new Set([
 	"src/__tests__/bullmq-compat.test.ts",
 	"src/__tests__/graph-init.test.ts",
+	"src/__tests__/openrouter-live-matrix.test.ts",
 ]);
 for await (const file of glob.scan({ cwd: backendRoot, onlyFiles: true })) {
 	if (optionalLiveSmokes.has(file)) continue;

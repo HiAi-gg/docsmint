@@ -13,6 +13,8 @@ mock.module("../lib/config", () => ({
 		SEARCH_EXPANSION_MODEL: "mistralai/ministral-14b-2512",
 		SEARCH_EXPANSION_FALLBACK_BASE_URL: "https://openrouter.ai/api/v1",
 		SEARCH_EXPANSION_FALLBACK_MODEL: "google/gemma-4-31b-it",
+		SEARCH_EXPANSION_FALLBACK_2_BASE_URL: "https://openrouter.ai/api/v1",
+		SEARCH_EXPANSION_FALLBACK_2_MODEL: "meta-llama/llama-3.3-70b-instruct",
 		SEARCH_EXPANSION_TIMEOUT_MS: 2_000,
 		SEARCH_EXPANSION_CACHE_TTL_SECONDS: 86_400,
 		SEARCH_EXPANSION_MAX_VARIANTS: 12,
@@ -167,6 +169,26 @@ describe("structured query expansion", () => {
 		expect(calls).toBe(2);
 	});
 
+	test("uses the second fallback after primary and first fallback fail", async () => {
+		let calls = 0;
+		globalThis.fetch = mock(async () => {
+			calls++;
+			if (calls < 3) throw new Error("provider unavailable");
+			return completion(
+				JSON.stringify({
+					translations: ["English"],
+					synonyms: [],
+					concepts: [],
+					namedEntities: [],
+				}),
+			);
+		}) as unknown as typeof fetch;
+		const { expandQuery } = await import("../search/query-expander");
+		const result = await expandQuery(queryPlan(), { tenantScope: "tenant-a" });
+		expect(result?.model).toBe("meta-llama/llama-3.3-70b-instruct");
+		expect(calls).toBe(3);
+	});
+
 	test("uses deterministic cross-language fallback when both providers fail", async () => {
 		globalThis.fetch = mock(async () => {
 			throw new Error("provider unavailable");
@@ -190,6 +212,27 @@ describe("structured query expansion", () => {
 		expect(result?.plan.concepts).toEqual(
 			expect.arrayContaining(["english", "french", "portuguese"]),
 		);
+	});
+
+	test("cache keys change when the second fallback model changes", async () => {
+		const { expansionCacheKey } = await import("../search/query-expander");
+		const primary = {
+			baseUrl: "https://openrouter.ai/api/v1",
+			model: "mistralai/ministral-14b-2512",
+			timeoutMs: 1_000,
+		};
+		const fallback = {
+			...primary,
+			model: "google/gemma-4-31b-it",
+		};
+		const withTwo = await expansionCacheKey("tenant-a", "query", primary, [
+			fallback,
+		]);
+		const withThree = await expansionCacheKey("tenant-a", "query", primary, [
+			fallback,
+			{ ...primary, model: "meta-llama/llama-3.3-70b-instruct" },
+		]);
+		expect(withTwo).not.toBe(withThree);
 	});
 
 	test("uses tenant-scoped hashed cache keys without raw queries", async () => {

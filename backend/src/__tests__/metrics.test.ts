@@ -114,6 +114,18 @@ describe("metrics registry", () => {
 		expect(metrics[METRIC_NAMES.SEARCH_CROSS_LANGUAGE_SUCCESS_TOTAL]).toBe(1);
 	});
 
+	test("counts the second expansion fallback as a fallback outcome", () => {
+		recordSearchExpansionMetrics({
+			reasons: ["language_mismatch"],
+			model: "fallback-2-model",
+			fallbackModel: "fallback-model",
+			fallback2Model: "fallback-2-model",
+			used: true,
+		});
+		const metrics = getMetrics();
+		expect(metrics[METRIC_NAMES.SEARCH_EXPANSION_FALLBACK_TOTAL]).toBe(1);
+	});
+
 	test("does not charge or count failed expansion attempts", () => {
 		recordSearchExpansionMetrics({
 			reasons: ["language_mismatch"],

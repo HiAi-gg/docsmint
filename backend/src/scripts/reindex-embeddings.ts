@@ -30,7 +30,11 @@ const reindexAdmin = adminTenantContext(ZERO_UUID);
 
 export async function runReindex(options: ReindexOptions): Promise<void> {
 	const model = config.EMBEDDING_MODEL ?? "";
-	const models = [model, config.EMBEDDING_FALLBACK_MODEL ?? ""].filter(Boolean);
+	const models = [
+		model,
+		config.EMBEDDING_FALLBACK_MODEL ?? "",
+		config.EMBEDDING_FALLBACK_2_MODEL ?? "",
+	].filter(Boolean);
 	const profiles = models.map((name) => embeddingProfileId(name, 1024, "v1"));
 	if (profiles.length > 0 && !options.dryRun && !options.all) {
 		await markStaleEmbeddingProfiles(profiles);

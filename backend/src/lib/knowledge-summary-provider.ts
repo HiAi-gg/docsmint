@@ -47,14 +47,21 @@ export async function requestKnowledgeSummary(
 		config.GRAPH_EXTRACT_MODEL,
 	);
 	if (!primary) return null;
-	const fallback = provider(
-		config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
-		config.GRAPH_EXTRACT_FALLBACK_API_KEY,
-		config.GRAPH_EXTRACT_FALLBACK_MODEL,
-	);
+	const fallbacks = [
+		provider(
+			config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
+			config.GRAPH_EXTRACT_FALLBACK_API_KEY,
+			config.GRAPH_EXTRACT_FALLBACK_MODEL,
+		),
+		provider(
+			config.GRAPH_EXTRACT_FALLBACK_2_BASE_URL,
+			config.GRAPH_EXTRACT_FALLBACK_2_API_KEY,
+			config.GRAPH_EXTRACT_FALLBACK_2_MODEL,
+		),
+	].filter((item): item is NonNullable<typeof item> => Boolean(item));
 	const result = await requestStructuredChat({
 		primary,
-		fallback,
+		fallbacks,
 		messages: [
 			{ role: "system", content: systemPrompt },
 			{

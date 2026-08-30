@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/backend",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -17,6 +17,7 @@
     "reembed": "bun run scripts/reembed-all.ts",
     "benchmark:graph": "bun run src/scripts/benchmark-graph.ts",
     "benchmark:search": "bun run src/scripts/benchmark-search.ts",
+    "eval:retrieval": "bun run src/scripts/eval-retrieval.ts",
     "seed:benchmark-search": "bun run src/scripts/seed-benchmark-search.ts"
   },
   "dependencies": {

@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+	OPENROUTER_PUBLIC_BASE_URL,
+	OPENROUTER_PUBLIC_EXPANSION_MODELS,
+	OPENROUTER_PUBLIC_RERANK_MODELS,
+} from "./openrouter-public-matrix";
 
 const adminApiKeyPlaceholder =
 	/^(?:change[-_ ]?me|changeme|your[-_ ]?api[-_ ]?key)(?:\b|[-_ ])/i;
@@ -198,6 +203,9 @@ export const envSchema = z
 		EMBEDDING_FALLBACK_BASE_URL: z.string().optional(),
 		EMBEDDING_FALLBACK_API_KEY: z.string().optional(),
 		EMBEDDING_FALLBACK_MODEL: z.string().optional(),
+		EMBEDDING_FALLBACK_2_BASE_URL: z.string().optional(),
+		EMBEDDING_FALLBACK_2_API_KEY: z.string().optional(),
+		EMBEDDING_FALLBACK_2_MODEL: z.string().optional(),
 		API_PORT: z.coerce.number().default(50700),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
@@ -323,6 +331,9 @@ export const envSchema = z
 		GRAPH_EXTRACT_FALLBACK_BASE_URL: z.string().optional(),
 		GRAPH_EXTRACT_FALLBACK_API_KEY: z.string().optional(),
 		GRAPH_EXTRACT_FALLBACK_MODEL: z.string().optional(),
+		GRAPH_EXTRACT_FALLBACK_2_BASE_URL: z.string().optional(),
+		GRAPH_EXTRACT_FALLBACK_2_API_KEY: z.string().optional(),
+		GRAPH_EXTRACT_FALLBACK_2_MODEL: z.string().optional(),
 		// Minimum confidence (0.0–1.0) for entities to be persisted. Entities
 		// extracted by the LLM with confidence strictly below this threshold are
 		// dropped during parsing — they still count as cache misses but never
@@ -337,18 +348,63 @@ export const envSchema = z
 			.optional()
 			.default("true")
 			.transform((v) => v === "true"),
-		SEARCH_EXPANSION_BASE_URL: z
-			.string()
-			.default("https://openrouter.ai/api/v1"),
+		SEARCH_EXPANSION_BASE_URL: z.string().default(OPENROUTER_PUBLIC_BASE_URL),
 		SEARCH_EXPANSION_API_KEY: z.string().optional(),
-		SEARCH_EXPANSION_MODEL: z.string().default("mistralai/ministral-14b-2512"),
+		SEARCH_EXPANSION_MODEL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_EXPANSION_MODELS.primary),
 		SEARCH_EXPANSION_FALLBACK_BASE_URL: z
 			.string()
-			.default("https://openrouter.ai/api/v1"),
+			.default(OPENROUTER_PUBLIC_BASE_URL),
 		SEARCH_EXPANSION_FALLBACK_API_KEY: z.string().optional(),
 		SEARCH_EXPANSION_FALLBACK_MODEL: z
 			.string()
-			.default("google/gemma-4-31b-it"),
+			.default(OPENROUTER_PUBLIC_EXPANSION_MODELS.fallback),
+		SEARCH_EXPANSION_FALLBACK_2_BASE_URL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_BASE_URL),
+		SEARCH_EXPANSION_FALLBACK_2_API_KEY: z.string().optional(),
+		SEARCH_EXPANSION_FALLBACK_2_MODEL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_EXPANSION_MODELS.fallback_2),
+		SEARCH_RERANK_ENABLED: z
+			.string()
+			.optional()
+			.default("true")
+			.transform((v) => v === "true"),
+		SEARCH_RERANK_BASE_URL: z.string().default(OPENROUTER_PUBLIC_BASE_URL),
+		SEARCH_RERANK_API_KEY: z.string().optional(),
+		SEARCH_RERANK_MODEL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_RERANK_MODELS.primary),
+		SEARCH_RERANK_FALLBACK_BASE_URL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_BASE_URL),
+		SEARCH_RERANK_FALLBACK_API_KEY: z.string().optional(),
+		SEARCH_RERANK_FALLBACK_MODEL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_RERANK_MODELS.fallback),
+		SEARCH_RERANK_FALLBACK_2_BASE_URL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_BASE_URL),
+		SEARCH_RERANK_FALLBACK_2_API_KEY: z.string().optional(),
+		SEARCH_RERANK_FALLBACK_2_MODEL: z
+			.string()
+			.default(OPENROUTER_PUBLIC_RERANK_MODELS.fallback_2),
+		SEARCH_RERANK_TIMEOUT_MS: z.coerce
+			.number()
+			.int()
+			.min(250)
+			.max(30_000)
+			.default(3_000),
+		SEARCH_RERANK_TOP_N: z.coerce.number().int().min(1).max(100).default(20),
+		SEARCH_RERANK_MAX_CHARS: z.coerce
+			.number()
+			.int()
+			.min(120)
+			.max(8_000)
+			.default(1_500),
+		SEARCH_RERANK_GRAPH_POSITION: z.enum(["before", "after"]).default("after"),
 		SEARCH_EXPANSION_TIMEOUT_MS: z.coerce
 			.number()
 			.int()

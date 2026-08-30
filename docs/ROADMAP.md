@@ -13,7 +13,7 @@ A self-hosted, installable knowledge workspace that people and agents share:
 - Incremental chunking, 1024-dimensional embeddings, and atomic generation
   activation
 - Multilingual hybrid search: exact/title, lexical, fuzzy, vector, adaptive
-  expansion, and GraphRAG, fused with reciprocal rank fusion
+  expansion, GraphRAG, and cross-encoder rerank after reciprocal rank fusion
 - REST, TypeScript SDK, CLI, and MCP (17 tools, prompts, resources, and a
   bundled document-manager skill)
 - Global and category API keys with explicit `read`, `edit`, and `write`

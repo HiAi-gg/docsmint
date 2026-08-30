@@ -104,7 +104,11 @@ function providerProfile(name: string): ProviderLimiterProfile {
 }
 
 function configuredEmbeddingProvider() {
-	const model = config.EMBEDDING_MODEL ?? config.EMBEDDING_FALLBACK_MODEL ?? "";
+	const model =
+		config.EMBEDDING_MODEL ??
+		config.EMBEDDING_FALLBACK_MODEL ??
+		config.EMBEDDING_FALLBACK_2_MODEL ??
+		"";
 	return {
 		model,
 		profile: embeddingProfileId(model, EMBEDDING_DIMENSIONS, "v1"),
@@ -114,6 +118,10 @@ function configuredEmbeddingProvider() {
 			fallback: [
 				config.EMBEDDING_FALLBACK_BASE_URL ?? "",
 				config.EMBEDDING_FALLBACK_MODEL ?? "",
+			],
+			fallback_2: [
+				config.EMBEDDING_FALLBACK_2_BASE_URL ?? "",
+				config.EMBEDDING_FALLBACK_2_MODEL ?? "",
 			],
 			dimensions: EMBEDDING_DIMENSIONS,
 			profileVersion: "v1",

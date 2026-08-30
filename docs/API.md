@@ -184,12 +184,14 @@ curl -G "$HIAI_DOCS_URL/api/search" \
 ```
 
 Search combines exact/title, multilingual lexical, fuzzy, vector, adaptive
-expansion, and GraphRAG channels with reciprocal rank fusion. Results are
-authorized before retrieval and hydration. Common filters include `folder`,
-comma-separated `tags`, `dateFrom`, `dateTo`, and `sort`. Each result includes
-safe explanations; `includeChunks=true` adds up to three matching snippets.
-Provider prompts, credentials, tenant identifiers, and internal scores are not
-returned. Provider or graph failures degrade to the remaining channels.
+expansion, and GraphRAG channels with reciprocal rank fusion, then a
+cross-encoder rerank of the fused prefix (Voyage rerank-2.5 by default).
+Results are authorized before retrieval and hydration. Common filters include
+`folder`, comma-separated `tags`, `dateFrom`, `dateTo`, and `sort`. Each result
+includes safe explanations; `includeChunks=true` adds up to three matching
+snippets. Provider prompts, credentials, tenant identifiers, and internal
+scores are not returned. Provider, rerank, or graph failures degrade to the
+remaining channels. There is no public `/rerank` endpoint.
 
 ### Attachments
 Small image uploads can use the authenticated multipart endpoint:

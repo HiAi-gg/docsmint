@@ -110,6 +110,30 @@ describe("config schema", () => {
 		}
 	});
 
+	test("accepts a second embedding, extraction, and expansion fallback", () => {
+		const result = realEnvSchema.safeParse({
+			EMBEDDING_FALLBACK_2_BASE_URL: "https://openrouter.ai/api/v1",
+			EMBEDDING_FALLBACK_2_API_KEY: "fallback-2-key",
+			EMBEDDING_FALLBACK_2_MODEL: "openai/text-embedding-3-large",
+			GRAPH_EXTRACT_FALLBACK_2_BASE_URL: "https://openrouter.ai/api/v1",
+			GRAPH_EXTRACT_FALLBACK_2_MODEL: "meta-llama/llama-3.3-70b-instruct",
+			SEARCH_EXPANSION_FALLBACK_2_BASE_URL: "https://openrouter.ai/api/v1",
+			SEARCH_EXPANSION_FALLBACK_2_MODEL: "qwen/qwen3-32b",
+		});
+		expect(result.success).toBe(true);
+		if (result.success) {
+			expect(result.data.EMBEDDING_FALLBACK_2_MODEL).toBe(
+				"openai/text-embedding-3-large",
+			);
+			expect(result.data.GRAPH_EXTRACT_FALLBACK_2_MODEL).toBe(
+				"meta-llama/llama-3.3-70b-instruct",
+			);
+			expect(result.data.SEARCH_EXPANSION_FALLBACK_2_MODEL).toBe(
+				"qwen/qwen3-32b",
+			);
+		}
+	});
+
 	test("coerces string port to number", () => {
 		const result = envSchema.safeParse({ API_PORT: "8080" });
 		expect(result.success).toBe(true);
@@ -185,11 +209,21 @@ describe("config schema", () => {
 			expect(result.data.GRAPH_EXTRACT_ENABLED).toBe(true);
 			expect(result.data.GRAPH_SEARCH_ENABLED).toBe(true);
 			expect(result.data.SEARCH_EXPANSION_ENABLED).toBe(true);
-			expect(result.data.SEARCH_EXPANSION_MODEL).toBe(
-				"mistralai/ministral-14b-2512",
-			);
+			expect(result.data.SEARCH_EXPANSION_MODEL).toBe("poolside/laguna-xs-2.1");
 			expect(result.data.SEARCH_EXPANSION_FALLBACK_MODEL).toBe(
-				"google/gemma-4-31b-it",
+				"openai/gpt-5.6-luna",
+			);
+			expect(result.data.SEARCH_EXPANSION_FALLBACK_2_MODEL).toBe(
+				"google/gemini-3.5-flash-lite",
+			);
+			expect(result.data.SEARCH_RERANK_ENABLED).toBe(true);
+			expect(result.data.SEARCH_RERANK_GRAPH_POSITION).toBe("after");
+			expect(result.data.SEARCH_RERANK_MODEL).toBe("voyageai/rerank-2.5");
+			expect(result.data.SEARCH_RERANK_FALLBACK_MODEL).toBe(
+				"cohere/rerank-v3.5",
+			);
+			expect(result.data.SEARCH_RERANK_FALLBACK_2_MODEL).toBe(
+				"nvidia/llama-nemotron-rerank-vl-1b-v2:free",
 			);
 			expect(result.data.SEARCH_EXPANSION_TIMEOUT_MS).toBe(6_000);
 			expect(result.data.SEARCH_VECTOR_PROVIDER_TIMEOUT_MS).toBe(2_500);

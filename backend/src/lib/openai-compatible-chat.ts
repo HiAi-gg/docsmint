@@ -16,6 +16,7 @@ export interface ChatMessage {
 export interface StructuredChatOptions<T> {
 	primary: ChatProviderConfig;
 	fallback?: ChatProviderConfig;
+	fallbacks?: ChatProviderConfig[];
 	messages: readonly ChatMessage[];
 	outputSchema: z.ZodType<T>;
 	maxTokens?: number;
@@ -49,17 +50,39 @@ export function resolveChatProviderKey(
 	return sharedOpenRouterKey?.trim() ?? "";
 }
 
+/** Drop empty and duplicate chat providers while preserving configured order. */
+export function uniqueChatProviders(
+	providers: Array<ChatProviderConfig | undefined>,
+): ChatProviderConfig[] {
+	const seen = new Set<string>();
+	const unique: ChatProviderConfig[] = [];
+	for (const provider of providers) {
+		if (!provider?.baseUrl || !provider.model) continue;
+		const identity = [
+			provider.baseUrl,
+			provider.model,
+			provider.apiKey ?? "",
+		].join("|");
+		if (seen.has(identity)) continue;
+		seen.add(identity);
+		unique.push(provider);
+	}
+	return unique;
+}
+
 /**
  * Call an OpenAI-compatible chat endpoint and validate its JSON response.
  * Provider failures, malformed JSON, schema failures, and timeouts are all
- * safe failures; the fallback is attempted before returning null.
+ * safe failures; remaining fallbacks are attempted before returning null.
  */
 export async function requestStructuredChat<T>(
 	options: StructuredChatOptions<T>,
 ): Promise<StructuredChatResult<T> | null> {
-	const providers = [options.primary, options.fallback].filter(
-		(provider): provider is ChatProviderConfig => Boolean(provider?.baseUrl),
-	);
+	const providers = uniqueChatProviders([
+		options.primary,
+		options.fallback,
+		...(options.fallbacks ?? []),
+	]);
 	for (const provider of providers) {
 		try {
 			const raw = await requestChatContent(provider, options);
@@ -69,7 +92,7 @@ export async function requestStructuredChat<T>(
 			return { data: result.data, model: provider.model };
 		} catch {
 			// Expansion and extraction are enrichment. Continue with the next
-			// provider and let callers degrade gracefully when both fail.
+			// provider and let callers degrade gracefully when the chain fails.
 		}
 	}
 	return null;

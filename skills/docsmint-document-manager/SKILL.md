@@ -1,6 +1,6 @@
 ---
 name: docsmint-document-manager
-description: Manage and research DocsMint documents through its scoped MCP tools, including categories, folders, hybrid search, GraphRAG, and index refresh.
+description: Manage and research DocsMint documents through its scoped MCP tools, including categories, folders, hybrid search, GraphRAG, rerank, and index refresh.
 ---
 
 # DocsMint Document Manager
@@ -30,4 +30,4 @@ Use this skill when an agent must create, organize, edit, or research documents 
 4. After an update, inspect `get_document_index_status`; use `refresh_document_index` only when indexing is stale or failed.
 5. Use snapshots before a substantial rewrite when version history is important.
 
-DocsMint owns chunking, embeddings, multilingual hybrid retrieval, entity extraction, and GraphRAG indexing. Agents must use the MCP tools and never write those persistence layers directly.
+DocsMint owns chunking, embeddings, multilingual hybrid retrieval, cross-encoder rerank, entity extraction, and GraphRAG indexing. Agents must use the MCP tools and never write those persistence layers directly.

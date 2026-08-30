@@ -155,6 +155,65 @@ describe("graph extract-entities module", () => {
 		).toBe("");
 	});
 
+	test("builds a three-slot GraphRAG provider chain in configured order", async () => {
+		const { config } = await import("../lib/config");
+		const previous = {
+			baseUrl: config.GRAPH_EXTRACT_BASE_URL,
+			apiKey: config.GRAPH_EXTRACT_API_KEY,
+			model: config.GRAPH_EXTRACT_MODEL,
+			fallbackBaseUrl: config.GRAPH_EXTRACT_FALLBACK_BASE_URL,
+			fallbackApiKey: config.GRAPH_EXTRACT_FALLBACK_API_KEY,
+			fallbackModel: config.GRAPH_EXTRACT_FALLBACK_MODEL,
+			fallback2BaseUrl: config.GRAPH_EXTRACT_FALLBACK_2_BASE_URL,
+			fallback2ApiKey: config.GRAPH_EXTRACT_FALLBACK_2_API_KEY,
+			fallback2Model: config.GRAPH_EXTRACT_FALLBACK_2_MODEL,
+			timeoutMs: config.GRAPH_EXTRACT_TIMEOUT_MS,
+			openRouterKey: config.OPENROUTER_API_KEY,
+		};
+		Object.assign(config, {
+			GRAPH_EXTRACT_BASE_URL: "https://openrouter.ai/api/v1",
+			GRAPH_EXTRACT_API_KEY: "",
+			GRAPH_EXTRACT_MODEL: "mistralai/ministral-14b-2512",
+			GRAPH_EXTRACT_FALLBACK_BASE_URL: "https://openrouter.ai/api/v1",
+			GRAPH_EXTRACT_FALLBACK_API_KEY: "",
+			GRAPH_EXTRACT_FALLBACK_MODEL: "google/gemma-4-31b-it",
+			GRAPH_EXTRACT_FALLBACK_2_BASE_URL: "https://openrouter.ai/api/v1",
+			GRAPH_EXTRACT_FALLBACK_2_API_KEY: "",
+			GRAPH_EXTRACT_FALLBACK_2_MODEL: "meta-llama/llama-3.3-70b-instruct",
+			GRAPH_EXTRACT_TIMEOUT_MS: 12_000,
+			OPENROUTER_API_KEY: "shared-openrouter-key",
+		});
+		try {
+			const { _graphExtractProvidersForTests } = await import(
+				"../lib/graph/extract-entities"
+			);
+			expect(
+				_graphExtractProvidersForTests().map((provider) => provider.model),
+			).toEqual([
+				"mistralai/ministral-14b-2512",
+				"google/gemma-4-31b-it",
+				"meta-llama/llama-3.3-70b-instruct",
+			]);
+			expect(_graphExtractProvidersForTests()[0]?.apiKey).toBe(
+				"shared-openrouter-key",
+			);
+		} finally {
+			Object.assign(config, {
+				GRAPH_EXTRACT_BASE_URL: previous.baseUrl,
+				GRAPH_EXTRACT_API_KEY: previous.apiKey,
+				GRAPH_EXTRACT_MODEL: previous.model,
+				GRAPH_EXTRACT_FALLBACK_BASE_URL: previous.fallbackBaseUrl,
+				GRAPH_EXTRACT_FALLBACK_API_KEY: previous.fallbackApiKey,
+				GRAPH_EXTRACT_FALLBACK_MODEL: previous.fallbackModel,
+				GRAPH_EXTRACT_FALLBACK_2_BASE_URL: previous.fallback2BaseUrl,
+				GRAPH_EXTRACT_FALLBACK_2_API_KEY: previous.fallback2ApiKey,
+				GRAPH_EXTRACT_FALLBACK_2_MODEL: previous.fallback2Model,
+				GRAPH_EXTRACT_TIMEOUT_MS: previous.timeoutMs,
+				OPENROUTER_API_KEY: previous.openRouterKey,
+			});
+		}
+	});
+
 	test("module exports confidence on the entity/relationship interfaces", async () => {
 		// Type-level smoke test: compile-time only. If the optional
 		// `confidence` field were missing, the assignment below would

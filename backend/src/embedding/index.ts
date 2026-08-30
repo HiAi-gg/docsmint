@@ -63,29 +63,69 @@ export async function getEmbedding(text: string): Promise<EmbeddingResult> {
  * function so the outer try/finally can wrap the whole call without
  * duplicating increment logic in every return branch.
  */
-async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
-	const providers: Array<{
-		baseUrl: string;
+type EmbeddingProviderSlot = "primary" | "fallback" | "fallback_2";
+
+function configuredEmbeddingProviders(): Array<{
+	baseUrl: string;
+	apiKey?: string;
+	model: string;
+	provider: EmbeddingProviderSlot;
+}> {
+	const slots: Array<{
+		baseUrl?: string;
 		apiKey?: string;
-		model: string;
-		provider: "primary" | "fallback";
-	}> = [];
-	if (config.EMBEDDING_BASE_URL && config.EMBEDDING_MODEL) {
-		providers.push({
+		model?: string;
+		provider: EmbeddingProviderSlot;
+	}> = [
+		{
 			baseUrl: config.EMBEDDING_BASE_URL,
 			apiKey: config.EMBEDDING_API_KEY,
 			model: config.EMBEDDING_MODEL,
 			provider: "primary",
-		});
-	}
-	if (config.EMBEDDING_FALLBACK_BASE_URL && config.EMBEDDING_FALLBACK_MODEL) {
-		providers.push({
+		},
+		{
 			baseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
 			apiKey: config.EMBEDDING_FALLBACK_API_KEY,
 			model: config.EMBEDDING_FALLBACK_MODEL,
 			provider: "fallback",
-		});
-	}
+		},
+		{
+			baseUrl: config.EMBEDDING_FALLBACK_2_BASE_URL,
+			apiKey: config.EMBEDDING_FALLBACK_2_API_KEY,
+			model: config.EMBEDDING_FALLBACK_2_MODEL,
+			provider: "fallback_2",
+		},
+	];
+	return slots.flatMap((slot) =>
+		slot.baseUrl && slot.model
+			? [
+					{
+						baseUrl: slot.baseUrl,
+						apiKey: slot.apiKey,
+						model: slot.model,
+						provider: slot.provider,
+					},
+				]
+			: [],
+	);
+}
+
+function assignProviderError(
+	provider: EmbeddingProviderSlot,
+	message: string,
+	errors: {
+		primaryError?: string;
+		fallbackError?: string;
+		fallback2Error?: string;
+	},
+): void {
+	if (provider === "primary") errors.primaryError = message;
+	else if (provider === "fallback") errors.fallbackError = message;
+	else errors.fallback2Error = message;
+}
+
+async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
+	const providers = configuredEmbeddingProviders();
 
 	if (providers.length === 0) {
 		logger.warn(
@@ -95,8 +135,11 @@ async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
 		return { ok: false, code: "not_configured" };
 	}
 
-	let primaryError: string | undefined;
-	let fallbackError: string | undefined;
+	const errors: {
+		primaryError?: string;
+		fallbackError?: string;
+		fallback2Error?: string;
+	} = {};
 	let finalCode: EmbeddingFailureCode = "provider_error";
 
 	for (const provider of providers) {
@@ -111,9 +154,11 @@ async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
 			const validation = validateEmbeddingVector(vector);
 			if (!validation.ok) {
 				finalCode = validation.code;
-				const message = `provider returned ${validation.code}`;
-				if (provider.provider === "primary") primaryError = message;
-				else fallbackError = message;
+				assignProviderError(
+					provider.provider,
+					`provider returned ${validation.code}`,
+					errors,
+				);
 				logger.warn(
 					{
 						model: provider.model,
@@ -144,9 +189,7 @@ async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
 			};
 		} catch (err) {
 			finalCode = failureCodeFromError(err);
-			const message = safeErrorMessage(err);
-			if (provider.provider === "primary") primaryError = message;
-			else fallbackError = message;
+			assignProviderError(provider.provider, safeErrorMessage(err), errors);
 			logger.warn(
 				{ err, model: provider.model, provider: provider.provider },
 				"Embedding provider failed, trying next configured provider",
@@ -158,8 +201,7 @@ async function getEmbeddingInner(text: string): Promise<EmbeddingResult> {
 	return {
 		ok: false,
 		code: finalCode,
-		...(primaryError ? { primaryError } : {}),
-		...(fallbackError ? { fallbackError } : {}),
+		...errors,
 	};
 }
 

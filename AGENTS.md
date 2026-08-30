@@ -21,7 +21,7 @@
 - **Cache:** Redis 8 (the reference image tracks `redis:8-alpine`)
 - **Storage:** SeaweedFS (S3-compatible)
 - **Embeddings:** external embedding API (configurable) + optional self-hosted Ollama; every provider result must be a finite, non-zero 1024-dimensional vector
-- **Search:** exact/title, multilingual lexical, fuzzy, vector, adaptive expansion, and GraphRAG channels fused with reciprocal rank fusion (RRF)
+- **Search:** exact/title, multilingual lexical, fuzzy, vector, adaptive expansion, GraphRAG, and cross-encoder rerank after RRF (default on; `SEARCH_RERANK_ENABLED=false` restores RRF-only)
 - **GraphRAG:** automatic LLM entity extraction + AGE graph expansion in normal search; the operator flag remains a kill switch for degraded deployments
 - **Re-embed invariant:** metadata mutations (tag / folder / category rename and delete) MUST trigger re-embed via `backend/src/lib/reembed.ts`.
 - **Logging:** Pino
@@ -92,6 +92,7 @@
 | **Lint** | `bun run lint` | root |
 | **Typecheck** | `bun run typecheck` | root |
 | **Test** | `bun test` | `backend/` or `frontend/` |
+| **Retrieval eval** | `bun run eval:retrieval -- --mode=baseline` | `backend/` |
 | **DB push** | `bun run db:push` | `packages/db/` |
 | **DB generate** | `bun run db:generate` | `packages/db/` |
 | **DB migrate** | `bun run db:migrate` | `packages/db/` |
@@ -215,11 +216,13 @@ When enabled, the embedding worker calls the extraction LLM after each successfu
 
 #### Graph-Enhanced Search
 
-After the fast retrieval pass and any adaptive query expansion, the search orchestrator walks the AGE graph from authorized seed documents (1–3 hops controlled by `SEARCH_GRAPH_MAX_HOPS`). It also seeds from translated terms, synonyms, concepts, and named entities when direct seeds are unavailable. Graph candidates are fused with the other channels through RRF and capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`; graph neighbors cannot overwhelm strong exact or semantic matches. Graph and provider failures are recorded and never make the entire search fail.
+After the fast retrieval pass and any adaptive query expansion, RRF fuses those channels. By default a cross-encoder then reranks the fused prefix against the original user query (not expansion variants). The AGE graph then walks from authorized reranked seeds (1–3 hops controlled by `SEARCH_GRAPH_MAX_HOPS`). Graph-only neighbors append after the reranked prefix and remain capped by `SEARCH_GRAPH_MAX_CONTRIBUTION`. Graph, rerank, and provider failures are recorded and never make the entire search fail.
 
 #### Search Configuration
 
-The current ranking contract is reciprocal rank fusion (RRF) across exact/title, FTS, fuzzy, vector, expanded, and graph channels. `SEARCH_RRF_K`, exact-title boost, channel-agreement boost, vector/fuzzy thresholds, graph contribution cap, and graph seed/hop limits are validated through the environment schema. `HYBRID_*` variables remain legacy compatibility inputs and do not control the current orchestrator.
+The ranking contract is reciprocal rank fusion (RRF) across exact/title, FTS, fuzzy, vector, expanded, and graph channels, then an optional-by-kill-switch cross-encoder rerank. Defaults: `SEARCH_RERANK_ENABLED=true`, `SEARCH_RERANK_MODEL=voyageai/rerank-2.5`, fallbacks Cohere rerank-v3.5 and NVIDIA llama-nemotron-rerank-vl-1b-v2:free, `SEARCH_RERANK_TIMEOUT_MS=3000`, `SEARCH_RERANK_TOP_N=20`, `SEARCH_RERANK_GRAPH_POSITION=after`. Rerank is fail-open. There is no public HTTP `/rerank` route. `SEARCH_RRF_K`, exact-title boost, channel-agreement boost, vector/fuzzy thresholds, graph contribution cap, and graph seed/hop limits remain in the environment schema. `HYBRID_*` variables remain legacy compatibility inputs and do not control the current orchestrator.
+
+Live eval (24 labeled documents, 16 queries, Voyage rerank-2.5): MRR 0.969 → 1.000, nDCG@10 0.958 → 0.986, Recall@10 unchanged at 1.0 versus RRF-only.
 
 ### CORS
 
@@ -276,6 +279,7 @@ Notable groups:
 - **Chunking:** `CHUNK_TARGET_TOKENS` (`500`), `CHUNK_OVERLAP_TOKENS` (`50`)
 - **Re-embed batch caps:** `FOLDER_REEMBED_BATCH_SIZE` (`100`), `CATEGORY_REEMBED_BATCH_SIZE` (`100`), `TAG_REEMBED_BATCH_SIZE` (`500`)
 - **GraphRAG:** `GRAPH_EXTRACT_ENABLED`, `GRAPH_SEARCH_ENABLED`, `GRAPH_EXTRACT_*`, `GRAPH_EXTRACT_MIN_CONFIDENCE` (`0.5`)
+- **Rerank:** `SEARCH_RERANK_ENABLED` (`true`), `SEARCH_RERANK_MODEL` (`voyageai/rerank-2.5`) plus two fallbacks, `SEARCH_RERANK_TIMEOUT_MS` (`3000`)
 - **Auth secrets:** `BETTER_AUTH_SECRET`, `CSRF_SECRET`, `WEBHOOK_SECRET`, `STORAGE_SECRET_KEY` — each must be unique and set explicitly in production
 
 Full list with defaults: see `.env.example`.

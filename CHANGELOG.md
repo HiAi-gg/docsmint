@@ -7,6 +7,49 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-08-30
+
+### Added
+
+- Cross-encoder rerank after reciprocal rank fusion. The reference profile
+  calls OpenRouter `voyageai/rerank-2.5`, then `cohere/rerank-v3.5`, then
+  `nvidia/llama-nemotron-rerank-vl-1b-v2:free`. Timeouts and provider errors
+  keep the RRF order (fail-open). There is no public HTTP `/rerank` route.
+- `SEARCH_RERANK_*` operator controls, default `SEARCH_RERANK_ENABLED=true`.
+  Graph neighbors still append after the reranked prefix
+  (`SEARCH_RERANK_GRAPH_POSITION=after`). Set `SEARCH_RERANK_ENABLED=false`
+  to restore the previous RRF-only ranking path.
+- Dual fallbacks for embeddings, entity extraction, and query expansion
+  (primary plus two models per job).
+- Offline retrieval eval: `bun run eval:retrieval -- --mode=baseline|rerank`.
+
+### Changed
+
+- Default search ranking is RRF, then rerank of the original query over the
+  fused prefix, then GraphRAG append. Live eval on a 24-document labeled
+  corpus (16 queries) with Voyage rerank-2.5:
+
+  | Metric | RRF only | RRF + rerank |
+  |---|---:|---:|
+  | MRR | 0.969 | **1.000** |
+  | nDCG@10 | 0.958 | **0.986** |
+  | Recall@10 | 1.000 | 1.000 |
+
+  Voyage served all 16 rerank calls with no fallback. The largest lift was a
+  paraphrase query (`operator API key header`): MRR 0.50 → 1.00, putting the
+  Better Auth / API-key document first. An offline title-overlap proxy on 12
+  queries moved MRR 0.776 → 0.958. RRF already recovered every labeled
+  document in the live set; rerank mainly improved first-hit ranking.
+
+### Migration notes
+
+- New installs rerank by default. Existing `.env` files that omit
+  `SEARCH_RERANK_ENABLED` pick up the new default on upgrade.
+- Ollama-only and other non-OpenRouter deployments fail open to RRF when the
+  rerank chain has no usable key. Dedicated keys remain URL-scoped; the shared
+  `OPENROUTER_API_KEY` is never sent to a non-OpenRouter host.
+- Set `SEARCH_RERANK_ENABLED=false` to disable the extra provider call.
+
 ## [0.7.6] - 2026-08-30
 
 ### Fixed

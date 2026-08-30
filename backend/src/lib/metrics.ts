@@ -135,6 +135,10 @@ export const METRIC_NAMES = {
 		"search_expansion_reason_language_mismatch_total",
 	SEARCH_EXPANSION_EMPTY_CANDIDATES_TOTAL:
 		"search_expansion_reason_empty_candidates_total",
+	SEARCH_RERANK_DURATION_MS: "search_rerank_duration_ms",
+	SEARCH_RERANK_SUCCESS_TOTAL: "search_rerank_success_total",
+	SEARCH_RERANK_FALLBACK_TOTAL: "search_rerank_fallback_total",
+	SEARCH_RERANK_CANDIDATES_TOTAL: "search_rerank_candidates_total",
 	SEARCH_EXACT_DURATION_MS: "search_exact_duration_ms",
 	SEARCH_EXACT_ERRORS_TOTAL: "search_exact_errors_total",
 	SEARCH_EXACT_CANDIDATES_TOTAL: "search_exact_candidates_total",
@@ -351,6 +355,7 @@ export function recordSearchExpansionMetrics(input: {
 	model?: string;
 	primaryModel?: string;
 	fallbackModel?: string;
+	fallback2Model?: string;
 	estimatedCostMicrounits?: number;
 }): void {
 	if (input.used !== false) {
@@ -382,7 +387,8 @@ export function recordSearchExpansionMetrics(input: {
 	if (
 		input.used !== false &&
 		input.model &&
-		input.model === input.fallbackModel
+		(input.model === input.fallbackModel ||
+			input.model === input.fallback2Model)
 	) {
 		incrementCounter(METRIC_NAMES.SEARCH_EXPANSION_FALLBACK_TOTAL);
 	} else if (input.used !== false && input.model) {

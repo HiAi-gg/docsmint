@@ -85,7 +85,7 @@ documented database subpath exports use the same transaction boundary.
 | UI | shadcn-svelte (new-york) + Tailwind v4 |
 | Editor | TipTap + svelte-tiptap |
 | Embeddings | OpenAI-compatible API with optional self-hosted Ollama; validated 1024-dimensional generations |
-| Search | Exact/title, multilingual FTS, fuzzy, vector, adaptive expansion, GraphRAG, and RRF |
+| Search | Exact/title, multilingual FTS, fuzzy, vector, adaptive expansion, GraphRAG, RRF, and cross-encoder rerank |
 | Graph | Apache AGE in the same PostgreSQL instance; automatic in the reference profile |
 | Storage | SeaweedFS (S3-compatible) |
 
@@ -166,7 +166,9 @@ are `disabled` (worker concurrency only), `local` (optional GPU-protection
 concurrency cap, no API quota), and `remote` (concurrency, requests/minute,
 backoff, and `Retry-After` handling).
 
-Search queries run exact/title, language-neutral lexical, fuzzy, and active-generation vector retrieval in parallel. A deterministic confidence gate invokes at most one structured multilingual expansion pass when direct evidence is weak. Authorized AGE graph expansion then contributes related documents. Reciprocal rank fusion combines all channels with exact-title and channel-agreement boosts, finite-score/vector thresholds, and a graph contribution cap. If embeddings, expansion, or AGE are unavailable, the remaining channels still return results.
+Search queries run exact/title, language-neutral lexical, fuzzy, and active-generation vector retrieval in parallel. A deterministic confidence gate invokes at most one structured multilingual expansion pass when direct evidence is weak. Reciprocal rank fusion combines the fast and expanded channels. By default a cross-encoder then reranks that fused prefix against the original user query (`voyageai/rerank-2.5`, with Cohere and NVIDIA fallbacks; 3s timeout). Authorized AGE graph expansion contributes related documents after that reranked prefix so graph neighbors cannot overwrite a reranked top hit. `SEARCH_RERANK_GRAPH_POSITION=before` restores the older “graph fuse then rerank” order. `SEARCH_RERANK_ENABLED=false` restores RRF-only ranking. Rerank, embeddings, expansion, and AGE failures degrade to the remaining channels; they never fail the whole search. There is no public HTTP `/rerank` route.
+
+Live eval on a 24-document labeled corpus (16 queries) with Voyage rerank-2.5 moved MRR 0.969 → 1.000 and nDCG@10 0.958 → 0.986 versus RRF-only, with Recall@10 unchanged at 1.0. The largest first-hit lift was a paraphrase of the operator API-key document (MRR 0.50 → 1.00).
 
 ### Search and embedding invariants
 
@@ -176,6 +178,7 @@ Search queries run exact/title, language-neutral lexical, fuzzy, and active-gene
 - Graph extraction runs only after generation activation.
 - Query expansion cache keys are tenant-scoped hashes; provider credentials and raw prompts never enter metrics or public responses.
 - Graph seed authorization and result hydration use the same owner/public/share visibility scope.
+- Rerank is fail-open: a timeout or provider error keeps the RRF order. The original user query is the rerank query.
 
 ## Module Boundaries
 

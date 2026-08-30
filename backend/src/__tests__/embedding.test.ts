@@ -10,6 +10,9 @@ const originalEmbeddingConfig = {
 	fallbackBaseUrl: config.EMBEDDING_FALLBACK_BASE_URL,
 	fallbackApiKey: config.EMBEDDING_FALLBACK_API_KEY,
 	fallbackModel: config.EMBEDDING_FALLBACK_MODEL,
+	fallback2BaseUrl: config.EMBEDDING_FALLBACK_2_BASE_URL,
+	fallback2ApiKey: config.EMBEDDING_FALLBACK_2_API_KEY,
+	fallback2Model: config.EMBEDDING_FALLBACK_2_MODEL,
 };
 
 afterEach(() => {
@@ -21,12 +24,16 @@ afterEach(() => {
 		EMBEDDING_FALLBACK_BASE_URL: originalEmbeddingConfig.fallbackBaseUrl,
 		EMBEDDING_FALLBACK_API_KEY: originalEmbeddingConfig.fallbackApiKey,
 		EMBEDDING_FALLBACK_MODEL: originalEmbeddingConfig.fallbackModel,
+		EMBEDDING_FALLBACK_2_BASE_URL: originalEmbeddingConfig.fallback2BaseUrl,
+		EMBEDDING_FALLBACK_2_API_KEY: originalEmbeddingConfig.fallback2ApiKey,
+		EMBEDDING_FALLBACK_2_MODEL: originalEmbeddingConfig.fallback2Model,
 	});
 });
 
 function configureEmbeddingProviders(options: {
 	primary?: boolean;
 	fallback?: boolean;
+	fallback2?: boolean;
 }) {
 	Object.assign(config, {
 		EMBEDDING_BASE_URL: options.primary ? "https://primary.test/v1" : undefined,
@@ -37,6 +44,13 @@ function configureEmbeddingProviders(options: {
 			: undefined,
 		EMBEDDING_FALLBACK_API_KEY: "fallback-key",
 		EMBEDDING_FALLBACK_MODEL: options.fallback ? "fallback-model" : undefined,
+		EMBEDDING_FALLBACK_2_BASE_URL: options.fallback2
+			? "https://fallback2.test/v1"
+			: undefined,
+		EMBEDDING_FALLBACK_2_API_KEY: "fallback2-key",
+		EMBEDDING_FALLBACK_2_MODEL: options.fallback2
+			? "fallback-2-model"
+			: undefined,
 	});
 }
 
@@ -128,6 +142,51 @@ describe("embedding providers", () => {
 			code: "zero_vector",
 			primaryError: "provider returned zero_vector",
 			fallbackError: "provider returned zero_vector",
+		});
+	});
+
+	test("uses the second fallback when primary and first fallback fail", async () => {
+		configureEmbeddingProviders({
+			primary: true,
+			fallback: true,
+			fallback2: true,
+		});
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("primary.test") || url.includes("fallback.test")) {
+				return responseFor([], 503);
+			}
+			return responseFor(vector(0.4));
+		}) as unknown as typeof fetch;
+
+		const { getEmbedding } = await loadEmbeddingModule();
+		const result = await getEmbedding("second fallback text");
+
+		expect(result).toMatchObject({
+			ok: true,
+			model: "fallback-2-model",
+			provider: "fallback_2",
+		});
+	});
+
+	test("reports every slot when the three-provider chain returns invalid vectors", async () => {
+		configureEmbeddingProviders({
+			primary: true,
+			fallback: true,
+			fallback2: true,
+		});
+		globalThis.fetch = (async () =>
+			responseFor(vector(0))) as unknown as typeof fetch;
+
+		const { getEmbedding } = await loadEmbeddingModule();
+		const result = await getEmbedding("invalid three-provider chain");
+
+		expect(result).toMatchObject({
+			ok: false,
+			code: "zero_vector",
+			primaryError: "provider returned zero_vector",
+			fallbackError: "provider returned zero_vector",
+			fallback2Error: "provider returned zero_vector",
 		});
 	});
 

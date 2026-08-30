@@ -44,10 +44,13 @@ AI_PROVIDER=ollama
 OLLAMA_PORT=11434
 ```
 
-The quick-start profile configures the corresponding embedding and extraction
-endpoints. Advanced deployments may override the `EMBEDDING_*`,
-`EMBEDDING_FALLBACK_*`, `GRAPH_EXTRACT_*`, and
-`GRAPH_EXTRACT_FALLBACK_*` variables documented in `.env.example`.
+The quick-start profile configures the corresponding embedding, extraction,
+expansion, and rerank endpoints. Advanced deployments may override the
+`EMBEDDING_*`, `EMBEDDING_FALLBACK_*`, `GRAPH_EXTRACT_*`,
+`GRAPH_EXTRACT_FALLBACK_*`, `SEARCH_EXPANSION_*`, and `SEARCH_RERANK_*`
+variables documented in `.env.example`. Rerank is on by default and fails
+open to RRF when the chain has no usable key. Set
+`SEARCH_RERANK_ENABLED=false` for RRF-only ranking.
 
 All embedding providers must return finite, non-zero vectors with exactly 1024
 dimensions. OpenRouter requests that dimension explicitly. For Ollama, install
@@ -260,8 +263,9 @@ docker compose ps
 - Verify Redis is reachable and BullMQ workers are running.
 - Confirm provider URLs, models, credentials, and 1024-dimensional output.
 - Confirm AGE and vector extensions exist in the supported PostgreSQL image.
-- Provider or graph failures degrade search channels; they do not make lexical
-  search unavailable.
+- Provider, rerank, or graph failures degrade search channels; they do not make
+  lexical search unavailable. Set `SEARCH_RERANK_ENABLED=false` if you want
+  RRF-only ranking.
 
 ### Queues are slow
 

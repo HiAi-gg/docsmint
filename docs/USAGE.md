@@ -66,10 +66,13 @@ retried by the queue and do not block normal document access.
 ## Search
 
 Search combines title and exact matches, multilingual lexical search, fuzzy
-matching, vector similarity, adaptive query expansion, and GraphRAG. Results
-may continue to improve while the semantic stage is running. Recently saved or
-imported documents become available to semantic channels after their background
-pipeline reaches `ready`; lexical matching remains available before then.
+matching, vector similarity, adaptive query expansion, GraphRAG, and
+cross-encoder rerank after reciprocal rank fusion. Rerank uses the original
+query, not expansion variants, and fails open to the RRF order when the
+provider times out. Results may continue to improve while the semantic stage
+is running. Recently saved or imported documents become available to semantic
+channels after their background pipeline reaches `ready`; lexical matching
+remains available before then.
 
 ## Share documents
 

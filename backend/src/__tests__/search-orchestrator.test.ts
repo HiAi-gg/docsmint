@@ -86,7 +86,13 @@ describe("automatic GraphRAG search orchestration", () => {
 		let retrievedLimit: number | undefined;
 		await searchDocuments(
 			ctx,
-			{ query: "deep page", page: 5, limit: 100, graphEnabled: false },
+			{
+				query: "deep page",
+				page: 5,
+				limit: 100,
+				graphEnabled: false,
+				rerankEnabled: false,
+			},
 			{
 				retrieveFast: async (_ctx, _plan, options) => {
 					retrievedLimit = options?.limit;
@@ -103,6 +109,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const response = await searchDocuments(
 			ctx,
 			{
+				rerankEnabled: false,
 				query: "Vladislav",
 				page: 1,
 				limit: 5,
@@ -144,6 +151,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const response = await searchDocuments(
 			ctx,
 			{
+				rerankEnabled: false,
 				query: "scoped",
 				documentIds: ["inherited-folder-doc"],
 			},
@@ -179,7 +187,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		let requestEmbedding: EmbeddingResult | undefined;
 		const response = await searchDocuments(
 			ctx,
-			{ query: "English", limit: 10 },
+			{ query: "English", limit: 10, rerankEnabled: false },
 			{
 				getEmbedding: provider,
 				retrieveFast: async (_ctx, _plan, options = {}) => {
@@ -205,7 +213,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		let second: EmbeddingResult | undefined;
 		const response = await searchDocuments(
 			ctx,
-			{ query: "English", limit: 10 },
+			{ query: "English", limit: 10, rerankEnabled: false },
 			{
 				getEmbedding: provider,
 				retrieveFast: async (_ctx, _plan, options = {}) => {
@@ -228,7 +236,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const graph = mock(async () => [] as SearchCandidate[]);
 		const response = await searchDocuments(
 			ctx,
-			{ query: "English", limit: 10 },
+			{ query: "English", limit: 10, rerankEnabled: false },
 			{
 				retrieveFast: async () =>
 					channels({
@@ -253,7 +261,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		);
 		const response = await searchDocuments(
 			ctx,
-			{ query: "английский", limit: 10 },
+			{ query: "английский", limit: 10, rerankEnabled: false },
 			{
 				retrieveFast: async () => channels({}),
 				expand,
@@ -273,7 +281,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const languageDoc = candidate("language-list", "expanded_fts");
 		const response = await searchDocuments(
 			ctx,
-			{ query: "разные языки", limit: 10 },
+			{ query: "разные языки", limit: 10, rerankEnabled: false },
 			{
 				getEmbedding: async () => ({ ok: false, code: "provider_error" }),
 				retrieveFast: async () => channels({ vector: [] }),
@@ -298,7 +306,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const graph = mock(async () => [candidate("graph-doc", "graph")]);
 		const response = await searchDocuments(
 			ctx,
-			{ query: "topic" },
+			{ query: "topic", rerankEnabled: false },
 			{
 				retrieveFast: async () =>
 					channels({ fts: [candidate("direct", "fts")] }),
@@ -315,6 +323,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const response = await searchDocuments(
 			ctx,
 			{
+				rerankEnabled: false,
 				query: "topic",
 				graphEnabled: false,
 			},
@@ -334,7 +343,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		resetMetrics();
 		await searchDocuments(
 			ctx,
-			{ query: "topic", page: 2, limit: 1 },
+			{ query: "topic", page: 2, limit: 1, rerankEnabled: false },
 			{
 				retrieveFast: async () => channels({}),
 				expand: async () => null,
@@ -350,7 +359,7 @@ describe("automatic GraphRAG search orchestration", () => {
 	test("graph-only results remain below a strong exact result", async () => {
 		const response = await searchDocuments(
 			ctx,
-			{ query: "Exact title" },
+			{ query: "Exact title", rerankEnabled: false },
 			{
 				retrieveFast: async () =>
 					channels({ exact: [candidate("exact", "exact")] }),
@@ -367,7 +376,7 @@ describe("automatic GraphRAG search orchestration", () => {
 	test("provider timeout returns fast-pass results", async () => {
 		const response = await searchDocuments(
 			ctx,
-			{ query: "таймаут" },
+			{ query: "таймаут", rerankEnabled: false },
 			{
 				retrieveFast: async () => channels({ fts: [candidate("fast", "fts")] }),
 				expand: async () => {
@@ -383,7 +392,7 @@ describe("automatic GraphRAG search orchestration", () => {
 	test("graph failure returns fused direct results", async () => {
 		const response = await searchDocuments(
 			ctx,
-			{ query: "direct" },
+			{ query: "direct", rerankEnabled: false },
 			{
 				retrieveFast: async () =>
 					channels({ exact: [candidate("direct", "exact")] }),
@@ -400,7 +409,7 @@ describe("automatic GraphRAG search orchestration", () => {
 	test("empty healthy channels report no relevant candidates", async () => {
 		const response = await searchDocuments(
 			ctx,
-			{ query: "missing" },
+			{ query: "missing", rerankEnabled: false },
 			{
 				retrieveFast: async () => channels({}),
 				expand: async () => null,
@@ -415,7 +424,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const seen: TenantContext[] = [];
 		const response = await searchDocuments(
 			ctx,
-			{ query: "scope" },
+			{ query: "scope", rerankEnabled: false },
 			{
 				retrieveFast: async (received) => {
 					seen.push(received);
@@ -440,7 +449,7 @@ describe("automatic GraphRAG search orchestration", () => {
 		const planExpansion = mock(async (plan: QueryPlan) => expansion(plan, []));
 		const response = await searchDocuments(
 			ctx,
-			{ query: "русский термин" },
+			{ query: "русский термин", rerankEnabled: false },
 			{
 				retrieveFast: async () => channels({}),
 				expand: planExpansion,
@@ -454,5 +463,142 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(graphRequest?.documentSeeds).toEqual([]);
 		expect(graphRequest?.queryPlan.concepts).toContain("authentication");
 		expect(response.items[0]?.documentId).toBe("graph-concept");
+	});
+});
+
+describe("optional cross-encoder rerank", () => {
+	test("disabled rerank keeps RRF order", async () => {
+		const rerank = mock(async () => null);
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "English",
+				limit: 10,
+				graphEnabled: false,
+				rerankEnabled: false,
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-a", "exact", 1)],
+						fts: [candidate("doc-b", "fts", 1)],
+					}),
+				expand: async () => null,
+				retrieveGraph: async () => [],
+				rerank,
+			},
+		);
+		expect(rerank).not.toHaveBeenCalled();
+		expect(response.diagnostics.rerankAttempted).toBe(false);
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"doc-a",
+			"doc-b",
+		]);
+	});
+
+	test("rerank reorders the RRF prefix and falls back on provider null", async () => {
+		const reordered = await searchDocuments(
+			ctx,
+			{
+				query: "English",
+				limit: 10,
+				graphEnabled: false,
+				rerankEnabled: true,
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-a", "exact", 1)],
+						fts: [candidate("doc-b", "fts", 1)],
+					}),
+				expand: async () => null,
+				retrieveGraph: async () => [],
+				loadRerankTexts: async () =>
+					new Map([
+						["doc-a", "alpha"],
+						["doc-b", "beta"],
+					]),
+				rerank: async () => ({
+					model: "voyageai/rerank-2.5",
+					hits: [
+						{ id: "doc-b", score: 0.9, rank: 1 },
+						{ id: "doc-a", score: 0.1, rank: 2 },
+					],
+				}),
+			},
+		);
+		expect(reordered.items.map((item) => item.documentId)).toEqual([
+			"doc-b",
+			"doc-a",
+		]);
+		expect(reordered.diagnostics.rerankUsed).toBe(true);
+
+		const fallback = await searchDocuments(
+			ctx,
+			{
+				query: "English",
+				limit: 10,
+				graphEnabled: false,
+				rerankEnabled: true,
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-a", "exact", 1)],
+						fts: [candidate("doc-b", "fts", 1)],
+					}),
+				expand: async () => null,
+				retrieveGraph: async () => [],
+				loadRerankTexts: async () =>
+					new Map([
+						["doc-a", "alpha"],
+						["doc-b", "beta"],
+					]),
+				rerank: async () => null,
+			},
+		);
+		expect(fallback.items.map((item) => item.documentId)).toEqual([
+			"doc-a",
+			"doc-b",
+		]);
+		expect(fallback.diagnostics.rerankFallback).toBe(true);
+	});
+
+	test("graph-after-rerank seeds AGE from the reranked prefix", async () => {
+		let seeds: string[] = [];
+		await searchDocuments(
+			ctx,
+			{
+				query: "English",
+				limit: 10,
+				rerankEnabled: true,
+				rerankGraphPosition: "after",
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-a", "exact", 1)],
+						fts: [candidate("doc-b", "fts", 1)],
+					}),
+				expand: async () => null,
+				loadRerankTexts: async () =>
+					new Map([
+						["doc-a", "alpha"],
+						["doc-b", "beta"],
+					]),
+				rerank: async () => ({
+					model: "voyageai/rerank-2.5",
+					hits: [
+						{ id: "doc-b", score: 0.9, rank: 1 },
+						{ id: "doc-a", score: 0.1, rank: 2 },
+					],
+				}),
+				retrieveGraph: async (_ctx, request) => {
+					seeds = request.documentSeeds;
+					return [];
+				},
+			},
+		);
+		expect(seeds[0]).toBe("doc-b");
 	});
 });

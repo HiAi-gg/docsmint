@@ -12,7 +12,7 @@ export type EmbeddingResult =
 			ok: true;
 			vector: number[];
 			model: string;
-			provider: "primary" | "fallback";
+			provider: "primary" | "fallback" | "fallback_2";
 			dimensions: typeof EMBEDDING_DIMENSIONS;
 			profile: string;
 	  }
@@ -21,6 +21,7 @@ export type EmbeddingResult =
 			code: EmbeddingFailureCode;
 			primaryError?: string;
 			fallbackError?: string;
+			fallback2Error?: string;
 	  };
 
 /**

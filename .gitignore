@@ -11,11 +11,14 @@ build/
 # Paraglide generated (regenerated on build)
 frontend/src/lib/paraglide/
 
-# Environment
+# Environment and local provider keys (never commit)
 .env
 .env.local
 .env.*
 !.env.example
+.env.openrouter
+.openrouter-key
+*.openrouter.key
 
 # Docker dev overrides
 docker-compose.dev.yml

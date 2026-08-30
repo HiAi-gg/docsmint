@@ -4,6 +4,7 @@ import {
 	type ChatProviderConfig,
 	requestStructuredChat,
 	resolveChatProviderKey,
+	uniqueChatProviders,
 } from "../lib/openai-compatible-chat";
 import { redis } from "../lib/redis";
 import type { QueryPlan } from "./types";
@@ -40,28 +41,35 @@ export async function expandQuery(
 			: (scope.tenantScope ?? scope.tenantId ?? scope.ownerId ?? "").trim();
 	if (!tenantScope || !plan.normalized.trim()) return null;
 
-	const primary = providerConfig(
-		config.SEARCH_EXPANSION_BASE_URL,
-		config.SEARCH_EXPANSION_API_KEY,
-		config.SEARCH_EXPANSION_MODEL,
-	);
-	const fallback = providerConfig(
-		config.SEARCH_EXPANSION_FALLBACK_BASE_URL,
-		config.SEARCH_EXPANSION_FALLBACK_API_KEY,
-		config.SEARCH_EXPANSION_FALLBACK_MODEL,
-	);
-	const providerCount = fallback.baseUrl ? 2 : 1;
+	const chain = uniqueChatProviders([
+		providerConfig(
+			config.SEARCH_EXPANSION_BASE_URL,
+			config.SEARCH_EXPANSION_API_KEY,
+			config.SEARCH_EXPANSION_MODEL,
+		),
+		providerConfig(
+			config.SEARCH_EXPANSION_FALLBACK_BASE_URL,
+			config.SEARCH_EXPANSION_FALLBACK_API_KEY,
+			config.SEARCH_EXPANSION_FALLBACK_MODEL,
+		),
+		providerConfig(
+			config.SEARCH_EXPANSION_FALLBACK_2_BASE_URL,
+			config.SEARCH_EXPANSION_FALLBACK_2_API_KEY,
+			config.SEARCH_EXPANSION_FALLBACK_2_MODEL,
+		),
+	]);
 	const providerTimeoutMs = Math.max(
 		250,
-		Math.floor(config.SEARCH_EXPANSION_TIMEOUT_MS / providerCount),
+		Math.floor(config.SEARCH_EXPANSION_TIMEOUT_MS / Math.max(1, chain.length)),
 	);
-	primary.timeoutMs = providerTimeoutMs;
-	fallback.timeoutMs = providerTimeoutMs;
+	for (const provider of chain) provider.timeoutMs = providerTimeoutMs;
+	const [primary, ...fallbacks] = chain;
+	if (!primary) return null;
 	const key = await expansionCacheKey(
 		tenantScope,
 		plan.normalized,
 		primary,
-		fallback,
+		fallbacks,
 	);
 	const ttl = config.SEARCH_EXPANSION_CACHE_TTL_SECONDS;
 
@@ -107,7 +115,7 @@ export async function expandQuery(
 
 	const result = await requestStructuredChat({
 		primary,
-		fallback,
+		fallbacks,
 		messages: [
 			{
 				role: "system",
@@ -220,18 +228,17 @@ const cachedResultSchema = z.object({
 export async function expansionCacheKey(
 	tenantScope: string,
 	normalizedQuery: string,
-	primary: ChatProviderConfig = providerConfig(
-		config.SEARCH_EXPANSION_BASE_URL,
-		config.SEARCH_EXPANSION_API_KEY,
-		config.SEARCH_EXPANSION_MODEL,
-	),
-	fallback: ChatProviderConfig | undefined = undefined,
+	primary: ChatProviderConfig = {
+		baseUrl: config.SEARCH_EXPANSION_BASE_URL,
+		model: config.SEARCH_EXPANSION_MODEL,
+		timeoutMs: config.SEARCH_EXPANSION_TIMEOUT_MS,
+	},
+	fallbacks: ChatProviderConfig[] = [],
 ): Promise<string> {
 	const modelProfile = [
 		primary.baseUrl,
 		primary.model,
-		fallback?.baseUrl ?? "",
-		fallback?.model ?? "",
+		...fallbacks.flatMap((provider) => [provider.baseUrl, provider.model]),
 	].join("|");
 	const input = [
 		tenantScope,
@@ -244,10 +251,11 @@ export async function expansionCacheKey(
 }
 
 function providerConfig(
-	baseUrl: string,
+	baseUrl: string | undefined,
 	explicitKey: string | undefined,
-	model: string,
-): ChatProviderConfig {
+	model: string | undefined,
+): ChatProviderConfig | undefined {
+	if (!baseUrl || !model) return undefined;
 	return {
 		baseUrl,
 		model,

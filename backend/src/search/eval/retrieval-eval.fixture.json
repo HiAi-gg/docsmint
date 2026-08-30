@@ -1,0 +1,118 @@
+{
+	"documents": [
+		{
+			"id": "doc-locks",
+			"title": "PostgreSQL advisory locks",
+			"text": "DocsMint uses PostgreSQL advisory locks to serialize re-embed jobs per document. A leaked lock blocked the worker until pg_terminate_backend released it."
+		},
+		{
+			"id": "doc-rrf",
+			"title": "Reciprocal rank fusion",
+			"text": "Search fuses exact, FTS, fuzzy, vector, expanded, and graph channels with reciprocal rank fusion. RRF_K defaults to 60."
+		},
+		{
+			"id": "doc-graph",
+			"title": "GraphRAG with Apache AGE",
+			"text": "Entity extraction writes Person Organization Concept Location Topic nodes into Apache AGE. Graph neighbors expand search beyond lexical matches."
+		},
+		{
+			"id": "doc-embed",
+			"title": "1024-dimensional embeddings",
+			"text": "Every embedding provider must return a finite non-zero 1024-dimensional vector. Voyage-4-lite and bge-m3 are native 1024 models."
+		},
+		{
+			"id": "doc-share",
+			"title": "Public share links",
+			"text": "Standalone share creates a public token link. Guest access never includes owner_id in the URL."
+		},
+		{
+			"id": "doc-seaweed",
+			"title": "SeaweedFS attachments",
+			"text": "Images are stored in SeaweedFS S3. Presigned PUT URLs expire after fifteen minutes."
+		},
+		{
+			"id": "doc-auth",
+			"title": "Better Auth sessions",
+			"text": "Protected routes require a Better Auth session cookie. Admin operator tools use HIAI_DOCS_API_KEY."
+		},
+		{
+			"id": "doc-bread",
+			"title": "Sourdough starter notes",
+			"text": "Feed the starter twice a day. This cooking note is an irrelevant distractor for retrieval tests."
+		}
+	],
+	"queries": [
+		{
+			"id": "exact-title",
+			"query": "Reciprocal rank fusion",
+			"class": "exact",
+			"labels": { "doc-rrf": 3, "doc-graph": 1 }
+		},
+		{
+			"id": "name-lookup",
+			"query": "PostgreSQL advisory locks",
+			"class": "exact",
+			"labels": { "doc-locks": 3 }
+		},
+		{
+			"id": "fts-lock",
+			"query": "advisory lock blocked the worker",
+			"class": "fts",
+			"labels": { "doc-locks": 3 }
+		},
+		{
+			"id": "semantic-search",
+			"query": "how do we combine keyword and vector results",
+			"class": "semantic",
+			"labels": { "doc-rrf": 3, "doc-graph": 2, "doc-embed": 1 }
+		},
+		{
+			"id": "semantic-graph",
+			"query": "related documents through entities",
+			"class": "graph",
+			"labels": { "doc-graph": 3, "doc-rrf": 2 }
+		},
+		{
+			"id": "multilingual",
+			"query": "векторные эмбеддинги 1024",
+			"class": "multilingual",
+			"labels": { "doc-embed": 3 }
+		},
+		{
+			"id": "ambiguous",
+			"query": "lock",
+			"class": "ambiguous",
+			"labels": { "doc-locks": 3, "doc-auth": 1 }
+		},
+		{
+			"id": "paraphrase-share",
+			"query": "how guests open a public document link",
+			"class": "semantic",
+			"labels": { "doc-share": 3 }
+		},
+		{
+			"id": "storage",
+			"query": "where are uploaded images stored",
+			"class": "fts",
+			"labels": { "doc-seaweed": 3 }
+		},
+		{
+			"id": "vector-dim",
+			"query": "what dimension must embeddings be",
+			"class": "semantic",
+			"labels": { "doc-embed": 3 }
+		},
+		{
+			"id": "distractor",
+			"query": "sourdough bread recipe",
+			"class": "exact",
+			"labels": { "doc-bread": 3 }
+		},
+		{
+			"id": "admin-key",
+			"query": "operator API key header",
+			"class": "fts",
+			"labels": { "doc-auth": 3 }
+		}
+	]
+}

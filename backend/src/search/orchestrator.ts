@@ -24,6 +24,9 @@ import {
 } from "./graph-retriever";
 import { analyzeQuery } from "./query-analyzer";
 import { expandQuery } from "./query-expander";
+import { applyRerankOrder, type RerankProviderResult } from "./rerank";
+import { requestRerank } from "./rerank-provider";
+import { loadRerankTexts } from "./rerank-texts";
 import { retrieveFastChannels } from "./retrievers";
 import { fuseCandidates } from "./rrf";
 import type {
@@ -45,6 +48,13 @@ export interface SearchRequest {
 	 * GraphRAG remains enabled by default.
 	 */
 	graphEnabled?: boolean;
+	/**
+	 * Internal eval override. Product requests omit this and follow
+	 * SEARCH_RERANK_ENABLED.
+	 */
+	rerankEnabled?: boolean;
+	/** Internal eval override for graph-before vs graph-after rerank. */
+	rerankGraphPosition?: "before" | "after";
 	filters?: SearchFilters;
 	/** Restricts every lexical/vector channel to an authorized document set. */
 	documentIds?: string[];
@@ -65,6 +75,10 @@ export interface SearchDiagnostics {
 	graphFailed: boolean;
 	graphContribution: boolean;
 	confidenceReasons: string[];
+	rerankAttempted: boolean;
+	rerankUsed: boolean;
+	rerankFallback: boolean;
+	rerankModel?: string;
 }
 
 export interface SearchResponse {
@@ -97,6 +111,8 @@ export interface SearchAdapterOptions {
 	) => Promise<ChannelResult[]>;
 	expand?: typeof expandQuery;
 	retrieveGraph?: typeof retrieveGraphCandidates;
+	rerank?: typeof requestRerank;
+	loadRerankTexts?: typeof loadRerankTexts;
 	filterRanked?: (
 		ctx: TenantContext,
 		items: RankedSearchResult[],
@@ -128,6 +144,8 @@ export async function searchDocuments(
 	const embeddingProvider = adapters.getEmbedding ?? getEmbedding;
 	const expand = adapters.expand ?? expandQuery;
 	const retrieveGraph = adapters.retrieveGraph ?? retrieveGraphCandidates;
+	const rerankDocuments = adapters.rerank ?? requestRerank;
+	const loadTexts = adapters.loadRerankTexts ?? loadRerankTexts;
 	const filterRanked = adapters.filterRanked ?? applySearchFilters;
 	const channelErrors: Record<string, string> = {};
 	// The vector channel and chunk hydration are part of one request. Keep a
@@ -243,6 +261,7 @@ export async function searchDocuments(
 			model: expansionModel,
 			primaryModel: config.SEARCH_EXPANSION_MODEL,
 			fallbackModel: config.SEARCH_EXPANSION_FALLBACK_MODEL,
+			fallback2Model: config.SEARCH_EXPANSION_FALLBACK_2_MODEL,
 			estimatedCostMicrounits: expansionUsed
 				? config.SEARCH_EXPANSION_ESTIMATED_COST_MICROUNITS
 				: 0,
@@ -253,28 +272,36 @@ export async function searchDocuments(
 		);
 	}
 
+	const rrfOptions = {
+		rrfK: config.SEARCH_RRF_K,
+		exactBoost: config.SEARCH_EXACT_BOOST,
+		channelAgreementBoost: config.SEARCH_CHANNEL_AGREEMENT_BOOST,
+		graphMaxContribution: config.SEARCH_GRAPH_MAX_CONTRIBUTION,
+		vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
+	};
 	const direct = fuseCandidates(
 		[...fast, ...expanded].flatMap((result) => result.candidates),
-		{
-			rrfK: config.SEARCH_RRF_K,
-			exactBoost: config.SEARCH_EXACT_BOOST,
-			channelAgreementBoost: config.SEARCH_CHANNEL_AGREEMENT_BOOST,
-			graphMaxContribution: config.SEARCH_GRAPH_MAX_CONTRIBUTION,
-			vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
-		},
+		rrfOptions,
 	);
 	const graphPlan = expandedPlan ?? plan;
-	const graphSeeds = direct
-		.slice(0, config.SEARCH_GRAPH_SEED_LIMIT)
-		.map((result) => result.documentId);
+	const graphAttempted = request.graphEnabled !== false;
+	const rerankEnabled = request.rerankEnabled ?? config.SEARCH_RERANK_ENABLED;
+	const graphPosition =
+		request.rerankGraphPosition ?? config.SEARCH_RERANK_GRAPH_POSITION;
 	let graph: SearchCandidate[] = [];
 	let graphFailed = false;
-	const graphAttempted = request.graphEnabled !== false;
-	if (graphAttempted) {
+	let ranked: RankedSearchResult[];
+	let rerankAttempted = false;
+	let rerankUsed = false;
+	let rerankFallback = false;
+	let rerankModel: string | undefined;
+
+	const runGraph = async (seeds: string[]): Promise<SearchCandidate[]> => {
 		const graphStarted = performance.now();
+		let next: SearchCandidate[] = [];
 		try {
-			graph = await retrieveGraph(ctx, {
-				documentSeeds: graphSeeds,
+			next = await retrieveGraph(ctx, {
+				documentSeeds: seeds,
 				queryPlan: graphPlan,
 				limit: Math.min(limit * 2, config.SEARCH_GRAPH_RESULT_LIMIT),
 				maxHops: request.maxGraphHops ?? config.SEARCH_GRAPH_MAX_HOPS,
@@ -284,29 +311,98 @@ export async function searchDocuments(
 		} catch {
 			graphFailed = true;
 		}
-		graph = restrictCandidates(graph, request.documentIds);
+		next = restrictCandidates(next, request.documentIds);
 		recordSearchChannelMetrics({
 			channel: "graph",
 			durationMs: performance.now() - graphStarted,
-			candidateCount: graph.length,
+			candidateCount: next.length,
 			errorCode: graphFailed ? "query_failed" : undefined,
 		});
-	}
+		return next;
+	};
 
-	const ranked = fuseCandidates(
-		[
-			...fast.flatMap((result) => result.candidates),
-			...expanded.flatMap((result) => result.candidates),
-			...graph,
-		],
-		{
-			rrfK: config.SEARCH_RRF_K,
-			exactBoost: config.SEARCH_EXACT_BOOST,
-			channelAgreementBoost: config.SEARCH_CHANNEL_AGREEMENT_BOOST,
-			graphMaxContribution: config.SEARCH_GRAPH_MAX_CONTRIBUTION,
-			vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
-		},
-	);
+	const seedIds = (items: RankedSearchResult[]): string[] =>
+		items
+			.slice(0, config.SEARCH_GRAPH_SEED_LIMIT)
+			.map((item) => item.documentId);
+
+	const applyOptionalRerank = async (
+		items: RankedSearchResult[],
+	): Promise<RankedSearchResult[]> => {
+		if (!rerankEnabled || items.length === 0) return items;
+		rerankAttempted = true;
+		try {
+			const topN = Math.min(config.SEARCH_RERANK_TOP_N, items.length);
+			const window = items.slice(0, topN);
+			const texts = await loadTexts(
+				ctx,
+				window.map((item) => item.documentId),
+			);
+			const candidates = window.map((item, index) => ({
+				id: item.documentId,
+				text: texts.get(item.documentId) ?? "",
+				sourceRank: index + 1,
+				rrfScore: item.score,
+			}));
+			if (candidates.every((candidate) => candidate.text.length === 0)) {
+				rerankFallback = true;
+				return items;
+			}
+			const result: RerankProviderResult | null = await rerankDocuments({
+				query: plan.original,
+				candidates,
+				topN,
+			});
+			if (!result || result.hits.length === 0) {
+				rerankFallback = true;
+				return items;
+			}
+			rerankUsed = true;
+			rerankModel = result.model;
+			return applyRerankOrder(items, result.hits, topN);
+		} catch {
+			rerankFallback = true;
+			return items;
+		}
+	};
+
+	if (!rerankEnabled) {
+		if (graphAttempted) graph = await runGraph(seedIds(direct));
+		ranked = fuseCandidates(
+			[
+				...fast.flatMap((result) => result.candidates),
+				...expanded.flatMap((result) => result.candidates),
+				...graph,
+			],
+			rrfOptions,
+		);
+	} else if (graphPosition === "before") {
+		if (graphAttempted) graph = await runGraph(seedIds(direct));
+		ranked = fuseCandidates(
+			[
+				...fast.flatMap((result) => result.candidates),
+				...expanded.flatMap((result) => result.candidates),
+				...graph,
+			],
+			rrfOptions,
+		);
+		ranked = await applyOptionalRerank(ranked);
+	} else {
+		ranked = await applyOptionalRerank(direct);
+		if (graphAttempted) graph = await runGraph(seedIds(ranked));
+		const present = new Set(ranked.map((item) => item.documentId));
+		const extra = graph.filter(
+			(candidate) => !present.has(candidate.documentId),
+		);
+		if (extra.length > 0) {
+			ranked = [
+				...ranked,
+				...fuseCandidates(extra, rrfOptions).filter(
+					(item) => !present.has(item.documentId),
+				),
+			];
+		}
+	}
 	const filters = request.filters;
 	const hasFilters = Boolean(
 		filters &&
@@ -349,6 +445,10 @@ export async function searchDocuments(
 		graphFailed,
 		graphContribution,
 		confidenceReasons: confidence.reasons,
+		rerankAttempted,
+		rerankUsed,
+		rerankFallback,
+		...(rerankModel ? { rerankModel } : {}),
 	};
 	return {
 		items,
