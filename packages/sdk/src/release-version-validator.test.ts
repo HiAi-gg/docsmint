@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { validateReleaseVersion } from '../../../scripts/release-version-validator.ts';
 
 test('release version validator accepts the synchronized release tag', async () => {
-  await expect(validateReleaseVersion({ root: new URL('../../../', import.meta.url), tag: 'v0.7.9' }))
+  await expect(validateReleaseVersion({ root: new URL('../../../', import.meta.url), tag: 'v0.8.0' }))
     .resolves.toBeUndefined();
 });
 

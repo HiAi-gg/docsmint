@@ -93,7 +93,7 @@ describe("OpenAPI external integration contract", () => {
 		expect(new Set(committedInventory).size).toBe(committedInventory.length);
 	});
 	test("tracks the release version and critical SDK, CLI, and MCP routes", () => {
-		expect(spec.info.version).toBe("0.7.9");
+		expect(spec.info.version).toBe("0.8.0");
 		for (const [method, path] of requiredOperations) {
 			expect(
 				spec.paths[path]?.[method],

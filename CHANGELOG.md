@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-30
+
+### Fixed
+
+- GraphRAG search expansion runs AGE `cypher()` on one pooled connection with
+  `search_path=ag_catalog, public`. A cold pool connection with `public` first
+  could return zero neighbors without throwing, so scoped live search reported
+  `graphAttempted: true`, `graphFailed: false`, and `graphContribution: false`.
+- The scoped live fusion test disables rerank and checks share-ACL graph SQL
+  without re-applying category inheritance.
+
 ## [0.7.9] - 2026-08-30
 
 ### Fixed

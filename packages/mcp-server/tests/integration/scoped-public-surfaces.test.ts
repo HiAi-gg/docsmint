@@ -1070,6 +1070,7 @@ describe("live category-scoped public surfaces", () => {
 				query: lexicalNeedle,
 				limit: 20,
 				graphEnabled: true,
+				rerankEnabled: false,
 				documentIds: authorizedDocumentIds,
 				authorizedCategoryId: ids.categoryA,
 				visibilityScope: {
@@ -1123,10 +1124,14 @@ describe("live category-scoped public surfaces", () => {
 		);
 		expect(vectorQueries).toHaveLength(1);
 		expect(graphVisibilityQueries.length).toBeGreaterThanOrEqual(2);
-		for (const query of [...vectorQueries, ...graphVisibilityQueries]) {
+		for (const query of vectorQueries) {
 			expect(query).toContain("deleted_at");
 			expect(query).toContain("with recursive ancestors");
 			expect(query).toContain("coalesce");
+		}
+		for (const query of graphVisibilityQueries) {
+			expect(query).toContain("deleted_at");
+			expect(query).not.toContain("with recursive ancestors");
 		}
 		expect(vectorQueries[0]?.indexOf("coalesce")).toBeLessThan(
 			vectorQueries[0]?.lastIndexOf(" limit ") ?? -1,

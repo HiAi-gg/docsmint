@@ -51,16 +51,10 @@ export async function expandFromQueryPlan(
 
 	try {
 		const cypher = buildQuerySeedCypher(terms, boundedLimit);
-		const queryString = buildCypherSql(
-			cypher,
-			"neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
-		);
-		const rows = (await sql.unsafe(queryString)) as Array<{
-			neighbor_id: string;
-			generation_id: string;
-			relation: string;
-			hops: number;
-		}>;
+		const rows = await runCypher(sql, cypher, {
+			columns:
+				"neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
+		});
 		const seen = new Set<string>();
 		const out: RelatedDoc[] = [];
 		for (const row of rows) {
@@ -114,18 +108,10 @@ export async function expandResults(
 		// AGE's cypher() requires a literal dollar-quoted string constant,
 		// not a bind parameter. The seed ids are already JSON.stringify-
 		// escaped in buildTraversalCypher, so inlining is safe.
-		const queryString = buildCypherSql(
-			cypher,
-			"seed_id agtype, seed_generation_id agtype, neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
-		);
-		const rows = (await sql.unsafe(queryString)) as Array<{
-			seed_id: string;
-			seed_generation_id: string;
-			neighbor_id: string;
-			generation_id: string;
-			relation: string;
-			hops: number;
-		}>;
+		const rows = await runCypher(sql, cypher, {
+			columns:
+				"seed_id agtype, seed_generation_id agtype, neighbor_id agtype, generation_id agtype, relation agtype, hops agtype",
+		});
 
 		for (const row of rows) {
 			const seedId = stripQuotes(String(row.seed_id ?? ""));
@@ -220,6 +206,24 @@ function buildCypherSql(cypher: string, columns: string): string {
 	while (cypher.includes(`$${tag}$`)) tag = `${tag}_x`;
 	const quoted = `$${tag}$ ${cypher} $${tag}$`;
 	return `SELECT * FROM cypher('docs_graph', ${quoted}) AS (${columns})`;
+}
+
+/**
+ * Pin AGE reads to one pooled connection and put `ag_catalog` first.
+ * `cypher()` is schema-qualified only through search_path; a round-robin
+ * pool connection with `public` first can return zero rows without throwing,
+ * which the orchestrator records as graphAttempted + graphFailed=false.
+ */
+async function runCypher(
+	sql: GraphSqlClient,
+	cypher: string,
+	options: { columns: string },
+): Promise<Array<Record<string, unknown>>> {
+	const queryString = buildCypherSql(cypher, options.columns);
+	return sql.begin(async (tx) => {
+		await tx.unsafe("SET LOCAL search_path = ag_catalog, public");
+		return (await tx.unsafe(queryString)) as Array<Record<string, unknown>>;
+	});
 }
 
 /**

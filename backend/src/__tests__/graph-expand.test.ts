@@ -62,6 +62,15 @@ describe("graph expand module", () => {
 		expect(cypher).toContain("LIMIT 10");
 	});
 
+	test("AGE search expansion pins cypher() to ag_catalog search_path", async () => {
+		const source = await Bun.file(
+			new URL("../lib/graph/search-expansion.ts", import.meta.url),
+		).text();
+		expect(source).toContain("SET LOCAL search_path = ag_catalog, public");
+		expect(source).toContain("sql.begin");
+		expect(source).not.toContain("await sql.unsafe(queryString)");
+	});
+
 	test("uses a safe dollar tag for hostile query-plan terms", async () => {
 		const { _buildQuerySeedSql } = await import(
 			"../lib/graph/search-expansion"
