@@ -247,7 +247,7 @@ services:
       network: host
       args:
         PUBLIC_APP_ID: ${PUBLIC_APP_ID:-docsmint}
-        PUBLIC_DEPLOYMENT_ID: ${PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.4}
+        PUBLIC_DEPLOYMENT_ID: ${PUBLIC_DEPLOYMENT_ID:-docsmint-oss-0.7.5}
     restart: unless-stopped
     ports:
       # WEB_PORT selects only the published host port. The container contract

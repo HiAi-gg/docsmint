@@ -24,11 +24,11 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag }}
       RELEASE_NPM_EVIDENCE_DIRECTORY: build/release-evidence/npm-provenance
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
           ref: ${{ inputs.release_commit }}
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.4.0
       - name: Install verification dependencies
@@ -46,7 +46,7 @@ jobs:
       - name: Validate MCP catalog manifests
         run: bun run scripts/validate-mcp-catalog.ts
       - name: Upload commit-bound npm provenance evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: manual-mcp-npm-provenance-${{ inputs.release_commit }}
           path: build/release-evidence/npm-provenance/

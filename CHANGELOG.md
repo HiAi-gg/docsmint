@@ -7,6 +7,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-08-30
+
+### Changed
+
+- Upgrade the supported runtime and dependency graph to Bun 1.4, TypeScript 6,
+  Better Auth 1.7, BullMQ 6, ioredis 6, TipTap 3.30, Svelte 5.57, Vite 8.2,
+  and current compatible stable packages.
+- Replace the deprecated TipTap collaboration cursor extension with the v3
+  collaboration caret while preserving provider awareness and cursor styling.
+- Pin every GitHub Action to an immutable commit SHA and audit production
+  dependencies in CI.
+
+### Fixed
+
+- Add the fail-closed Better Auth 1.7 `issuer` migration, collision guard, and
+  provider-id identity strategy.
+- Consolidate API-key and Better Auth session resolution so every authorization
+  guard uses the same admin-key, user-key, and session precedence.
+
 ## [0.7.4] - 2026-08-30
 
 ### Fixed

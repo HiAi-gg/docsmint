@@ -172,9 +172,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			adoptionCommit: expectedCommit,
 			candidateCommit: expectedCandidate,
 			packageVersions: Object.fromEntries(
-				packageManifests.map((path) => [path, "0.7.4"]),
+				packageManifests.map((path) => [path, "0.7.5"]),
 			),
-			lockfileVersion: "0.7.4",
+			lockfileVersion: "0.7.5",
 			localTarballResolved: true,
 			packageGitHead: expectedCandidate,
 			tarballSha256: "c".repeat(64),
@@ -199,7 +199,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 				candidateCommit: expectedCandidate,
 				packageManifests,
 			}),
-		).toEqual({ adoptionCommit: expectedCommit, version: "0.7.4" });
+		).toEqual({ adoptionCommit: expectedCommit, version: "0.7.5" });
 		expect(() =>
 			verifyAtomicAdoption(
 				{
@@ -545,7 +545,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			requiredKeys: ["BETTER_AUTH_SECRET"],
 		};
 		const runtime070 = {
-			version: "0.7.4",
+			version: "0.7.5",
 			health: true,
 			crud: { create: true, read: true, update: true, delete: true },
 			search: true,
@@ -563,8 +563,8 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		const adoption = {
 			adoptionCommit: "a".repeat(40),
 			candidateCommit: "b".repeat(40),
-			packageVersions: { "package.json": "0.7.4" },
-			lockfileVersion: "0.7.4",
+			packageVersions: { "package.json": "0.7.5" },
+			lockfileVersion: "0.7.5",
 			localTarballResolved: true,
 			packageGitHead: "b".repeat(40),
 			tarballSha256: "c".repeat(64),
@@ -622,7 +622,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			{ candidateCommit: "b".repeat(40), packageManifests: ["package.json"] },
 		);
 
-		expect(report.runtime070.version).toBe("0.7.4");
+		expect(report.runtime070.version).toBe("0.7.5");
 		expect(report.runtime068.version).toBe("0.6.8");
 		expect(events).toEqual([
 			"clean:before",

@@ -17,8 +17,8 @@ type SessionDerived = {
 			userId: string;
 			expiresAt: Date;
 			token: string;
-			ipAddress: string;
-			userAgent: string;
+			ipAddress?: string | null;
+			userAgent?: string | null;
 			createdAt: Date;
 			updatedAt: Date;
 		};
@@ -37,83 +37,55 @@ function isPublicPath(path: string): boolean {
 	return PUBLIC_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
+function syntheticApiKeySession(
+	ownerId: string,
+): NonNullable<SessionDerived["session"]> {
+	const now = new Date();
+	return {
+		session: {
+			id: "api-key-session",
+			userId: ownerId,
+			expiresAt: new Date(now.getTime() + 60 * 60 * 24 * 365 * 10),
+			token: "api-key",
+			ipAddress: "",
+			userAgent: "",
+			createdAt: now,
+			updatedAt: now,
+		},
+		user: {
+			id: ownerId,
+			name: "API Key User",
+			email: `${ownerId}@hiai-docs.local`,
+			emailVerified: true,
+			createdAt: now,
+			updatedAt: now,
+		},
+	};
+}
+
+async function resolveSession(request: Request): Promise<SessionDerived> {
+	const authHeader = request.headers.get("authorization");
+	if (authHeader?.startsWith("Bearer ")) {
+		const token = authHeader.slice(7);
+		if (config.HIAI_DOCS_API_KEY && token === config.HIAI_DOCS_API_KEY) {
+			return { session: syntheticApiKeySession(config.OWNER_ID) };
+		}
+
+		try {
+			const userKeyResult = await validateApiKey(token);
+			if (userKeyResult) {
+				return { session: syntheticApiKeySession(userKeyResult.ownerId) };
+			}
+		} catch {
+			// A failed optional API-key lookup must retain the existing Better Auth fallback.
+		}
+	}
+
+	return { session: await auth.api.getSession({ headers: request.headers }) };
+}
+
 export const authMiddleware = new Elysia()
-	.derive(async ({ request }) => {
-		// API key check: if HIAI_DOCS_API_KEY is set and request has matching Bearer token,
-		// return a synthetic session (no DB lookup needed)
-		const apiKey = config.HIAI_DOCS_API_KEY;
-		if (apiKey) {
-			const authHeader = request.headers.get("authorization");
-			if (authHeader?.startsWith("Bearer ")) {
-				const token = authHeader.slice(7);
-				if (token === apiKey) {
-					const session = {
-						session: {
-							id: "api-key-session",
-							userId: config.OWNER_ID,
-							expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10), // 10 years
-							token: "api-key",
-							ipAddress: "",
-							userAgent: "",
-							createdAt: new Date(),
-							updatedAt: new Date(),
-						},
-						user: {
-							id: config.OWNER_ID,
-							name: "API Key User",
-							email: `${config.OWNER_ID}@hiai-docs.local`,
-							emailVerified: true,
-							createdAt: new Date(),
-							updatedAt: new Date(),
-						},
-					};
-					return { session };
-				}
-			}
-		}
-
-		// User API key check (after admin key, before Better Auth)
-		// Graceful: if validateApiKey throws (missing table, test env), fall through
-		const userAuthHeader = request.headers.get("authorization");
-		if (userAuthHeader?.startsWith("Bearer ")) {
-			const token = userAuthHeader.slice(7);
-			try {
-				const userKeyResult = await validateApiKey(token);
-				if (userKeyResult) {
-					return {
-						session: {
-							session: {
-								id: "api-key-session",
-								userId: userKeyResult.ownerId,
-								expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-								token: "api-key",
-								ipAddress: "",
-								userAgent: "",
-								createdAt: new Date(),
-								updatedAt: new Date(),
-							},
-							user: {
-								id: userKeyResult.ownerId,
-								name: "API Key User",
-								email: `${userKeyResult.ownerId}@hiai-docs.local`,
-								emailVerified: true,
-								createdAt: new Date(),
-								updatedAt: new Date(),
-							},
-						},
-					};
-				}
-			} catch {
-				// DB query failed — not a valid key, fall through
-			}
-		}
-
-		// Fall through to Better Auth session check
-		const session = await auth.api.getSession({
-			headers: request.headers,
-		});
-		return { session };
-	})
+	.derive(({ request }) => resolveSession(request))
 	.macro({
 		auth: {
 			async resolve({ session, set }) {
@@ -136,77 +108,7 @@ export const authMiddleware = new Elysia()
  */
 export function requireUser() {
 	return new Elysia()
-		.derive(async ({ request }) => {
-			const apiKey = config.HIAI_DOCS_API_KEY;
-			if (apiKey) {
-				const authHeader = request.headers.get("authorization");
-				if (authHeader?.startsWith("Bearer ")) {
-					const token = authHeader.slice(7);
-					if (token === apiKey) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: config.OWNER_ID,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: config.OWNER_ID,
-									name: "API Key User",
-									email: `${config.OWNER_ID}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				}
-			}
-
-			// User API key check (after admin key, before Better Auth)
-			const userAuthHeader = request.headers.get("authorization");
-			if (userAuthHeader?.startsWith("Bearer ")) {
-				const token = userAuthHeader.slice(7);
-				try {
-					const userKeyResult = await validateApiKey(token);
-					if (userKeyResult) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: userKeyResult.ownerId,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: userKeyResult.ownerId,
-									name: "API Key User",
-									email: `${userKeyResult.ownerId}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				} catch {
-					// DB query failed — not a valid key, fall through
-				}
-			}
-
-			const session = await auth.api.getSession({ headers: request.headers });
-			return { session };
-		})
+		.derive(({ request }) => resolveSession(request))
 		.guard({
 			beforeHandle: async (ctx) => {
 				const { session, set, path } = ctx as typeof ctx & SessionDerived;
@@ -231,77 +133,7 @@ export function requireUser() {
  */
 export function requireTier(minLevel: number) {
 	return new Elysia()
-		.derive(async ({ request }) => {
-			const apiKey = config.HIAI_DOCS_API_KEY;
-			if (apiKey) {
-				const authHeader = request.headers.get("authorization");
-				if (authHeader?.startsWith("Bearer ")) {
-					const token = authHeader.slice(7);
-					if (token === apiKey) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: config.OWNER_ID,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: config.OWNER_ID,
-									name: "API Key User",
-									email: `${config.OWNER_ID}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				}
-			}
-
-			// User API key check (after admin key, before Better Auth)
-			const userAuthHeader = request.headers.get("authorization");
-			if (userAuthHeader?.startsWith("Bearer ")) {
-				const token = userAuthHeader.slice(7);
-				try {
-					const userKeyResult = await validateApiKey(token);
-					if (userKeyResult) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: userKeyResult.ownerId,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: userKeyResult.ownerId,
-									name: "API Key User",
-									email: `${userKeyResult.ownerId}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				} catch {
-					// DB query failed — not a valid key, fall through
-				}
-			}
-
-			const session = await auth.api.getSession({ headers: request.headers });
-			return { session };
-		})
+		.derive(({ request }) => resolveSession(request))
 		.guard({
 			beforeHandle: async (ctx) => {
 				const { session, set, path } = ctx as typeof ctx & SessionDerived;
@@ -352,77 +184,7 @@ export function requireOwner(
 	resourceId: string | ((ctx: { params: Record<string, string> }) => string),
 ) {
 	return new Elysia()
-		.derive(async ({ request }) => {
-			const apiKey = config.HIAI_DOCS_API_KEY;
-			if (apiKey) {
-				const authHeader = request.headers.get("authorization");
-				if (authHeader?.startsWith("Bearer ")) {
-					const token = authHeader.slice(7);
-					if (token === apiKey) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: config.OWNER_ID,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: config.OWNER_ID,
-									name: "API Key User",
-									email: `${config.OWNER_ID}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				}
-			}
-
-			// User API key check (after admin key, before Better Auth)
-			const userAuthHeader = request.headers.get("authorization");
-			if (userAuthHeader?.startsWith("Bearer ")) {
-				const token = userAuthHeader.slice(7);
-				try {
-					const userKeyResult = await validateApiKey(token);
-					if (userKeyResult) {
-						return {
-							session: {
-								session: {
-									id: "api-key-session",
-									userId: userKeyResult.ownerId,
-									expiresAt: new Date(Date.now() + 60 * 60 * 24 * 365 * 10),
-									token: "api-key",
-									ipAddress: "",
-									userAgent: "",
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-								user: {
-									id: userKeyResult.ownerId,
-									name: "API Key User",
-									email: `${userKeyResult.ownerId}@hiai-docs.local`,
-									emailVerified: true,
-									createdAt: new Date(),
-									updatedAt: new Date(),
-								},
-							},
-						};
-					}
-				} catch {
-					// DB query failed — not a valid key, fall through
-				}
-			}
-
-			const session = await auth.api.getSession({ headers: request.headers });
-			return { session };
-		})
+		.derive(({ request }) => resolveSession(request))
 		.guard({
 			beforeHandle: async (ctx) => {
 				const { session, set, path, params } = ctx as typeof ctx &

@@ -351,6 +351,13 @@
 			"when": 1787640000000,
 			"tag": "0046_legacy_attachment_actor",
 			"breakpoints": true
+		},
+		{
+			"idx": 50,
+			"version": "7",
+			"when": 1788076800000,
+			"tag": "0047_better_auth_17_account_identity",
+			"breakpoints": true
 		}
 	]
 }

@@ -353,7 +353,7 @@ for (const dependency of [
   '@tiptap/extension-code-block',
   '@tiptap/extension-code-block-lowlight',
   '@tiptap/extension-collaboration',
-  '@tiptap/extension-collaboration-cursor',
+  '@tiptap/extension-collaboration-caret',
   '@tiptap/extension-highlight',
   '@tiptap/extension-image',
   '@tiptap/extension-link',

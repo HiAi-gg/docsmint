@@ -18,6 +18,15 @@ type Workflow = Readonly<{
 	jobs?: Record<string, WorkflowJob>;
 }>;
 
+function usesPinnedAction(
+	step: WorkflowStep | undefined,
+	action: string,
+): step is WorkflowStep {
+	return new RegExp(`^${action.replace("/", "\\/")}@[0-9a-f]{40}$`).test(
+		step?.uses ?? "",
+	);
+}
+
 const completeGateJob = "release-tag-gate";
 const publicationJobs = [
 	"publish-docker",
@@ -306,7 +315,7 @@ function validateDockerEvidence(jobs: Record<string, WorkflowJob>): void {
 		const upload = job.steps?.find(
 			(step) => step.name === "Upload commit-bound Docker smoke evidence",
 		);
-		if (upload?.uses !== "actions/upload-artifact@v4") {
+		if (!usesPinnedAction(upload, "actions/upload-artifact")) {
 			throw new Error(`${name} must upload commit-bound Docker smoke evidence`);
 		}
 		if (
@@ -403,7 +412,7 @@ function validatePublishedPackageProvenance(
 		(step) => step.name === "Upload commit-bound npm provenance evidence",
 	);
 	if (
-		upload?.uses !== "actions/upload-artifact@v4" ||
+		!usesPinnedAction(upload, "actions/upload-artifact") ||
 		upload.with?.name !== "release-npm-provenance-${{ github.sha }}" ||
 		upload.with?.path !== "build/release-evidence/npm-provenance/" ||
 		upload.with?.["if-no-files-found"] !== "error"
@@ -521,8 +530,8 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 	const lines = verification?.run
 		?.split("\n")
 		.map((line) => line.trim()) ?? [];
-	const checkout = publish?.steps?.find(
-		(step) => step.uses === "actions/checkout@v4",
+	const checkout = publish?.steps?.find((step) =>
+		usesPinnedAction(step, "actions/checkout"),
 	);
 	const verificationIndex = publish?.steps?.indexOf(verification ?? {}) ?? -1;
 	const installIndex =
@@ -557,7 +566,7 @@ export function validateManualMcpWorkflow(workflow: Workflow): void {
 		verificationIndex < 0 ||
 		catalogIndex <= verificationIndex ||
 		publicationIndex <= catalogIndex ||
-		upload?.uses !== "actions/upload-artifact@v4" ||
+		!usesPinnedAction(upload, "actions/upload-artifact") ||
 		upload.with?.name !==
 			"manual-mcp-npm-provenance-${{ inputs.release_commit }}" ||
 		upload.with?.["if-no-files-found"] !== "error" ||

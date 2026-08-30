@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { JSONContent } from "@tiptap/core";
 import Collaboration from "@tiptap/extension-collaboration";
-import CollaborationCursor from "@tiptap/extension-collaboration-cursor";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import type { Snippet } from "svelte";
 import { onDestroy, onMount, untrack } from "svelte";
 import { createEditor, type Editor, EditorContent } from "svelte-tiptap";
@@ -183,7 +183,7 @@ onMount(() => {
 			Collaboration.configure({
 				document: collaboration.doc,
 			}) as unknown as (typeof extensions)[number],
-			CollaborationCursor.configure({
+			CollaborationCaret.configure({
 				provider: collaboration.provider,
 				user: {
 					name: m.editor_anonymous(),

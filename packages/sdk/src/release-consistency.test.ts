@@ -2,13 +2,13 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 
 const repositoryRoot = new URL('../../../', import.meta.url);
-const releaseVersion = '0.7.4';
+const releaseVersion = '0.7.5';
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), 'utf8'));
 }
 
-test('all published and workspace release metadata reports 0.7.4', async () => {
+test('all published and workspace release metadata reports 0.7.5', async () => {
   for (const path of [
     'package.json',
     'package.public.json',
@@ -38,7 +38,7 @@ test('all published and workspace release metadata reports 0.7.4', async () => {
 
   const frontendManifest = await json('frontend/package.json');
   expect((frontendManifest.dependencies as Record<string, string>)['lucide-svelte']).toBe(
-    '^0.577.0'
+    '^1.0.1'
   );
 
   const publicManifest = await json('package.public.json');
@@ -83,7 +83,7 @@ test('all published and workspace release metadata reports 0.7.4', async () => {
     import: './dist/backend-account-runtime-cleanup.js',
     types: './dist/backend-account-runtime-cleanup.d.ts',
   });
-  expect((publicManifest.dependencies as Record<string, string>).ioredis).toBe('^5.11.1');
+  expect((publicManifest.dependencies as Record<string, string>).ioredis).toBe('^6.0.0');
   expect(publicExports['./frontend/styles.css']).toBe('./dist/frontend/frontend.css');
   const appShellDeclarationWriter = await readFile(
     new URL('packages/sdk/scripts/write-frontend-declarations.ts', repositoryRoot),
@@ -111,14 +111,14 @@ test('all published and workspace release metadata reports 0.7.4', async () => {
   }
 
   expect(await readFile(new URL('frontend/vite.config.ts', repositoryRoot), 'utf8')).toContain(
-    'docsmint-oss-0.7.4'
+    'docsmint-oss-0.7.5'
   );
   expect(await readFile(new URL('docker-compose.yml', repositoryRoot), 'utf8')).toContain(
-    'docsmint-oss-0.7.4'
+    'docsmint-oss-0.7.5'
   );
 });
 
-test('workspace and public package metadata share the 0.7.4 product identity', async () => {
+test('workspace and public package metadata share the 0.7.5 product identity', async () => {
   const workspaceManifest = await json('package.json');
   const publicManifest = await json('package.public.json');
   const description =

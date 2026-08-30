@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -239,7 +239,7 @@
     "LICENSE"
   ],
   "engines": {
-    "bun": ">= 1.3.14"
+    "bun": ">= 1.4.0"
   },
   "scripts": {
     "dev": "docker compose up -d",
@@ -271,25 +271,26 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "overrides": {
-    "cookie": "1.1.1",
     "fast-uri": "3.1.5",
     "brace-expansion": "2.1.3",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "prosemirror-model": "1.25.9",
+    "cookie": "1.1.1"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
-    "bullmq": "^5.80.2",
-    "commander": "^13.1.0",
-    "ioredis": "^5.11.1",
-    "zod": "^4.0.0"
+    "bullmq": "^6.3.2",
+    "commander": "^15.0.0",
+    "ioredis": "^6.0.0",
+    "zod": "4.4.3"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
-    "@aws-sdk/client-s3": "^3.0.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
     "pino": "^10.0.0",
     "@sveltejs/kit": "^2.70.3",
-    "svelte": "^5.56.4"
+    "svelte": "^5.57.0"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {
