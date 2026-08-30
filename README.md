@@ -45,7 +45,7 @@ server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in 0.7.5?
+## What's new in 0.7.6?
 
 - **MCP Registry description fits the 100-character limit**, so official
   catalog publication can complete after 0.7.3 reached npm.
@@ -137,7 +137,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.5` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.6` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 

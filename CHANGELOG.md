@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-08-30
+
+### Fixed
+
+- Preserve one-version Better Auth 1.6 rollback compatibility after migration
+  0047 by deriving the legacy account issuer in a database trigger.
+
 ## [0.7.5] - 2026-08-30
 
 ### Changed
