@@ -601,4 +601,45 @@ describe("optional cross-encoder rerank", () => {
 		);
 		expect(seeds[0]).toBe("doc-b");
 	});
+
+	test("graph-after-rerank keeps graph evidence on documents already in the prefix", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "English",
+				limit: 10,
+				rerankEnabled: true,
+				rerankGraphPosition: "after",
+			},
+			{
+				retrieveFast: async () =>
+					channels({
+						exact: [candidate("doc-a", "exact", 1)],
+						fts: [candidate("doc-b", "fts", 1)],
+					}),
+				expand: async () => null,
+				loadRerankTexts: async () =>
+					new Map([
+						["doc-a", "alpha"],
+						["doc-b", "beta"],
+					]),
+				rerank: async () => ({
+					model: "voyageai/rerank-2.5",
+					hits: [
+						{ id: "doc-a", score: 0.9, rank: 1 },
+						{ id: "doc-b", score: 0.1, rank: 2 },
+					],
+				}),
+				retrieveGraph: async () => [candidate("doc-b", "graph")],
+			},
+		);
+		expect(response.diagnostics.graphContribution).toBe(true);
+		expect(
+			response.items.find((item) => item.documentId === "doc-b")?.channels,
+		).toContain("graph");
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"doc-a",
+			"doc-b",
+		]);
+	});
 });

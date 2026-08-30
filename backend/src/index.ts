@@ -298,7 +298,7 @@ app.listen({
 	idleTimeout: 30,
 	maxRequestBodySize: MAX_BODY_SIZE_BYTES,
 });
-logger.info({ port: config.API_PORT }, "hiai-docs API started");
+logger.info({ port: config.API_PORT }, "DocsMint API started");
 
 // Graceful shutdown
 export const stopDocsMintApi = async () => {

@@ -72,7 +72,7 @@ describe("DocsClient public contract", () => {
 			seenHeaders = new Headers(init?.headers);
 			return jsonResponse({
 				status: "ok",
-				service: "hiai-docs",
+				service: "docsmint",
 				timestamp: "now",
 			});
 		});
@@ -93,7 +93,7 @@ describe("DocsClient public contract", () => {
 				seenHeaders = new Headers(init?.headers);
 				return jsonResponse({
 					status: "ok",
-					service: "hiai-docs",
+					service: "docsmint",
 					timestamp: new Date().toISOString(),
 				});
 			},
@@ -122,7 +122,7 @@ describe("DocsClient public contract", () => {
 				seenHeaders = new Headers(init?.headers);
 				return jsonResponse({
 					status: "ok",
-					service: "hiai-docs",
+					service: "docsmint",
 					timestamp: "now",
 				});
 			},
@@ -143,7 +143,7 @@ describe("DocsClient public contract", () => {
 				seen.push(new Headers(init?.headers));
 				return jsonResponse({
 					status: "ok",
-					service: "hiai-docs",
+					service: "docsmint",
 					timestamp: "now",
 				});
 			},
@@ -200,7 +200,7 @@ describe("DocsClient public contract", () => {
 			seenHeaders = new Headers(init?.headers);
 			return jsonResponse({
 				status: "ok",
-				service: "hiai-docs",
+				service: "docsmint",
 				timestamp: "now",
 			});
 		});
@@ -531,7 +531,7 @@ describe("DocsClient public contract", () => {
 					? jsonResponse({ error: "busy" }, 503)
 					: jsonResponse({
 							status: "ok",
-							service: "hiai-docs",
+							service: "docsmint",
 							timestamp: "now",
 						});
 			},
@@ -578,7 +578,7 @@ describe("DocsClient public contract", () => {
 						? jsonResponse({ error: "busy" }, 503)
 						: jsonResponse({
 								status: "ok",
-								service: "hiai-docs",
+								service: "docsmint",
 								timestamp: "now",
 							});
 				},

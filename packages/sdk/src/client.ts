@@ -1,5 +1,5 @@
 /**
- * hiai-docs REST API client.
+ * DocsMint REST API client.
  *
  * Bun-native `fetch` wrapper. All authenticated requests send
  * `Authorization: Bearer <apiKey>`. Non-OK responses throw
@@ -53,7 +53,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface DocsClientConfig {
-	/** Base URL of the hiai-docs API, e.g. `http://localhost:50700`. */
+	/** Base URL of the DocsMint API, e.g. `http://localhost:50700`. */
 	baseUrl: string;
 	/** Bearer token used as `Authorization: Bearer <apiKey>`. */
 	apiKey?: string;
@@ -99,7 +99,7 @@ export class DocsApiError extends Error {
 		metadata?: { url?: string; requestId?: string },
 		code?: string,
 	) {
-		super(message ?? `hiai-docs API error ${status}`);
+		super(message ?? `DocsMint API error ${status}`);
 		this.name = "DocsApiError";
 		this.status = status;
 		this.code = code ?? DocsApiError.codeFromBody(status, body);
@@ -159,7 +159,7 @@ export class DocsTimeoutError extends DocsNetworkError {
 		timeout: number,
 		options?: { cause?: unknown; requestId?: string },
 	) {
-		super(`hiai-docs request timed out after ${timeout}ms`, options);
+		super(`DocsMint request timed out after ${timeout}ms`, options);
 		this.name = "DocsTimeoutError";
 		this.timeout = timeout;
 	}
@@ -1282,7 +1282,7 @@ export class DocsClient {
 						"message" in body &&
 						typeof body.message === "string"
 					? body.message
-					: `hiai-docs API error ${res.status}`;
+					: `DocsMint API error ${res.status}`;
 		return new DocsApiError(res.status, body, message, {
 			url: res.url || undefined,
 			requestId: res.headers.get("x-request-id") ?? undefined,
@@ -1291,12 +1291,12 @@ export class DocsClient {
 
 	private wrapNetworkError(err: unknown, requestId?: string): Error {
 		if (err instanceof Error) {
-			return new DocsNetworkError(`hiai-docs network error: ${err.message}`, {
+			return new DocsNetworkError(`DocsMint network error: ${err.message}`, {
 				cause: err,
 				requestId,
 			});
 		}
-		return new DocsNetworkError(`hiai-docs network error: ${String(err)}`, {
+		return new DocsNetworkError(`DocsMint network error: ${String(err)}`, {
 			requestId,
 		});
 	}

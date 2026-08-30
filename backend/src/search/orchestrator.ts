@@ -390,6 +390,7 @@ export async function searchDocuments(
 	} else {
 		ranked = await applyOptionalRerank(direct);
 		if (graphAttempted) graph = await runGraph(seedIds(ranked));
+		ranked = annotateGraphChannels(ranked, graph);
 		const present = new Set(ranked.map((item) => item.documentId));
 		const extra = graph.filter(
 			(candidate) => !present.has(candidate.documentId),
@@ -720,4 +721,28 @@ function clampLimit(value: number | undefined): number {
 function clampPage(value: number | undefined): number {
 	if (!Number.isFinite(value)) return 1;
 	return Math.max(1, Math.floor(value as number));
+}
+
+/** Keep graph evidence on documents already in the reranked prefix. */
+function annotateGraphChannels(
+	items: RankedSearchResult[],
+	graphCandidates: SearchCandidate[],
+): RankedSearchResult[] {
+	if (graphCandidates.length === 0) return items;
+	const graphIds = new Set(
+		graphCandidates.map((candidate) => candidate.documentId),
+	);
+	return items.map((item) => {
+		if (!graphIds.has(item.documentId) || item.channels.includes("graph")) {
+			return item;
+		}
+		return {
+			...item,
+			channels: [...item.channels, "graph"],
+			explanations: [
+				...item.explanations,
+				{ channel: "graph", label: "Related document" },
+			],
+		};
+	});
 }

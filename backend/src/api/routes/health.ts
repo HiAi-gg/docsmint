@@ -49,7 +49,7 @@ export function createHealthRoutes(dependencies: HealthRouteDependencies) {
 
 		return {
 			status: readiness.status === "unhealthy" ? "unhealthy" : "ok",
-			service: "hiai-docs",
+			service: "docsmint",
 			timestamp: new Date().toISOString(),
 			database: databaseAvailable ? "ok" : "error",
 			redis: redisAvailable ? "ok" : "error",
