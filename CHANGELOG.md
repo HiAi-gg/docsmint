@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-08-30
+
+### Fixed
+
+- Keep GraphRAG evidence on documents already in the reranked prefix. After
+  RRF+rerank, overlapping AGE neighbors no longer drop the `graph` channel, so
+  `graphContribution` stays true for scoped search.
+- Use DocsMint as the public API identity in `/api/health` (`service: docsmint`)
+  and startup/SDK error strings instead of `hiai-docs`.
+
 ## [0.7.7] - 2026-08-30
 
 ### Added

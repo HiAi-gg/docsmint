@@ -25,7 +25,7 @@ import { registerSearch } from './commands/search.js';
 import { registerSnapshot } from './commands/snapshot.js';
 import { registerUpdate } from './commands/update.js';
 
-const VERSION = '0.7.7';
+const VERSION = '0.7.8';
 
 const program = new Command();
 program.name('docsmint').description('CLI for the DocsMint knowledge workspace').version(VERSION);

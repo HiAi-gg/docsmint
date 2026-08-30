@@ -46,6 +46,13 @@ TypeScript SDK, CLI, and MCP server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
+## What's new in 0.7.8?
+
+- **GraphRAG still contributes after rerank.** Neighbors already in the fused
+  prefix keep the graph channel, so scoped search does not lose graph evidence.
+- **Public API identity is DocsMint.** Health reports `service: "docsmint"`;
+  startup and SDK errors no longer say `hiai-docs`.
+
 ## What's new in 0.7.7?
 
 - **Cross-encoder rerank is on by default.** After RRF, search reranks the
@@ -162,7 +169,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.7` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.8` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
