@@ -7,6 +7,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-30
+
+### Fixed
+
+- Allow the frozen 0.5.0 compatibility contract to validate the 0.8.x release
+  line, restoring the unit-test release gate after the 0.8.0 version bump.
+
 ## [0.8.0] - 2026-08-30
 
 ### Fixed

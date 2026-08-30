@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import postgres from "postgres";
 
-const OSS_CANDIDATE_VERSION = "0.8.0";
+const OSS_CANDIDATE_VERSION = "0.8.1";
 
 export interface MigrationSnapshot {
 	journalEntries: number;

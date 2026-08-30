@@ -10,7 +10,7 @@
     "id": "1249550690",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.8.0",
+  "version": "0.8.1",
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
@@ -30,7 +30,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

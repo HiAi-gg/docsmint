@@ -46,7 +46,7 @@ TypeScript SDK, CLI, and MCP server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in 0.8.0?
+## What's new in 0.8.1?
 
 - **GraphRAG expansion is connection-safe.** AGE reads pin `ag_catalog` on the
   same pooled connection as `cypher()`, so scoped search keeps graph neighbors
@@ -180,7 +180,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.8.0` for reproducible deploys. The
+Use versioned tags such as `api-v0.8.1` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 

@@ -77,7 +77,7 @@ test("the complete 0.5.0 exports, extensions, workspace assertion, and routes ma
 	).text();
 
 	expect(snapshot.version).toBe("0.5.0");
-	expect(manifest.version).toMatch(/^0\.(?:5\.\d+|6\.\d+|7\.\d+)$/);
+	expect(manifest.version).toMatch(/^0\.(?:5\.\d+|6\.\d+|7\.\d+|8\.\d+)$/);
 	for (const [exportPath, exportContract] of Object.entries(
 		snapshot.packageExports,
 	)) {
