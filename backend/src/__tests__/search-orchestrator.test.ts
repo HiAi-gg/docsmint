@@ -564,6 +564,35 @@ describe("optional cross-encoder rerank", () => {
 		expect(fallback.diagnostics.rerankFallback).toBe(true);
 	});
 
+	test("graph-after-rerank fail-open still appends graph-only neighbors", async () => {
+		const response = await searchDocuments(
+			ctx,
+			{
+				query: "Exact title",
+				limit: 10,
+				rerankEnabled: true,
+				rerankGraphPosition: "after",
+			},
+			{
+				retrieveFast: async () =>
+					channels({ exact: [candidate("exact", "exact")] }),
+				expand: async () => null,
+				loadRerankTexts: async () => new Map([["exact", "Exact title body"]]),
+				rerank: async () => null,
+				retrieveGraph: async () => [candidate("related", "graph")],
+			},
+		);
+		expect(response.diagnostics.graphFailed).toBe(false);
+		expect(response.diagnostics.graphContribution).toBe(true);
+		expect(response.items.map((item) => item.documentId)).toEqual([
+			"exact",
+			"related",
+		]);
+		expect(
+			response.items.find((item) => item.documentId === "related")?.channels,
+		).toContain("graph");
+	});
+
 	test("graph-after-rerank seeds AGE from the reranked prefix", async () => {
 		let seeds: string[] = [];
 		await searchDocuments(

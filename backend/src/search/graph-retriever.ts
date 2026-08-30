@@ -96,6 +96,11 @@ export async function retrieveGraphCandidates(
 	const visibilityScope =
 		request.visibilityScope ?? _buildGraphVisibilityScope(ctx);
 	const tenantTransaction = adapters.withTenant ?? withTenant;
+	// Restricted assertions and share tokens already encode the authorized
+	// document set in allowedDocumentIds. Re-applying category inheritance
+	// here drops folder-inherited neighbors that the ACL already admitted.
+	const categoryId =
+		visibilityScope.kind === "share" ? undefined : request.categoryId;
 	const authorizedSeeds =
 		requestedSeeds.length === 0
 			? new Set<string>()
@@ -104,7 +109,7 @@ export async function retrieveGraphCandidates(
 					requestedSeeds,
 					adapters.visibleDocumentIds,
 					visibilityScope,
-					request.categoryId,
+					categoryId,
 					tenantTransaction,
 				);
 	const seeds = requestedSeeds.filter((id) => authorizedSeeds.has(id));
@@ -113,7 +118,7 @@ export async function retrieveGraphCandidates(
 		seeds,
 		adapters.visibleDocumentGenerations,
 		visibilityScope,
-		request.categoryId,
+		categoryId,
 		Boolean(adapters.visibleDocumentIds),
 		tenantTransaction,
 	);
@@ -150,7 +155,7 @@ export async function retrieveGraphCandidates(
 		allIds,
 		adapters.visibleDocumentIds,
 		visibilityScope,
-		request.categoryId,
+		categoryId,
 		tenantTransaction,
 	);
 	const activeGenerations = await resolveActiveGenerations(
@@ -158,7 +163,7 @@ export async function retrieveGraphCandidates(
 		allIds,
 		adapters.visibleDocumentGenerations,
 		visibilityScope,
-		request.categoryId,
+		categoryId,
 		Boolean(adapters.visibleDocumentIds),
 		tenantTransaction,
 	);

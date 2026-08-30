@@ -268,6 +268,60 @@ describe("graph visibility scope", () => {
 		).toBe(false);
 	});
 
+	test("share scopes keep the allowed-id ACL and do not re-apply category", async () => {
+		await enableGraphSearchForTest();
+		const { retrieveGraphCandidates } = await import(
+			"../search/graph-retriever"
+		);
+		const ctx: TenantContext = {
+			userId: OWNER,
+			role: "user",
+			source: "external",
+			workspaceId: "workspace-a",
+		};
+		const seenCategories: Array<string | undefined> = [];
+		const results = await retrieveGraphCandidates(
+			ctx,
+			{
+				documentSeeds: ["seed"],
+				queryPlan,
+				categoryId: "category-a",
+				visibilityScope: {
+					kind: "share",
+					ownerId: OWNER,
+					allowedDocumentIds: ["seed", "inherited-neighbor"],
+				},
+			},
+			{
+				visibleDocumentIds: async (_ctx, ids, _scope, categoryId) => {
+					seenCategories.push(categoryId);
+					return new Set(ids);
+				},
+				visibleDocumentGenerations: async (_ctx, ids) =>
+					new Map(ids.map((id) => [id, `${id}-gen`])),
+				expandResults: async () =>
+					new Map([
+						[
+							"seed",
+							[
+								{
+									docId: "inherited-neighbor",
+									generationId: "inherited-neighbor-gen",
+									seedGenerationId: "seed-gen",
+									hopDistance: 1,
+									relationType: "MENTIONS",
+								},
+							],
+						],
+					]),
+			},
+		);
+		expect(seenCategories.every((value) => value === undefined)).toBe(true);
+		expect(results.map((item) => item.documentId)).toEqual([
+			"inherited-neighbor",
+		]);
+	});
+
 	test("supports explicit share scopes and public-only contexts", async () => {
 		const { _buildGraphVisibilityScope, _isGraphDocumentVisible } =
 			await import("../search/graph-retriever");

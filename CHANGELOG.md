@@ -7,6 +7,15 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-08-30
+
+### Fixed
+
+- Restricted-assertion and share GraphRAG no longer re-apply category
+  inheritance on top of `allowedDocumentIds`. Folder-inherited neighbors that
+  the ACL already admitted were dropped, so live scoped search reported
+  `graphContribution: false` after rerank.
+
 ## [0.7.8] - 2026-08-30
 
 ### Fixed

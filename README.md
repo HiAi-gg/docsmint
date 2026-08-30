@@ -46,6 +46,11 @@ TypeScript SDK, CLI, and MCP server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
+## What's new in 0.7.9?
+
+- **GraphRAG on category/share search keeps inherited-folder neighbors.** The
+  allowed document list is the ACL; category is not applied a second time.
+
 ## What's new in 0.7.8?
 
 - **GraphRAG still contributes after rerank.** Neighbors already in the fused
@@ -169,7 +174,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.7.8` for reproducible deploys. The
+Use versioned tags such as `api-v0.7.9` for reproducible deploys. The
 quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
