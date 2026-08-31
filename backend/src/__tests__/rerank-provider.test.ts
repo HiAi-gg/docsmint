@@ -150,7 +150,9 @@ describe("OpenRouter rerank provider", () => {
 				{ id: "empty-c", text: "\n" },
 			],
 		},
-	])("keeps IDs aligned when empty candidates occur $name", async ({ candidates }) => {
+	])("keeps IDs aligned when empty candidates occur $name", async ({
+		candidates,
+	}) => {
 		configurePrimary();
 		let requestBody: { documents?: string[] } = {};
 		globalThis.fetch = mock(async (_url, init) => {
@@ -166,7 +168,10 @@ describe("OpenRouter rerank provider", () => {
 			);
 		}) as unknown as typeof fetch;
 
-		const result = await requestRerank({ query: "q", candidates: [...candidates] });
+		const result = await requestRerank({
+			query: "q",
+			candidates: [...candidates],
+		});
 
 		expect(requestBody.documents).toEqual(["alpha", "beta"]);
 		expect(result?.hits).toEqual([
@@ -244,8 +249,6 @@ describe("OpenRouter rerank provider", () => {
 				{ id: "doc-b", text: "beta duplicate" },
 			],
 		});
-		expect(result?.hits).toEqual([
-			{ id: "doc-b", score: 0.8, rank: 4 },
-		]);
+		expect(result?.hits).toEqual([{ id: "doc-b", score: 0.8, rank: 4 }]);
 	});
 });

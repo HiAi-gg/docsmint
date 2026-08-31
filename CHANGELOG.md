@@ -7,6 +7,26 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-31
+
+### Added
+
+- Pipeline status exposes machine-readable graph and summary warnings, including
+  stable error codes and retryability.
+- `POST /api/documents/:id/pipeline/retry-warnings` and the SDK
+  `retryDocumentPipelineWarnings()` method retry only failed optional stages on
+  the active embedding generation.
+
+### Fixed
+
+- Preserve candidate identity when empty rerank documents are filtered, so
+  provider indexes and scores always map back to the correct document IDs.
+- Import theme spread and UI components through published `hiai-ui` package
+  exports without SvelteKit source or distribution aliases.
+- Keep optional-stage diagnostics independent, retry transient provider
+  failures with the configured BullMQ backoff, and avoid regenerating an
+  already-ready summary during graph-only recovery.
+
 ## [0.8.1] - 2026-08-30
 
 ### Fixed

@@ -13,7 +13,9 @@ describe("hiai-ui package import contract", () => {
 
 		const entry = import.meta.resolve("@hiai-gg/hiai-ui");
 		const packageRoot = resolve(dirname(new URL(entry).pathname), "..");
-		const manifest = await Bun.file(resolve(packageRoot, "package.json")).json();
+		const manifest = await Bun.file(
+			resolve(packageRoot, "package.json"),
+		).json();
 		const rootExport = manifest.exports?.["."] as
 			| Record<string, string>
 			| undefined;

@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import { ConfirmDialog } from "@hiai-gg/hiai-ui";
+import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import {
 	Dialog,
 	DialogContent,

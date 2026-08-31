@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
