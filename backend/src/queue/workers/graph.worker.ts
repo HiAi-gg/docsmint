@@ -1,3 +1,4 @@
+import { PipelineProviderError } from "../../lib/pipeline-error";
 import { graphJobSchema, type PipelineJob } from "../contracts";
 import { processGraphStageFailure } from "../stage-policies";
 
@@ -17,6 +18,7 @@ export interface GraphPipelineState {
 	revision: string;
 	embeddingContextHash?: string;
 	embedStatus: PipelineStageStatus;
+	summarizeStatus?: PipelineStageStatus;
 }
 
 export type GraphStageOutcome =
@@ -44,6 +46,7 @@ export interface GraphWorkerDependencies {
 		errorCode?: string,
 	): Promise<void>;
 	enqueueSummarize(job: ReturnType<typeof graphJobSchema.parse>): Promise<void>;
+	enqueueFinalize?(job: ReturnType<typeof graphJobSchema.parse>): Promise<void>;
 }
 
 /**
@@ -56,6 +59,18 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 		if (await deps.isCancelled?.(job)) return;
 		const run = await deps.getRun(job);
 		if (!run) throw new Error("Pipeline run not found");
+		const continuePipeline = async () => {
+			if (await deps.isCancelled?.(job)) return;
+			if (
+				run.summarizeStatus === "ready" ||
+				run.summarizeStatus === "skipped"
+			) {
+				if (deps.enqueueFinalize) await deps.enqueueFinalize(job);
+				else await deps.enqueueSummarize(job);
+				return;
+			}
+			await deps.enqueueSummarize(job);
+		};
 		if (run.ownerId !== job.ownerId || run.documentId !== job.documentId) {
 			throw new Error("Pipeline owner mismatch");
 		}
@@ -86,7 +101,7 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 				"skipped",
 				"embedding_not_ready",
 			);
-			if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
+			await continuePipeline();
 			return;
 		}
 
@@ -109,13 +124,35 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 				return;
 			}
 			if (outcome.status === "unavailable" || outcome.status === "failed") {
+				if (
+					outcome.status === "failed" &&
+					[
+						"provider_failure",
+						"provider_timeout",
+						"invalid_provider_response",
+					].includes(outcome.warning)
+				) {
+					throw new PipelineProviderError(
+						outcome.warning as
+							| "provider_failure"
+							| "provider_timeout"
+							| "invalid_provider_response",
+						true,
+					);
+				}
 				await deps.setGraphStatus(job.generationId, "failed", outcome.warning);
-				if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
+				await continuePipeline();
 				return;
 			}
 			await deps.setGraphStatus(job.generationId, "ready");
-			if (!(await deps.isCancelled?.(job))) await deps.enqueueSummarize(job);
+			await continuePipeline();
 		} catch (error) {
+			if (error instanceof PipelineProviderError) {
+				await deps.setGraphStatus(job.generationId, "failed", error.code);
+				await continuePipeline();
+				if (error.retryable) throw error;
+				return;
+			}
 			await processGraphStageFailure(job, error, deps);
 		}
 	};

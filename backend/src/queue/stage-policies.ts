@@ -1,4 +1,8 @@
 import { isStaleRevisionError } from "../lib/graph/generation-state";
+import {
+	PipelineProviderError,
+	pipelineErrorCode,
+} from "../lib/pipeline-error";
 
 export type PipelineStageStatus =
 	| "pending"
@@ -162,10 +166,11 @@ export async function processSummaryStage<TJob extends PipelineJobIdentity>(
 		await dependencies.setSummaryStatus(
 			job.generationId,
 			"failed",
-			error instanceof Error ? error.name : "summary_failed",
+			pipelineErrorCode(error, "summary_failed"),
 		);
 		if (!(await continueIfCurrent())) return;
 		await dependencies.enqueueFinalize(job);
+		if (error instanceof PipelineProviderError && error.retryable) throw error;
 		return;
 	}
 	if (!(await continueIfCurrent())) return;
@@ -205,7 +210,7 @@ export async function processGraphStageFailure<
 	await dependencies.setGraphStatus(
 		job.generationId,
 		"failed",
-		error instanceof Error ? error.name : "graph_failed",
+		pipelineErrorCode(error, "graph_failed"),
 	);
 	if (!(await dependencies.isCancelled?.(job))) {
 		await dependencies.enqueueSummarize(job);

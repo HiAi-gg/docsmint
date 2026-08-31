@@ -27,6 +27,7 @@ import type {
 	DocsDocumentKnowledgeSummary,
 	DocsDocumentListResponse,
 	DocsDocumentPipeline,
+	DocsPipelineWarningRetry,
 	DocsDocumentUpdateInput,
 	DocsFolder,
 	DocsFolderCreateInput,
@@ -338,6 +339,18 @@ export class DocsClient {
 		return this.request<DocsDocumentPipeline>(
 			"GET",
 			`/api/documents/${encodeURIComponent(id)}/pipeline`,
+			undefined,
+			context,
+		);
+	}
+
+	async retryDocumentPipelineWarnings(
+		id: string,
+		context?: DocsRequestContext,
+	): Promise<DocsPipelineWarningRetry> {
+		return this.request<DocsPipelineWarningRetry>(
+			"POST",
+			`/api/documents/${encodeURIComponent(id)}/pipeline/retry-warnings`,
 			undefined,
 			context,
 		);

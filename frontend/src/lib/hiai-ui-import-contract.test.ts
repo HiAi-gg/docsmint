@@ -4,6 +4,40 @@ import { dirname, resolve } from "node:path";
 const HIAI_UI_IMPORT = /["'](@hiai-gg\/hiai-ui\/[^"']+)["']/g;
 
 describe("hiai-ui package import contract", () => {
+	test("theme spread uses the installed package root export", async () => {
+		const themeStore = await Bun.file(
+			resolve(import.meta.dir, "stores/theme.svelte.ts"),
+		).text();
+		expect(themeStore).toContain('from "@hiai-gg/hiai-ui"');
+		expect(themeStore).not.toContain("@hiai-gg/hiai-ui/lib/theme-spread");
+
+		const entry = import.meta.resolve("@hiai-gg/hiai-ui");
+		const packageRoot = resolve(dirname(new URL(entry).pathname), "..");
+		const manifest = await Bun.file(
+			resolve(packageRoot, "package.json"),
+		).json();
+		const rootExport = manifest.exports?.["."] as
+			| Record<string, string>
+			| undefined;
+		expect(rootExport?.types).toBe("./dist/index.d.ts");
+		expect(rootExport?.svelte).toBe("./dist/index.js");
+
+		const declarations = await Bun.file(
+			resolve(packageRoot, rootExport?.types ?? ""),
+		).text();
+		const runtime = await Bun.file(
+			resolve(packageRoot, rootExport?.svelte ?? ""),
+		).text();
+		expect(declarations).toContain("runThemeSpread");
+		expect(runtime).toContain("runThemeSpread");
+
+		const svelteConfig = await Bun.file(
+			resolve(import.meta.dir, "../../svelte.config.js"),
+		).text();
+		expect(svelteConfig).not.toContain("hiaiUiDist");
+		expect(svelteConfig).not.toContain('"@hiai-gg/hiai-ui"');
+	});
+
 	test("every frontend import resolves to an exported package target", async () => {
 		const entry = import.meta.resolve("@hiai-gg/hiai-ui");
 		const packageRoot = resolve(dirname(new URL(entry).pathname), "..");

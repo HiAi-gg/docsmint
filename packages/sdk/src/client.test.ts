@@ -472,6 +472,19 @@ describe("DocsClient public contract", () => {
 		);
 	});
 
+	it("retries only warning pipeline stages through the public route", async () => {
+		const calls: Array<{ url: string; method: string }> = [];
+		const docs = client(async (input, init) => {
+			calls.push({ url: String(input), method: init?.method ?? "GET" });
+			return jsonResponse({});
+		});
+		await docs.retryDocumentPipelineWarnings("doc/one");
+		expect(calls.at(-1)?.method).toBe("POST");
+		expect(calls.at(-1)?.url).toEndWith(
+			"/api/documents/doc%2Fone/pipeline/retry-warnings",
+		);
+	});
+
 	it("exposes knowledge summary, index status, and user refresh contracts", async () => {
 		const calls: Array<{ url: string; method: string }> = [];
 		const docs = client(async (input, init) => {

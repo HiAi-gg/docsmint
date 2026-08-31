@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { PipelineProviderError } from "../lib/pipeline-error";
 import {
 	createGraphWorker,
 	type PipelineStageStatus,
@@ -34,6 +35,56 @@ function deps(
 }
 
 describe("graph worker isolation", () => {
+	it("graph-only retry finalizes without regenerating a ready summary", async () => {
+		const effects: string[] = [];
+		const state = deps({
+			getRun: async () => ({
+				...job,
+				embedStatus: "ready" as const,
+				summarizeStatus: "ready" as const,
+			}),
+			enqueueSummarize: async () => {
+				effects.push("summarize");
+			},
+			enqueueFinalize: async () => {
+				effects.push("finalize");
+			},
+		});
+		await createGraphWorker(state)(job);
+		expect(effects).toEqual(["finalize"]);
+	});
+
+	it("graph-only retry failure preserves a ready summary and still finalizes", async () => {
+		const effects: string[] = [];
+		const state = deps({
+			getRun: async () => ({
+				...job,
+				embedStatus: "ready" as const,
+				summarizeStatus: "ready" as const,
+			}),
+			extract: async () => {
+				throw new PipelineProviderError("provider_timeout", true);
+			},
+			setGraphStatus: async (_id, status, errorCode) => {
+				effects.push(`${status}:${errorCode ?? ""}`);
+			},
+			enqueueSummarize: async () => {
+				effects.push("summarize");
+			},
+			enqueueFinalize: async () => {
+				effects.push("finalize");
+			},
+		});
+		await expect(createGraphWorker(state)(job)).rejects.toThrow(
+			"provider_timeout",
+		);
+		expect(effects).toEqual([
+			"processing:",
+			"failed:provider_timeout",
+			"finalize",
+		]);
+	});
+
 	it("records an unavailable graph dependency as an optional warning", async () => {
 		const effects: string[] = [];
 		const state = deps({

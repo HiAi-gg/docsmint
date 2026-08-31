@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { PipelineProviderError } from "./pipeline-error";
 
 export interface ChatProviderConfig {
 	baseUrl: string;
@@ -27,6 +28,10 @@ export interface StructuredChatResult<T> {
 	data: T;
 	model: string;
 }
+
+export type StructuredChatAttempt<T> =
+	| { ok: true; result: StructuredChatResult<T> }
+	| { ok: false; error: PipelineProviderError };
 
 /**
  * Resolve a provider credential without allowing a shared OpenRouter key to
@@ -78,24 +83,60 @@ export function uniqueChatProviders(
 export async function requestStructuredChat<T>(
 	options: StructuredChatOptions<T>,
 ): Promise<StructuredChatResult<T> | null> {
+	const attempt = await requestStructuredChatDetailed(options);
+	return attempt.ok ? attempt.result : null;
+}
+
+export async function requestStructuredChatDetailed<T>(
+	options: StructuredChatOptions<T>,
+): Promise<StructuredChatAttempt<T>> {
 	const providers = uniqueChatProviders([
 		options.primary,
 		options.fallback,
 		...(options.fallbacks ?? []),
 	]);
+	let lastError = new PipelineProviderError(
+		"provider_unavailable",
+		false,
+		"No chat provider was configured",
+	);
 	for (const provider of providers) {
 		try {
 			const raw = await requestChatContent(provider, options);
-			const parsed = parseJson(raw);
+			let parsed: unknown;
+			try {
+				parsed = parseJson(raw);
+			} catch {
+				lastError = new PipelineProviderError(
+					"invalid_provider_response",
+					true,
+				);
+				continue;
+			}
 			const result = options.outputSchema.safeParse(parsed);
-			if (!result.success) continue;
-			return { data: result.data, model: provider.model };
-		} catch {
+			if (!result.success) {
+				lastError = new PipelineProviderError(
+					"permanent_validation_failure",
+					false,
+				);
+				continue;
+			}
+			return {
+				ok: true,
+				result: { data: result.data, model: provider.model },
+			};
+		} catch (error) {
+			lastError =
+				error instanceof PipelineProviderError
+					? error
+					: error instanceof Error && error.name === "AbortError"
+						? new PipelineProviderError("provider_timeout", true)
+						: new PipelineProviderError("provider_failure", true);
 			// Expansion and extraction are enrichment. Continue with the next
 			// provider and let callers degrade gracefully when the chain fails.
 		}
 	}
-	return null;
+	return { ok: false, error: lastError };
 }
 
 async function requestChatContent<T>(
@@ -126,13 +167,22 @@ async function requestChatContent<T>(
 			}),
 		});
 		if (!response.ok)
-			throw new Error(`chat provider returned ${response.status}`);
-		const body = (await response.json()) as {
+			throw new PipelineProviderError(
+				"provider_failure",
+				true,
+				`chat provider returned ${response.status}`,
+			);
+		let body: {
 			choices?: Array<{ message?: { content?: unknown } }>;
 		};
+		try {
+			body = (await response.json()) as typeof body;
+		} catch {
+			throw new PipelineProviderError("invalid_provider_response", true);
+		}
 		const content = body.choices?.[0]?.message?.content;
 		if (typeof content !== "string" || !content.trim()) {
-			throw new Error("chat provider returned empty content");
+			throw new PipelineProviderError("invalid_provider_response", true);
 		}
 		return content;
 	} finally {

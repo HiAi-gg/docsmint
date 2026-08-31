@@ -26,6 +26,7 @@ const basePipelineJobFields = {
 	source: pipelineSourceSchema,
 	refreshMode: pipelineRefreshModeSchema,
 	embeddingContextHash: z.string().min(1).optional(),
+	warningRetry: z.literal(true).optional(),
 } as const;
 
 function normalizeLegacyPipelineJob(value: unknown): unknown {

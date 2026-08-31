@@ -46,22 +46,16 @@ TypeScript SDK, CLI, and MCP server.
 - **Own the full stack**: application data, vectors, graph, queue, and files run
   on infrastructure you control.
 
-## What's new in 0.8.1?
+## What's new in 0.8.2?
 
-- **Reliable GraphRAG on pooled connections.** AGE expansion pins
-  `ag_catalog` on the same PostgreSQL connection as `cypher()`, so scoped
-  search keeps graph neighbors regardless of the connection's previous
-  `search_path`.
-- **Better answers after hybrid retrieval.** Cross-encoder rerank promotes the
-  most relevant results after RRF while remaining fail-open when a provider is
-  unavailable. In the labeled live evaluation, MRR reached **1.000** and
-  nDCG@10 reached **0.986**, with Recall@10 unchanged at **1.000**.
-- **Resilient AI providers.** Embeddings, entity extraction, query expansion,
-  and rerank each support a primary model plus two fallbacks, so one provider
-  outage does not remove an entire retrieval channel.
-- **Secure agent access.** Signed workspace assertions can limit REST, SDK,
-  CLI, and MCP clients to one category with independent `read`, `edit`, and
-  `write` permissions.
+- **Correct rerank identity.** Empty candidates can no longer shift provider
+  scores onto the wrong document ID; partial and invalid provider responses
+  still preserve stable RRF fallback order.
+- **Recover optional AI stages safely.** Pipeline status includes typed graph
+  and summary warnings, and the API or SDK can retry only failed enrichment on
+  the current embedding generation without rebuilding ready chunks.
+- **Reliable public frontend imports.** The standalone frontend consumes only
+  published `hiai-ui` exports, with no source or distribution aliases.
 
 Read the complete release history in the [changelog](CHANGELOG.md) or
 [GitHub Releases](https://github.com/HiAi-gg/docsmint/releases). See the

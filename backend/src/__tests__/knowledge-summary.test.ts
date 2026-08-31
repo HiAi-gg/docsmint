@@ -42,7 +42,7 @@ describe("knowledge summary generation", () => {
 				{ title: "Roadmap", content: "Milestones", revision: "rev-1" },
 				async () => null,
 			),
-		).rejects.toThrow("summary_provider_failed");
+		).rejects.toThrow("provider_failure");
 	});
 });
 

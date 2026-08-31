@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge/index";
+import Badge from "@hiai-gg/hiai-ui/components/ui/badge/badge.svelte";
 import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
 import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";

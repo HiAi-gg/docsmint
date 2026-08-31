@@ -6,7 +6,7 @@ import type {
 } from "./knowledge-summary";
 import {
 	type ChatProviderConfig,
-	requestStructuredChat,
+	requestStructuredChatDetailed,
 	resolveChatProviderKey,
 } from "./openai-compatible-chat";
 
@@ -59,7 +59,7 @@ export async function requestKnowledgeSummary(
 			config.GRAPH_EXTRACT_FALLBACK_2_MODEL,
 		),
 	].filter((item): item is NonNullable<typeof item> => Boolean(item));
-	const result = await requestStructuredChat({
+	const attempt = await requestStructuredChatDetailed({
 		primary,
 		fallbacks,
 		messages: [
@@ -73,5 +73,6 @@ export async function requestKnowledgeSummary(
 		maxTokens: 768,
 		temperature: 0,
 	});
-	return result ? { ...result.data, model: result.model } : null;
+	if (!attempt.ok) throw attempt.error;
+	return { ...attempt.result.data, model: attempt.result.model };
 }

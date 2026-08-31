@@ -14,7 +14,7 @@ import {
 	DialogTitle,
 } from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
-import { Textarea } from "@hiai-gg/hiai-ui/components/ui/textarea/index";
+import Textarea from "@hiai-gg/hiai-ui/components/ui/textarea/textarea.svelte";
 import { Loader2 } from "lucide-svelte";
 import { ApiError, apiFetch } from "$lib/api/client";
 import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";

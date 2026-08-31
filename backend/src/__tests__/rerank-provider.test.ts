@@ -31,6 +31,17 @@ afterEach(() => {
 });
 
 describe("OpenRouter rerank provider", () => {
+	function configurePrimary() {
+		Object.assign(config, {
+			SEARCH_RERANK_BASE_URL: "https://primary.test/v1",
+			SEARCH_RERANK_MODEL: "voyageai/rerank-2.5",
+			SEARCH_RERANK_FALLBACK_BASE_URL: "",
+			SEARCH_RERANK_FALLBACK_MODEL: "",
+			SEARCH_RERANK_FALLBACK_2_BASE_URL: "",
+			SEARCH_RERANK_FALLBACK_2_MODEL: "",
+		});
+	}
+
 	test("maps provider indexes onto candidate ids", async () => {
 		Object.assign(config, {
 			SEARCH_RERANK_BASE_URL: "https://primary.test/v1",
@@ -110,5 +121,134 @@ describe("OpenRouter rerank provider", () => {
 			}),
 		).toBeNull();
 		expect(getMetrics()[METRIC_NAMES.SEARCH_RERANK_FALLBACK_TOTAL]).toBe(1);
+	});
+
+	test.each([
+		{
+			name: "first",
+			candidates: [
+				{ id: "empty", text: "  " },
+				{ id: "doc-a", text: "alpha" },
+				{ id: "doc-b", text: "beta" },
+			],
+		},
+		{
+			name: "middle",
+			candidates: [
+				{ id: "doc-a", text: "alpha" },
+				{ id: "empty", text: "\n\t" },
+				{ id: "doc-b", text: "beta" },
+			],
+		},
+		{
+			name: "multiple positions",
+			candidates: [
+				{ id: "empty-a", text: "" },
+				{ id: "doc-a", text: "alpha" },
+				{ id: "empty-b", text: "  " },
+				{ id: "doc-b", text: "beta" },
+				{ id: "empty-c", text: "\n" },
+			],
+		},
+	])("keeps IDs aligned when empty candidates occur $name", async ({
+		candidates,
+	}) => {
+		configurePrimary();
+		let requestBody: { documents?: string[] } = {};
+		globalThis.fetch = mock(async (_url, init) => {
+			requestBody = JSON.parse(String(init?.body));
+			return new Response(
+				JSON.stringify({
+					results: [
+						{ index: 1, relevance_score: 0.91 },
+						{ index: 0, relevance_score: 0.42 },
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		}) as unknown as typeof fetch;
+
+		const result = await requestRerank({
+			query: "q",
+			candidates: [...candidates],
+		});
+
+		expect(requestBody.documents).toEqual(["alpha", "beta"]);
+		expect(result?.hits).toEqual([
+			{ id: "doc-b", score: 0.91, rank: 1 },
+			{ id: "doc-a", score: 0.42, rank: 2 },
+		]);
+	});
+
+	test("does not call a provider when every candidate is empty", async () => {
+		configurePrimary();
+		const provider = mock(async () => new Response("unexpected"));
+		globalThis.fetch = provider as unknown as typeof fetch;
+
+		expect(
+			await requestRerank({
+				query: "q",
+				candidates: [
+					{ id: "empty-a", text: "" },
+					{ id: "empty-b", text: " \n\t" },
+				],
+			}),
+		).toBeNull();
+		expect(provider).not.toHaveBeenCalled();
+	});
+
+	test("keeps a partial response attached to the filtered document ID", async () => {
+		configurePrimary();
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						results: [{ index: 1, relevance_score: 0.75 }],
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } },
+				),
+		) as unknown as typeof fetch;
+
+		const result = await requestRerank({
+			query: "q",
+			candidates: [
+				{ id: "empty", text: "" },
+				{ id: "doc-a", text: "alpha" },
+				{ id: "doc-b", text: "beta" },
+				{ id: "doc-c", text: "gamma" },
+			],
+		});
+		expect(result?.hits).toEqual([{ id: "doc-b", score: 0.75, rank: 1 }]);
+	});
+
+	test("ignores invalid indexes and duplicate provider hits", async () => {
+		configurePrimary();
+		globalThis.fetch = mock(
+			async () =>
+				new Response(
+					JSON.stringify({
+						results: [
+							{ index: 7, relevance_score: 1 },
+							{ index: -1, relevance_score: 0.99 },
+							{ index: 0.5, relevance_score: 0.98 },
+							{ index: 1, relevance_score: 0.8 },
+							{ index: 1, relevance_score: 0.7 },
+							{ index: 2, relevance_score: 0.6 },
+						],
+					}),
+					{ status: 200, headers: { "content-type": "application/json" } },
+				),
+		) as unknown as typeof fetch;
+
+		const result = await requestRerank({
+			query: "q",
+			candidates: [
+				{ id: "empty", text: "" },
+				{ id: "doc-a", text: "alpha" },
+				{ id: "doc-b", text: "beta" },
+				{ id: "doc-b", text: "beta duplicate" },
+			],
+		});
+		expect(result?.hits).toEqual([{ id: "doc-b", score: 0.8, rank: 4 }]);
 	});
 });

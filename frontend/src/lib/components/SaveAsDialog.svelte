@@ -8,7 +8,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@hiai-gg/hiai-ui/components/ui/dialog/index";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import SelectRoot from "@hiai-gg/hiai-ui/components/ui/select/select.svelte";
 import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.svelte";
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
