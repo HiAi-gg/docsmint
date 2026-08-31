@@ -147,6 +147,12 @@ export function createGraphWorker(deps: GraphWorkerDependencies) {
 			await deps.setGraphStatus(job.generationId, "ready");
 			await continuePipeline();
 		} catch (error) {
+			if (error instanceof PipelineProviderError) {
+				await deps.setGraphStatus(job.generationId, "failed", error.code);
+				await continuePipeline();
+				if (error.retryable) throw error;
+				return;
+			}
 			await processGraphStageFailure(job, error, deps);
 		}
 	};

@@ -96,8 +96,8 @@ export async function requestStructuredChatDetailed<T>(
 		...(options.fallbacks ?? []),
 	]);
 	let lastError = new PipelineProviderError(
-		"provider_failure",
-		true,
+		"provider_unavailable",
+		false,
 		"No chat provider was configured",
 	);
 	for (const provider of providers) {
@@ -127,9 +127,11 @@ export async function requestStructuredChatDetailed<T>(
 			};
 		} catch (error) {
 			lastError =
-				error instanceof Error && error.name === "AbortError"
-					? new PipelineProviderError("provider_timeout", true)
-					: new PipelineProviderError("provider_failure", true);
+				error instanceof PipelineProviderError
+					? error
+					: error instanceof Error && error.name === "AbortError"
+						? new PipelineProviderError("provider_timeout", true)
+						: new PipelineProviderError("provider_failure", true);
 			// Expansion and extraction are enrichment. Continue with the next
 			// provider and let callers degrade gracefully when the chain fails.
 		}
@@ -165,13 +167,22 @@ async function requestChatContent<T>(
 			}),
 		});
 		if (!response.ok)
-			throw new Error(`chat provider returned ${response.status}`);
-		const body = (await response.json()) as {
+			throw new PipelineProviderError(
+				"provider_failure",
+				true,
+				`chat provider returned ${response.status}`,
+			);
+		let body: {
 			choices?: Array<{ message?: { content?: unknown } }>;
 		};
+		try {
+			body = (await response.json()) as typeof body;
+		} catch {
+			throw new PipelineProviderError("invalid_provider_response", true);
+		}
 		const content = body.choices?.[0]?.message?.content;
 		if (typeof content !== "string" || !content.trim()) {
-			throw new Error("chat provider returned empty content");
+			throw new PipelineProviderError("invalid_provider_response", true);
 		}
 		return content;
 	} finally {

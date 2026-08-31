@@ -1702,14 +1702,15 @@
       },
       "DocsPipelineWarningRetry": {
         "type": "object",
-        "required": ["documentId", "generationId", "retriedStages"],
+        "required": ["documentId", "generationId", "retriedStages", "deduplicated"],
         "properties": {
           "documentId": { "type": "string", "format": "uuid" },
           "generationId": { "type": "string", "format": "uuid" },
           "retriedStages": {
             "type": "array",
             "items": { "type": "string", "enum": ["graph", "summarize"] }
-          }
+          },
+          "deduplicated": { "type": "boolean" }
         }
       },
       "DocsDocumentIndexStatus": {

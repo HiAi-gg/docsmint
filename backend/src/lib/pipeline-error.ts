@@ -2,7 +2,8 @@ export type PipelineProviderErrorCode =
 	| "provider_failure"
 	| "provider_timeout"
 	| "invalid_provider_response"
-	| "permanent_validation_failure";
+	| "permanent_validation_failure"
+	| "provider_unavailable";
 
 export class PipelineProviderError extends Error {
 	constructor(
@@ -17,10 +18,16 @@ export class PipelineProviderError extends Error {
 
 export function pipelineErrorCode(error: unknown, fallback: string): string {
 	if (error instanceof PipelineProviderError) return error.code;
-	if (error instanceof Error && error.message.trim()) return error.message;
 	return fallback;
 }
 
 export function isRetryablePipelineError(code: string): boolean {
-	return code !== "permanent_validation_failure";
+	return new Set([
+		"provider_failure",
+		"provider_timeout",
+		"invalid_provider_response",
+		"queue_enqueue_failed",
+		"age_unavailable",
+		"age_persist_failed",
+	]).has(code);
 }

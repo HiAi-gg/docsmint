@@ -462,6 +462,7 @@ export interface DocsPipelineWarningRetry {
 	documentId: string;
 	generationId: string;
 	retriedStages: Array<"graph" | "summarize">;
+	deduplicated: boolean;
 }
 
 export interface DocsDocumentKnowledgeSummary {

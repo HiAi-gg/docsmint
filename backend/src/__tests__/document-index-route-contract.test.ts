@@ -20,4 +20,24 @@ describe("document knowledge route contract", () => {
 		expect(routeBlock.match(/writeRateLimiter\(/g)).toHaveLength(2);
 		expect(routeBlock).toContain("set.status = 429");
 	});
+
+	test("fences warning retries to the current revision and uses a stable queue identity", () => {
+		const routeBlock = source.slice(
+			source.indexOf('"/documents/:id/pipeline/retry-warnings"'),
+			source.indexOf('.get("/documents/:id",'),
+		);
+		expect(routeBlock).toContain(
+			"eq(documents.contentHash, documentPipelineRuns.revision)",
+		);
+		expect(routeBlock).toContain(
+			"warningRetryJobId(stage, retry.generationId)",
+		);
+		expect(routeBlock).toContain("deduplicated: true");
+		expect(routeBlock).toContain('["retrying", "processing"].includes(');
+		expect(routeBlock).toContain('existingRetryState === "completed"');
+		expect(routeBlock).toContain('existingRetryState === "failed"');
+		expect(routeBlock).toContain("await existingRetryJob?.remove()");
+		expect(routeBlock).toContain("resolveActiveWarningRetry(");
+		expect(routeBlock).not.toContain("Date.now()");
+	});
 });

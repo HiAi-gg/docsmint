@@ -99,7 +99,11 @@ import {
 } from "../../queue/contracts";
 import { enqueueDocumentPipeline } from "../../queue/enqueue";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "../../queue/names";
-import { planWarningStageRetry } from "../../queue/pipeline-warning-retry";
+import {
+	planWarningStageRetry,
+	resolveActiveWarningRetry,
+	warningRetryJobId,
+} from "../../queue/pipeline-warning-retry";
 import { getPipelineQueue } from "../../queue/queues";
 import {
 	documentRateLimiter,
@@ -1108,6 +1112,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					await acquireDocumentPipelineLock(tx, documentId);
 					const [run] = await tx
 						.select({
+							status: documentPipelineRuns.status,
 							generationId: documentPipelineRuns.generationId,
 							revision: documentPipelineRuns.revision,
 							ownerId: documentPipelineRuns.ownerId,
@@ -1129,6 +1134,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 									documents.activeEmbeddingGeneration,
 									documentPipelineRuns.generationId,
 								),
+								eq(documents.contentHash, documentPipelineRuns.revision),
 							),
 						)
 						.where(
@@ -1139,7 +1145,6 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 									documents.workspaceId,
 									ctx,
 								),
-								eq(documentPipelineRuns.status, "ready_with_warnings"),
 								eq(documentPipelineRuns.embedStatus, "ready"),
 								isNull(documents.deletedAt),
 								...(access.restricted
@@ -1160,6 +1165,24 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						.limit(1)
 						.for("update");
 					if (!run) return null;
+					if (run.status === "processing") {
+						const graph = ["retrying", "processing"].includes(run.graphStatus);
+						const summarize = ["retrying", "processing"].includes(
+							run.summarizeStatus,
+						);
+						return graph || summarize
+							? {
+									...run,
+									graph,
+									summarize,
+									deduplicated: true,
+									stageStarted:
+										run.graphStatus === "processing" ||
+										run.summarizeStatus === "processing",
+								}
+							: null;
+					}
+					if (run.status !== "ready_with_warnings") return null;
 					const plan = planWarningStageRetry(run);
 					if (!plan) return null;
 					const { graph, summarize } = plan;
@@ -1180,26 +1203,44 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							updatedAt: new Date(),
 						})
 						.where(eq(documentPipelineRuns.generationId, run.generationId));
-					return { ...run, graph, summarize };
+					return {
+						...run,
+						graph,
+						summarize,
+						deduplicated: false,
+						stageStarted: false,
+					};
 				});
 				if (!retry) {
 					set.status = 409;
 					return { error: "No retryable warning stages" };
 				}
-				claimed = retry;
+				if (!retry.deduplicated) claimed = retry;
 				const stage = retry.graph ? "graph" : "summarize";
-				for (const [queuedStage, jobId] of [
-					[
-						"graph",
-						JOB_IDS.graph(retry.generationId, retry.workspaceId ?? undefined),
-					],
-					[
-						"summarize",
-						JOB_IDS.summarize(
-							retry.generationId,
-							retry.workspaceId ?? undefined,
-						),
-					],
+				const retryJobId = warningRetryJobId(stage, retry.generationId);
+				const staleJobs = [
+					...(retry.graph
+						? [
+								[
+									"graph",
+									JOB_IDS.graph(
+										retry.generationId,
+										retry.workspaceId ?? undefined,
+									),
+								] as const,
+							]
+						: []),
+					...(retry.summarize
+						? [
+								[
+									"summarize",
+									JOB_IDS.summarize(
+										retry.generationId,
+										retry.workspaceId ?? undefined,
+									),
+								] as const,
+							]
+						: []),
 					[
 						"finalize",
 						JOB_IDS.finalize(
@@ -1207,14 +1248,45 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							retry.workspaceId ?? undefined,
 						),
 					],
-				] as const) {
-					const oldJob = await getPipelineQueue(
-						queuedStage,
-						config.REDIS_URL,
-					).getJob(jobId);
-					await oldJob?.remove();
+				] as const;
+				if (!retry.deduplicated) {
+					for (const [queuedStage, jobId] of staleJobs) {
+						const oldJob = await getPipelineQueue(
+							queuedStage,
+							config.REDIS_URL,
+						).getJob(jobId);
+						await oldJob?.remove();
+					}
 				}
 				const queue = getPipelineQueue(stage, config.REDIS_URL);
+				const existingRetryJob = await queue.getJob(retryJobId);
+				if (retry.deduplicated) {
+					const activeRetry = resolveActiveWarningRetry(
+						retry.stageStarted,
+						Boolean(existingRetryJob),
+					);
+					if (activeRetry === "conflict") {
+						set.status = 409;
+						return { error: "No retryable warning stages" };
+					}
+					if (activeRetry === "deduplicate")
+						return {
+							documentId,
+							generationId: retry.generationId,
+							deduplicated: true,
+							retriedStages: [
+								...(retry.graph ? (["graph"] as const) : []),
+								...(retry.summarize ? (["summarize"] as const) : []),
+							],
+						};
+				}
+				const existingRetryState = await existingRetryJob?.getState();
+				if (
+					existingRetryState === "completed" ||
+					existingRetryState === "failed"
+				) {
+					await existingRetryJob?.remove();
+				}
 				const data: PipelineJob = {
 					schemaVersion: PIPELINE_SCHEMA_VERSION,
 					stage,
@@ -1230,15 +1302,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					...(retry.embeddingContextHash
 						? { embeddingContextHash: retry.embeddingContextHash }
 						: {}),
+					warningRetry: true,
 				};
 				await queue.add(stage, data, {
 					...DEFAULT_JOB_OPTIONS,
-					jobId: `${stage}-warning-retry-${retry.generationId}-${Date.now()}`,
+					jobId: retryJobId,
 					priority: SOURCE_PRIORITY.api,
 				});
 				return {
 					documentId,
 					generationId: retry.generationId,
+					deduplicated: retry.deduplicated,
 					retriedStages: [
 						...(retry.graph ? (["graph"] as const) : []),
 						...(retry.summarize ? (["summarize"] as const) : []),

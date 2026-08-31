@@ -21,8 +21,18 @@ describe("pipeline provider diagnostics", () => {
 
 	it("marks permanent validation failures as non-retryable", () => {
 		expect(isRetryablePipelineError("provider_timeout")).toBe(true);
+		expect(isRetryablePipelineError("invalid_provider_response")).toBe(true);
 		expect(isRetryablePipelineError("permanent_validation_failure")).toBe(
 			false,
 		);
+		expect(isRetryablePipelineError("provider_unavailable")).toBe(false);
+		expect(isRetryablePipelineError("stale_revision")).toBe(false);
+		expect(isRetryablePipelineError("arbitrary internal message")).toBe(false);
+	});
+
+	it("does not expose arbitrary exception messages as diagnostic codes", () => {
+		expect(
+			pipelineErrorCode(new Error("secret provider detail"), "failed"),
+		).toBe("failed");
 	});
 });

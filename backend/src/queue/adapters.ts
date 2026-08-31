@@ -39,6 +39,7 @@ import type {
 import { JOB_IDS, PIPELINE_SCHEMA_VERSION } from "./contracts";
 import { resolveDocumentRevision } from "./document-revision";
 import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "./names";
+import { summaryJobIdForPipeline } from "./pipeline-warning-retry";
 import {
 	type ProviderLimiterProfile,
 	withProviderPermit,
@@ -1028,7 +1029,7 @@ export function createPipelineStageDependencies(
 				const data: PipelineJob = { ...job, stage: "summarize" };
 				await enqueueIfActive("summarize", "summarize", data, {
 					...DEFAULT_JOB_OPTIONS,
-					jobId: JOB_IDS.summarize(job.generationId, job.workspaceId),
+					jobId: summaryJobIdForPipeline(job),
 					priority: SOURCE_PRIORITY[job.source],
 				});
 			},
