@@ -1073,6 +1073,23 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 	.post(
 		"/documents/:id/pipeline/retry-warnings",
 		async ({ params, set, request }) => {
+			const parsedParams = documentIdParamsSchema.safeParse(params);
+			if (!parsedParams.success) {
+				set.status = 400;
+				return { error: "Invalid document id" };
+			}
+			const documentId = parsedParams.data.id;
+			const ip =
+				request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+				request.headers.get("x-real-ip") ??
+				"unknown";
+			const rl = await writeRateLimiter(ip, request);
+			if (!rl.allowed) {
+				set.status = 429;
+				set.headers = rateLimitHeaders(0, rl.retryAfter);
+				return { error: "Too many requests" };
+			}
+			set.headers = rateLimitHeaders(rl.remaining);
 			const access = await resolveContentAccess(request);
 			const ctx = access.ctx;
 			if (ctx.role === "none") {
@@ -1088,7 +1105,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				| undefined;
 			try {
 				const retry = await withTenant(ctx, async (tx) => {
-					await acquireDocumentPipelineLock(tx, params.id);
+					await acquireDocumentPipelineLock(tx, documentId);
 					const [run] = await tx
 						.select({
 							generationId: documentPipelineRuns.generationId,
@@ -1116,8 +1133,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						)
 						.where(
 							and(
-								eq(documentPipelineRuns.documentId, params.id),
-								eq(documentPipelineRuns.ownerId, ctx.userId),
+								eq(documentPipelineRuns.documentId, documentId),
+								tenantOwnerCondition(
+									documents.ownerId,
+									documents.workspaceId,
+									ctx,
+								),
 								eq(documentPipelineRuns.status, "ready_with_warnings"),
 								eq(documentPipelineRuns.embedStatus, "ready"),
 								isNull(documents.deletedAt),
@@ -1197,7 +1218,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				const data: PipelineJob = {
 					schemaVersion: PIPELINE_SCHEMA_VERSION,
 					stage,
-					documentId: params.id,
+					documentId,
 					ownerId: retry.ownerId,
 					...(retry.workspaceId ? { workspaceId: retry.workspaceId } : {}),
 					generationId: retry.generationId,
@@ -1216,7 +1237,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					priority: SOURCE_PRIORITY.api,
 				});
 				return {
-					documentId: params.id,
+					documentId,
 					generationId: retry.generationId,
 					retriedStages: [
 						...(retry.graph ? (["graph"] as const) : []),
@@ -1257,10 +1278,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							),
 					).catch(() => undefined);
 				}
-				logger.error(
-					{ err, documentId: params.id },
-					"Failed to retry warning stages",
-				);
+				logger.error({ err, documentId }, "Failed to retry warning stages");
 				set.status = 500;
 				return { error: "Failed to retry warning stages" };
 			}
@@ -1432,6 +1450,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					embedStatus: documentPipelineRuns.embedStatus,
 					graphStatus: documentPipelineRuns.graphStatus,
 					summarizeStatus: documentPipelineRuns.summarizeStatus,
+					graphErrorCode: documentPipelineRuns.graphErrorCode,
+					summarizeErrorCode: documentPipelineRuns.summarizeErrorCode,
 					finalizeStatus: documentPipelineRuns.finalizeStatus,
 					totalBatches: documentPipelineRuns.totalBatches,
 					completedBatches: documentPipelineRuns.completedBatches,
@@ -1480,6 +1500,30 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							completed: run.completedBatches,
 							failed: run.failedBatches,
 						},
+						warnings: [
+							...(run.graphStatus === "failed"
+								? [
+										{
+											stage: "graph" as const,
+											code: run.graphErrorCode ?? "graph_failed",
+											retryable: isRetryablePipelineError(
+												run.graphErrorCode ?? "graph_failed",
+											),
+										},
+									]
+								: []),
+							...(run.summarizeStatus === "failed"
+								? [
+										{
+											stage: "summarize" as const,
+											code: run.summarizeErrorCode ?? "summary_failed",
+											retryable: isRetryablePipelineError(
+												run.summarizeErrorCode ?? "summary_failed",
+											),
+										},
+									]
+								: []),
+						],
 						updatedAt: run.updatedAt,
 					}
 				: null,

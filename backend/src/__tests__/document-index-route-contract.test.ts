@@ -5,19 +5,19 @@ const source = await Bun.file(
 ).text();
 
 describe("document knowledge route contract", () => {
-	test("validates all three route ids before querying UUID columns", () => {
+	test("validates all four route ids before querying UUID columns", () => {
 		expect(
 			source.match(/documentIdParamsSchema\.safeParse\(params\)/g),
-		).toHaveLength(3);
+		).toHaveLength(4);
 	});
 
-	test("rate limits summary and status reads plus index refresh writes", () => {
+	test("rate limits summary and status reads plus warning retry and index refresh writes", () => {
 		const routeBlock = source.slice(
-			source.indexOf('.get("/documents/:id/knowledge-summary"'),
+			source.indexOf('"/documents/:id/pipeline/retry-warnings"'),
 			source.indexOf('.get("/documents/:id",'),
 		);
 		expect(routeBlock.match(/documentRateLimiter\(/g)).toHaveLength(2);
-		expect(routeBlock.match(/writeRateLimiter\(/g)).toHaveLength(1);
+		expect(routeBlock.match(/writeRateLimiter\(/g)).toHaveLength(2);
 		expect(routeBlock).toContain("set.status = 429");
 	});
 });

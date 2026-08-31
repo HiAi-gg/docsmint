@@ -741,9 +741,11 @@
               }
             }
           },
+          "400": { "description": "Invalid document identifier." },
           "401": { "description": "Authentication is required." },
           "403": { "description": "The caller lacks write permission." },
-          "409": { "description": "No retryable warning stages exist." }
+          "409": { "description": "No retryable warning stages exist." },
+          "429": { "description": "Too many requests." }
         },
         "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
       }

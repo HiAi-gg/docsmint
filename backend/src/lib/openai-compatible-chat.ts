@@ -127,7 +127,7 @@ export async function requestStructuredChatDetailed<T>(
 			};
 		} catch (error) {
 			lastError =
-				error instanceof DOMException && error.name === "AbortError"
+				error instanceof Error && error.name === "AbortError"
 					? new PipelineProviderError("provider_timeout", true)
 					: new PipelineProviderError("provider_failure", true);
 			// Expansion and extraction are enrichment. Continue with the next
