@@ -15,6 +15,12 @@ interface RerankSlot {
 	model: string;
 }
 
+interface RerankCandidateRecord {
+	id: string;
+	document: string;
+	originalIndex: number;
+}
+
 function configuredSlots(): RerankSlot[] {
 	const slots: Array<{
 		baseUrl?: string;
@@ -69,25 +75,28 @@ function rerankUrl(baseUrl: string): string {
 export async function requestRerank(
 	input: RerankRequest,
 ): Promise<RerankProviderResult | null> {
-	const documents = input.candidates
-		.map((candidate) => candidate.text.trim())
-		.filter((text) => text.length > 0);
-	if (documents.length === 0) return null;
-	const ids = input.candidates.map((candidate) => candidate.id);
+	const candidates = input.candidates
+		.map((candidate, originalIndex) => ({
+			id: candidate.id,
+			document: candidate.text.trim(),
+			originalIndex,
+		}))
+		.filter((candidate) => candidate.document.length > 0);
+	if (candidates.length === 0) return null;
 	const topN = Math.min(
 		input.topN ?? config.SEARCH_RERANK_TOP_N,
-		documents.length,
+		candidates.length,
 	);
 	const timeoutMs = config.SEARCH_RERANK_TIMEOUT_MS;
 	const started = performance.now();
 	incrementCounterBy(
 		METRIC_NAMES.SEARCH_RERANK_CANDIDATES_TOTAL,
-		documents.length,
+		candidates.length,
 	);
 	try {
 		for (const slot of configuredSlots()) {
 			try {
-				const hits = await callRerankSlot(slot, input.query, documents, ids, {
+				const hits = await callRerankSlot(slot, input.query, candidates, {
 					topN,
 					timeoutMs,
 				});
@@ -114,8 +123,7 @@ export async function requestRerank(
 async function callRerankSlot(
 	slot: RerankSlot,
 	query: string,
-	documents: string[],
-	ids: string[],
+	candidates: RerankCandidateRecord[],
 	options: { topN: number; timeoutMs: number },
 ): Promise<RerankHit[]> {
 	const controller = new AbortController();
@@ -132,7 +140,7 @@ async function callRerankSlot(
 			body: JSON.stringify({
 				model: slot.model,
 				query,
-				documents,
+				documents: candidates.map((candidate) => candidate.document),
 				top_n: options.topN,
 			}),
 		});
@@ -143,16 +151,23 @@ async function callRerankSlot(
 			results?: Array<{ index?: number; relevance_score?: number }>;
 		};
 		const hits: RerankHit[] = [];
+		const seenIds = new Set<string>();
 		for (const [rank, row] of (body.results ?? []).entries()) {
-			if (typeof row.index !== "number" || row.index < 0) continue;
-			const id = ids[row.index];
-			if (!id) continue;
+			if (
+				typeof row.index !== "number" ||
+				!Number.isInteger(row.index) ||
+				row.index < 0
+			)
+				continue;
+			const candidate = candidates[row.index];
+			if (!candidate || seenIds.has(candidate.id)) continue;
+			seenIds.add(candidate.id);
 			const score =
 				typeof row.relevance_score === "number" &&
 				Number.isFinite(row.relevance_score)
 					? row.relevance_score
 					: 0;
-			hits.push({ id, score, rank: rank + 1 });
+			hits.push({ id: candidate.id, score, rank: rank + 1 });
 		}
 		return hits;
 	} finally {
