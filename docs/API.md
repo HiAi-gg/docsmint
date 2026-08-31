@@ -170,9 +170,13 @@ Knowledge-pipeline clients can read the active generation's summary with
 `GET /api/documents/:id/knowledge-summary`, inspect embedding and pipeline
 readiness with `GET /api/documents/:id/index-status`, and request an idempotent
 reindex with `POST /api/documents/:id/index/refresh`. The read endpoints require
-document read access; refresh requires write access. For category-scoped
+document read access; refresh requires write access. A
+`ready_with_warnings` pipeline includes a machine-readable `warnings` array.
+Call `POST /api/documents/:id/pipeline/retry-warnings` to retry only retryable
+graph or summarization warnings on the current active embedding generation;
+ready embeddings, chunks, and optional stages are preserved. For category-scoped
 assertions, each operation checks the document's direct category or its
-effective category inherited from folder ancestry before access. All three
+effective category inherited from folder ancestry before access. All four
 validate UUID parameters and are rate limited.
 
 ### Search

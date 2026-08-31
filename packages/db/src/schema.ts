@@ -296,6 +296,8 @@ export const documentPipelineRuns = pgTable(
     completedBatches: integer("completed_batches").notNull().default(0),
     failedBatches: integer("failed_batches").notNull().default(0),
     errorCode: text("error_code"),
+    graphErrorCode: text("graph_error_code"),
+    summarizeErrorCode: text("summarize_error_code"),
     attempts: integer("attempts").notNull().default(0),
     requestedAt: timestamp("requested_at").defaultNow().notNull(),
     startedAt: timestamp("started_at"),

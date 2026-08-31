@@ -24,7 +24,7 @@ import { documentPipelineLockKey } from "../document-pipeline-serialization";
 import { logger } from "../logger";
 import {
 	type ChatProviderConfig,
-	requestStructuredChat,
+	requestStructuredChatDetailed,
 	resolveChatProviderKey,
 	uniqueChatProviders,
 } from "../openai-compatible-chat";
@@ -326,7 +326,14 @@ export async function extractEntities(
 				{ err, documentId },
 				"Entity extraction LLM call failed — skipping",
 			);
-			return { status: "failed", warning: "provider_failed", entities: [] };
+			return {
+				status: "failed",
+				warning:
+					err instanceof Error && err.message
+						? err.message
+						: "provider_failure",
+				entities: [],
+			};
 		}
 	}
 	if (entities === null) {
@@ -472,7 +479,7 @@ async function callEntityExtractionLLM(
 	const [primary, ...fallbacks] = providers;
 	if (!primary) return null;
 
-	const result = await requestStructuredChat({
+	const attempt = await requestStructuredChatDetailed({
 		primary,
 		fallbacks,
 		messages: [
@@ -483,7 +490,8 @@ async function callEntityExtractionLLM(
 		maxTokens: options.maxTokens ?? DEFAULT_MAX_TOKENS,
 		temperature: options.temperature ?? DEFAULT_TEMPERATURE,
 	});
-	return result ? parseExtractionResponse(JSON.stringify(result.data)) : null;
+	if (!attempt.ok) throw attempt.error;
+	return parseExtractionResponse(JSON.stringify(attempt.result.data));
 }
 
 /**

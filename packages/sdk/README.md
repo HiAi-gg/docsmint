@@ -64,6 +64,7 @@ new DocsClient({
 - `exportDoc(id)` → alias of `getDocMarkdown`
 - `importDoc({ title, content, folderId })` → `DocsDocument`
 - `getDocumentPipeline(id)` → durable BullMQ stage/batch status
+- `retryDocumentPipelineWarnings(id)` → retry only failed optional stages on the active generation
 - `publishDoc(id)` / `unpublishDoc(id)`
 
 ### Folders

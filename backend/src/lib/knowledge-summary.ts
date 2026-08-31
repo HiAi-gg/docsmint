@@ -37,10 +37,11 @@ export async function buildKnowledgeSummary(
 		return { status: "skipped", reason: "empty_document" };
 	}
 	const output = await provider(document);
-	if (!output) throw new Error("summary_provider_failed");
+	if (!output) throw new Error("provider_failure");
 	const language = output.language.trim();
 	const description = output.description.trim();
-	if (!language || !description) throw new Error("summary_provider_invalid");
+	if (!language || !description)
+		throw new Error("permanent_validation_failure");
 	const seen = new Set<string>();
 	const keywords: string[] = [];
 	for (const raw of output.keywords) {

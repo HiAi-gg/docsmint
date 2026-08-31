@@ -77,6 +77,7 @@ import {
 	rewriteDuplicateAttachmentReferences,
 } from "../../lib/duplicate-attachments";
 import { logger } from "../../lib/logger";
+import { isRetryablePipelineError } from "../../lib/pipeline-error";
 import {
 	dispatchMetadataReembedOutbox,
 	enqueueReembed,
@@ -91,7 +92,15 @@ import { BUCKET, storage } from "../../lib/storage";
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { maybePruneVersions } from "../../lib/version-prune";
 import { withTenant } from "../../lib/with-tenant";
+import {
+	JOB_IDS,
+	PIPELINE_SCHEMA_VERSION,
+	type PipelineJob,
+} from "../../queue/contracts";
 import { enqueueDocumentPipeline } from "../../queue/enqueue";
+import { DEFAULT_JOB_OPTIONS, SOURCE_PRIORITY } from "../../queue/names";
+import { planWarningStageRetry } from "../../queue/pipeline-warning-retry";
+import { getPipelineQueue } from "../../queue/queues";
 import {
 	documentRateLimiter,
 	rateLimitHeaders,
@@ -970,6 +979,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						embedStatus: documentPipelineRuns.embedStatus,
 						graphStatus: documentPipelineRuns.graphStatus,
 						summarizeStatus: documentPipelineRuns.summarizeStatus,
+						graphErrorCode: documentPipelineRuns.graphErrorCode,
+						summarizeErrorCode: documentPipelineRuns.summarizeErrorCode,
 						finalizeStatus: documentPipelineRuns.finalizeStatus,
 						totalBatches: documentPipelineRuns.totalBatches,
 						completedBatches: documentPipelineRuns.completedBatches,
@@ -1024,6 +1035,30 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					completed: run.completedBatches,
 					failed: run.failedBatches,
 				},
+				warnings: [
+					...(run.graphStatus === "failed"
+						? [
+								{
+									stage: "graph" as const,
+									code: run.graphErrorCode ?? "graph_failed",
+									retryable: isRetryablePipelineError(
+										run.graphErrorCode ?? "graph_failed",
+									),
+								},
+							]
+						: []),
+					...(run.summarizeStatus === "failed"
+						? [
+								{
+									stage: "summarize" as const,
+									code: run.summarizeErrorCode ?? "summary_failed",
+									retryable: isRetryablePipelineError(
+										run.summarizeErrorCode ?? "summary_failed",
+									),
+								},
+							]
+						: []),
+				],
 				updatedAt: run.updatedAt,
 			};
 		} catch (err) {
@@ -1035,6 +1070,202 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Failed to load pipeline progress" };
 		}
 	})
+	.post(
+		"/documents/:id/pipeline/retry-warnings",
+		async ({ params, set, request }) => {
+			const access = await resolveContentAccess(request);
+			const ctx = access.ctx;
+			if (ctx.role === "none") {
+				set.status = 401;
+				return { error: "Unauthorized" };
+			}
+			if (!canAccessContent(access, "write")) {
+				set.status = 403;
+				return { error: "Forbidden" };
+			}
+			let claimed:
+				| { generationId: string; graph: boolean; summarize: boolean }
+				| undefined;
+			try {
+				const retry = await withTenant(ctx, async (tx) => {
+					await acquireDocumentPipelineLock(tx, params.id);
+					const [run] = await tx
+						.select({
+							generationId: documentPipelineRuns.generationId,
+							revision: documentPipelineRuns.revision,
+							ownerId: documentPipelineRuns.ownerId,
+							workspaceId: documentPipelineRuns.workspaceId,
+							refreshMode: documentPipelineRuns.refreshMode,
+							embeddingContextHash: documentPipelineRuns.embeddingContextHash,
+							embedStatus: documentPipelineRuns.embedStatus,
+							graphStatus: documentPipelineRuns.graphStatus,
+							summarizeStatus: documentPipelineRuns.summarizeStatus,
+							graphErrorCode: documentPipelineRuns.graphErrorCode,
+							summarizeErrorCode: documentPipelineRuns.summarizeErrorCode,
+						})
+						.from(documentPipelineRuns)
+						.innerJoin(
+							documents,
+							and(
+								eq(documents.id, documentPipelineRuns.documentId),
+								eq(
+									documents.activeEmbeddingGeneration,
+									documentPipelineRuns.generationId,
+								),
+							),
+						)
+						.where(
+							and(
+								eq(documentPipelineRuns.documentId, params.id),
+								eq(documentPipelineRuns.ownerId, ctx.userId),
+								eq(documentPipelineRuns.status, "ready_with_warnings"),
+								eq(documentPipelineRuns.embedStatus, "ready"),
+								isNull(documents.deletedAt),
+								...(access.restricted
+									? [
+											access.categoryId
+												? effectiveDocumentCategoryCondition(
+														documents.categoryId,
+														documents.folderId,
+														ctx,
+														access.categoryId,
+													)
+												: sql`false`,
+										]
+									: []),
+							),
+						)
+						.orderBy(desc(documentPipelineRuns.updatedAt))
+						.limit(1)
+						.for("update");
+					if (!run) return null;
+					const plan = planWarningStageRetry(run);
+					if (!plan) return null;
+					const { graph, summarize } = plan;
+					await tx
+						.update(documentPipelineRuns)
+						.set({
+							status: "processing",
+							finalizeStatus: "pending",
+							...(graph
+								? { graphStatus: "retrying" as const, graphErrorCode: null }
+								: {}),
+							...(summarize
+								? {
+										summarizeStatus: "retrying" as const,
+										summarizeErrorCode: null,
+									}
+								: {}),
+							updatedAt: new Date(),
+						})
+						.where(eq(documentPipelineRuns.generationId, run.generationId));
+					return { ...run, graph, summarize };
+				});
+				if (!retry) {
+					set.status = 409;
+					return { error: "No retryable warning stages" };
+				}
+				claimed = retry;
+				const stage = retry.graph ? "graph" : "summarize";
+				for (const [queuedStage, jobId] of [
+					[
+						"graph",
+						JOB_IDS.graph(retry.generationId, retry.workspaceId ?? undefined),
+					],
+					[
+						"summarize",
+						JOB_IDS.summarize(
+							retry.generationId,
+							retry.workspaceId ?? undefined,
+						),
+					],
+					[
+						"finalize",
+						JOB_IDS.finalize(
+							retry.generationId,
+							retry.workspaceId ?? undefined,
+						),
+					],
+				] as const) {
+					const oldJob = await getPipelineQueue(
+						queuedStage,
+						config.REDIS_URL,
+					).getJob(jobId);
+					await oldJob?.remove();
+				}
+				const queue = getPipelineQueue(stage, config.REDIS_URL);
+				const data: PipelineJob = {
+					schemaVersion: PIPELINE_SCHEMA_VERSION,
+					stage,
+					documentId: params.id,
+					ownerId: retry.ownerId,
+					...(retry.workspaceId ? { workspaceId: retry.workspaceId } : {}),
+					generationId: retry.generationId,
+					revision: retry.revision,
+					requestedAt: new Date().toISOString(),
+					source: "api",
+					refreshMode:
+						retry.refreshMode === "incremental" ? "incremental" : "full",
+					...(retry.embeddingContextHash
+						? { embeddingContextHash: retry.embeddingContextHash }
+						: {}),
+				};
+				await queue.add(stage, data, {
+					...DEFAULT_JOB_OPTIONS,
+					jobId: `${stage}-warning-retry-${retry.generationId}-${Date.now()}`,
+					priority: SOURCE_PRIORITY.api,
+				});
+				return {
+					documentId: params.id,
+					generationId: retry.generationId,
+					retriedStages: [
+						...(retry.graph ? (["graph"] as const) : []),
+						...(retry.summarize ? (["summarize"] as const) : []),
+					],
+				};
+			} catch (err) {
+				const failedClaim = claimed;
+				if (failedClaim) {
+					await withTenant(ctx, (tx) =>
+						tx
+							.update(documentPipelineRuns)
+							.set({
+								status: "ready_with_warnings",
+								finalizeStatus: "ready",
+								...(failedClaim.graph
+									? {
+											graphStatus: "failed" as const,
+											graphErrorCode: "queue_enqueue_failed",
+										}
+									: {}),
+								...(failedClaim.summarize
+									? {
+											summarizeStatus: "failed" as const,
+											summarizeErrorCode: "queue_enqueue_failed",
+										}
+									: {}),
+								updatedAt: new Date(),
+							})
+							.where(
+								and(
+									eq(
+										documentPipelineRuns.generationId,
+										failedClaim.generationId,
+									),
+									eq(documentPipelineRuns.status, "processing"),
+								),
+							),
+					).catch(() => undefined);
+				}
+				logger.error(
+					{ err, documentId: params.id },
+					"Failed to retry warning stages",
+				);
+				set.status = 500;
+				return { error: "Failed to retry warning stages" };
+			}
+		},
+	)
 	.get("/documents/:id/knowledge-summary", async ({ params, set, request }) => {
 		const parsedParams = documentIdParamsSchema.safeParse(params);
 		if (!parsedParams.success) {

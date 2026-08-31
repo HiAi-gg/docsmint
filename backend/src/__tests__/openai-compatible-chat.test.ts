@@ -2,6 +2,7 @@ import { afterEach, describe, expect, mock, test } from "bun:test";
 import { z } from "zod";
 import {
 	requestStructuredChat,
+	requestStructuredChatDetailed,
 	resolveChatProviderKey,
 	uniqueChatProviders,
 } from "../lib/openai-compatible-chat";
@@ -126,5 +127,31 @@ describe("structured chat fallback chain", () => {
 			outputSchema,
 		});
 		expect(result).toBeNull();
+	});
+
+	test("classifies malformed JSON and schema validation separately", async () => {
+		globalThis.fetch = mock(async () =>
+			completion("not-json"),
+		) as unknown as typeof fetch;
+		const malformed = await requestStructuredChatDetailed({
+			primary: chatProvider("primary"),
+			messages: [{ role: "user", content: "q" }],
+			outputSchema,
+		});
+		expect(malformed.ok ? null : malformed.error.code).toBe(
+			"invalid_provider_response",
+		);
+
+		globalThis.fetch = mock(async () =>
+			completion(JSON.stringify({ nope: true })),
+		) as unknown as typeof fetch;
+		const invalid = await requestStructuredChatDetailed({
+			primary: chatProvider("primary"),
+			messages: [{ role: "user", content: "q" }],
+			outputSchema,
+		});
+		expect(invalid.ok ? null : invalid.error.code).toBe(
+			"permanent_validation_failure",
+		);
 	});
 });

@@ -26,6 +26,10 @@ const rlsMigration = readFileSync(
 	new URL("./migrations/0031_pipeline_tenant_rls.sql", import.meta.url),
 	"utf8",
 );
+const stageErrorMigration = readFileSync(
+	new URL("./migrations/0048_pipeline_stage_error_codes.sql", import.meta.url),
+	"utf8",
+);
 const journal = JSON.parse(
 	readFileSync(
 		new URL("./migrations/meta/_journal.json", import.meta.url),
@@ -72,6 +76,8 @@ describe("BullMQ pipeline state schema", () => {
 				"completedBatches",
 				"failedBatches",
 				"errorCode",
+				"graphErrorCode",
+				"summarizeErrorCode",
 				"attempts",
 				"heartbeatAt",
 				"updatedAt",
@@ -93,6 +99,11 @@ describe("BullMQ pipeline state schema", () => {
 		);
 		expect(Object.keys(documentPipelineRuns)).not.toContain("content");
 		expect(Object.keys(documentPipelineBatches)).not.toContain("modelOutput");
+	});
+
+	it("stores optional-stage diagnostics independently", () => {
+		expect(stageErrorMigration).toContain("graph_error_code");
+		expect(stageErrorMigration).toContain("summarize_error_code");
 	});
 
 	it("contains idempotency, scheduling, and document cascade constraints", () => {

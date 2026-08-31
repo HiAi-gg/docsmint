@@ -448,7 +448,20 @@ export interface DocsDocumentPipeline {
 		finalize: DocsPipelineStatus;
 	};
 	batches: { total: number; completed: number; failed: number };
+	warnings: DocsPipelineWarning[];
 	updatedAt: string;
+}
+
+export interface DocsPipelineWarning {
+	stage: "graph" | "summarize";
+	code: string;
+	retryable: boolean;
+}
+
+export interface DocsPipelineWarningRetry {
+	documentId: string;
+	generationId: string;
+	retriedStages: Array<"graph" | "summarize">;
 }
 
 export interface DocsDocumentKnowledgeSummary {

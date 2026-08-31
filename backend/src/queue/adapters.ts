@@ -284,6 +284,17 @@ function stagePatch(stage: PipelineStage, status: PipelineStageStatus) {
 	return { finalizeStatus: status };
 }
 
+function stageErrorPatch(
+	stage: PipelineStage,
+	status: PipelineStageStatus,
+	errorCode?: string,
+) {
+	const value = status === "failed" ? (errorCode ?? "unknown_failure") : null;
+	if (stage === "graph") return { graphErrorCode: value };
+	if (stage === "summarize") return { summarizeErrorCode: value };
+	return {};
+}
+
 function pipelineStageStatus(value: string): PipelineStageStatus {
 	return value === "ready_with_warnings"
 		? "failed"
@@ -380,6 +391,7 @@ async function setStageStatus(
 			.update(documentPipelineRuns)
 			.set({
 				...stagePatch(stage, status),
+				...stageErrorPatch(stage, status, errorCode),
 				...(errorCode ? { errorCode } : {}),
 				updatedAt: new Date(),
 			})
@@ -944,6 +956,7 @@ export function createPipelineStageDependencies(
 							revision: run.revision,
 							embeddingContextHash: run.embeddingContextHash ?? undefined,
 							embedStatus: pipelineStageStatus(run.embedStatus),
+							summarizeStatus: pipelineStageStatus(run.summarizeStatus),
 						}
 					: null;
 			},
@@ -1016,6 +1029,14 @@ export function createPipelineStageDependencies(
 				await enqueueIfActive("summarize", "summarize", data, {
 					...DEFAULT_JOB_OPTIONS,
 					jobId: JOB_IDS.summarize(job.generationId, job.workspaceId),
+					priority: SOURCE_PRIORITY[job.source],
+				});
+			},
+			async enqueueFinalize(job) {
+				const data: PipelineJob = { ...job, stage: "finalize" };
+				await enqueueIfActive("finalize", "finalize", data, {
+					...DEFAULT_JOB_OPTIONS,
+					jobId: `${JOB_IDS.finalize(job.generationId, job.workspaceId)}-graph-retry-${job.requestedAt.replace(/\D/g, "")}`,
 					priority: SOURCE_PRIORITY[job.source],
 				});
 			},

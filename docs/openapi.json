@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
-    "version": "0.8.1",
+    "version": "0.8.2",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -717,6 +717,35 @@
             "BearerAuth": []
           }
         ]
+      }
+    },
+    "/api/documents/{id}/pipeline/retry-warnings": {
+      "post": {
+        "operationId": "retryDocumentPipelineWarnings",
+        "summary": "Retry failed optional pipeline stages",
+        "description": "Retries only retryable graph and summarization warning stages on the active embedding generation. Ready embeddings, chunks, and optional stages are preserved.",
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Warning-stage retry accepted.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DocsPipelineWarningRetry" }
+              }
+            }
+          },
+          "401": { "description": "Authentication is required." },
+          "403": { "description": "The caller lacks write permission." },
+          "409": { "description": "No retryable warning stages exist." }
+        },
+        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
       }
     },
     "/api/documents/{id}/knowledge-summary": {
@@ -1628,7 +1657,7 @@
       "DocsDocumentPipeline": {
         "type": "object",
         "nullable": true,
-        "required": ["documentId", "generationId", "status", "revision", "stages", "batches", "updatedAt"],
+        "required": ["documentId", "generationId", "status", "revision", "stages", "batches", "warnings", "updatedAt"],
         "properties": {
           "documentId": { "type": "string", "format": "uuid" },
           "generationId": { "type": "string", "format": "uuid" },
@@ -1654,7 +1683,31 @@
               "failed": { "type": "integer" }
             }
           },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["stage", "code", "retryable"],
+              "properties": {
+                "stage": { "type": "string", "enum": ["graph", "summarize"] },
+                "code": { "type": "string" },
+                "retryable": { "type": "boolean" }
+              }
+            }
+          },
           "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "DocsPipelineWarningRetry": {
+        "type": "object",
+        "required": ["documentId", "generationId", "retriedStages"],
+        "properties": {
+          "documentId": { "type": "string", "format": "uuid" },
+          "generationId": { "type": "string", "format": "uuid" },
+          "retriedStages": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["graph", "summarize"] }
+          }
         }
       },
       "DocsDocumentIndexStatus": {

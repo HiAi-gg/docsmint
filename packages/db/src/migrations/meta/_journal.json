@@ -358,6 +358,13 @@
 			"when": 1788076800000,
 			"tag": "0047_better_auth_17_account_identity",
 			"breakpoints": true
+		},
+		{
+			"idx": 51,
+			"version": "7",
+			"when": 1788163200000,
+			"tag": "0048_pipeline_stage_error_codes",
+			"breakpoints": true
 		}
 	]
 }
