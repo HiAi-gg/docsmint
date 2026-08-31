@@ -200,10 +200,24 @@ command and configuration precedence.
 
 ## Connect an MCP client
 
-DocsMint exposes document search, reading, creation, updates, categories,
-folders, tags, GraphRAG traversal, index status and refresh, snapshots,
-history, and export as MCP tools. It also publishes reusable prompts,
-context resources, and a document-manager skill for agent clients.
+Give agents a secure path to search, read, and maintain your knowledge without
+database or filesystem access. DocsMint publishes 17 tools plus ready-made
+research prompts, scoped resources, and a document-manager skill.
+
+### Hosted DocsMint
+
+Connect directly to the managed Streamable HTTP endpoint. Keep the API key in
+an environment variable rather than writing it into client configuration:
+
+```bash
+codex mcp add docsmint \
+  --url https://docsmint.com/mcp \
+  --bearer-token-env-var HIAI_DOCS_API_KEY
+```
+
+### Self-hosted DocsMint
+
+Run the published stdio bridge against your own DocsMint API:
 
 ```json
 {
@@ -220,70 +234,10 @@ context resources, and a document-manager skill for agent clients.
 }
 ```
 
-Run the server directly to verify the installation:
-
-```bash
-npx -y @hiai-gg/docsmint docsmint-mcp
-```
-
-`npx` is the install path LobeHub and Node MCP clients validate. Bun checkouts can use
-`bunx --package @hiai-gg/docsmint docsmint-mcp` instead. The process speaks MCP on
-stdio and advertises tools, prompts, and resources without a running DocsMint API.
-
-The server uses stdio and works with MCP-capable clients such as Claude
-Desktop, Cursor, and coding agents that accept standard MCP configuration. See
-the [MCP guide](packages/mcp-server/README.md) for its 17 tools, prompts,
-resources, skill, and API routes.
-
-## MCP Features
-
-### Tools (17)
-
-- `search_documents`: Hybrid search (full-text + semantic pgvector).
-- `get_document`: Fetch document content and metadata.
-- `create_document`: Create a document with optional markdown, folder, and category.
-- `update_document`: Update title, content, folder, or category (new version on each save).
-- `list_documents`: Paginated document list, optionally filtered by folder or tag.
-- `list_folders`: List folders, optionally under a parent.
-- `create_folder`: Create a folder, optionally nested.
-- `create_snapshot`: Create a named snapshot of the current document.
-- `get_version_history`: List versions, optionally snapshots only.
-- `export_document`: Export a document as Markdown.
-- `list_categories`: List categories visible to the API key.
-- `create_category`: Create a category (workspace key with write access).
-- `list_tags`: List tags in the workspace or bound category.
-- `get_related_documents`: Traverse the knowledge graph from one authorized document.
-- `search_knowledge_graph`: Search connected knowledge from authorized seed documents.
-- `get_document_index_status`: Read indexing and knowledge-pipeline status.
-- `refresh_document_index`: Request reindexing after a document or metadata change.
-
-### Prompts (2)
-
-- `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
-- `research_workspace`: Research a question with hybrid search, GraphRAG, and rerank citing document IDs.
-
-### Resources (3)
-
-- `docsmint://guide/editor`: Editor usage guide.
-- `docsmint://guide/search`: Search, GraphRAG, and rerank guide.
-- `docsmint://workspace/catalog`: Live scoped workspace catalog.
-
-### Skills (1)
-
-- [`docsmint-document-manager`](skills/docsmint-document-manager/SKILL.md):
-  create, organize, edit, and research DocsMint documents through the 17 MCP
-  tools, including hybrid search, GraphRAG, rerank, and index refresh.
-
-The same Skill ships in the npm package under `skills/docsmint-document-manager/SKILL.md`.
-
-## Agent skills after installation
-
-The MCP tools are the recommended portable agent skills. A category-bound agent
-can receive only the knowledge and operations it needs; a trusted personal
-agent can use a global key. Agents do not need database or filesystem access.
-After startup, create an API key in **Settings → API** and add the MCP block
-above to the agent client. For custom agent workflows, use the same key through
-the CLI, SDK, or REST API.
+Category keys let you expose only the documents and operations an agent needs.
+Use a global key only for trusted owner-wide automation. See the
+[complete MCP reference](packages/mcp-server/README.md) for Bun, npm, local
+checkout, all tools, prompts, resources, permissions, and REST mappings.
 
 ## TypeScript SDK
 

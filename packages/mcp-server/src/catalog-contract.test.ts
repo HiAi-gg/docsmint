@@ -37,7 +37,7 @@ describe('DocsMint MCP catalog contract', () => {
     expect(capabilityCatalog.resources).toHaveLength(3);
   });
 
-  test('ships the registry badge, three easy installs, license, and an agent skill', async () => {
+  test('keeps the marketing README concise and links to complete MCP documentation', async () => {
     const root = new URL('../../../', import.meta.url);
     const readme = await Bun.file(new URL('README.md', root)).text();
     const mcpReadme = await Bun.file(new URL('packages/mcp-server/README.md', root)).text();
@@ -47,25 +47,26 @@ describe('DocsMint MCP catalog contract', () => {
     expect(readme).toContain(
       '[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)',
     );
-    expect(readme).toContain('## MCP Features');
-    expect(readme).toContain('### Tools (17)');
-    expect(readme).toContain('### Prompts (2)');
-    expect(readme).toContain('### Resources (3)');
-    expect(readme).toContain('`organize_workspace`');
-    expect(readme).toContain('`research_workspace`');
-    expect(readme).toContain('`docsmint://guide/editor`');
-    expect(readme).toContain('`docsmint://guide/search`');
-    expect(readme).toContain('`docsmint://workspace/catalog`');
-    expect(readme).toContain('npx -y @hiai-gg/docsmint docsmint-mcp');
+    expect(readme.match(/^## What's new/gm)).toHaveLength(1);
+    expect(readme).not.toContain("## What's new in 0.7.");
+    expect(readme).not.toContain('## MCP Features');
+    expect(readme).toContain('https://docsmint.com/mcp');
+    expect(readme).toContain('[complete MCP reference](packages/mcp-server/README.md)');
     expect(readme).toContain('"command": "npx"');
     expect(readme).toContain('"args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"]');
-    expect(readme).toContain('### Skills (1)');
-    expect(readme).toContain('skills/docsmint-document-manager/SKILL.md');
     expect(mcpReadme).toContain('"command": "npx"');
+    expect(mcpReadme).toContain('npx -y @hiai-gg/docsmint docsmint-mcp');
+    expect(mcpReadme).toContain('## Hosted Streamable HTTP');
+    expect(mcpReadme).toContain('https://docsmint.com/mcp');
+    expect(mcpReadme).toContain('## Self-hosted stdio bridge');
     expect(mcpReadme).toContain('### Bunx');
     expect(mcpReadme).toContain('### NPX');
     expect(mcpReadme).toContain('### Local checkout');
     expect(mcpReadme).toContain('## MCP Features');
+    expect(mcpReadme).toContain('### Tools (17)');
+    expect(mcpReadme).toContain('### Prompts (2)');
+    expect(mcpReadme).toContain('### Resources (3)');
+    expect(mcpReadme).toContain('### Skills (1)');
     expect(await skill.exists()).toBe(true);
     expect(publishedPackage.files).toContain('skills');
     expect(publishedPackage.license).toBe('Apache-2.0');
@@ -121,6 +122,20 @@ describe('DocsMint MCP catalog contract', () => {
       license: 'Apache-2.0',
       licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
       documentationUrl: 'https://docsmint.com/docs/mcp',
+    });
+  });
+
+  test('declares the current hosted release to the LobeHub Marketplace', async () => {
+    const root = new URL('../../../', import.meta.url);
+    const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
+    const lobeHubManifest = await Bun.file(new URL('lhm.plugin.json', root)).json();
+
+    expect(lobeHubManifest).toMatchObject({
+      identifier: 'hiai-gg-docsmint',
+      name: 'DocsMint',
+      version: publishedPackage.version,
+      cloudEndpoint: 'https://docsmint.com/mcp',
+      homepage: 'https://github.com/HiAi-gg/docsmint',
     });
   });
 

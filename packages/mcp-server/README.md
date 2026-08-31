@@ -1,8 +1,32 @@
 # DocsMint MCP server
 
-Stdio Model Context Protocol server for a running [DocsMint](https://github.com/HiAi-gg/docsmint) instance.
+Search, read, organize, and update a [DocsMint](https://github.com/HiAi-gg/docsmint)
+knowledge workspace from any Model Context Protocol client. Choose the hosted
+Streamable HTTP endpoint or run the stdio bridge against a self-hosted API.
 
-## Installation
+## Hosted Streamable HTTP
+
+The managed endpoint needs no local MCP process. Pass a DocsMint API key as a
+Bearer token; category-scoped keys are recommended for least-privilege agents.
+
+```bash
+export HIAI_DOCS_API_KEY="your-global-or-category-key"
+
+codex mcp add docsmint \
+  --url https://docsmint.com/mcp \
+  --bearer-token-env-var HIAI_DOCS_API_KEY
+```
+
+Generic HTTP clients should connect to `https://docsmint.com/mcp` with
+`Authorization: Bearer <key>`. Bound workspace keys need no extra header;
+unbound keys can supply the documented `X-Docsmint-Workspace` slug.
+
+## Self-hosted stdio bridge
+
+The published MCP binary connects to an already running DocsMint API. Installing
+the package does not deploy DocsMint itself.
+
+### Installation
 
 ### Bunx
 
@@ -27,7 +51,7 @@ bun run packages/mcp-server/src/index.ts
 
 The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not the package name. All three methods run the same stdio server.
 
-## Client configuration
+### Client configuration
 
 ```json
 {
