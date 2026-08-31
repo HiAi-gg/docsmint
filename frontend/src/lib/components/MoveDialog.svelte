@@ -8,7 +8,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@hiai-gg/hiai-ui/components/ui/dialog/index";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import { Loader2 } from "lucide-svelte";
 import { type Category, listCategories } from "$lib/api/categories";
 import { listFolders } from "$lib/api/folders";

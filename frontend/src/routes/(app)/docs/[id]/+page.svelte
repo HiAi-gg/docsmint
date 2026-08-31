@@ -1,6 +1,6 @@
 <!-- Document editor page -->
 <script lang="ts">
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
+import { ConfirmDialog } from "@hiai-gg/hiai-ui";
 import {
 	DropdownMenu,
 	DropdownMenuContent,

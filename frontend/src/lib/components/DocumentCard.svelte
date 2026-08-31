@@ -1,10 +1,8 @@
 <script lang="ts">
-import { Badge } from "@hiai-gg/hiai-ui/components/ui/badge/index";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-} from "@hiai-gg/hiai-ui/components/ui/card/index";
+import Badge from "@hiai-gg/hiai-ui/components/ui/badge/badge.svelte";
+import Card from "@hiai-gg/hiai-ui/components/ui/card/card.svelte";
+import CardContent from "@hiai-gg/hiai-ui/components/ui/card/card-content.svelte";
+import CardHeader from "@hiai-gg/hiai-ui/components/ui/card/card-header.svelte";
 import {
 	DropdownMenu,
 	DropdownMenuContent,

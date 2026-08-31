@@ -1,7 +1,7 @@
 import {
 	runThemeSpread as spreadFromClick,
 	type ThemeSpreadOrigin,
-} from "@hiai-gg/hiai-ui/lib/theme-spread";
+} from "@hiai-gg/hiai-ui";
 import { tick } from "svelte";
 import { browser } from "$app/environment";
 

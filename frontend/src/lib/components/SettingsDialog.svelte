@@ -2,7 +2,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import * as Dialog from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import * as Tabs from "@hiai-gg/hiai-ui/components/ui/tabs/index";
 import { Loader2, LogOut, Save } from "lucide-svelte";
 import { onMount } from "svelte";

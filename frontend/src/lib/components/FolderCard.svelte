@@ -1,5 +1,6 @@
 <script lang="ts">
-import { Card, CardContent } from "@hiai-gg/hiai-ui/components/ui/card/index";
+import Card from "@hiai-gg/hiai-ui/components/ui/card/card.svelte";
+import CardContent from "@hiai-gg/hiai-ui/components/ui/card/card-content.svelte";
 import {
 	DropdownMenu,
 	DropdownMenuContent,

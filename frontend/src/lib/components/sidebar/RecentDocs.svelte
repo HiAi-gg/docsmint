@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
-import { ConfirmDialog } from "@hiai-gg/hiai-ui/components/ui/confirm-dialog/index";
+import { ConfirmDialog } from "@hiai-gg/hiai-ui";
 import {
 	Dialog,
 	DialogContent,
@@ -16,7 +16,7 @@ import {
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import { Check, Copy, FileText, Loader2, MoreVertical } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
 import {

@@ -32,7 +32,7 @@ import {
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
-import { Label } from "@hiai-gg/hiai-ui/components/ui/label/index";
+import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import {
 	Check,
 	ChevronDown,
