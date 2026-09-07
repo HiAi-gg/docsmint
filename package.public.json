@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,

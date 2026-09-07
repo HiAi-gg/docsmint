@@ -1,14 +1,14 @@
 # DocsMint
 
-**A self-hosted AI-native knowledge workspace and installable PWA for people,
-applications, and AI agents.**
+**Turn your documents into knowledge you and your AI agents can use.**
 
-DocsMint stores documents in a structured JSON editor model first. Markdown is
-the convenient second format for editing, importing, and exporting content.
-Automatic chunking, 1024-dimensional embeddings, multilingual hybrid search,
-GraphRAG, and cross-encoder rerank make the same knowledge base useful to
-people, applications, and agents through the web application, REST API,
-TypeScript SDK, CLI, and MCP server.
+Write and organize notes, guides, and project documentation in one workspace.
+Find answers with search that understands related concepts, then give your
+agents access to the same documents through MCP, REST, the SDK, or CLI.
+
+**[Try managed DocsMint](https://docsmint.com)** to get started without
+operating the stack, or **[self-host with Docker](#quickstart)** to run the
+Apache-2.0 application on your own infrastructure.
 
 [![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
@@ -16,7 +16,7 @@ TypeScript SDK, CLI, and MCP server.
 [![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
 [![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
-[![Bun](https://img.shields.io/badge/Runtime-Bun_1.3-black?logo=bun&logoColor=white)](https://bun.sh)
+[![Bun](https://img.shields.io/badge/Runtime-Bun_1.4-black?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
@@ -34,38 +34,47 @@ TypeScript SDK, CLI, and MCP server.
 
 ## Why DocsMint?
 
-- **Write naturally** in a rich visual editor or raw Markdown.
-- **Find meaning, not only keywords** with exact, lexical, fuzzy, vector,
-  multilingual expansion, and graph retrieval fused through RRF, then
-  reranked with a cross-encoder (Voyage rerank-2.5 in the reference profile).
-- **Keep retrieval current** with automatic, incremental chunking and
-  re-embedding after document or metadata changes.
-- **Connect agents directly** through REST, a typed SDK, CLI, or MCP.
-- **Control access** with global keys or category-scoped `read`, `edit`, and
-  `write` permissions.
-- **Own the full stack**: application data, vectors, graph, queue, and files run
-  on infrastructure you control.
+- **Keep knowledge easy to edit.** Use a rich visual editor or Markdown;
+  organize documents with folders, categories, and tags.
+- **Find the document you mean.** Search combines keywords, meaning, typo
+  tolerance, and graph relationships across languages.
+- **Keep agents close to the source.** Let your tools search, read, and update
+  the same knowledge through MCP, REST, a typed SDK, and CLI.
+- **Choose what an integration can access.** Category keys grant explicit
+  `read`, `edit`, and `write` permissions for a defined part of your library.
+- **Keep retrieval up to date.** Document edits and metadata changes refresh
+  the search index automatically in the background.
+- **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
+  self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.2?
+## What's new in 0.8.3?
 
-- **Correct rerank identity.** Empty candidates can no longer shift provider
-  scores onto the wrong document ID; partial and invalid provider responses
-  still preserve stable RRF fallback order.
-- **Recover optional AI stages safely.** Pipeline status includes typed graph
-  and summary warnings, and the API or SDK can retry only failed enrichment on
-  the current embedding generation without rebuilding ready chunks.
-- **Reliable public frontend imports.** The standalone frontend consumes only
-  published `hiai-ui` exports, with no source or distribution aliases.
+This maintenance release focuses on reliable saves and integrations:
+
+- Pending editor saves stay attached to the document being edited, even when
+  you switch documents.
+- Navigation waits for pending content saves; overlapping saves are serialized
+  so an older request cannot overwrite a newer edit.
+- SDK document creation retries reuse an idempotency key to prevent duplicates
+  after a lost response.
+- Workspace-wide tag management requires full write access; read-only and
+  category-scoped credentials can no longer mutate the entire tag collection.
+- Partial category API-setting updates preserve omitted permissions.
+- Public workspace share links retain their workspace context when loading
+  folders and documents.
+
+No schema migration is added. Existing public request and response shapes
+remain supported; the tag authorization fix intentionally rejects operations
+that exceeded the caller's permissions.
 
 Read the complete release history in the [changelog](CHANGELOG.md) or
 [GitHub Releases](https://github.com/HiAi-gg/docsmint/releases). See the
 [roadmap](docs/ROADMAP.md) for what comes next.
 
-## Fastest installation: give this prompt to your agent
+## Install with an AI agent
 
-If you are installing DocsMint through an AI coding agent, use this path first.
-It keeps the setup to Docker plus one provider choice and avoids unnecessary
-source-code changes.
+Prefer an assisted self-hosted setup? Give your coding agent this prompt.
+You will need Docker and a choice of AI provider.
 
 ```text
 Install DocsMint from https://github.com/HiAi-gg/docsmint.
@@ -112,8 +121,8 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags such as `api-v0.8.1` for reproducible deploys. The
-quickstart still builds the Compose stack from this repository so PostgreSQL,
+Use versioned tags `api-v0.8.3`, `web-v0.8.3`, and `caddy-v0.8.3` for
+reproducible deploys. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
 For OpenRouter, add one value to `.env` and run the script again:
@@ -173,7 +182,7 @@ The published package includes the CLI. It connects to an already running
 DocsMint server; installing it does not deploy the server.
 
 ```bash
-npm install @hiai-gg/docsmint
+bun add @hiai-gg/docsmint
 ```
 
 ```bash
@@ -256,7 +265,8 @@ const results = await docs.search('what did we decide?');
 console.log(created.id, results.items);
 ```
 
-The SDK is a typed `fetch` client with retries for transient failures. See the
+The SDK is a typed `fetch` client with retries for transient failures and
+idempotent document creation retries. See the
 [SDK reference](packages/sdk/README.md) and [REST API](docs/API.md).
 
 ## API keys and integrations
@@ -282,6 +292,10 @@ affected by browser CORS. Browser integrations must add their exact origin to
 `CORS_ORIGINS`.
 
 ## What is included?
+
+Documents use structured TipTap JSON as canonical content. Markdown is the
+source-editing, import, and export format. The same document store serves the
+web application and public integration interfaces.
 
 ```text
 frontend/          SvelteKit workspace and TipTap editor
@@ -328,30 +342,13 @@ For pipeline internals and tuning, see [Architecture](docs/ARCHITECTURE.md) and
 
 ## Stack
 
-- Bun, TypeScript, Elysia, Zod, and Pino
+- Bun 1.4.0+, TypeScript, Elysia, Zod, and Pino
 - Svelte 5, SvelteKit, Tailwind CSS, and TipTap
 - Better Auth and Drizzle ORM
 - PostgreSQL 18, pgvector, pgvectorscale, and Apache AGE
 - Redis 8 and BullMQ
 - SeaweedFS with its S3-compatible API
 - OpenAI-compatible providers through OpenRouter or local Ollama
-
-## Comparison
-
-DocsMint overlaps with several excellent open-source knowledge tools, but its
-focus is a compact knowledge runtime shared equally by humans and agents.
-
-| Project                                                      | Primary strength                             | Difference from DocsMint                                                               |
-| ------------------------------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [Outline](https://github.com/outline/outline)                | Polished team wiki and collaboration         | DocsMint emphasizes built-in retrieval, GraphRAG, scoped agent access, CLI, and MCP    |
-| [Docmost](https://github.com/docmost/docmost)                | Collaborative wiki and real-time editing     | DocsMint centers automatic embeddings and agent-facing integration surfaces            |
-| [AppFlowy](https://github.com/AppFlowy-IO/AppFlowy)          | Broad local-first productivity workspace     | DocsMint is narrower: a self-hosted document and retrieval service                     |
-| [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | Chat-oriented RAG over imported sources      | DocsMint starts with the editable knowledge base and exposes it to many clients        |
-| [Danswer](https://github.com/danswer-ai/danswer) / Onyx      | Enterprise search across external connectors | DocsMint owns and edits its native corpus rather than primarily indexing other systems |
-
-This is a product-positioning summary, not a claim that every listed project
-lacks a feature. Check each project's current documentation when choosing a
-deployment.
 
 ## Documentation
 
@@ -367,6 +364,8 @@ deployment.
 - [Changelog](CHANGELOG.md)
 
 ## Development
+
+Use Bun 1.4.0 or later for local development.
 
 ```bash
 bun install

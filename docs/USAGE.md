@@ -24,7 +24,9 @@ Category API access is optional. A category key can grant any combination of
 `read`, `edit`, and `write` access and cannot access content outside that
 category. Global keys cover the owner's complete workspace. Create, copy, and
 revoke keys from **Settings → API**. See [API authentication](API.md) for the
-permission model.
+permission model. Workspace-wide tag creation, rename, and deletion require
+unrestricted write access; a category key does not grant management of the
+whole tag collection.
 
 ## Create and edit documents
 
@@ -33,6 +35,11 @@ derives Markdown for source editing, import, and export. The editor
 supports headings, links, tables, lists, task lists, alignment, attachments,
 and resizable images. Changes are saved automatically, including formatting,
 image insertion, image resizing, and folder or category changes.
+
+When you navigate within the app, pending content edits save before the next
+page opens. If saving fails, stay on the document and resolve the error before
+leaving. Closing or reloading the page with unsaved content shows a browser
+confirmation; choosing to leave can discard unsaved edits.
 
 Use the editor menu to export Markdown, DOCX, or PDF. Shared pages preserve the
 same document content and images. Markdown cannot represent every rich-text

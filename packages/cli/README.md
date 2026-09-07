@@ -1,6 +1,12 @@
 # DocsMint CLI
 
-Bun-native terminal client for a running [DocsMint](https://github.com/HiAi-gg/docsmint) instance.
+Find project knowledge, read documents, and capture new notes without leaving
+your terminal. This Bun-native client connects to a running
+[DocsMint](https://github.com/HiAi-gg/docsmint) instance.
+
+Prefer to try the product before operating a server? Explore
+[managed DocsMint](https://docsmint.com), or follow the
+[self-hosted quickstart](../../README.md#quickstart).
 
 ## Run the published CLI
 

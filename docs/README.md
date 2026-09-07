@@ -1,12 +1,13 @@
 # Documentation
 
-Start with the [project README](../README.md) for installation and the first
-run. The pages below are the maintained reference set.
+Try [managed DocsMint](https://docsmint.com), or start with the
+[project README](../README.md#quickstart) to self-host. These guides cover the
+0.8.3 release and its public interfaces.
 
 ## Use DocsMint
 
 - [Usage](USAGE.md) — documents, categories, imports, and keyboard shortcuts
-- [Roadmap](ROADMAP.md) — current 0.7.0 line, OSS boundary, and direction
+- [Roadmap](ROADMAP.md) — maintenance priorities, OSS boundary, and product direction
 - [API](API.md) — REST API, authentication, and scoped API keys
 - [OpenAPI specification](openapi.json) — machine-readable HTTP contract
 

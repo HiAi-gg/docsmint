@@ -1,6 +1,10 @@
 # API guide
 
-This guide explains the stable integration model and the most common workflows.
+Connect your applications and agents to a searchable document workspace.
+Self-host DocsMint for infrastructure control, or
+[try the managed cloud workspace](https://docsmint.com).
+This guide explains the OSS integration model and the most common workflows;
+cloud integrations use the hosted product's documented access and plan rules.
 The exhaustive, machine-readable endpoint contract is
 [`openapi.json`](openapi.json). Use that file when generating clients or when an
 endpoint, field, validation limit, or response schema is not shown here.
@@ -131,6 +135,12 @@ curl -X POST http://localhost:50700/api/categories/$CATEGORY_ID/keys \
 Before issuing a category key, save the category with `apiMode: "category"`
 and at least one of `apiPermissionRead`, `apiPermissionEdit`, or
 `apiPermissionWrite`. The server derives the scopes from those settings.
+
+Category PATCH requests preserve API settings omitted from the request. Setting
+`apiMode: "unavailable"` explicitly disables all three API permissions.
+Creating, renaming, or deleting tag definitions requires unrestricted write
+access; category `edit` permits document tag assignments within that category,
+not changes to the workspace-wide tag collection.
 
 Global secrets are returned once and retained only as hashes. Category secrets
 are encrypted at rest and can be revealed by their owning browser session.

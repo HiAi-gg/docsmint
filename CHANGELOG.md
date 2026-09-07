@@ -7,6 +7,36 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-09-07
+
+### Fixed
+
+- Keep delayed editor saves and retries bound to the document that produced
+  them, preventing a document switch from redirecting content to another ID.
+- Serialize overlapping content saves and flush pending edits before in-app
+  navigation; keep the user on the document if saving fails and warn before
+  a full-page unload with unsaved content.
+- Reuse an idempotency key across SDK document-creation retries so a lost
+  response does not create a duplicate. Explicit caller keys remain supported.
+- Require unrestricted write access for workspace-wide tag creation, rename,
+  and deletion. Category-scoped keys and workspace viewers cannot mutate the
+  global tag collection.
+- Preserve omitted category API settings in partial PATCH requests, locking
+  the row while merging permissions to avoid concurrent lost updates.
+- Restore the stored workspace context when resolving public share links,
+  allowing workspace folders and documents to load under the correct tenant.
+
+### Upgrade notes
+
+- No schema migration is added by this release. Public request and response
+  shapes and published exports remain compatible.
+- Tag authorization is intentionally stricter: integrations that used scoped
+  or read-only credentials for workspace-wide tag management now receive 403.
+  Use an appropriately authorized unrestricted writer for those operations.
+- Use Bun 1.4.0 or later for source development. Versioned application images
+  are `api-v0.8.3`, `web-v0.8.3`, and `caddy-v0.8.3` under
+  `vgalibov/docsmint`.
+
 ## [0.8.2] - 2026-08-31
 
 ### Added

@@ -20,7 +20,6 @@ import {
 import { acquireTenantTopologyLock } from "../../lib/topology-serialization";
 import { withTenant } from "../../lib/with-tenant";
 import { writeRateLimiter } from "../middleware/rate-limit";
-import { buildTenantContext } from "../middleware/tenant";
 
 const createTagSchema = z.object({
 	name: z.string().min(1).max(100),
@@ -132,10 +131,15 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (access.restricted || !canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Full workspace write access required" };
 		}
 		const userId = ctx.userId;
 		const body = createTagSchema.safeParse(await request.json());
@@ -192,10 +196,15 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (access.restricted || !canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Full workspace write access required" };
 		}
 		const body = updateTagSchema.safeParse(await request.json());
 		if (!body.success) {
@@ -258,10 +267,15 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 429;
 			return { error: "Rate limited" };
 		}
-		const ctx = await buildTenantContext(request);
+		const access = await resolveContentAccess(request);
+		const ctx = access.ctx;
 		if (ctx.role === "none") {
 			set.status = 401;
 			return { error: "Unauthorized" };
+		}
+		if (access.restricted || !canAccessContent(access, "write")) {
+			set.status = 403;
+			return { error: "Full workspace write access required" };
 		}
 		try {
 			const result = await withTenant(ctx, async (tx) => {

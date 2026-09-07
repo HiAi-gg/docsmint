@@ -665,6 +665,60 @@ describe("DocsClient public contract", () => {
 		expect(seenHeaders?.get("idempotency-key")).toBe("idem-123");
 	});
 
+	it("reuses a generated create key after a committed response is lost", async () => {
+		const committed = new Map<string, { id: string }>();
+		const keys: Array<string | null> = [];
+		let loseResponse = true;
+		const docs = client(
+			async (_input, init) => {
+				const key = new Headers(init?.headers).get("Idempotency-Key");
+				keys.push(key);
+				const operation = key ?? `unkeyed-${keys.length}`;
+				const document = committed.get(operation) ?? {
+					id: `doc-${committed.size + 1}`,
+				};
+				committed.set(operation, document);
+				if (loseResponse) {
+					loseResponse = false;
+					throw new DOMException("Response lost", "TimeoutError");
+				}
+				return jsonResponse(document, 201);
+			},
+			{ retries: 2, retryBackoffMs: 0 },
+		);
+
+		const first = await docs.createDoc({ title: "First" });
+		expect(first.id).toBe("doc-1");
+		expect(committed.size).toBe(1);
+		expect(keys[0]).toBeTruthy();
+		expect(keys[1]).toBe(keys[0]);
+
+		const second = await docs.createDoc({ title: "Second" });
+		expect(second.id).toBe("doc-2");
+		expect(keys[2]).not.toBe(keys[0]);
+	});
+
+	it.each([
+		{ headers: { "Idempotency-Key": "caller-key" } },
+		{ idempotencyKey: "caller-key" },
+	])("preserves inherited and per-call create idempotency keys: %j", async (context) => {
+		const keys: Array<string | null> = [];
+		const docs = client(
+			async (_input, init) => {
+				keys.push(new Headers(init?.headers).get("Idempotency-Key"));
+				return jsonResponse({ id: "doc-1" }, 201);
+			},
+			{ requestContext: context },
+		);
+
+		await docs.createDoc({ title: "Inherited" });
+		await docs.createDoc(
+			{ title: "Explicit" },
+			{ idempotencyKey: "per-call-key" },
+		);
+		expect(keys).toEqual(["caller-key", "per-call-key"]);
+	});
+
 	it("sanitizes caller credentials when forwarding a workspace assertion", async () => {
 		let seenHeaders: Headers | undefined;
 		const docs = client(async (_input, init) => {

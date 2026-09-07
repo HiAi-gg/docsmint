@@ -26,6 +26,18 @@ import {
 	shareGuestTenantContext,
 } from "../middleware/tenant";
 
+function shareLinkTenantContext(link: {
+	createdBy: string;
+	workspaceId: string | null;
+}): ReturnType<typeof shareGuestTenantContext> {
+	return {
+		...shareGuestTenantContext(link.createdBy),
+		...(link.workspaceId
+			? { workspaceId: link.workspaceId, source: "external" as const }
+			: {}),
+	};
+}
+
 async function authorizeShareLink(request: Request, shareId: string) {
 	const access = await resolveContentAccess(request);
 	if (access.ctx.role === "none" || !canAccessContent(access, "write")) {
@@ -550,7 +562,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		// Subsequent reads run with the link owner's identity so RLS
 		// policies on documents / folders evaluate to the same scope the
 		// owner would see.
-		const ownerCtx = shareGuestTenantContext(link.createdBy);
+		const ownerCtx = shareLinkTenantContext(link);
 
 		// Return document content
 		if (link.documentId) {
@@ -1098,7 +1110,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 
 		// 2. Verify target folder is under the shared folder or inherits the
 		// shared category.
-		const ownerCtx = shareGuestTenantContext(link.createdBy);
+		const ownerCtx = shareLinkTenantContext(link);
 		const isAllowed = link.folderId
 			? await isFolderDescendant(ownerCtx, folderId, link.folderId)
 			: link.categoryId
@@ -1224,7 +1236,7 @@ export const shareRoutes = new Elysia({ prefix: "/api/share" })
 		}
 
 		// 2. Verify target document is under the shared root folder or is the shared document
-		const ownerCtx = shareGuestTenantContext(link.createdBy);
+		const ownerCtx = shareLinkTenantContext(link);
 		let isAllowed = false;
 		if (link.documentId === docId) {
 			isAllowed = true;

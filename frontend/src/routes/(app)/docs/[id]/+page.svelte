@@ -28,7 +28,7 @@ import {
 	X,
 } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
-import { goto } from "$app/navigation";
+import { beforeNavigate, goto } from "$app/navigation";
 import { ApiError, apiFetch } from "$lib/api/client";
 import { deleteDocument, updateDocument } from "$lib/api/documents";
 import { createFolder, listFolders } from "$lib/api/folders";
@@ -39,6 +39,7 @@ import {
 	type Tag,
 } from "$lib/api/tags";
 import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
+import { createDocumentAutosave } from "$lib/components/editor/document-autosave";
 import {
 	newFolderPlacement,
 	placementForFolder,
@@ -212,6 +213,7 @@ let currentCategoryId = $state<string | null>(null);
 // this effect writes to — that would re-introduce a read-after-write cycle.
 $effect(() => {
 	const doc = data.document;
+	saveStatus = "saved";
 	title = doc.title;
 	content = doc.content ?? "";
 	contentJson = (doc.contentJson as object | null | undefined) ?? undefined;
@@ -365,55 +367,55 @@ function handleWindowClick(e: MouseEvent) {
 // `contentJson` in sync — the wysiwyg editor reuses that field to avoid
 // re-parsing on every load.
 type ContentUpdate = EditorOutput;
-let contentSaveTimer: ReturnType<typeof setTimeout> | null = null;
+const contentAutosave = createDocumentAutosave<ContentUpdate>({
+	mutate: (documentId, update) =>
+		updateDocument(documentId, {
+			content: update.markdown,
+			contentJson: update.json,
+		}),
+	shouldRetry: (error) => error instanceof ApiError && error.status === 429,
+	onStatus: (documentId, status) => {
+		if (status === "saved") refreshDocs();
+		if (documentId !== data.document.id) return;
+		saveStatus = status;
+	},
+	onError: (documentId) => {
+		if (documentId === data.document.id) error = m.doc_save_content_error();
+	},
+	onRetry: (documentId) => {
+		if (documentId === data.document.id)
+			error = "Saving too fast. Waiting before retry...";
+	},
+});
 
 function debounceContentSave(update: ContentUpdate) {
 	content = update.markdown;
 	contentJson = update.json;
-	saveStatus = "unsaved";
-	if (contentSaveTimer) clearTimeout(contentSaveTimer);
-	contentSaveTimer = setTimeout(async () => {
-		await saveContent(update);
-	}, 2000);
+	contentAutosave.schedule(data.document.id, update);
 }
 
-// Retries with exponential backoff: 2s, 4s, 8s (max 3 attempts).
-// Used when the backend responds with 429 (rate limit) so fast typing
-// doesn't surface a hard error to the user.
-const RATE_LIMIT_BACKOFF_MS = [2000, 4000, 8000];
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function saveContent(update: ContentUpdate) {
-	saveStatus = "saving";
-	for (let attempt = 0; attempt <= RATE_LIMIT_BACKOFF_MS.length; attempt++) {
-		try {
-			await updateDocument(data.document.id, {
-				content: update.markdown,
-				contentJson: update.json,
-			});
-			saveStatus = "saved";
-			refreshDocs();
-			return;
-		} catch (e) {
-			if (
-				e instanceof ApiError &&
-				e.status === 429 &&
-				attempt < RATE_LIMIT_BACKOFF_MS.length
-			) {
-				const wait = RATE_LIMIT_BACKOFF_MS[attempt];
-				error = "Saving too fast. Waiting before retry...";
-				await sleep(wait);
-				continue;
-			}
-			saveStatus = "unsaved";
-			error = m.doc_save_content_error();
-			return;
+let savingBeforeNavigation = false;
+beforeNavigate((navigation) => {
+	if (!contentAutosave.dirty) return;
+	navigation.cancel();
+	// SvelteKit shows the browser's native confirmation for full unloads.
+	if (navigation.willUnload || savingBeforeNavigation || !navigation.to) return;
+	const destination = navigation.to.url;
+	const delta = navigation.type === "popstate" ? navigation.delta : undefined;
+	savingBeforeNavigation = true;
+	void contentAutosave.flush().then(async (saved) => {
+		savingBeforeNavigation = false;
+		if (!saved) return;
+		if (delta !== undefined) {
+			history.go(delta);
+		} else {
+			await goto(destination);
 		}
-	}
-}
+	});
+});
+onDestroy(() => {
+	void contentAutosave.dispose();
+});
 
 async function handleTitleUpdate(newTitle: string) {
 	title = newTitle;
@@ -438,6 +440,7 @@ async function confirmDelete() {
 	deleteBusy = true;
 	try {
 		await deleteDocument(data.document.id);
+		contentAutosave.discard(data.document.id);
 		showDeleteDialog = false;
 		refreshDocs();
 		goto("/");

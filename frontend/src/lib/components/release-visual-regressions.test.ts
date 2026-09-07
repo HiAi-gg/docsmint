@@ -36,7 +36,7 @@ describe("0.3.5 visual regression contracts", () => {
 	test("refreshes Recent after a successful content save", () => {
 		const editorPage = read("../../routes/(app)/docs/[id]/+page.svelte");
 		const saveBlock = editorPage.slice(
-			editorPage.indexOf("async function saveContent"),
+			editorPage.indexOf("const contentAutosave = createDocumentAutosave"),
 			editorPage.indexOf("async function handleTitleUpdate"),
 		);
 		expect(saveBlock).toContain("refreshDocs();");

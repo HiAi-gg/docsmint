@@ -50,6 +50,7 @@ logs/
 coverage/
 
 # Agent workflow/runtime artifacts
+AGENTS.md
 .opencode/
 .bob/
 /.superpowers/

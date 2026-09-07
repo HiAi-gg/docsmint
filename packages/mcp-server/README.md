@@ -4,6 +4,11 @@ Search, read, organize, and update a [DocsMint](https://github.com/HiAi-gg/docsm
 knowledge workspace from any Model Context Protocol client. Choose the hosted
 Streamable HTTP endpoint or run the stdio bridge against a self-hosted API.
 
+Give your AI tools a searchable source of project knowledge that stays useful
+between conversations. [Try managed DocsMint](https://docsmint.com) to explore
+the cloud workspace, or connect the same MCP tools to your own deployment.
+Hosted MCP availability follows the cloud account's plan and permissions.
+
 ## Hosted Streamable HTTP
 
 The managed endpoint needs no local MCP process. Pass a DocsMint API key as a

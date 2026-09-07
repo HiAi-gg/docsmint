@@ -1,6 +1,12 @@
 # DocsMint SDK workspace
 
-A typed TypeScript client for the [DocsMint](https://github.com/HiAi-gg/docsmint) REST API. This private workspace is bundled into the single public `@hiai-gg/docsmint` package; it is not published independently.
+Bring searchable documents into your application with a typed TypeScript
+client for the [DocsMint](https://github.com/HiAi-gg/docsmint) REST API. Create,
+find, and organize knowledge through the same public interfaces your users see.
+
+Use your own deployment or explore [managed DocsMint](https://docsmint.com).
+This private workspace is bundled into the single public `@hiai-gg/docsmint`
+package; it is not published independently.
 
 > Bun-native, ESM-only, TypeScript strict.
 
@@ -135,16 +141,24 @@ Transient failures are retried automatically with exponential backoff:
 
 Configure with `retries` (default 3) and `retryBackoffMs` (default 250 ms). Backoff doubles each attempt with up to 25 % jitter.
 
+`createDoc` generates one `Idempotency-Key` per call and reuses it across retries,
+so a lost response does not create a duplicate document. An explicit key in the
+request context or headers takes precedence. Supply your own stable key when
+retrying the same operation across separate `createDoc` calls.
+
 ## Authentication and API keys
 
 The SDK sends `Authorization: Bearer <apiKey>` when configured. Normal integrations should use a key created in the web settings:
 
 - global scope: all content owned by that user;
 - category `read`: list/get/search/export in one effective category;
-- category `edit`: modify existing content, tags, attachments, and versions in that category;
+- category `edit`: modify existing content, document tag assignments, attachments, and versions in that category;
 - category `write`: create/move/delete/share/publish in that category.
 
 Permissions are explicit and non-hierarchical. Combine category permissions as needed. The static server `HIAI_DOCS_API_KEY` is an operator credential for `/api/admin/*`, not the normal user integration key.
+
+Creating, renaming, or deleting tag definitions requires unrestricted write
+access because the same tag can be used by documents in multiple categories.
 
 Key lifecycle methods are available for session-backed application flows: `createGlobalApiKey`, `createCategoryApiKey`, `listApiKeys`, `revealCategoryApiKey`, and `revokeApiKey`. Supply a Better Auth cookie or authorization value through `DocsRequestContext`; API keys cannot manage other API keys. Global secrets are shown once, while category secrets are recoverable by the owning browser session.
 

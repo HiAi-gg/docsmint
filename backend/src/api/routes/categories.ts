@@ -349,6 +349,30 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						return { conflict: true as const };
 					}
 				}
+				// Lock before merging partial settings so concurrent PATCH requests
+				// preserve each other's changes to omitted permissions.
+				const [existingAccess] = hasApiAccessUpdate
+					? await tx
+							.select({
+								apiMode: categories.apiMode,
+								apiPermissionRead: categories.apiPermissionRead,
+								apiPermissionEdit: categories.apiPermissionEdit,
+								apiPermissionWrite: categories.apiPermissionWrite,
+							})
+							.from(categories)
+							.where(
+								and(
+									eq(categories.id, params.id),
+									tenantOwnerCondition(
+										categories.ownerId,
+										categories.workspaceId,
+										ctx,
+									),
+								),
+							)
+							.for("update")
+							.limit(1)
+					: [];
 				const [row] = await tx
 					.update(categories)
 					.set({
@@ -358,6 +382,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 						}),
 						...(hasApiAccessUpdate
 							? buildApiAccessValues({
+									existing: existingAccess,
 									apiMode: parsed.data.apiMode,
 									apiPermissionRead: parsed.data.apiPermissionRead,
 									apiPermissionEdit: parsed.data.apiPermissionEdit,

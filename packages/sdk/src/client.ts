@@ -1117,6 +1117,15 @@ export class DocsClient {
 			headers.set("X-Request-Id", requestContext.requestId);
 		if (requestContext?.idempotencyKey)
 			headers.set("Idempotency-Key", requestContext.idempotencyKey);
+		// Document creation supports replay on the server. Generate once before
+		// the retry loop so a lost response cannot create a second document.
+		if (
+			method === "POST" &&
+			path === "/api/documents" &&
+			!headers.has("Idempotency-Key")
+		) {
+			headers.set("Idempotency-Key", crypto.randomUUID());
+		}
 		if (requestContext?.workspaceAssertion) {
 			headers.set(
 				"X-Docsmint-Workspace-Context",
