@@ -88,5 +88,14 @@
     "No live rerank, browser, Docker, or production verification.",
     "Root bunx typecheck blocked by BUN_TMPDIR permissions.",
     "Coordinator independently accepts results and updates GitHub."
-  ]
+  ],
+  "coordinator_ci_correction": {
+    "status": "independently-verified-pending-ci",
+    "grok_end": "cancelled; partial source independently reviewed",
+    "source_tests_without_dist": "2 pass,157 assertions",
+    "missing_artifact_negative": "failed as expected",
+    "build_sdk_and_artifact_gate": "pass",
+    "workflow_contract_typecheck_lint": "pass",
+    "remaining": "exact follow-up PR CI"
+  }
 }
