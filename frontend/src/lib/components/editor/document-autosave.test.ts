@@ -24,6 +24,31 @@ test("navigation flush keeps the document ID captured with the edit", async () =
 	expect(writes).toEqual(["A:edited A"]);
 });
 
+test("retries stay bound to the original document after a switch", async () => {
+	const backoff = deferred();
+	const entered = deferred();
+	const writes: string[] = [];
+	let attempts = 0;
+	const queue = createDocumentAutosave<string>({
+		mutate: async (id, content) => {
+			if (++attempts === 1) throw new Error("429");
+			writes.push(`${id}:${content}`);
+		},
+		shouldRetry: () => true,
+		sleep: async () => {
+			entered.resolve();
+			await backoff.promise;
+		},
+	});
+	queue.schedule("A", "from A");
+	const flushed = queue.flush();
+	await entered.promise;
+	queue.schedule("B", "from B");
+	backoff.resolve();
+	await flushed;
+	expect(writes).toEqual(["A:from A", "B:from B"]);
+});
+
 test("coalesces newer edits during retry backoff and never commits stale content last", async () => {
 	const backoff = deferred();
 	const entered = deferred();

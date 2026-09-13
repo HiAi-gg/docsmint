@@ -4,7 +4,14 @@
  * bun --env-file=.env backend/src/scripts/eval-retrieval.ts --mode=baseline
  * bun --env-file=.env backend/src/scripts/eval-retrieval.ts --mode=rerank --live
  */
-import fixture from "../search/eval/retrieval-eval.fixture.json";
+import {
+	evaluateOfflineBaseline,
+	fullTextRank,
+	lexicalRank,
+	loadEvalFixture,
+	roundMetric,
+} from "../search/eval/offline-eval";
+import rawFixture from "../search/eval/retrieval-eval.fixture.json";
 import {
 	mrr,
 	ndcgAt,
@@ -14,72 +21,6 @@ import {
 } from "../search/eval-metrics";
 import { applyRerankOrder } from "../search/rerank";
 import { requestRerank } from "../search/rerank-provider";
-import type { RankedSearchResult } from "../search/types";
-
-interface EvalDoc {
-	id: string;
-	title: string;
-	text: string;
-}
-
-interface EvalQuery {
-	id: string;
-	query: string;
-	class: string;
-	labels: Record<string, number>;
-}
-
-const docs = fixture.documents as unknown as EvalDoc[];
-const queries = fixture.queries as unknown as EvalQuery[];
-
-function tokens(value: string): string[] {
-	return value
-		.toLocaleLowerCase()
-		.split(/[^\p{L}\p{N}]+/u)
-		.filter((token) => token.length > 1);
-}
-
-function overlapScore(query: string, text: string): number {
-	const queryTokens = new Set(tokens(query));
-	if (queryTokens.size === 0) return 0;
-	const docTokens = tokens(text);
-	let hits = 0;
-	for (const token of docTokens) {
-		if (queryTokens.has(token)) hits++;
-	}
-	return hits / queryTokens.size;
-}
-
-function rankByScore(
-	scored: Array<{ id: string; score: number }>,
-): RankedSearchResult[] {
-	return [...scored]
-		.sort((left, right) => right.score - left.score)
-		.map((item) => ({
-			documentId: item.id,
-			score: item.score,
-			channels: ["fts" as const],
-			explanations: [],
-		}));
-}
-
-function lexicalRank(query: string): RankedSearchResult[] {
-	return rankByScore(
-		docs.map((doc) => ({
-			id: doc.id,
-			score: overlapScore(query, `${doc.title} ${doc.title}`),
-		})),
-	);
-}
-
-function fullTextRank(query: string): RankedSearchResult[] {
-	return rankByScore(
-		docs.map((doc) => ({
-			id: doc.id,
-			score: overlapScore(query, `${doc.title} ${doc.text}`),
-		})),
-	);
-}
 
 function parseArgs(argv: string[]): {
 	mode: "baseline" | "rerank";
@@ -102,37 +43,28 @@ function parseArgs(argv: string[]): {
 	return { mode, live, topN };
 }
 
-async function rankQuery(
-	query: EvalQuery,
-	mode: "baseline" | "rerank",
-	live: boolean,
-	topN: number,
-): Promise<string[]> {
-	const baseline = lexicalRank(query.query);
-	if (mode === "baseline") return baseline.map((item) => item.documentId);
-	if (!live) {
-		return fullTextRank(query.query).map((item) => item.documentId);
-	}
-	const window = baseline.slice(0, Math.min(topN, baseline.length));
-	const result = await requestRerank({
-		query: query.query,
-		candidates: window.map((item) => {
-			const doc = docs.find((entry) => entry.id === item.documentId);
-			return {
-				id: item.documentId,
-				text: `${doc?.title ?? ""}\n${doc?.text ?? ""}`,
-			};
-		}),
-		topN,
-	});
-	if (!result) return baseline.map((item) => item.documentId);
-	return applyRerankOrder(baseline, result.hits, topN).map(
-		(item) => item.documentId,
-	);
-}
-
 async function main(): Promise<void> {
 	const args = parseArgs(Bun.argv.slice(2));
+	if (args.mode === "baseline" && !args.live) {
+		const evaluated = evaluateOfflineBaseline();
+		console.log(
+			JSON.stringify(
+				{ summary: evaluated.summary, rows: evaluated.rows },
+				null,
+				2,
+			),
+		);
+		return;
+	}
+	const { documents, queries } = loadEvalFixture({
+		documents: rawFixture.documents,
+		queries: rawFixture.queries.map((query) => ({
+			id: query.id,
+			query: query.query,
+			class: query.class,
+			labels: query.labels,
+		})),
+	});
 	const rows: Array<{
 		id: string;
 		class: string;
@@ -144,14 +76,38 @@ async function main(): Promise<void> {
 	}> = [];
 	for (const query of queries) {
 		const started = performance.now();
-		const ranked = await rankQuery(query, args.mode, args.live, args.topN);
+		const baseline = lexicalRank(query.query, documents);
+		let ranked = baseline.map((item) => item.documentId);
+		if (args.live) {
+			const window = baseline.slice(0, Math.min(args.topN, baseline.length));
+			const result = await requestRerank({
+				query: query.query,
+				candidates: window.map((item) => {
+					const doc = documents.find((entry) => entry.id === item.documentId);
+					return {
+						id: item.documentId,
+						text: `${doc?.title ?? ""}\n${doc?.text ?? ""}`,
+					};
+				}),
+				topN: args.topN,
+			});
+			if (result) {
+				ranked = applyRerankOrder(baseline, result.hits, args.topN).map(
+					(item) => item.documentId,
+				);
+			}
+		} else {
+			ranked = fullTextRank(query.query, documents).map(
+				(item) => item.documentId,
+			);
+		}
 		rows.push({
 			id: query.id,
 			class: query.class,
-			mrr: mrr(ranked, query.labels),
-			ndcg10: ndcgAt(ranked, query.labels, 10),
-			p5: precisionAt(ranked, query.labels, 5),
-			r10: recallAt(ranked, query.labels, 10),
+			mrr: roundMetric(mrr(ranked, query.labels)),
+			ndcg10: roundMetric(ndcgAt(ranked, query.labels, 10)),
+			p5: roundMetric(precisionAt(ranked, query.labels, 5)),
+			r10: roundMetric(recallAt(ranked, query.labels, 10)),
 			ms: performance.now() - started,
 		});
 	}
@@ -161,10 +117,10 @@ async function main(): Promise<void> {
 		mode: args.mode,
 		live: args.live,
 		queryCount: rows.length,
-		MRR: mean((row) => row.mrr),
-		nDCG10: mean((row) => row.ndcg10),
-		P5: mean((row) => row.p5),
-		Recall10: mean((row) => row.r10),
+		MRR: roundMetric(mean((row) => row.mrr)),
+		nDCG10: roundMetric(mean((row) => row.ndcg10)),
+		P5: roundMetric(mean((row) => row.p5)),
+		Recall10: roundMetric(mean((row) => row.r10)),
 		p50: percentile(
 			rows.map((row) => row.ms),
 			50,

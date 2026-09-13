@@ -5,6 +5,7 @@ import type { AuthPrincipal } from "../lib/auth-principal";
 import {
 	canAccessContent,
 	canManageCategories,
+	canManageWorkspaceTags,
 	contentAccessForExternalContext,
 	contentAccessForPrincipal,
 	effectiveDocumentCategory,
@@ -59,6 +60,20 @@ describe("content API authorization matrix", () => {
 
 		expect(canManageCategories(globalKey)).toBe(true);
 		expect(canManageCategories(categoryKey)).toBe(false);
+		expect(canManageWorkspaceTags(globalKey)).toBe(true);
+		expect(canManageWorkspaceTags(categoryKey)).toBe(false);
+	});
+
+	test("workspace viewers cannot mutate the global tag collection", () => {
+		const viewer = contentAccessForExternalContext({
+			userId: ownerId,
+			workspaceId: "workspace-a",
+			source: "external",
+			role: "user",
+			actorRole: "viewer",
+		});
+		expect(canManageWorkspaceTags(viewer)).toBe(false);
+		expect(canAccessContent(viewer, "read")).toBe(true);
 	});
 
 	test.each([

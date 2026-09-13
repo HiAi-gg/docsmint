@@ -1,0 +1,92 @@
+{
+  "status": "review",
+  "tasks": [
+    {
+      "id": "DOCSMINT-OSS-T01",
+      "status": "review",
+      "summary": "Replaced source-string assertions with buildApiAccessValues merge tests, canManageWorkspaceTags policy tests, HTTP category-key tag 403, PATCH permission preservation, and attachment cleanup storageKey identity."
+    },
+    {
+      "id": "DOCSMINT-OSS-T02",
+      "status": "review",
+      "summary": "Regenerated nDCG10=0.826458 from canonical graded DCG (gain/log2(rank+1) / ideal DCG) via evaluateOfflineBaseline; recorded per-query rows; kept rerank/graph/last-ready behavior tests."
+    },
+    {
+      "id": "DOCSMINT-OSS-T03",
+      "status": "review",
+      "summary": "In-place dist export resolution, DocsClient health/search/createDoc, CLI list+search REST calls, MCP dist artifacts; no packed tarball copies."
+    }
+  ],
+  "changed_files": [
+    "backend/src/lib/content-access.ts",
+    "backend/src/lib/category-api-access.ts",
+    "backend/src/api/routes/tags.ts",
+    "backend/src/api/routes/categories.ts",
+    "backend/src/search/eval/offline-eval.ts",
+    "backend/src/search/eval/retrieval-failure-matrix.json",
+    "backend/src/scripts/eval-retrieval.ts",
+    "backend/src/__tests__/content-access.test.ts",
+    "backend/src/__tests__/category-api-access.test.ts",
+    "backend/src/__tests__/editing-access-regression.test.ts",
+    "backend/src/__tests__/tags-auth-contract.test.ts",
+    "backend/src/__tests__/retrieval-failure-matrix.test.ts",
+    "backend/src/__tests__/public-surface-compatibility.test.ts",
+    "backend/src/__tests__/eval-metrics.test.ts",
+    "backend/tests/integration/_harness.ts",
+    "backend/tests/integration/routes.editing-access-regression.test.ts",
+    "frontend/src/lib/components/editor/document-autosave.test.ts",
+    "packages/cli/src/client.test.ts",
+    "TEAM_BACKLOG.md",
+    "docs/acceptance/GROK-20260913.md",
+    "GROK_RESULT.json"
+  ],
+  "checks": [
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --no-env-file test --path-ignore-patterns=*node_modules* src/__tests__/retrieval-failure-matrix.test.ts src/__tests__/public-surface-compatibility.test.ts src/__tests__/editing-access-regression.test.ts src/__tests__/tags-auth-contract.test.ts src/__tests__/content-access.test.ts src/__tests__/category-api-access.test.ts src/__tests__/eval-metrics.test.ts",
+      "exit_code": 0,
+      "summary": "37 pass / 0 fail / 467 expect"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --no-env-file test --path-ignore-patterns=*node_modules* tests/integration/routes.editing-access-regression.test.ts",
+      "exit_code": 0,
+      "summary": "3 pass / 0 fail / 12 expect (PATCH merge, category-key tag 403, attachment cleanup storageKey)"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun test --path-ignore-patterns=*node_modules* src/lib/components/editor/document-autosave.test.ts",
+      "exit_code": 0,
+      "summary": "8 pass / 0 fail / 22 expect"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun test --path-ignore-patterns=*node_modules* packages/cli/src/client.test.ts",
+      "exit_code": 0,
+      "summary": "2 pass / 0 fail / 5 expect"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --cwd=/mnt/data/projects/docsmint-oss/backend --no-env-file run typecheck",
+      "exit_code": 0,
+      "summary": "tsc --noEmit"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --no-env-file run lint",
+      "exit_code": 0,
+      "summary": "backend 268 files and frontend 241 files, no format errors"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --cwd=/mnt/data/projects/docsmint-oss/backend --no-env-file run build",
+      "exit_code": 0,
+      "summary": "bundled 1884 modules to backend/dist/index.js"
+    },
+    {
+      "command": "python3 /mnt/data/work/grok-portfolio-20260913/inplace/run-check.py bun --no-env-file run typecheck",
+      "exit_code": 1,
+      "summary": "Root workspace typecheck: EACCES accessing temporary directory for bunx tsc scripts. Environment blocker."
+    }
+  ],
+  "remaining": [
+    "In-memory harness does not evaluate SQL category predicates on attachment DELETE; policy tests cover grants.",
+    "No packed-tarball smoke (copies forbidden).",
+    "No live rerank, browser, Docker, or production verification.",
+    "Root bunx typecheck blocked by BUN_TMPDIR permissions.",
+    "Coordinator independently accepts results and updates GitHub."
+  ]
+}
