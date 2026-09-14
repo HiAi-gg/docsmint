@@ -1,0 +1,171 @@
+{
+	"version": "0.8.3",
+	"recordedAt": "2026-09-13",
+	"dataset": {
+		"fixture": "backend/src/search/eval/retrieval-eval.fixture.json",
+		"documentCount": 8,
+		"queryCount": 12,
+		"documentIds": [
+			"doc-locks",
+			"doc-rrf",
+			"doc-graph",
+			"doc-embed",
+			"doc-share",
+			"doc-seaweed",
+			"doc-auth",
+			"doc-bread"
+		],
+		"classes": [
+			"exact",
+			"fts",
+			"semantic",
+			"graph",
+			"multilingual",
+			"ambiguous"
+		]
+	},
+	"configuration": {
+		"mode": "baseline",
+		"live": false,
+		"algorithm": "title-overlap-lexical",
+		"ndcg": "graded DCG with gain/log2(rank+1), normalized by ideal DCG",
+		"embeddingDimensions": 1024,
+		"SEARCH_RERANK_ENABLED": true,
+		"SEARCH_RERANK_MODEL": "voyageai/rerank-2.5",
+		"SEARCH_RERANK_FALLBACK_MODEL": "cohere/rerank-v3.5",
+		"SEARCH_RERANK_FALLBACK_2_MODEL": "nvidia/llama-nemotron-rerank-vl-1b-v2:free",
+		"SEARCH_RERANK_GRAPH_POSITION": "after",
+		"SEARCH_RERANK_TOP_N": 20,
+		"SEARCH_RERANK_TIMEOUT_MS": 3000,
+		"GRAPH_SEARCH_ENABLED": true,
+		"SEARCH_RRF_K": 60,
+		"SEARCH_GRAPH_MAX_CONTRIBUTION": 0.03,
+		"SEARCH_GRAPH_SEED_LIMIT": 10,
+		"SEARCH_GRAPH_MAX_HOPS": 2
+	},
+	"metrics": {
+		"mode": "baseline",
+		"live": false,
+		"queryCount": 12,
+		"MRR": 0.775794,
+		"nDCG10": 0.826458,
+		"P5": 0.2,
+		"Recall10": 1
+	},
+	"rows": [
+		{
+			"id": "exact-title",
+			"class": "exact",
+			"mrr": 1,
+			"ndcg10": 0.96394,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "name-lookup",
+			"class": "exact",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "fts-lock",
+			"class": "fts",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "semantic-search",
+			"class": "semantic",
+			"mrr": 0.5,
+			"ndcg10": 0.697934,
+			"p5": 0.4,
+			"r10": 1
+		},
+		{
+			"id": "semantic-graph",
+			"class": "graph",
+			"mrr": 0.5,
+			"ndcg10": 0.648041,
+			"p5": 0.4,
+			"r10": 1
+		},
+		{
+			"id": "multilingual",
+			"class": "multilingual",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "ambiguous",
+			"class": "ambiguous",
+			"mrr": 1,
+			"ndcg10": 0.918039,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "paraphrase-share",
+			"class": "semantic",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "storage",
+			"class": "fts",
+			"mrr": 0.166667,
+			"ndcg10": 0.356207,
+			"p5": 0,
+			"r10": 1
+		},
+		{
+			"id": "vector-dim",
+			"class": "semantic",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "distractor",
+			"class": "exact",
+			"mrr": 1,
+			"ndcg10": 1,
+			"p5": 0.2,
+			"r10": 1
+		},
+		{
+			"id": "admin-key",
+			"class": "fts",
+			"mrr": 0.142857,
+			"ndcg10": 0.333333,
+			"p5": 0,
+			"r10": 1
+		}
+	],
+	"failureCases": [
+		{
+			"id": "last-ready-generation-searchable",
+			"expect": "The last ready embedding generation remains searchable while a replacement candidate is pending, failed, or invalid."
+		},
+		{
+			"id": "rerank-identity-empty-filter",
+			"expect": "Provider indexes map onto original document IDs after empty-text candidates are filtered."
+		},
+		{
+			"id": "rerank-fail-open",
+			"expect": "Rerank provider failure keeps RRF order and document identities."
+		},
+		{
+			"id": "authorized-graph-contribution",
+			"expect": "Graph neighbors outside the authorized document set never appear; authorized graph evidence is preserved."
+		}
+	]
+}

@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { translateAccountPurgeFencedError } from "../../lib/account-purge-fence";
+import { buildApiAccessValues } from "../../lib/category-api-access";
 import {
 	canAccessContent,
 	canManageCategories,
@@ -60,68 +61,6 @@ export const categorySchemas = {
 	update: updateCategorySchema,
 	list: listQuerySchema,
 };
-
-function normalizeApiMode(
-	apiMode?: string | null,
-): "unavailable" | "global" | "category" {
-	if (apiMode === "category") return "category";
-	if (apiMode === "global") return "global";
-	return "unavailable";
-}
-
-function buildApiAccessValues(input: {
-	apiMode?: string | null;
-	apiPermissionRead?: boolean;
-	apiPermissionEdit?: boolean;
-	apiPermissionWrite?: boolean;
-	existing?: {
-		apiMode: string;
-		apiPermissionRead: boolean;
-		apiPermissionEdit: boolean;
-		apiPermissionWrite: boolean;
-	};
-}) {
-	const existing = input.existing ?? {
-		apiMode: "unavailable",
-		apiPermissionRead: false,
-		apiPermissionEdit: false,
-		apiPermissionWrite: false,
-	};
-
-	const apiMode =
-		input.apiMode !== undefined
-			? normalizeApiMode(input.apiMode)
-			: normalizeApiMode(existing.apiMode);
-
-	const apiPermissionRead =
-		input.apiPermissionRead !== undefined
-			? input.apiPermissionRead
-			: existing.apiPermissionRead;
-	const apiPermissionEdit =
-		input.apiPermissionEdit !== undefined
-			? input.apiPermissionEdit
-			: existing.apiPermissionEdit;
-	const apiPermissionWrite =
-		input.apiPermissionWrite !== undefined
-			? input.apiPermissionWrite
-			: existing.apiPermissionWrite;
-
-	if (apiMode === "unavailable") {
-		return {
-			apiMode,
-			apiPermissionRead: false,
-			apiPermissionEdit: false,
-			apiPermissionWrite: false,
-		};
-	}
-
-	return {
-		apiMode,
-		apiPermissionRead,
-		apiPermissionEdit,
-		apiPermissionWrite,
-	};
-}
 
 /**
  * Categories CRUD — all routes are user-scoped (`owner_id` enforced on every

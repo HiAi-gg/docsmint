@@ -27,4 +27,22 @@ describe("CLI API authentication", () => {
 
 		expect(captured.authorization).toBe("Bearer category-test-key");
 	});
+
+	test("lists documents and searches through the public REST document surface", async () => {
+		process.env.HIAI_DOCS_URL = "https://docs.example.test";
+		process.env.HIAI_DOCS_API_KEY = "cli-key";
+		const captured: string[] = [];
+		globalThis.fetch = (async (input, init) => {
+			captured.push(`${init?.method ?? "GET"} ${String(input)}`);
+			return Response.json({ items: [], total: 0, page: 1, limit: 20 });
+		}) as typeof fetch;
+
+		await client.listDocuments({});
+		await client.search({ query: "locks" });
+
+		expect(captured[0]).toContain("/api/documents");
+		expect(captured[1]).toContain("/api/search");
+		expect(captured.join("\n")).not.toContain("/billing");
+		expect(captured.join("\n")).not.toContain("/api/chat");
+	});
 });

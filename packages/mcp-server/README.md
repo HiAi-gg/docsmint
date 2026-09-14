@@ -1,18 +1,35 @@
 # DocsMint MCP server
 
-Search, read, organize, and update a [DocsMint](https://github.com/HiAi-gg/docsmint)
-knowledge workspace from any Model Context Protocol client. Choose the hosted
-Streamable HTTP endpoint or run the stdio bridge against a self-hosted API.
+Managed or self-hosted knowledge workspace for AI agents with hybrid search,
+reranking, GraphRAG, and scoped document tools.
 
-Give your AI tools a searchable source of project knowledge that stays useful
-between conversations. [Try managed DocsMint](https://docsmint.com) to explore
-the cloud workspace, or connect the same MCP tools to your own deployment.
-Hosted MCP availability follows the cloud account's plan and permissions.
+Connect DocsMint Cloud instantly or use your own self-hosted deployment. Search,
+read, create, organize and update persistent knowledge through MCP with hybrid
+retrieval, reranking and GraphRAG.
 
-## Hosted Streamable HTTP
+## Option A — DocsMint Cloud (recommended)
 
-The managed endpoint needs no local MCP process. Pass a DocsMint API key as a
-Bearer token; category-scoped keys are recommended for least-privilege agents.
+Start at [Connect DocsMint Cloud](https://docsmint.com/mcp/connect?source=npm_mcp).
+No self-hosted server or local MCP process is required.
+
+1. Sign up or log in to your existing DocsMint account.
+2. Choose your workspace and confirm your plan includes hosted MCP.
+3. For OAuth-capable clients, authorize in the browser and consent to your
+   workspace and explicit scopes. For API-key clients, create an MCP/API credential
+   in the authenticated UI; prefer workspace-bound or category-scoped access.
+4. Select your MCP client and follow its connection instructions.
+5. Verify the connection with initialize and a permitted tool call.
+
+OAuth-capable clients use the same hosted URL. An unauthenticated request returns
+`401` with a `WWW-Authenticate` discovery link. Authorization uses your existing
+DocsMint account, browser consent and authorization code with PKCE S256. Tokens
+are bound to the hosted resource, expire after one hour and can be revoked in the
+browser UI. No refresh tokens are issued; authorize again after expiry. This is a
+DocsMint Cloud feature, not an OAuth server installed by the stdio npm bridge.
+
+API-key clients connect to `https://docsmint.com/mcp` using
+`Authorization: Bearer <key>`. Credential creation, changes, and revocation are
+browser-session-owned: MCP/API credentials cannot create or elevate credentials.
 
 ```bash
 export HIAI_DOCS_API_KEY="your-global-or-category-key"
@@ -26,10 +43,14 @@ Generic HTTP clients should connect to `https://docsmint.com/mcp` with
 `Authorization: Bearer <key>`. Bound workspace keys need no extra header;
 unbound keys can supply the documented `X-Docsmint-Workspace` slug.
 
-## Self-hosted stdio bridge
+## Option B — Self-hosted stdio bridge (advanced)
 
 The published MCP binary connects to an already running DocsMint API. Installing
 the package does not deploy DocsMint itself.
+
+Run DocsMint first, create an API key in its authenticated browser UI, set
+`HIAI_DOCS_URL` to your deployment API URL and `HIAI_DOCS_API_KEY` to that key,
+then start the stdio bridge. Do not use an `/api/health` URL as an MCP endpoint.
 
 ### Installation
 
@@ -63,7 +84,7 @@ The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not
   "mcpServers": {
     "docsmint": {
       "command": "npx",
-      "args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"
@@ -78,7 +99,7 @@ The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not
 One-command install for MCP clients:
 
 ```bash
-npx -y @hiai-gg/docsmint docsmint-mcp
+npx --yes --package @hiai-gg/docsmint docsmint-mcp
 ```
 
 ## MCP Features

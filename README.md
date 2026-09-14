@@ -6,7 +6,7 @@ Write and organize notes, guides, and project documentation in one workspace.
 Find answers with search that understands related concepts, then give your
 agents access to the same documents through MCP, REST, the SDK, or CLI.
 
-**[Try managed DocsMint](https://docsmint.com)** to get started without
+**[Connect DocsMint Cloud](https://docsmint.com/mcp/connect?source=github_mcp)** to get started without
 operating the stack, or **[self-host with Docker](#quickstart)** to run the
 Apache-2.0 application on your own infrastructure.
 
@@ -32,6 +32,32 @@ Apache-2.0 application on your own infrastructure.
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
+## Connect your AI agent
+
+Connect DocsMint Cloud instantly or use your own self-hosted deployment. Search,
+read, create, organize and update persistent knowledge through MCP with hybrid
+retrieval, reranking and GraphRAG.
+
+**Recommended: [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=github_mcp).**
+No server installation is required. Sign up or log in, choose your workspace,
+create an MCP/API credential in the authenticated browser UI, follow your client's
+instructions, and verify the connection. Hosted MCP follows your plan and
+workspace permissions. Prefer workspace-bound or category-scoped credentials.
+
+The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capable
+clients discover authorization and open DocsMint login and consent in the browser.
+Choose your workspace and explicit scopes; the authorization code uses PKCE S256.
+Access tokens expire after one hour; reconnect through browser authorization when
+they expire (no refresh tokens). API-key clients
+send `Authorization: Bearer <key>`. Credentials cannot create or elevate other
+credentials; lifecycle management belongs to the signed-in browser session.
+
+**Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
+key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. The npm package is a stdio
+bridge to your running deployment, not a server installer. See the
+[MCP guide](packages/mcp-server/README.md) for client configuration.
+
 ## Why DocsMint?
 
 - **Keep knowledge easy to edit.** Use a rich visual editor or Markdown;
@@ -47,25 +73,26 @@ Apache-2.0 application on your own infrastructure.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.3?
+## What's new in 0.8.4?
 
-This maintenance release focuses on reliable saves and integrations:
+MCP discovery now explains both supported deployment choices:
 
-- Pending editor saves stay attached to the document being edited, even when
-  you switch documents.
-- Navigation waits for pending content saves; overlapping saves are serialized
-  so an older request cannot overwrite a newer edit.
-- SDK document creation retries reuse an idempotency key to prevent duplicates
-  after a lost response.
-- Workspace-wide tag management requires full write access; read-only and
-  category-scoped credentials can no longer mutate the entire tag collection.
-- Partial category API-setting updates preserve omitted permissions.
-- Public workspace share links retain their workspace context when loading
-  folders and documents.
+- DocsMint Cloud is the recommended route for connecting without running a server.
+- Self-hosted DocsMint remains the complete Apache-2.0 alternative with the same
+  npm/stdio bridge, tools, prompts, resources and public contracts.
+- Registry, LobeHub and npm descriptions include hybrid search, reranking,
+  GraphRAG and scoped document access, with source-aware onboarding links.
+- The MCP guide explains Cloud browser authorization for OAuth-capable clients,
+  existing API-key configuration and the separate self-hosted setup.
+- Release checks now verify built public exports and MCP binaries before packaging.
+- Authorization regression coverage includes mixed category scopes, external tenant
+  assertions, scoped attachment deletion, workspace tags and partial category updates.
+- A deterministic offline retrieval baseline makes evaluation repeatable without
+  claiming a change to live retrieval quality.
 
-No schema migration is added. Existing public request and response shapes
-remain supported; the tag authorization fix intentionally rejects operations
-that exceeded the caller's permissions.
+No database migration, tool redesign or SDK contract change is added. Hosted
+OAuth is a DocsMint Cloud capability; this OSS release documents how to connect
+and does not embed Cloud accounts, billing or analytics in self-hosted installs.
 
 Read the complete release history in the [changelog](CHANGELOG.md) or
 [GitHub Releases](https://github.com/HiAi-gg/docsmint/releases). See the
@@ -121,7 +148,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.3`, `web-v0.8.3`, and `caddy-v0.8.3` for
+Use versioned tags `api-v0.8.4`, `web-v0.8.4`, and `caddy-v0.8.4` for
 reproducible deploys. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
@@ -227,7 +254,7 @@ Run the published stdio bridge against your own DocsMint API:
   "mcpServers": {
     "docsmint": {
       "command": "npx",
-      "args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"

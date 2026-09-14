@@ -48,6 +48,7 @@ export interface TestState {
 	insertFailures: Set<string>;
 	outboxInsertShouldThrow: boolean;
 	accountPurgeFenceDeleteTables: Set<string>;
+	apiKeys: Map<string, { id: string; ownerId: string; scopes: string[] }>;
 }
 
 function uuid4(): string {
@@ -83,6 +84,7 @@ function createState(): TestState {
 		insertFailures: new Set(),
 		outboxInsertShouldThrow: false,
 		accountPurgeFenceDeleteTables: new Set(),
+		apiKeys: new Map(),
 	};
 	state.users.set(OWNER_ID, {
 		id: OWNER_ID,
@@ -1349,6 +1351,20 @@ mock.module("../../src/lib/config.js", () => ({
 		METADATA_REEMBED_CRON_INTERVAL_MINUTES: 1,
 		ATTACHMENT_MAX_SIZE_MB: 25,
 		ATTACHMENT_PRESIGN_EXPIRY_SECONDS: 900,
+	},
+}));
+
+mock.module("../../src/lib/api-keys.js", () => ({
+	GLOBAL_API_SCOPE: "global",
+	CATEGORY_API_PERMISSIONS: ["read", "edit", "write"],
+	validateApiKey: async (token: string) => {
+		const row = state.apiKeys.get(token);
+		if (!row) return null;
+		return {
+			id: row.id,
+			ownerId: row.ownerId,
+			scopes: row.scopes,
+		};
 	},
 }));
 
