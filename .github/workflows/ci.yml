@@ -239,6 +239,8 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - run: bun run --sequential --filter '*' build
+      - name: Assert published export artifacts after workspace build
+        run: bun --no-env-file run test:package:artifacts
 
   # ---------------------------------------------------------------------------
   # 4. Docker build — validate compose, build both images, security scan
@@ -461,6 +463,8 @@ jobs:
           cd packages/sdk && bun run build && bun run typecheck
           cd ../cli && bun run typecheck
           cd ../mcp-server && bun run typecheck
+      - name: Assert published export artifacts after SDK build
+        run: bun --no-env-file run test:package:artifacts
       - name: Verify complete packed consumer contract
         run: bun run scripts/verify-packed-package.ts
       - name: Install tarball in a clean Bun consumer
@@ -683,7 +687,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.3
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.4
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

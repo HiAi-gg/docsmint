@@ -245,6 +245,11 @@ export function canManageCategories(access: ContentAccess): boolean {
 	return !access.restricted && canAccessContent(access, "write");
 }
 
+/** Workspace-wide tag mutations require the same unrestricted writer grant. */
+export function canManageWorkspaceTags(access: ContentAccess): boolean {
+	return canManageCategories(access);
+}
+
 export function effectiveDocumentCategory(row: {
 	categoryId: string | null;
 	folderCategoryId?: string | null;

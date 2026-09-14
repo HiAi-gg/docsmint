@@ -5,6 +5,7 @@ import { z } from "zod";
 import { translateAccountPurgeFencedError } from "../../lib/account-purge-fence";
 import {
 	canAccessContent,
+	canManageWorkspaceTags,
 	effectiveDocumentCategoryCondition,
 	resolveContentAccess,
 	tenantOwnerCondition,
@@ -137,7 +138,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (access.restricted || !canAccessContent(access, "write")) {
+		if (!canManageWorkspaceTags(access)) {
 			set.status = 403;
 			return { error: "Full workspace write access required" };
 		}
@@ -202,7 +203,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (access.restricted || !canAccessContent(access, "write")) {
+		if (!canManageWorkspaceTags(access)) {
 			set.status = 403;
 			return { error: "Full workspace write access required" };
 		}
@@ -273,7 +274,7 @@ export const tagRoutes = new Elysia({ prefix: "/api" })
 			set.status = 401;
 			return { error: "Unauthorized" };
 		}
-		if (access.restricted || !canAccessContent(access, "write")) {
+		if (!canManageWorkspaceTags(access)) {
 			set.status = 403;
 			return { error: "Full workspace write access required" };
 		}

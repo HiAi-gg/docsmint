@@ -53,12 +53,12 @@ describe('DocsMint MCP catalog contract', () => {
     expect(readme).toContain('https://docsmint.com/mcp');
     expect(readme).toContain('[complete MCP reference](packages/mcp-server/README.md)');
     expect(readme).toContain('"command": "npx"');
-    expect(readme).toContain('"args": ["-y", "@hiai-gg/docsmint", "docsmint-mcp"]');
+    expect(readme).toContain('"args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"]');
     expect(mcpReadme).toContain('"command": "npx"');
-    expect(mcpReadme).toContain('npx -y @hiai-gg/docsmint docsmint-mcp');
-    expect(mcpReadme).toContain('## Hosted Streamable HTTP');
+    expect(mcpReadme).toContain('npx --yes --package @hiai-gg/docsmint docsmint-mcp');
+    expect(mcpReadme).toContain('## Option A — DocsMint Cloud (recommended)');
     expect(mcpReadme).toContain('https://docsmint.com/mcp');
-    expect(mcpReadme).toContain('## Self-hosted stdio bridge');
+    expect(mcpReadme).toContain('## Option B — Self-hosted stdio bridge (advanced)');
     expect(mcpReadme).toContain('### Bunx');
     expect(mcpReadme).toContain('### NPX');
     expect(mcpReadme).toContain('### Local checkout');
@@ -93,7 +93,7 @@ describe('DocsMint MCP catalog contract', () => {
       $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
       name: 'io.github.HiAi-gg/docsmint',
       version: publishedPackage.version,
-      websiteUrl: 'https://docsmint.com/docs/mcp',
+      websiteUrl: 'https://docsmint.com/mcp/connect?source=mcp_registry',
       repository: {
         url: 'https://github.com/HiAi-gg/docsmint',
         source: 'github',
@@ -121,7 +121,7 @@ describe('DocsMint MCP catalog contract', () => {
     expect(registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided']).toMatchObject({
       license: 'Apache-2.0',
       licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
-      documentationUrl: 'https://docsmint.com/docs/mcp',
+      documentationUrl: 'https://docsmint.com/mcp/connect?source=mcp_registry',
     });
   });
 
@@ -135,7 +135,7 @@ describe('DocsMint MCP catalog contract', () => {
       name: 'DocsMint',
       version: publishedPackage.version,
       cloudEndpoint: 'https://docsmint.com/mcp',
-      homepage: 'https://github.com/HiAi-gg/docsmint',
+      homepage: 'https://docsmint.com/mcp/connect?source=lobehub_mcp',
     });
   });
 

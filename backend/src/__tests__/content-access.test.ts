@@ -5,6 +5,7 @@ import type { AuthPrincipal } from "../lib/auth-principal";
 import {
 	canAccessContent,
 	canManageCategories,
+	canManageWorkspaceTags,
 	contentAccessForExternalContext,
 	contentAccessForPrincipal,
 	effectiveDocumentCategory,
@@ -12,6 +13,8 @@ import {
 	effectiveFolderCategoryCondition,
 	isAuthorizedCategory,
 	resolveFolderEffectiveCategory,
+	tenantOwnerCondition,
+	tenantOwnerSql,
 } from "../lib/content-access";
 
 const ownerId = "11111111-1111-4111-8111-111111111111";
@@ -59,6 +62,20 @@ describe("content API authorization matrix", () => {
 
 		expect(canManageCategories(globalKey)).toBe(true);
 		expect(canManageCategories(categoryKey)).toBe(false);
+		expect(canManageWorkspaceTags(globalKey)).toBe(true);
+		expect(canManageWorkspaceTags(categoryKey)).toBe(false);
+	});
+
+	test("workspace viewers cannot mutate the global tag collection", () => {
+		const viewer = contentAccessForExternalContext({
+			userId: ownerId,
+			workspaceId: "workspace-a",
+			source: "external",
+			role: "user",
+			actorRole: "viewer",
+		});
+		expect(canManageWorkspaceTags(viewer)).toBe(false);
+		expect(canAccessContent(viewer, "read")).toBe(true);
 	});
 
 	test.each([
@@ -92,6 +109,27 @@ describe("content API authorization matrix", () => {
 		expect(canAccessContent(access, "read")).toBe(true);
 		expect(canAccessContent(access, "edit")).toBe(true);
 		expect(canAccessContent(access, "write")).toBe(false);
+	});
+
+	test("mixed category identities fail closed instead of merging grants", () => {
+		const access = contentAccessForPrincipal({
+			kind: "api-key",
+			userId: ownerId,
+			keyId: "mixed-key",
+			scopes: [
+				`category:${categoryId}:write`,
+				`category:${otherCategoryId}:read`,
+			],
+		});
+		expect(access.restricted).toBe(true);
+		expect(access.categoryId).toBeNull();
+		expect([...access.permissions]).toEqual([]);
+		expect(canAccessContent(access, "read")).toBe(false);
+		expect(canAccessContent(access, "edit")).toBe(false);
+		expect(canAccessContent(access, "write")).toBe(false);
+		expect(isAuthorizedCategory(access, categoryId)).toBe(false);
+		expect(isAuthorizedCategory(access, otherCategoryId)).toBe(false);
+		expect(canManageWorkspaceTags(access)).toBe(false);
 	});
 
 	test("external roles map to workspace permissions without category restrictions", () => {
@@ -215,6 +253,11 @@ describe("effective category query predicates", () => {
 		source: "external" as const,
 		role: "user" as const,
 	};
+	const personal = {
+		userId: ownerId,
+		source: "personal" as const,
+		role: "user" as const,
+	};
 
 	test("document predicate checks direct category before inherited folder ancestry", () => {
 		const query = dialect.sqlToQuery(
@@ -240,5 +283,51 @@ describe("effective category query predicates", () => {
 		expect(query.sql.toLowerCase()).toContain("order by depth asc");
 		expect(query.sql).toContain("workspace_id");
 		expect(query.params).toEqual(["workspace-a", "workspace-a", categoryId]);
+	});
+
+	test("personal tenant predicate binds owner_id and a null workspace, not the actor as a workspace", () => {
+		const query = dialect.sqlToQuery(
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, personal),
+		);
+		expect(query.sql.toLowerCase()).toContain("is null");
+		expect(query.sql).toContain("owner_id");
+		expect(query.params).toEqual([ownerId]);
+		expect(query.params).not.toContain("workspace-a");
+	});
+
+	test("external tenant predicate binds workspace_id and does not collapse to the actor owner_id", () => {
+		const query = dialect.sqlToQuery(
+			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
+		);
+		expect(query.sql).toContain("workspace_id");
+		expect(query.sql.toLowerCase()).not.toContain("is null");
+		expect(query.params).toEqual(["workspace-a"]);
+		expect(query.params).not.toContain(ownerId);
+	});
+
+	test("personal category ancestry still uses owner_id isolation in the recursive walk", () => {
+		const query = dialect.sqlToQuery(
+			effectiveDocumentCategoryCondition(
+				documents.categoryId,
+				documents.folderId,
+				personal,
+				categoryId,
+			),
+		);
+		expect(query.sql.toLowerCase()).toContain("owner_id");
+		expect(query.sql.toLowerCase()).toContain("is null");
+		expect(query.params).toEqual([ownerId, ownerId, categoryId]);
+		expect(query.params).not.toContain("workspace-a");
+	});
+
+	test("tenantOwnerSql matches tenantOwnerCondition for personal and external isolation", () => {
+		const personalSql = dialect.sqlToQuery(
+			tenantOwnerSql("documents", personal),
+		);
+		const externalSql = dialect.sqlToQuery(tenantOwnerSql("documents", ctx));
+		expect(personalSql.sql.toLowerCase()).toContain("is null");
+		expect(personalSql.params).toEqual([ownerId]);
+		expect(externalSql.params).toEqual(["workspace-a"]);
+		expect(externalSql.params).not.toContain(ownerId);
 	});
 });

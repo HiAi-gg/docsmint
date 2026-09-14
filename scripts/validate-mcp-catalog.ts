@@ -35,7 +35,7 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	if (registry.name !== "io.github.HiAi-gg/docsmint") {
 		throw new Error("server.json name must be io.github.HiAi-gg/docsmint");
 	}
-	if (registry.websiteUrl !== "https://docsmint.com/docs/mcp") {
+	if (registry.websiteUrl !== "https://docsmint.com/mcp/connect?source=mcp_registry") {
 		throw new Error("server.json websiteUrl must be the hosted MCP docs");
 	}
 	if (asString(published.license, "package.public.json license") !== "Apache-2.0") {
@@ -48,7 +48,7 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	}
 
 	const catalogDescription =
-		"Self-hosted AI-native knowledge workspace with hybrid search, GraphRAG, and MCP.";
+		"Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.";
 	if (catalogDescription.length > 100) {
 		throw new Error("MCP registry description must be at most 100 characters");
 	}
@@ -68,7 +68,7 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	if (meta.licenseUrl !== "https://www.apache.org/licenses/LICENSE-2.0") {
 		throw new Error("server.json licenseUrl must be the Apache-2.0 SPDX URL");
 	}
-	if (meta.documentationUrl !== "https://docsmint.com/docs/mcp") {
+	if (meta.documentationUrl !== "https://docsmint.com/mcp/connect?source=mcp_registry") {
 		throw new Error("server.json documentationUrl must be the hosted MCP docs");
 	}
 

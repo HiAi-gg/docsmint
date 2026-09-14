@@ -88,8 +88,12 @@ const requiredCommands: Readonly<Record<string, readonly string[]>> = {
 	],
 	"integration-test": ["bun run test:integration"],
 	"scoped-live-integration": ["bun run test:contract:scoped-live"],
-	build: ["bun run --sequential --filter '*' build"],
+	build: [
+		"bun run --sequential --filter '*' build",
+		"bun --no-env-file run test:package:artifacts",
+	],
 	"package-consumer": [
+		"bun --no-env-file run test:package:artifacts",
 		"bun run scripts/verify-packed-package.ts",
 		"bash scripts/test-public-package-consumer.sh",
 	],
@@ -492,6 +496,28 @@ export function validateReleaseWorkflow(workflow: Workflow): void {
 				throw new Error(`${name} must run ${command}`);
 			}
 		}
+	}
+
+	const artifactCommand = "bun --no-env-file run test:package:artifacts";
+	const buildLines = jobCommandLines(jobs.build ?? {});
+	const buildIndex = buildLines.indexOf(
+		"bun run --sequential --filter '*' build",
+	);
+	const buildArtifactIndex = buildLines.indexOf(artifactCommand);
+	if (buildIndex < 0 || buildArtifactIndex <= buildIndex) {
+		throw new Error(
+			"build must assert published export artifacts after workspace package builds",
+		);
+	}
+	const consumerLines = jobCommandLines(jobs["package-consumer"] ?? {});
+	const sdkBuildIndex = consumerLines.findIndex(
+		(line) => line.includes("packages/sdk") && line.includes("bun run build"),
+	);
+	const consumerArtifactIndex = consumerLines.indexOf(artifactCommand);
+	if (sdkBuildIndex < 0 || consumerArtifactIndex <= sdkBuildIndex) {
+		throw new Error(
+			"package-consumer must assert published export artifacts after the SDK build",
+		);
 	}
 
 	const gate = jobs[completeGateJob];

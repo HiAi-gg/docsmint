@@ -5,6 +5,37 @@ All notable changes to DocsMint are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-09-14
+
+### MCP discovery and onboarding
+
+- Present DocsMint Cloud first in MCP registry, LobeHub and npm metadata while
+  preserving self-hosted DocsMint as the full Apache-2.0 alternative.
+- Link marketplace visitors to the canonical Cloud onboarding page with
+  source-aware registry, LobeHub, npm and GitHub URLs.
+- Document hosted browser authorization with PKCE S256, workspace/scoped consent,
+  one-hour tokens and API-key fallback. Hosted OAuth belongs to DocsMint Cloud;
+  it is not added to the self-hosted server or npm bridge.
+- Clarify self-hosted URL/API-key setup and correct NPX executable selection.
+- Keep all 17 MCP tools, 2 prompts, 3 resources, package exports and API contracts.
+
+### Verification and regression coverage
+
+- Add focused authorization regressions for mixed category scopes, personal versus
+  external tenant predicates, unsigned workspace headers, category-scoped attachment
+  deletion, workspace tag management and partial category API updates.
+- Extract the existing category API merge and workspace-tag authorization decisions
+  into focused helpers without changing public request or response contracts.
+- Add a deterministic offline retrieval evaluation baseline and failure matrix. These
+  fixtures make retrieval checks repeatable; they do not claim improved live retrieval.
+- Assert every declared public export and required MCP binary exists after the SDK build,
+  both in CI and in the package release workflow. Add focused SDK, CLI and editor-save
+  regression tests around the existing public behavior.
+
+No database migration or deployment configuration change is required. Catalogs
+may refresh asynchronously; publication does not prove a generated LobeHub
+installation card has been corrected.
+
 ## [Unreleased]
 
 ## [0.8.3] - 2026-09-07

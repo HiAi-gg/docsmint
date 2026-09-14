@@ -3,6 +3,7 @@ import { buildTenantContext } from "../api/middleware/tenant";
 import { config } from "../lib/config";
 import {
 	createDocsmintWorkspaceAssertion,
+	DOCSMINT_WORKSPACE_CONTEXT_HEADER,
 	verifyDocsmintWorkspaceAssertion,
 } from "../lib/external-tenant-context";
 
@@ -250,6 +251,74 @@ describe("workspace context assertions", () => {
 			);
 			expect(tenant.resourceScope).toEqual(scopedContext.resourceScope);
 			expect(Object.isFrozen(tenant.resourceScope)).toBe(true);
+		} finally {
+			Object.assign(config, {
+				DOCSMINT_WORKSPACE_ENABLED: previous.enabled,
+				DOCSMINT_WORKSPACE_SECRET: previous.secret,
+				DOCSMINT_WORKSPACE_ISSUER: previous.issuer,
+			});
+		}
+	});
+
+	test("buildTenantContext rejects an unsigned workspace header", async () => {
+		const previous = {
+			enabled: config.DOCSMINT_WORKSPACE_ENABLED,
+			secret: config.DOCSMINT_WORKSPACE_SECRET,
+			issuer: config.DOCSMINT_WORKSPACE_ISSUER,
+		};
+		Object.assign(config, {
+			DOCSMINT_WORKSPACE_ENABLED: true,
+			DOCSMINT_WORKSPACE_SECRET: "secret",
+			DOCSMINT_WORKSPACE_ISSUER: context.issuer,
+		});
+		try {
+			await expect(
+				buildTenantContext(
+					new Request("https://docs.example/api/documents", {
+						headers: {
+							[DOCSMINT_WORKSPACE_CONTEXT_HEADER]: "not-a-signed-assertion",
+						},
+					}),
+				),
+			).rejects.toMatchObject({
+				name: "DocsmintWorkspaceContextError",
+				message: "Invalid workspace context",
+				status: 401,
+			});
+		} finally {
+			Object.assign(config, {
+				DOCSMINT_WORKSPACE_ENABLED: previous.enabled,
+				DOCSMINT_WORKSPACE_SECRET: previous.secret,
+				DOCSMINT_WORKSPACE_ISSUER: previous.issuer,
+			});
+		}
+	});
+
+	test("buildTenantContext rejects a workspace header when host assertions are disabled", async () => {
+		const previous = {
+			enabled: config.DOCSMINT_WORKSPACE_ENABLED,
+			secret: config.DOCSMINT_WORKSPACE_SECRET,
+			issuer: config.DOCSMINT_WORKSPACE_ISSUER,
+		};
+		Object.assign(config, {
+			DOCSMINT_WORKSPACE_ENABLED: false,
+			DOCSMINT_WORKSPACE_SECRET: "secret",
+			DOCSMINT_WORKSPACE_ISSUER: context.issuer,
+		});
+		try {
+			await expect(
+				buildTenantContext(
+					new Request("https://docs.example/api/documents", {
+						headers: {
+							[DOCSMINT_WORKSPACE_CONTEXT_HEADER]: "spoofed-workspace-id",
+						},
+					}),
+				),
+			).rejects.toMatchObject({
+				name: "DocsmintWorkspaceContextError",
+				message: "Workspace context is not enabled",
+				status: 401,
+			});
 		} finally {
 			Object.assign(config, {
 				DOCSMINT_WORKSPACE_ENABLED: previous.enabled,

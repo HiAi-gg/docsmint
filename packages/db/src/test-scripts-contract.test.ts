@@ -45,6 +45,13 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		"bun run typecheck:scripts && bun run --filter '*' typecheck",
 	);
 	expect(root["typecheck:scripts"]).toContain("scripts/release-gate.ts");
+	expect(root["typecheck:scripts"]).toContain(
+		"scripts/assert-public-export-artifacts.ts",
+	);
+	expect(root["test:package:artifacts"]).toBe(
+		"bun --no-env-file run scripts/assert-public-export-artifacts.ts",
+	);
+	expect(root["test:package"]).toContain("test:package:artifacts");
 	expect(root["test:integration"]).toBe(
 		[
 			"bun run --filter '@hiai-docs/db' test:integration &&",

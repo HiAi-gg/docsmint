@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -15,12 +15,12 @@
     "./dist/backend-account-runtime-cleanup.js": false
   },
   "license": "Apache-2.0",
-  "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
+  "description": "Managed or self-hosted knowledge workspace for AI agents with hybrid search, reranking, GraphRAG, and scoped document tools.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"
   },
-  "homepage": "https://github.com/hiai-gg/docsmint#readme",
+  "homepage": "https://docsmint.com/mcp/connect?source=npm_mcp",
   "bugs": {
     "url": "https://github.com/hiai-gg/docsmint/issues"
   },

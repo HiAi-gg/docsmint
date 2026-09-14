@@ -1,14 +1,14 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
-  "homepage": "https://github.com/HiAi-gg/docsmint",
+  "homepage": "https://docsmint.com/mcp/connect?source=lobehub_mcp",
   "cloudEndpoint": "https://docsmint.com/mcp",
   "icon": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
-  "description": "Self-hosted AI-native knowledge workspace with hybrid search, GraphRAG, and MCP.",
+  "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
   "tags": [
     "knowledge-base",
     "mcp",
