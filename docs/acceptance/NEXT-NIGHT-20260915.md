@@ -55,7 +55,7 @@ Heavy commands used `flock /tmp/portfolio-next-night-heavy.lock` and `TMPDIR=/tm
 | `eval-retrieval.ts --mode=baseline` | **0** | nDCG@10 0.826458, MRR 0.775794, Recall@10 1.0 |
 | `eval-retrieval.ts --mode=rerank --live` | **0** | nDCG@10 1.0, MRR 1.0, Recall@10 1.0, 12 queries, p50 480ms, p95 1405ms |
 
-Root `bun run build` (`docker compose build`) was not run. Packed-tarball smoke was not run.
+Root `bun run build` (`docker compose build`) was not run locally. GitHub Actions Docker Build & Scan and Clean Bun Consumer on PR #66 cover compose validation, image smoke, and packed-tarball consumer on a clean runner.
 
 ## Graphical interaction
 
@@ -77,6 +77,7 @@ HTTP 200 on `/login` is not the proof; the submit path and 502 body are. Console
 | Step | Status |
 | --- | --- |
 | Source RC branch `review/next-night-20260915` | Prepared from `origin/main` `2e85740` plus the login 502 mapping. |
+| PR [#66](https://github.com/HiAi-gg/docsmint/pull/66) @ `2dd58e9` | CI **SUCCESS** run [35027351003](https://github.com/HiAi-gg/docsmint/actions/runs/35027351003): Lint, Typecheck, Unit & Contract, PostgreSQL integrations, Build Every Workspace + artifact gate, Docker Build & Scan (compose validate, port contract, image smoke), Clean Bun Consumer. Tag/publish jobs skipped on PR (expected). |
 | Draft PR #63 | Superseded by merged #65 / v0.8.4. Leave close to coordinator. |
 | Merge to `main` / tag / npm / MCP registry | Not done. |
 | Hosted `docsmint` submodule pin | Still historical `ecd4274` until the hosted consumer worker verifies. |
@@ -87,7 +88,7 @@ HTTP 200 on `/login` is not the proof; the submit path and 502 body are. Console
 
 - Local compose must not be started from this operator `.env`: `DB_PORT=5432` and `STORAGE_PORT=18333` collide with shared systemd Postgres and SeaweedFS S3. Recreating API/web would also publish onto those ports.
 - Running API container is stale and crash-looping (`ECONNREFUSED 172.17.0.1:5432` in earlier logs). Running web image predates this source fix, so the 502 still shows credential copy until a new web image is built after source acceptance.
-- Packed-tarball consumer smoke not run (no extra copies).
+- Local packed-tarball smoke not run in this tree; CI Clean Bun Consumer on PR #66 succeeded.
 - In-memory attachment harness still does not evaluate SQL category predicates (0.8.4 policy tests cover the grant).
 - DOCSMINT-01 deployed revision / HTTPS / apex-www not verified (first-stage production freeze).
 - Coordinator review of this RC, PR CI, and any later deploy.
