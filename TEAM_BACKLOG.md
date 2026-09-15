@@ -1,15 +1,19 @@
 # Team backlog — docsmint-oss
 
-Source audit: **2026-09-13**. Kind: **library**.
+Source audit: **2026-09-13**. Night continuation: **2026-09-14**. Kind: **library**.
 Baseline HEAD: `ecd42746f29b8d5b97fdbf008722f8cbbffb1d1d`; branch: `main`.
+Working HEAD: `e99b34a120237e56aed020c6500c4b06e2dc9e3a` on `review/portfolio-20260913-access-retrieval`.
 
 Coordination and acceptance: [TEAM_HANDOFF.md](../TEAM_HANDOFF.md).
+2026-09-14 follow-up: [docs/acceptance/GROK-20260914.md](docs/acceptance/GROK-20260914.md).
 
 ## Current reconciliation
 
 docs/ROADMAP.md already describes 0.8.3 and is current directionally; old portfolio instruction to rewrite 0.7.0 docs is superseded.
 
-Source checks support this note; they do not certify the running app. Prior live/CI/test claims are historical until rechecked. GitHub freshness was not verified.
+Source checks support this note; they do not certify the running app. Prior live/CI/test claims are historical until rechecked. GitHub freshness was not verified this pass.
+
+2026-09-14 (NIGHT_GROK_PLAN): local tenant SQL, mixed-key fail-closed, unsigned workspace header, category-write attachment DELETE 403, tests/typecheck/build. Root typecheck 0 with writable `TMPDIR`. Owner-dirty `docs/ROADMAP.md` 2026-09-13 banner preserved. **DNS `docsmint.com` frozen. DOCSMINT-01 production not edited.** Hosted pin remains `ecd42746f29b8d5b97fdbf008722f8cbbffb1d1d`.
 
 Recent local commits:
 
@@ -39,7 +43,7 @@ Effort is a planning estimate, not a deadline. Confirm the first task baseline b
 - [ ] **P1** · status: **review** · owner: **grok** · effort: M: about 0.5-1 day
 - Depends on: current baseline and cited source inspection.
 - Acceptance: Document switches, retries, category-scoped keys and attachments retain correct identity and authorization across failures.
-- Evidence: `canManageWorkspaceTags` + `buildApiAccessValues` behavior tests; HTTP PATCH merge, category-key tag 403, attachment cleanup storageKey; autosave switch/retry 8/8. Backend selected tests 37/37. In-memory harness does not evaluate SQL category predicates on attachment DELETE.
+- Evidence: `canManageWorkspaceTags` + `buildApiAccessValues` behavior tests; HTTP PATCH merge, category-key tag 403, attachment cleanup storageKey; autosave switch/retry 8/8. 2026-09-14: personal vs external tenant SQL, mixed category-key fail-closed, unsigned workspace header 401, category-write attachment DELETE 403 (row retained). Auth/tenant suite 47/47 (194 expect). In-memory harness does not evaluate SQL category predicates on attachment DELETE.
 - Delivery: dated acceptance report, reviewable diff if needed, and remaining IDs.
 
 ### DOCSMINT-OSS-T02 — Build a repeatable retrieval failure/evaluation matrix
@@ -55,7 +59,7 @@ Effort is a planning estimate, not a deadline. Confirm the first task baseline b
 - [ ] **P2** · status: **review** · owner: **grok** · effort: M-L: about 1-2 days
 - Depends on: DOCSMINT-OSS-T01.
 - Acceptance: Public 0.5.0 compatibility baseline preserved; package and contract checks cover each surface; no SaaS billing or chat logic added.
-- Evidence: Frozen 0.5.0 exports resolve to in-place `packages/sdk/dist` files; DocsClient health/search/createDoc; CLI list+search; MCP dist artifacts. Backend typecheck 0, lint 0. No packed tarball (no copies). Root workspace typecheck blocked by BUN_TMPDIR EACCES.
+- Evidence: Frozen 0.5.0 exports resolve to in-place `packages/sdk/dist` files; DocsClient health/search/createDoc; CLI list+search; MCP dist artifacts. 2026-09-14: backend/frontend typecheck 0, lint 0, backend build 1884 modules, frontend vite build 0, `test:package:artifacts` 0. Root workspace typecheck 0 with `TMPDIR=/tmp/docsmint-oss-bun` (default bunx tmp may still EACCES). No packed tarball (no copies).
 - Delivery: dated acceptance report, reviewable diff if needed, and remaining IDs.
 
 ## Verification entry points

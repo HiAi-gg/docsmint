@@ -1,3 +1,8 @@
+<!-- portfolio-audit:2026-09-13 -->
+> **Source reconciliation — 2026-09-13:** Read [TEAM_BACKLOG.md](../TEAM_BACKLOG.md) before using the tasks/status below. docs/ROADMAP.md already describes 0.8.3 and is current directionally; old portfolio instruction to rewrite 0.7.0 docs is superseded. Runtime/remote-CI claims retain their original dates; they were not revalidated in this pass. The linked task ledger holds execution status; this document retains its original product direction/history.
+>
+> **2026-09-14 (NIGHT_GROK_PLAN):** Local auth/tenant regressions, tests/typecheck/build. `docsmint.com` DNS remains frozen; DOCSMINT-01 production was not edited. Report: [acceptance/GROK-20260914.md](acceptance/GROK-20260914.md).
+
 # Roadmap
 
 DocsMint is an open-source knowledge workspace for people, applications, and
