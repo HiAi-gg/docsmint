@@ -204,6 +204,7 @@ jobs:
             "recursive folder category resolution executes on PostgreSQL" \
             "occupied replay keys distinguish authorized replay from a non-disclosing conflict" \
             "authorizes grandparent-inherited category documents and excludes foreign graph IDs" \
+            "query changes the matching graph neighbors and ranks exact titles first" \
             "finds direct and two-level effective-category documents in owner and workspace tenants" \
             "holds deterministic descendant locks through the document snapshot" \
             "keeps concurrent observers isolated and preserves client ownership" \
@@ -223,7 +224,7 @@ jobs:
             echo "Required integration suite reported skipped coverage"
             exit 1
           fi
-          echo "Required integration behavior cases: 26; skipped: 0"
+          echo "Required integration behavior cases: 27; skipped: 0"
 
       - name: Stop Postgres
         if: always()
@@ -490,7 +491,7 @@ jobs:
 
   scoped-live-integration:
     name: Required Live REST, SDK, Search, and MCP Contract
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/')
     runs-on: ubuntu-latest
     env:
       DB_PASSWORD: ci-live-db-password
@@ -695,7 +696,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.6
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.7
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

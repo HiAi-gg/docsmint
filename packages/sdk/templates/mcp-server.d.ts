@@ -3,6 +3,10 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import type { DocsClient, DocsRequestContext } from "./index.js";
 
 export interface HiaiDocsClient {
+	deleteDocument?(id: string): Promise<void>;
+	deleteFolder?(id: string): Promise<void>;
+	deleteCategory?(id: string): Promise<void>;
+	restoreDocumentVersion?(documentId: string, versionId: string): Promise<unknown>;
 	search(params: { query: string; folder?: string; tags?: string[]; limit?: number }): Promise<unknown>;
 	getDocument(id: string): Promise<unknown>;
 	createDocument(input: { title: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;

@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
-    "version": "0.8.6",
+    "version": "0.8.7",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -1162,40 +1162,318 @@
     "/api/graph/entities": {
       "get": {
         "operationId": "getApiGraphEntities",
-        "tags": ["Graph"],
+        "tags": [
+          "Graph"
+        ],
         "summary": "List entities linked to a document",
+        "description": "Requires read access to the seed document in the active workspace or effective category. Returns entities from its active graph generation; graph unavailability or disabled graph search returns an empty entities array.",
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "docId",
+            "required": true,
+            "description": "Readable seed document ID.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Seed entity context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "entities"
+                  ],
+                  "properties": {
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "type"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or body."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "Read access required."
+          },
+          "404": {
+            "description": "Document not found in the active scope."
+          },
+          "429": {
+            "description": "Search rate limit exceeded."
+          }
         }
       }
     },
     "/api/graph/related/{docId}": {
       "get": {
         "operationId": "getApiGraphRelatedByDocId",
-        "tags": ["Graph"],
+        "tags": [
+          "Graph"
+        ],
         "summary": "List related documents via graph traversal",
+        "description": "Requires read access to the seed. Returns current-generation graph neighbors within the active workspace or effective category, ordered by hop distance then document ID. The limit applies after authorization and generation filtering. Disabled or unavailable graph search returns an empty related array.",
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
         "parameters": [
           {
-            "schema": {
-              "type": "string"
-            },
             "in": "path",
             "name": "docId",
-            "required": true
+            "required": true,
+            "description": "Readable seed document ID.",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "description": "Maximum authorized related documents to return.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Authorized graph neighbors.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "related"
+                  ],
+                  "properties": {
+                    "related": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "docId",
+                          "relationType",
+                          "hopDistance"
+                        ],
+                        "properties": {
+                          "docId": {
+                            "type": "string"
+                          },
+                          "relationType": {
+                            "type": "string"
+                          },
+                          "hopDistance": {
+                            "type": "integer",
+                            "minimum": 1
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or body."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "Read access required."
+          },
+          "404": {
+            "description": "Seed document not found in the active scope."
+          },
+          "429": {
+            "description": "Search rate limit exceeded."
+          }
         }
       }
     },
     "/api/graph/search": {
       "post": {
         "operationId": "postApiGraphSearch",
-        "tags": ["Graph"],
+        "tags": [
+          "Graph"
+        ],
         "summary": "Graph-aware RAG retrieval for agents",
+        "description": "Every seed requires read access in the active workspace or effective category before traversal. Non-blank query text filters authorized current-generation neighbors using exact-title and English or language-neutral full-text matching. Exact titles rank first, followed by lexical score and document ID. No model call is made. An omitted or blank query returns unfiltered authorized graph context ordered by hop distance then document ID. Entities always describe the seed documents and are not query-filtered. Disabled or unavailable graph search returns empty entities and relatedDocs arrays.",
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "docIds"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "description": "Optional lexical query for related documents; blank or omitted leaves graph context unfiltered."
+                  },
+                  "docIds": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "description": "Readable seed document IDs; one inaccessible seed rejects the request."
+                  },
+                  "maxResults": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Optional cap on relatedDocs after authorization, query filtering, and ranking. Does not limit seed entities. Omit to return all matches produced by the bounded graph traversal."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Seed entities and authorized related document summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "entities",
+                    "relatedDocs"
+                  ],
+                  "properties": {
+                    "query": {
+                      "type": "string"
+                    },
+                    "entities": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "name",
+                          "type"
+                        ],
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "relatedDocs": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "docId",
+                          "relationType",
+                          "hopDistance",
+                          "title",
+                          "snippet"
+                        ],
+                        "properties": {
+                          "docId": {
+                            "type": "string"
+                          },
+                          "relationType": {
+                            "type": "string"
+                          },
+                          "hopDistance": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "snippet": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters or body."
+          },
+          "401": {
+            "description": "Authentication required."
+          },
+          "403": {
+            "description": "Read access required."
+          },
+          "404": {
+            "description": "One or more seed documents were not found in the active scope."
+          },
+          "429": {
+            "description": "Search rate limit exceeded."
+          }
         }
       }
     },

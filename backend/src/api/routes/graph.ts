@@ -19,13 +19,13 @@
  *
  *   - POST /api/graph/search
  *       Bulk variant of the two above — given a query and a seed set of
- *       document ids, return the union of all linked entities and related
- *       documents. Useful as a single-call context fetch for an agent
- *       turn.
+ *       document ids, return linked entities and lexically matched related
+ *       documents. An omitted query returns unfiltered graph context. Useful
+ *       as a single-call context fetch for an agent turn.
  */
 
-import { documents, folders } from "@hiai-docs/db/schema";
-import { and, eq, inArray, isNull, type SQL, sql } from "drizzle-orm";
+import { documents } from "@hiai-docs/db/schema";
+import { and, inArray, isNull, type SQL, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { config } from "../../lib/config";
@@ -42,6 +42,7 @@ import {
 	expandResults,
 	type RelatedDoc,
 } from "../../lib/graph/search-expansion";
+import { graphSearchDocumentQuery } from "../../lib/graph/search-query";
 import { logger } from "../../lib/logger";
 import { withTenant } from "../../lib/with-tenant";
 import { rateLimitHeaders, searchRateLimiter } from "../middleware/rate-limit";
@@ -54,8 +55,12 @@ const relatedParamsSchema = z.object({
 	docId: z.string().min(1),
 });
 
+const relatedQuerySchema = z.object({
+	limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
 const graphSearchBodySchema = z.object({
-	query: z.string().optional(),
+	query: z.string().max(2000).optional(),
 	docIds: z.array(z.string().min(1)).min(1).max(50),
 	maxResults: z.number().int().min(1).max(100).optional(),
 });
@@ -75,10 +80,6 @@ interface DocumentRow {
 	id: string;
 	title: string;
 	content: string | null;
-	folderId: string | null;
-	folderName: string | null;
-	createdAt: Date | string | null;
-	updatedAt: Date | string | null;
 }
 
 /**
@@ -142,7 +143,7 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 	)
 	.get(
 		"/related/:docId",
-		async ({ params, set, request }) => {
+		async ({ params, query, set, request }) => {
 			const rl = await applyRateLimit(request, set);
 			if (!rl.ok) return rl.response;
 
@@ -162,6 +163,12 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 				return { error: "Invalid params", details: parsed.error.flatten() };
 			}
 
+			const parsedQuery = relatedQuerySchema.safeParse(query);
+			if (!parsedQuery.success) {
+				set.status = 400;
+				return { error: "Invalid query", details: parsedQuery.error.flatten() };
+			}
+
 			try {
 				const seedIds = await allowedGraphDocumentIds(access, [
 					parsed.data.docId,
@@ -176,7 +183,7 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 					parsed.data.docId,
 					access,
 				);
-				return { related };
+				return { related: related.slice(0, parsedQuery.data.limit) };
 			} catch (err) {
 				logger.warn(
 					{ err, docId: parsed.data.docId },
@@ -225,7 +232,13 @@ export const graphRoutes = new Elysia({ prefix: "/api/graph" })
 				if (!config.GRAPH_SEARCH_ENABLED) {
 					return { query, entities: [], relatedDocs: [] };
 				}
-				const result = await graphRagLookup(ctx, docIds, maxResults, access);
+				const result = await graphRagLookup(
+					ctx,
+					docIds,
+					maxResults,
+					access,
+					query,
+				);
 				return { query, ...result };
 			} catch (err) {
 				logger.warn(
@@ -363,7 +376,8 @@ async function fetchRelatedDocuments(
 /**
  * Bulk lookup: for the union of seed documents, return all linked
  * entities and all 1-2 hop related documents. `maxResults` caps the
- * returned `relatedDocs` (entities are unbounded — typical entity sets
+ * returned `relatedDocs` after optional lexical query filtering and ranking
+ * (entities remain seed context and are unbounded — typical entity sets
  * are small per document).
  */
 async function graphRagLookup(
@@ -371,6 +385,7 @@ async function graphRagLookup(
 	docIds: string[],
 	maxResults: number | undefined,
 	access?: ContentAccess,
+	query?: string,
 ): Promise<{
 	entities: EntityRef[];
 	relatedDocs: Array<DocumentNeighbor & { title: string; snippet: string }>;
@@ -418,14 +433,17 @@ async function graphRagLookup(
 		return { entities: Array.from(entityMap.values()), relatedDocs: [] };
 	}
 
-	const rows = await loadDocumentSummaries(ctx, ownedNeighborIds);
+	const rows = await loadDocumentSummaries(ctx, ownedNeighborIds, query);
 	const byId = new Map<string, DocumentRow>();
 	for (const r of rows) byId.set(r.id, r);
 
 	const relatedDocs: Array<
 		DocumentNeighbor & { title: string; snippet: string }
 	> = [];
-	for (const id of ownedNeighborIds) {
+	const rankedIds = query?.trim()
+		? rows.map((row) => row.id)
+		: ownedNeighborIds;
+	for (const id of rankedIds) {
 		const meta = neighborMap.get(id);
 		const row = byId.get(id);
 		if (!meta || !row) continue;
@@ -575,7 +593,7 @@ function currentGraphNeighbors(
 }
 
 /**
- * Load the display fields (title, content snippet, folder, timestamps) for
+ * Load the display fields (title and content) for
  * a list of document ids. Used by the graph RAG search endpoint so agent
  * callers receive enough information to render the result without an
  * additional fetch.
@@ -583,28 +601,13 @@ function currentGraphNeighbors(
 async function loadDocumentSummaries(
 	ctx: import("../../api/middleware/tenant").TenantContext,
 	docIds: string[],
+	query?: string,
 ): Promise<DocumentRow[]> {
 	if (docIds.length === 0) return [];
 	return withTenant(ctx, async (tx) => {
-		return tx
-			.select({
-				id: documents.id,
-				title: documents.title,
-				content: documents.content,
-				folderId: documents.folderId,
-				folderName: folders.name,
-				createdAt: documents.createdAt,
-				updatedAt: documents.updatedAt,
-			})
-			.from(documents)
-			.leftJoin(folders, eq(folders.id, documents.folderId))
-			.where(
-				and(
-					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
-					inArray(documents.id, docIds),
-					isNull(documents.deletedAt),
-				),
-			);
+		return (await tx.execute(
+			graphSearchDocumentQuery(ctx, docIds, query),
+		)) as unknown as DocumentRow[];
 	});
 }
 

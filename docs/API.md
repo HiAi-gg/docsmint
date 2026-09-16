@@ -207,6 +207,28 @@ snippets. Provider prompts, credentials, tenant identifiers, and internal
 scores are not returned. Provider, rerank, or graph failures degrade to the
 remaining channels. There is no public `/rerank` endpoint.
 
+### Graph context
+
+Graph endpoints require read access. Seed documents must belong to the active
+workspace or effective category; an inaccessible seed returns `404` before graph
+traversal. Returned documents are restricted to that same scope and current graph
+generations. Disabled or unavailable graph search returns empty arrays.
+
+| Endpoint | Inputs | Result |
+|---|---|---|
+| `GET /api/graph/entities` | Required `docId` query parameter | `entities` containing seed entity names and types. |
+| `GET /api/graph/related/:docId` | Optional integer `limit`, 1–100, default 20 | `related` with document IDs, relation types, and hop distances. Ordered by hop distance, then document ID; capped after authorization and generation filtering. |
+| `POST /api/graph/search` | JSON `docIds` (1–50 seed IDs), optional `query` (up to 2,000 characters), optional integer `maxResults` (1–100) | Seed `entities` and `relatedDocs` with titles, snippets, relation types, and hop distances. |
+
+A non-blank graph-search `query` filters related documents with exact-title and
+English or language-neutral full-text matching. Exact titles rank first, followed
+by lexical score and document ID. This lookup makes no model calls. An omitted
+or blank query returns unfiltered authorized graph context ordered by hop
+distance and document ID. Seed entities remain context and are not query-filtered.
+`maxResults` caps related documents after filtering and ranking; if omitted, all
+matches from the bounded traversal are returned. It does not limit seed entities.
+Use `/api/search` first to discover seed document IDs for a question.
+
 ### Attachments
 Small image uploads can use the authenticated multipart endpoint:
 

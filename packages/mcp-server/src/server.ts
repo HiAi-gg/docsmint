@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z, type ZodRawShape } from 'zod';
 import { isDocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
+import { registerLifecycleCapabilities } from './lifecycle.js';
 import { registerExtendedCapabilities } from './capabilities.js';
 import {
   createDefaultDocsClient,
@@ -70,7 +71,12 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
   ): void => {
     server.registerTool(
       name,
-      { description, inputSchema: z.object(inputSchema) },
+      { description, inputSchema: z.object(inputSchema), annotations: {
+        readOnlyHint: !['create_document', 'update_document', 'create_folder', 'create_snapshot'].includes(name),
+        destructiveHint: name === 'update_document',
+        idempotentHint: !['create_document', 'update_document', 'create_folder', 'create_snapshot'].includes(name),
+        openWorldHint: false,
+      } },
       wrapHandler(name, handler as ToolHandler) as never
     );
   };
@@ -96,6 +102,7 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
     );
   }
   registerExtendedCapabilities(server, client, (handler) => wrapHandler('extended', handler));
+  registerLifecycleCapabilities(server, client, (handler) => wrapHandler('lifecycle', handler));
 }
 
 export interface CreateDocsmintMcpServerOptions {
@@ -106,7 +113,7 @@ export interface CreateDocsmintMcpServerOptions {
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'docsmint', version: '0.8.6' });
+  const server = new McpServer({ name: 'docsmint', version: '0.8.7' });
   const client = options.docsClient
     ? createMcpDocsClient(options.docsClient, options.requestContext)
     : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);

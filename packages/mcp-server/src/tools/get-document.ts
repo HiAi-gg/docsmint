@@ -4,7 +4,7 @@ import type { DocumentDetail } from '../types.js';
 
 export const definition = {
   name: 'get_document',
-  description: 'Fetch a single document by ID. Returns full content, metadata, and tags.',
+  description: 'Read one document with its content, metadata, and tags before editing or citing it. Requires read access. Use export_document when you only need portable Markdown.',
   inputSchema: {
     id: z.string().describe('Document ID.'),
   },

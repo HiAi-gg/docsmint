@@ -22,8 +22,12 @@ describe('DocsMint MCP catalog contract', () => {
         'search_knowledge_graph',
         'get_document_index_status',
         'refresh_document_index',
+        'delete_document',
+        'delete_folder',
+        'delete_category',
+        'restore_document_version',
     ]);
-    expect(capabilityCatalog.tools).toHaveLength(17);
+    expect(capabilityCatalog.tools).toHaveLength(21);
   });
 
   test('publishes prompts and resources for agent discovery', () => {
@@ -63,7 +67,7 @@ describe('DocsMint MCP catalog contract', () => {
     expect(mcpReadme).toContain('### Run with NPX');
     expect(mcpReadme).toContain('### Run from a local checkout');
     expect(mcpReadme).toContain('## MCP Features');
-    expect(mcpReadme).toContain('### Tools (17)');
+    expect(mcpReadme).toContain('### Tools (21)');
     expect(mcpReadme).toContain('### Prompts (2)');
     expect(mcpReadme).toContain('### Resources (3)');
     expect(mcpReadme).toContain('### Skills (1)');

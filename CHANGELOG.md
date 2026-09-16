@@ -7,7 +7,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-09-16
+
+### Added
+
+- MCP tools for moving documents to trash, deleting folders and categories, and
+  restoring document content from saved versions or snapshots.
+- Destructive-operation annotations, documented permissions, and complete MCP
+  parameter descriptions. Existing 17 tools remain available; the catalog has 21.
+
 ### Fixed
+
+- Apply graph-related result limits after authorization and active-generation filtering.
+- Filter and rank graph-related documents by query text using multilingual/simple
+  and English full-text matching, with exact-title priority; no extra model calls.
+- Keep LobeHub Cloud and self-hosted instructions in separate readable sections.
+
 
 - Show a network error for authentication proxy/server failures instead of
   incorrectly reporting invalid credentials.

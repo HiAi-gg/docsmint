@@ -1,7 +1,7 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
@@ -31,30 +31,38 @@
             "description": "Search query string."
           },
           "folder": {
-            "type": "string",
-            "description": "Optional folder ID to scope the search to."
+            "description": "Optional folder ID to scope the search to.",
+            "type": "string"
           },
           "tags": {
+            "description": "Optional tag IDs to filter by.",
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Optional tag IDs to filter by."
+            }
           },
           "limit": {
+            "description": "Maximum number of results to return (default 20).",
             "type": "integer",
-            "minimum": 1,
-            "description": "Maximum number of results to return (default 20)."
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           }
         },
         "required": [
           "query"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "get_document",
-      "description": "Fetch a single document by ID. Returns full content, metadata, and tags.",
+      "description": "Read one document with its content, metadata, and tags before editing or citing it. Requires read access. Use export_document when you only need portable Markdown.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -65,7 +73,14 @@
         },
         "required": [
           "id"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
@@ -79,21 +94,28 @@
             "description": "Document title."
           },
           "content": {
-            "type": "string",
-            "description": "Initial markdown content for the document."
+            "description": "Initial markdown content for the document.",
+            "type": "string"
           },
           "folderId": {
-            "type": "string",
-            "description": "Optional folder ID to place the document in."
+            "description": "Optional folder ID to place the document in.",
+            "type": "string"
           },
           "categoryId": {
-            "type": "string",
-            "description": "Optional category ID. Category keys are always rebound to their configured category."
+            "description": "Optional category ID. Category keys are always rebound to their configured category.",
+            "type": "string"
           }
         },
         "required": [
           "title"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     },
     {
@@ -107,14 +129,15 @@
             "description": "Document ID to update."
           },
           "title": {
-            "type": "string",
-            "description": "New title for the document."
+            "description": "New title for the document.",
+            "type": "string"
           },
           "content": {
-            "type": "string",
-            "description": "New markdown content for the document."
+            "description": "New markdown content for the document.",
+            "type": "string"
           },
           "folderId": {
+            "description": "Move the document to a folder.",
             "anyOf": [
               {
                 "type": "string"
@@ -122,10 +145,10 @@
               {
                 "type": "null"
               }
-            ],
-            "description": "Move the document to a folder."
+            ]
           },
           "categoryId": {
+            "description": "Move the document to a category. Category keys cannot escape their configured category.",
             "anyOf": [
               {
                 "type": "string"
@@ -133,13 +156,19 @@
               {
                 "type": "null"
               }
-            ],
-            "description": "Move the document to a category. Category keys cannot escape their configured category."
+            ]
           }
         },
         "required": [
           "id"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     },
     {
@@ -149,25 +178,33 @@
         "type": "object",
         "properties": {
           "folderId": {
-            "type": "string",
-            "description": "Optional folder ID to filter by."
+            "description": "Optional folder ID to filter by.",
+            "type": "string"
           },
           "tag": {
-            "type": "string",
-            "description": "Optional tag ID to filter by."
+            "description": "Optional tag ID to filter by.",
+            "type": "string"
           },
           "page": {
+            "description": "Page number (1-indexed, default 1).",
             "type": "integer",
-            "minimum": 1,
-            "description": "Page number (1-indexed, default 1)."
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "limit": {
+            "description": "Items per page (default 20, max 100).",
             "type": "integer",
-            "minimum": 1,
-            "maximum": 100,
-            "description": "Items per page (default 20, max 100)."
+            "exclusiveMinimum": 0,
+            "maximum": 100
           }
-        }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
@@ -177,10 +214,17 @@
         "type": "object",
         "properties": {
           "parentId": {
-            "type": "string",
-            "description": "Optional parent folder ID. Omit to list top-level (root) folders."
+            "description": "Optional parent folder ID. Omit to list top-level (root) folders.",
+            "type": "string"
           }
-        }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
@@ -194,17 +238,24 @@
             "description": "Folder name."
           },
           "parentId": {
-            "type": "string",
-            "description": "Optional parent folder ID for nesting."
+            "description": "Optional parent folder ID for nesting.",
+            "type": "string"
           },
           "categoryId": {
-            "type": "string",
-            "description": "Optional category ID. Category keys are always rebound to their configured category."
+            "description": "Optional category ID. Category keys are always rebound to their configured category.",
+            "type": "string"
           }
         },
         "required": [
           "name"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     },
     {
@@ -222,14 +273,21 @@
             "description": "Short label for the snapshot (e.g. 'v1.0-release')."
           },
           "description": {
-            "type": "string",
-            "description": "Optional longer description of the snapshot."
+            "description": "Optional longer description of the snapshot.",
+            "type": "string"
           }
         },
         "required": [
           "documentId",
           "label"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     },
     {
@@ -243,18 +301,25 @@
             "description": "Document ID whose versions should be listed."
           },
           "onlySnapshots": {
-            "type": "boolean",
-            "description": "When true, only return named snapshots (skip auto-saved revisions)."
+            "description": "When true, only return named snapshots (skip auto-saved revisions).",
+            "type": "boolean"
           }
         },
         "required": [
           "documentId"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "export_document",
-      "description": "Export a document as markdown. Returns the rendered markdown content.",
+      "description": "Render one readable document as portable Markdown and return a markdown string in the response object. Does not modify the document or include its complete metadata; use get_document to inspect the editable document.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -265,7 +330,14 @@
         },
         "required": [
           "id"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
@@ -273,7 +345,14 @@
       "description": "List categories visible to the API key. Category keys receive only their bound category.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
@@ -284,15 +363,24 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Non-empty display name for the new category, for example Project notes."
           },
           "description": {
+            "description": "Optional plain-text explanation of the category purpose; omit if not needed.",
             "type": "string"
           }
         },
         "required": [
           "name"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     },
     {
@@ -300,20 +388,29 @@
       "description": "List tags visible in the workspace or bound category.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "get_related_documents",
-      "description": "Traverse the knowledge graph from one authorized document.",
+      "description": "Find graph-related documents from one readable document, without a text query. Returns related documents and relation metadata. Use search_knowledge_graph to filter graph neighbors by text, or search_documents for normal retrieval. Results stay within the active scope and may be empty when graph data is unavailable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
           },
           "limit": {
+            "description": "Maximum related documents to return, from 1 to 50. Omit to use the server default.",
             "type": "integer",
             "minimum": 1,
             "maximum": 50
@@ -321,29 +418,40 @@
         },
         "required": [
           "documentId"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "search_knowledge_graph",
-      "description": "Search connected knowledge using authorized seed documents. Category keys may use only documents in their category.",
+      "description": "Retrieve graph context from one or more readable seed documents and filter/rank related documents by query text. Returns seed entities and relatedDocs; use search_documents first to obtain seed IDs. Returned documents stay within the active category. Graph data may be empty when unavailable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 1000
+            "maxLength": 1000,
+            "description": "Search text used to filter and rank graph-related documents. Preserve the original query language."
           },
           "docIds": {
+            "minItems": 1,
+            "maxItems": 50,
             "type": "array",
             "items": {
               "type": "string",
               "minLength": 1
             },
-            "minItems": 1
+            "description": "Between 1 and 50 authorized document UUIDs from search_documents or list_documents to use as graph traversal seeds."
           },
           "limit": {
+            "description": "Maximum related documents to return, from 1 to 50. Omit to use the server default.",
             "type": "integer",
             "minimum": 1,
             "maximum": 50
@@ -352,39 +460,169 @@
         "required": [
           "query",
           "docIds"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "get_document_index_status",
-      "description": "Read the current indexing and knowledge-pipeline status of a document.",
+      "description": "Read a document indexing and knowledge-pipeline status without starting any work. Use after a save or refresh_document_index to inspect progress and failures. Requires read access to the document.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
           }
         },
         "required": [
           "documentId"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
       "name": "refresh_document_index",
-      "description": "Request reindexing after a document or metadata change. Requires write access.",
+      "description": "Queue document reindexing and return the server acknowledgment; processing completes asynchronously. Requires write access. Normal saves already schedule indexing; use this for an explicit refresh and inspect progress with get_document_index_status.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
           }
         },
         "required": [
           "documentId"
-        ]
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_document",
+      "description": "Move a document to trash. Requires write access to the document; category keys are limited to their category. Does not permanently purge content. Returns the document ID and deleted=true. Use only when the user intends deletion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the document to move to trash; obtain it from search_documents, list_documents, or get_document."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_folder",
+      "description": "Delete a folder while preserving its documents. Direct child folders and documents are detached according to the server folder rules, and reindexing is queued for affected documents. Requires write access in the permitted workspace or category. Returns the folder ID and deleted=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the folder to delete; obtain it from list_folders. This does not delete the documents inside it."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_category",
+      "description": "Delete a category and detach its folders and documents without deleting their content. Requires full workspace write access; category-scoped keys cannot delete any category, including their own. Returns the category ID and deleted=true.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the category to delete; obtain it from list_categories using a workspace key."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "restore_document_version",
+      "description": "Restore document content from a version or named snapshot returned by get_version_history. Requires edit access to that document. The server backs up the current content, records the restoration, and queues document reindexing. Returns the updated document. Does not restore a document from trash or restore folder/category placement.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the document whose content should be restored; it must be visible in the active workspace or category."
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of a version belonging to this document, from get_version_history. Use the version ID, not a snapshot label."
+          }
+        },
+        "required": [
+          "documentId",
+          "versionId"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
       }
     }
   ],
@@ -420,7 +658,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Connect to DocsMint Cloud or a self-hosted workspace.\n\n## Connect to DocsMint Cloud\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Sign in, choose your workspace, and follow the instructions for your MCP client.\n3. Authorize access with OAuth or a scoped API key, as supported by your client.\n\n**MCP endpoint:** `https://docsmint.com/mcp` (Streamable HTTP). No local process is required.\n\n## Connect to a self-hosted workspace\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.8.6 docsmint-mcp\n```\n\nThe npm package connects to an existing DocsMint deployment; it does not install the application or database.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Browse folders, tags, version history, and indexing status.\n\n## Latest release: 0.8.6\n\nImproved Cloud and self-hosted setup guides, corrected Docker Hub description publishing, and added direct Docker links to this listing. No database migration or public API change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.6) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
+      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Connect to DocsMint Cloud or a self-hosted workspace.\n\n## Connect to DocsMint Cloud\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Sign in, choose your workspace, and follow the instructions for your MCP client.\n3. Authorize access with OAuth or a scoped API key, as supported by your client.\n\n**MCP endpoint:** `https://docsmint.com/mcp` (Streamable HTTP). No local process is required.\n\n## Connect to a self-hosted workspace\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.8.7 docsmint-mcp\n```\n\nThe npm package connects to an existing DocsMint deployment; it does not install the application or database.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Browse folders, tags, version history, and indexing status.\n\n## Latest release: 0.8.7\n\nAdds scoped deletion and version restoration, clearer tool schemas, and GraphRAG query/limit fixes. The self-hosted MCP surface now has 21 tools. Hosted clients receive the changes when their host adopts this release. No database migration is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.7) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
       "tags": [
         "knowledge-base",
         "mcp",

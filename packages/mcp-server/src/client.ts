@@ -31,6 +31,10 @@ export class HiaiDocsError extends Error {
 }
 
 export interface HiaiDocsClient {
+	deleteDocument?(id: string): Promise<void>;
+	deleteFolder?(id: string): Promise<void>;
+	deleteCategory?(id: string): Promise<void>;
+	restoreDocumentVersion?(documentId: string, versionId: string): Promise<unknown>;
 	search(params: { query: string; folder?: string; tags?: string[]; limit?: number }): Promise<unknown>;
 	getDocument(id: string): Promise<unknown>;
 	createDocument(input: { title: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
@@ -75,6 +79,10 @@ export function createMcpDocsClient(
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
 	return {
+		deleteDocument: (id) => docsClient.deleteDoc(id, context),
+		deleteFolder: (id) => docsClient.deleteFolder(id, context),
+		deleteCategory: (id) => docsClient.deleteCategory(id, context),
+		restoreDocumentVersion: (documentId, versionId) => docsClient.restoreVersion(documentId, versionId, context),
 		search: (params) =>
 			docsClient.search(params.query, {
 				folder: params.folder,

@@ -4,7 +4,7 @@ import type { ExportResponse } from '../types.js';
 
 export const definition = {
   name: 'export_document',
-  description: 'Export a document as markdown. Returns the rendered markdown content.',
+  description: 'Render one readable document as portable Markdown and return a markdown string in the response object. Does not modify the document or include its complete metadata; use get_document to inspect the editable document.',
   inputSchema: {
     id: z.string().describe('Document ID to export.'),
   },
