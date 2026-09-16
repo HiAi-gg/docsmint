@@ -10,16 +10,22 @@ agents access to the same documents through MCP, REST, the SDK, or CLI.
 operating the stack, or **[self-host with Docker](#quickstart)** to run the
 Apache-2.0 application on your own infrastructure.
 
-[![DocsMint Cloud](https://img.shields.io/badge/DocsMint_Cloud-Connect-16a34a?style=for-the-badge)](https://docsmint.com/mcp/connect?source=github_mcp)
-[![GitHub](https://img.shields.io/badge/GitHub-Source-181717?style=for-the-badge&logo=github)](https://github.com/HiAi-gg/docsmint)
-[![Docker Hub](https://img.shields.io/badge/Docker_Hub-Images-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/vgalibov/docsmint)
-[![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?style=for-the-badge&logo=npm&color=CB3837)](https://www.npmjs.com/package/@hiai-gg/docsmint)
-[![LobeHub MCP](https://img.shields.io/badge/LobeHub-MCP-6366f1?style=for-the-badge)](https://lobehub.com/mcp/hiai-gg-docsmint)
-
-[![Release](https://img.shields.io/github/v/release/HiAi-gg/docsmint?sort=semver&style=flat-square)](https://github.com/HiAi-gg/docsmint/releases)
-[![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg?style=flat-square)](https://github.com/HiAi-gg/docsmint/blob/main/LICENSE)
-[![CI](https://github.com/HiAi-gg/docsmint/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HiAi-gg/docsmint/actions/workflows/ci.yml)
-[![MCP Registry](https://img.shields.io/badge/MCP_Registry-Listed-0891b2?style=flat-square)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.HiAi-gg%2Fdocsmint/versions/latest)
+[![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
+[![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?logo=npm)](https://www.npmjs.com/package/@hiai-gg/docsmint)
+[![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
+[![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
+[![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
+[![Bun](https://img.shields.io/badge/Runtime-Bun_1.4-black?logo=bun&logoColor=white)](https://bun.sh)
+[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
+[![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
+[![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
+[![DocsMint Cloud](https://img.shields.io/badge/DocsMint_Cloud-Connect-16a34a)](https://docsmint.com/mcp/connect?source=github_mcp)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-Listed-0891b2)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.HiAi-gg%2Fdocsmint/versions/latest)
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
