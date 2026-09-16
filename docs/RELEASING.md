@@ -28,6 +28,15 @@ and the GitHub Release, not in this file.
 
 1. Work from a clean release branch based on the intended `main` revision.
 2. Update `CHANGELOG.md` with user-visible changes and migration notes.
+   Write reviewed `docs/release/v<version>-notes.md` with benefits, installation
+   links, compatibility, and upgrade instructions. CI uses this exact Markdown
+   for both new and existing GitHub Releases; missing notes fail publication.
+   Keep `docs/release/docker-hub-description.md` current with image roles and
+   supported tags. CI synchronizes and verifies the Docker Hub description
+   using the existing `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets.
+   The token needs permission to update repository metadata. API, Web, and
+   Proxy images receive role-specific OCI titles and descriptions, plus the
+   Apache-2.0 license, source repository, release version, and commit revision.
 3. Keep the version synchronized in:
    - root `package.json` and `bun.lock` workspace snapshots
    - `package.public.json`
@@ -133,7 +142,8 @@ Publishing is a separate, explicitly authorized operation.
    then runs the clean installed consumer. MCP Registry publication and the
    GitHub Release depend on this commit-bound provenance job and its uploaded
    machine evidence.
-8. Create the GitHub Release from the tag using the changelog summary.
+8. Confirm CI created or updated the GitHub Release from the reviewed
+   `docs/release/v<version>-notes.md` file.
 9. Confirm the expected npm package and Docker images exist and report the
    released version.
 10. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.

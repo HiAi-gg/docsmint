@@ -6,7 +6,7 @@ your terminal. This Bun-native client connects to a running
 
 Prefer to try the product before operating a server? Explore
 [managed DocsMint](https://docsmint.com), or follow the
-[self-hosted quickstart](../../README.md#quickstart).
+[self-hosted quickstart](https://github.com/HiAi-gg/docsmint#quickstart).
 
 ## Run the published CLI
 

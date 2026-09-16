@@ -1,12 +1,13 @@
-# DocsMint SDK workspace
+# DocsMint TypeScript SDK
 
 Bring searchable documents into your application with a typed TypeScript
 client for the [DocsMint](https://github.com/HiAi-gg/docsmint) REST API. Create,
 find, and organize knowledge through the same public interfaces your users see.
 
 Use your own deployment or explore [managed DocsMint](https://docsmint.com).
-This private workspace is bundled into the single public `@hiai-gg/docsmint`
-package; it is not published independently.
+Install **`@hiai-gg/docsmint`** for the SDK, CLI, and MCP bridge in one package.
+The SDK connects to an existing deployment; self-host with the
+[Docker quickstart](https://github.com/HiAi-gg/docsmint#quickstart).
 
 > Bun-native, ESM-only, TypeScript strict.
 
@@ -30,19 +31,27 @@ const client = new DocsClient({
   apiKey: process.env.HIAI_DOCS_API_KEY ?? "",
 });
 
-// List documents (paginated, optional folder/tag filter)
-const list = await client.listDocs({ folderId: "…", limit: 50 });
-console.log(list.items[0].title);
+// List documents; a new workspace may be empty.
+const list = await client.listDocs({ limit: 50 });
+const firstDocument = list.items[0];
+if (firstDocument) {
+  const markdown = await client.getDocMarkdown(firstDocument.id);
+  const versions = await client.listVersions(firstDocument.id, {
+    onlySnapshots: true,
+  });
+  console.log(firstDocument.title, markdown, versions);
+}
 
-// Read full markdown
-const md = await client.getDocMarkdown(list.items[0].id);
-
-// Search (hybrid full-text + semantic)
+// Search by wording and meaning.
 const hits = await client.search("quarterly planning", { limit: 10 });
+console.log(hits.items);
 
-// Versioning
-const versions = await client.listVersions(docId, { onlySnapshots: true });
-const snapshot = await client.createDoc({ title: "v1.0", content: "…" });
+// Create a document.
+const created = await client.createDoc({
+  title: "Quarterly planning",
+  content: "# Priorities\n\nCapture the team's next steps here.",
+});
+console.log(created.id);
 ```
 
 ## Configuration

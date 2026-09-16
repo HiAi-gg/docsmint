@@ -5,6 +5,26 @@ All notable changes to DocsMint are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.8.5] - 2026-09-16
+
+### Documentation and release presentation
+
+- Simplify the project introduction and clarify Cloud, self-hosted, SDK, CLI,
+  and MCP installation paths around the single `@hiai-gg/docsmint` package.
+- Make root README documentation links work on npm as well as GitHub, and
+  correct the SDK quick-start example for empty workspaces.
+- Explain the API, web, and Caddy image roles and matching versioned Docker tags.
+- Refresh the documentation index and publish benefit-focused release notes.
+
+### Upgrade notes
+
+- This release updates documentation and distribution presentation. It introduces
+  no database migration or public API change.
+- Use `@hiai-gg/docsmint@0.8.5` for SDK, CLI, and MCP clients. The matching Docker
+  tags are `api-v0.8.5`, `web-v0.8.5`, and `caddy-v0.8.5`.
+
 ## [0.8.4] - 2026-09-14
 
 ### MCP discovery and onboarding
@@ -35,8 +55,6 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 No database migration or deployment configuration change is required. Catalogs
 may refresh asynchronously; publication does not prove a generated LobeHub
 installation card has been corrected.
-
-## [Unreleased]
 
 ## [0.8.3] - 2026-09-07
 
