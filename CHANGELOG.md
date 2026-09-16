@@ -7,6 +7,17 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-09-16
+
+### Fixed
+
+- Update Docker Hub descriptions through the supported repository PATCH endpoint.
+  The namespace read endpoint rejected description updates even with a correctly
+  scoped publisher token. Existing images, package names, and public APIs are unchanged.
+- Add direct Docker Hub and self-hosted setup links to the LobeHub overview.
+
+No database migration or credential rotation is required.
+
 ## [0.8.5] - 2026-09-16
 
 ### Documentation and release presentation
