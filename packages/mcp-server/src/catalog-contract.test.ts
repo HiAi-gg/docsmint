@@ -45,13 +45,13 @@ describe('DocsMint MCP catalog contract', () => {
     const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
 
     expect(readme).toContain(
-      '[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)',
+      '[LobeHub MCP](https://lobehub.com/mcp/hiai-gg-docsmint)',
     );
     expect(readme.match(/^## What's new/gm)).toHaveLength(1);
     expect(readme).not.toContain("## What's new in 0.7.");
     expect(readme).not.toContain('## MCP Features');
     expect(readme).toContain('https://docsmint.com/mcp');
-    expect(readme).toContain('[complete MCP reference](packages/mcp-server/README.md)');
+    expect(readme).toContain('[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)');
     expect(readme).toContain('"command": "npx"');
     expect(readme).toContain('"args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"]');
     expect(mcpReadme).toContain('"command": "npx"');
@@ -59,9 +59,9 @@ describe('DocsMint MCP catalog contract', () => {
     expect(mcpReadme).toContain('## Option A — DocsMint Cloud (recommended)');
     expect(mcpReadme).toContain('https://docsmint.com/mcp');
     expect(mcpReadme).toContain('## Option B — Self-hosted stdio bridge (advanced)');
-    expect(mcpReadme).toContain('### Bunx');
-    expect(mcpReadme).toContain('### NPX');
-    expect(mcpReadme).toContain('### Local checkout');
+    expect(mcpReadme).toContain('### Run with Bun');
+    expect(mcpReadme).toContain('### Run with NPX');
+    expect(mcpReadme).toContain('### Run from a local checkout');
     expect(mcpReadme).toContain('## MCP Features');
     expect(mcpReadme).toContain('### Tools (17)');
     expect(mcpReadme).toContain('### Prompts (2)');

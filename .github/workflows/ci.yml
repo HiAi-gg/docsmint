@@ -680,6 +680,14 @@ jobs:
             ghcr.io/hiai-gg/docsmint-api:latest
             vgalibov/docsmint:api-${{ github.ref_name }}
             vgalibov/docsmint:api-latest
+          labels: |
+            org.opencontainers.image.title=DocsMint API
+            org.opencontainers.image.description=REST API, hybrid search, embeddings, and MCP for the DocsMint knowledge workspace.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/HiAi-gg/docsmint
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
       - name: Rebuild and push Web image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -687,13 +695,21 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.4
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.5
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}
             ghcr.io/hiai-gg/docsmint-web:latest
             vgalibov/docsmint:web-${{ github.ref_name }}
             vgalibov/docsmint:web-latest
+          labels: |
+            org.opencontainers.image.title=DocsMint Web
+            org.opencontainers.image.description=Browser workspace with rich-text editing, document organization, and AI-powered search.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/HiAi-gg/docsmint
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
       - name: Rebuild and push Caddy image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -705,6 +721,19 @@ jobs:
             ghcr.io/hiai-gg/docsmint-caddy:latest
             vgalibov/docsmint:caddy-${{ github.ref_name }}
             vgalibov/docsmint:caddy-latest
+          labels: |
+            org.opencontainers.image.title=DocsMint Proxy
+            org.opencontainers.image.description=TLS reverse proxy with rate limiting for self-hosted DocsMint deployments.
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/HiAi-gg/docsmint
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ github.ref_name }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Synchronize Docker Hub description
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: bun --no-env-file run scripts/sync-dockerhub-description.ts
 
   # ---------------------------------------------------------------------------
   # 7. Publish NPM — publish package `@hiai-gg/docsmint` to NPM (Tokenless OIDC)
@@ -875,15 +904,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
+          notes="docs/release/v${version}-notes.md"
+          test -s "$notes" || { echo "::error::Missing reviewed release notes: $notes"; exit 1; }
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::notice::Release $GITHUB_REF_NAME already exists — updating its title."
+            echo "::notice::Release $GITHUB_REF_NAME already exists — updating its title and reviewed notes."
             gh release edit "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "DocsMint v${version}"
+              --title "DocsMint v${version}" \
+              --notes-file "$notes"
           else
             gh release create "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --title "DocsMint v${version}" \
-              --generate-notes
+              --notes-file "$notes"
           fi

@@ -761,3 +761,23 @@ test("workflow validation rejects malformed or equality-preserving wrong scoped-
 		);
 	}
 });
+
+test("GitHub releases use reviewed versioned notes on create and rerun", async () => {
+	const workflow = Bun.YAML.parse(
+		await Bun.file(
+			new URL("../.github/workflows/ci.yml", import.meta.url),
+		).text(),
+	) as Record<string, unknown>;
+	const run = String(
+		workflowStep(
+			workflow,
+			"create-github-release",
+			"Create release from changelog",
+		).run,
+	);
+	// biome-ignore lint/suspicious/noTemplateCurlyInString: shell expansion is intentional.
+	expect(run).toContain('notes="docs/release/v${version}-notes.md"');
+	expect(run).toContain('test -s "$notes"');
+	expect(run.match(/--notes-file "\$notes"/g)).toHaveLength(2);
+	expect(run).not.toContain("--generate-notes");
+});

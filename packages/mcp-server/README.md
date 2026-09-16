@@ -1,11 +1,11 @@
 # DocsMint MCP server
 
-Managed or self-hosted knowledge workspace for AI agents with hybrid search,
-reranking, GraphRAG, and scoped document tools.
+Give your AI agents persistent project knowledge. Search, read, create, and
+organize documents with hybrid retrieval, reranking, GraphRAG, and scoped access.
 
-Connect DocsMint Cloud instantly or use your own self-hosted deployment. Search,
-read, create, organize and update persistent knowledge through MCP with hybrid
-retrieval, reranking and GraphRAG.
+Connect to DocsMint Cloud over HTTP, or use the `docsmint-mcp` stdio bridge with
+your self-hosted deployment. The bridge ships in **`@hiai-gg/docsmint`** alongside
+the TypeScript SDK and CLI.
 
 ## Option A — DocsMint Cloud (recommended)
 
@@ -52,21 +52,19 @@ Run DocsMint first, create an API key in its authenticated browser UI, set
 `HIAI_DOCS_URL` to your deployment API URL and `HIAI_DOCS_API_KEY` to that key,
 then start the stdio bridge. Do not use an `/api/health` URL as an MCP endpoint.
 
-### Installation
-
-### Bunx
+### Run with Bun
 
 ```bash
 bunx --package @hiai-gg/docsmint docsmint-mcp
 ```
 
-### NPX
+### Run with NPX
 
 ```bash
 npx --yes --package @hiai-gg/docsmint docsmint-mcp
 ```
 
-### Local checkout
+### Run from a local checkout
 
 ```bash
 git clone https://github.com/HiAi-gg/docsmint.git
@@ -75,7 +73,7 @@ bun install --frozen-lockfile
 bun run packages/mcp-server/src/index.ts
 ```
 
-The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not the package name. All three methods run the same stdio server.
+All three methods run the same stdio server from `@hiai-gg/docsmint`.
 
 ### Client configuration
 
@@ -95,12 +93,6 @@ The MCP binary is shipped by `@hiai-gg/docsmint`; `@hiai-gg/docsmint-mcp` is not
 ```
 
 `HIAI_DOCS_URL` defaults to `http://localhost:50700`. The optional API key is sent as a Bearer token. Prefer a category key for a category-bound agent and a global key for trusted owner-wide automation. Category `read`, `edit`, and `write` scopes are explicit rather than hierarchical; configure the combination required by the tools you expose.
-
-One-command install for MCP clients:
-
-```bash
-npx --yes --package @hiai-gg/docsmint docsmint-mcp
-```
 
 ## MCP Features
 
@@ -137,7 +129,7 @@ npx --yes --package @hiai-gg/docsmint docsmint-mcp
 
 ### Skills (1)
 
-- [`docsmint-document-manager`](../../skills/docsmint-document-manager/SKILL.md):
+- [`docsmint-document-manager`](https://github.com/HiAi-gg/docsmint/blob/main/skills/docsmint-document-manager/SKILL.md):
   create, organize, edit, and research DocsMint documents through the 17 MCP
   tools.
 
@@ -171,7 +163,7 @@ The server exposes `organize_workspace` and `research_workspace` prompts. MCP cl
 - `docsmint://guide/search`
 - `docsmint://workspace/catalog`
 
-The repository ships the reusable [`docsmint-document-manager` skill](../../skills/docsmint-document-manager/SKILL.md). It documents the same workspace/category permissions, multilingual retrieval flow, editor rules, and indexing lifecycle used by the API and UI.
+The repository ships the reusable [`docsmint-document-manager` skill](https://github.com/HiAi-gg/docsmint/blob/main/skills/docsmint-document-manager/SKILL.md). It documents the same workspace/category permissions, multilingual retrieval flow, editor rules, and indexing lifecycle used by the API and UI.
 
 Workspace keys can manage the complete document domain allowed by their live workspace role. Category keys are restricted to their bound category, its folders and documents, and their explicit `read`, `edit`, and `write` permissions. Category keys cannot create categories or escape their category through document, folder, graph, tag, or index operations.
 

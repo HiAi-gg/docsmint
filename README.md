@@ -10,20 +10,10 @@ agents access to the same documents through MCP, REST, the SDK, or CLI.
 operating the stack, or **[self-host with Docker](#quickstart)** to run the
 Apache-2.0 application on your own infrastructure.
 
-[![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](LICENSE)
+[![Apache-2.0 License](https://img.shields.io/badge/License-Apache--2.0-green.svg)](https://github.com/HiAi-gg/docsmint/blob/main/LICENSE)
 [![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
 [![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?logo=npm)](https://www.npmjs.com/package/@hiai-gg/docsmint)
-[![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
-[![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
-[![Bun](https://img.shields.io/badge/Runtime-Bun_1.4-black?logo=bun&logoColor=white)](https://bun.sh)
-[![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
-[![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
-[![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
 
 [GitHub](https://github.com/HiAi-gg/docsmint) ·
 [Docker Hub](https://hub.docker.com/r/vgalibov/docsmint) ·
@@ -56,7 +46,7 @@ credentials; lifecycle management belongs to the signed-in browser session.
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
 `npx --yes --package @hiai-gg/docsmint docsmint-mcp`. The npm package is a stdio
 bridge to your running deployment, not a server installer. See the
-[MCP guide](packages/mcp-server/README.md) for client configuration.
+[MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for client configuration.
 
 ## Why DocsMint?
 
@@ -73,30 +63,18 @@ bridge to your running deployment, not a server installer. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.4?
+## What's new in 0.8.5?
 
-MCP discovery now explains both supported deployment choices:
+This release makes DocsMint easier to discover, install, and evaluate:
 
-- DocsMint Cloud is the recommended route for connecting without running a server.
-- Self-hosted DocsMint remains the complete Apache-2.0 alternative with the same
-  npm/stdio bridge, tools, prompts, resources and public contracts.
-- Registry, LobeHub and npm descriptions include hybrid search, reranking,
-  GraphRAG and scoped document access, with source-aware onboarding links.
-- The MCP guide explains Cloud browser authorization for OAuth-capable clients,
-  existing API-key configuration and the separate self-hosted setup.
-- Release checks now verify built public exports and MCP binaries before packaging.
-- Authorization regression coverage includes mixed category scopes, external tenant
-  assertions, scoped attachment deletion, workspace tags and partial category updates.
-- A deterministic offline retrieval baseline makes evaluation repeatable without
-  claiming a change to live retrieval quality.
+- Clearer guides for choosing DocsMint Cloud or a self-hosted workspace.
+- One public package, `@hiai-gg/docsmint`, for the SDK, CLI, and MCP bridge.
+- A Docker image guide that distinguishes the API, web application, and Caddy proxy.
+- Consistent release notes and package documentation, with links that also work on npm.
 
-No database migration, tool redesign or SDK contract change is added. Hosted
-OAuth is a DocsMint Cloud capability; this OSS release documents how to connect
-and does not embed Cloud accounts, billing or analytics in self-hosted installs.
-
-Read the complete release history in the [changelog](CHANGELOG.md) or
-[GitHub Releases](https://github.com/HiAi-gg/docsmint/releases). See the
-[roadmap](docs/ROADMAP.md) for what comes next.
+No database migration or public API change is required. Read the
+[release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.5),
+[changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md), or [roadmap](https://github.com/HiAi-gg/docsmint/blob/main/docs/ROADMAP.md).
 
 ## Install with an AI agent
 
@@ -148,8 +126,9 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.4`, `web-v0.8.4`, and `caddy-v0.8.4` for
-reproducible deploys. The quickstart still builds the Compose stack from this repository so PostgreSQL,
+Use versioned tags `api-v0.8.5`, `web-v0.8.5`, and `caddy-v0.8.5` for
+reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
+it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
 
 For OpenRouter, add one value to `.env` and run the script again:
@@ -197,7 +176,7 @@ The canonical local ports are:
 | SeaweedFS S3 gateway | `50702` |
 | SeaweedFS filer UI   | `50703` |
 
-See [Deployment](docs/DEPLOYMENT.md) for domains, TLS, provider tuning,
+See [Deployment](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md) for domains, TLS, provider tuning,
 backups, and production operation.
 
 Embedding provider URLs, models, and credentials are deployment configuration.
@@ -205,8 +184,9 @@ They are never stored in browser settings or local storage.
 
 ## Use DocsMint from the terminal
 
-The published package includes the CLI. It connects to an already running
-DocsMint server; installing it does not deploy the server.
+One public package, **`@hiai-gg/docsmint`**, includes the TypeScript SDK,
+`docsmint` CLI, and `docsmint-mcp` bridge. These clients connect to a running
+DocsMint deployment; use the Docker quickstart to install the self-hosted server.
 
 ```bash
 bun add @hiai-gg/docsmint
@@ -225,7 +205,7 @@ bunx --package @hiai-gg/docsmint docsmint create \
 ```
 
 Credentials can also be supplied through `HIAI_DOCS_URL` and
-`HIAI_DOCS_API_KEY`. See the [CLI guide](packages/cli/README.md) for every
+`HIAI_DOCS_API_KEY`. See the [CLI guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/cli/README.md) for every
 command and configuration precedence.
 
 ## Connect an MCP client
@@ -266,7 +246,7 @@ Run the published stdio bridge against your own DocsMint API:
 
 Category keys let you expose only the documents and operations an agent needs.
 Use a global key only for trusted owner-wide automation. See the
-[complete MCP reference](packages/mcp-server/README.md) for Bun, npm, local
+[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for Bun, npm, local
 checkout, all tools, prompts, resources, permissions, and REST mappings.
 
 ## TypeScript SDK
@@ -294,7 +274,7 @@ console.log(created.id, results.items);
 
 The SDK is a typed `fetch` client with retries for transient failures and
 idempotent document creation retries. See the
-[SDK reference](packages/sdk/README.md) and [REST API](docs/API.md).
+[SDK reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/sdk/README.md) and [REST API](https://github.com/HiAi-gg/docsmint/blob/main/docs/API.md).
 
 ## API keys and integrations
 
@@ -364,8 +344,8 @@ extracts entities after embeddings are ready and finds related documents beyond
 direct keyword or vector similarity. It degrades gracefully when an external
 model is unavailable.
 
-For pipeline internals and tuning, see [Architecture](docs/ARCHITECTURE.md) and
-[Deployment](docs/DEPLOYMENT.md).
+For pipeline internals and tuning, see [Architecture](https://github.com/HiAi-gg/docsmint/blob/main/docs/ARCHITECTURE.md) and
+[Deployment](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md).
 
 ## Stack
 
@@ -379,16 +359,16 @@ For pipeline internals and tuning, see [Architecture](docs/ARCHITECTURE.md) and
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Product usage](docs/USAGE.md)
-- [Roadmap](docs/ROADMAP.md)
-- [REST API](docs/API.md) and [OpenAPI JSON](docs/openapi.json)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Deployment and operations](docs/DEPLOYMENT.md)
-- [Extension points](docs/EXTENDING.md)
-- [Maintainer release flow](docs/RELEASING.md)
-- [Security policy](SECURITY.md)
-- [Changelog](CHANGELOG.md)
+- [Documentation index](https://github.com/HiAi-gg/docsmint/blob/main/docs/README.md)
+- [Product usage](https://github.com/HiAi-gg/docsmint/blob/main/docs/USAGE.md)
+- [Roadmap](https://github.com/HiAi-gg/docsmint/blob/main/docs/ROADMAP.md)
+- [REST API](https://github.com/HiAi-gg/docsmint/blob/main/docs/API.md) and [OpenAPI JSON](https://github.com/HiAi-gg/docsmint/blob/main/docs/openapi.json)
+- [Architecture](https://github.com/HiAi-gg/docsmint/blob/main/docs/ARCHITECTURE.md)
+- [Deployment and operations](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)
+- [Extension points](https://github.com/HiAi-gg/docsmint/blob/main/docs/EXTENDING.md)
+- [Maintainer release flow](https://github.com/HiAi-gg/docsmint/blob/main/docs/RELEASING.md)
+- [Security policy](https://github.com/HiAi-gg/docsmint/blob/main/SECURITY.md)
+- [Changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)
 
 ## Development
 
@@ -402,12 +382,12 @@ bun run test
 bun run build
 ```
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Please
-report vulnerabilities through [SECURITY.md](SECURITY.md), not a public issue.
+Read [CONTRIBUTING.md](https://github.com/HiAi-gg/docsmint/blob/main/CONTRIBUTING.md) before opening a pull request. Please
+report vulnerabilities through [SECURITY.md](https://github.com/HiAi-gg/docsmint/blob/main/SECURITY.md), not a public issue.
 
 ## License
 
-DocsMint is released under the [Apache License 2.0](LICENSE).
+DocsMint is released under the [Apache License 2.0](https://github.com/HiAi-gg/docsmint/blob/main/LICENSE).
 
 Built as an independent open-source project in the
 [HiAi](https://github.com/HiAi-gg) ecosystem.
