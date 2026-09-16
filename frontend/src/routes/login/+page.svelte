@@ -1,6 +1,7 @@
 <script lang="ts">
 import { browser } from "$app/environment";
 import { goto } from "$app/navigation";
+import { authFailureMessage } from "$lib/auth/auth-failure-message";
 import { signIn } from "$lib/auth-client";
 import * as m from "$lib/paraglide/messages.js";
 
@@ -29,7 +30,10 @@ async function handleSubmit(e: SubmitEvent) {
 		);
 
 		if (result.error) {
-			error = result.error.message ?? m.auth_login_error();
+			error = authFailureMessage(result.error, {
+				credentialError: m.auth_login_error(),
+				networkError: m.error_network(),
+			});
 			return;
 		}
 

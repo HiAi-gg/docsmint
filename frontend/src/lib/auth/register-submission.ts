@@ -1,3 +1,8 @@
+import {
+	type AuthClientFailure,
+	authFailureMessage,
+} from "./auth-failure-message";
+
 export interface RegistrationInput {
 	name: string;
 	email: string;
@@ -6,7 +11,7 @@ export interface RegistrationInput {
 
 interface RegistrationDependencies {
 	signUp(input: RegistrationInput): Promise<{
-		error?: { message?: string } | null;
+		error?: AuthClientFailure;
 	}>;
 	navigate(path: string): Promise<void>;
 	onLoading(value: boolean): void;
@@ -23,7 +28,12 @@ export async function submitRegistration(
 	try {
 		const result = await dependencies.signUp(input);
 		if (result.error) {
-			dependencies.onError(result.error.message ?? dependencies.signupError);
+			dependencies.onError(
+				authFailureMessage(result.error, {
+					credentialError: dependencies.signupError,
+					networkError: dependencies.networkError,
+				}),
+			);
 			return;
 		}
 		await dependencies.navigate("/");
