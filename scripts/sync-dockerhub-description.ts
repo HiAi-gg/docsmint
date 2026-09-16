@@ -6,7 +6,7 @@ type DescriptionInput = {
 };
 type Request = (url: string, init?: RequestInit) => Promise<Response>;
 const repositoryUrl =
-	"https://hub.docker.com/v2/namespaces/vgalibov/repositories/docsmint";
+	"https://hub.docker.com/v2/repositories/vgalibov/docsmint";
 
 export async function syncDockerHubDescription(
 	input: DescriptionInput,

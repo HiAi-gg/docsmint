@@ -63,17 +63,18 @@ bridge to your running deployment, not a server installer. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.5?
+## What's new in 0.8.6?
 
-This release makes DocsMint easier to discover, install, and evaluate:
+This patch completes the publication improvements from 0.8.5:
 
+- Corrected Docker Hub description updates and direct Docker links in LobeHub.
 - Clearer guides for choosing DocsMint Cloud or a self-hosted workspace.
 - One public package, `@hiai-gg/docsmint`, for the SDK, CLI, and MCP bridge.
 - A Docker image guide that distinguishes the API, web application, and Caddy proxy.
 - Consistent release notes and package documentation, with links that also work on npm.
 
 No database migration or public API change is required. Read the
-[release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.5),
+[release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.6),
 [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md), or [roadmap](https://github.com/HiAi-gg/docsmint/blob/main/docs/ROADMAP.md).
 
 ## Install with an AI agent
@@ -126,7 +127,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.5`, `web-v0.8.5`, and `caddy-v0.8.5` for
+Use versioned tags `api-v0.8.6`, `web-v0.8.6`, and `caddy-v0.8.6` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.

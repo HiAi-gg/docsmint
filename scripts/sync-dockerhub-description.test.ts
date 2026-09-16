@@ -28,6 +28,8 @@ test("authenticates, updates the committed description, and verifies public cont
 		"PATCH",
 		"GET",
 	]);
+	expect(calls[1]?.url).toBe("https://hub.docker.com/v2/repositories/vgalibov/docsmint");
+	expect(calls[2]?.url).toBe("https://hub.docker.com/v2/repositories/vgalibov/docsmint");
 	expect(calls[1]?.init?.headers).toEqual({
 		"Content-Type": "application/json",
 		Authorization: "Bearer session-token",

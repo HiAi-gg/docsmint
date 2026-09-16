@@ -1,7 +1,7 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
@@ -420,7 +420,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Give AI agents a persistent knowledge workspace: search, read, create, and organize documents with hybrid retrieval, reranking, and GraphRAG. Use DocsMint Cloud or your own self-hosted deployment. Cloud: open https://docsmint.com/mcp/connect?source=lobehub_mcp, choose a workspace, and authorize your client. Connect directly to https://docsmint.com/mcp; no local process is required for Cloud. Self-hosted: run DocsMint, create an API key in its browser UI, then launch the stdio bridge with bunx --package @hiai-gg/docsmint@0.8.5 docsmint-mcp. Configure HIAI_DOCS_URL and HIAI_DOCS_API_KEY in your MCP client environment. The npm package is @hiai-gg/docsmint; docsmint-mcp is its executable.",
+      "summary": "Give AI agents a persistent knowledge workspace: search, read, create, and organize documents with hybrid retrieval, reranking, and GraphRAG. Use DocsMint Cloud or your own self-hosted deployment. Cloud: open https://docsmint.com/mcp/connect?source=lobehub_mcp, choose a workspace, and authorize your client. Connect directly to https://docsmint.com/mcp; no local process is required for Cloud. Self-hosted: run DocsMint, create an API key in its browser UI, then launch the stdio bridge with bunx --package @hiai-gg/docsmint@0.8.6 docsmint-mcp. Configure HIAI_DOCS_URL and HIAI_DOCS_API_KEY in your MCP client environment. The npm package is @hiai-gg/docsmint; docsmint-mcp is its executable.\n\n[Docker Hub](https://hub.docker.com/r/vgalibov/docsmint) · [Docker installation guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)",
       "tags": [
         "knowledge-base",
         "mcp",
