@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- Show a network error for authentication proxy/server failures instead of
+  incorrectly reporting invalid credentials.
+- Restore graphical platform badges in the project README.
+
 ## [0.8.6] - 2026-09-16
 
 ### Fixed

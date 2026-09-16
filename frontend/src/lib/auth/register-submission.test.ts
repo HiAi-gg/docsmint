@@ -23,4 +23,24 @@ describe("registration submission", () => {
 		expect(errors).toEqual(["Network unavailable"]);
 		expect(loading).toEqual([true, false]);
 	});
+
+	test("maps a proxy 502 to the network error instead of the signup copy", async () => {
+		const errors: string[] = [];
+
+		await submitRegistration(
+			{ name: "Ada", email: "ada@example.com", password: "password-123" },
+			{
+				signUp: async () => ({
+					error: { status: 502, error: "Failed to proxy request" },
+				}),
+				navigate: async () => undefined,
+				onLoading: () => undefined,
+				onError: (value) => errors.push(value),
+				signupError: "Unable to register",
+				networkError: "Network unavailable",
+			},
+		);
+
+		expect(errors).toEqual(["Network unavailable"]);
+	});
 });

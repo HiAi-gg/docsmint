@@ -45,7 +45,7 @@ describe('DocsMint MCP catalog contract', () => {
     const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
 
     expect(readme).toContain(
-      '[LobeHub MCP](https://lobehub.com/mcp/hiai-gg-docsmint)',
+      '[![LobeHub MCP](https://img.shields.io/badge/LobeHub-MCP-6366f1?style=for-the-badge)](https://lobehub.com/mcp/hiai-gg-docsmint)',
     );
     expect(readme.match(/^## What's new/gm)).toHaveLength(1);
     expect(readme).not.toContain("## What's new in 0.7.");
