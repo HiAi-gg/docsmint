@@ -87,20 +87,42 @@ HTTP 200 on `/login` is not the proof; the submit path and 502 body are. Console
 ## Remaining blockers
 
 - Local compose must not be started from this operator `.env`: `DB_PORT=5432` and `STORAGE_PORT=18333` collide with shared systemd Postgres and SeaweedFS S3. Recreating API/web would also publish onto those ports.
-- Running API container is stale and crash-looping (`ECONNREFUSED 172.17.0.1:5432` in earlier logs). Running web image predates this source fix, so the 502 still shows credential copy until a new web image is built after source acceptance.
+- Running API container is stale and crash-looping (`ECONNREFUSED 172.17.0.1:5432` in earlier logs). Local `docsmint-web:local` on `:51701` still predates this source fix; do not treat that container as proof of the mapping.
 - Local packed-tarball smoke not run in this tree; CI Clean Bun Consumer on PR #66 succeeded.
 - In-memory attachment harness still does not evaluate SQL category predicates (0.8.4 policy tests cover the grant).
-- DOCSMINT-01 deployed revision / HTTPS / apex-www not verified (first-stage production freeze).
-- Coordinator review of this RC, PR CI, and any later deploy.
+- Hosted pin / Coolify / npm / tag remain coordinator-owned. This packet is not accepted-live.
+- Draft PR #63 is still OPEN and CONFLICTING (superseded by v0.8.4 / #65).
+
+## Follow-up 2026-09-16 (readiness)
+
+Worker: grok. No worktree, no stash pop/drop, no reset. Owner `docs/ROADMAP.md` banner, `TEAM_BACKLOG.md`, and 2026-09-13/14 acceptance files left uncommitted. Stash `next-night-20260915-preserve-owner` untouched.
+
+Audit of PR [#66](https://github.com/HiAi-gg/docsmint/pull/66) @ `1453f44`: mapping source was already correct for the better-fetch object `{ status: 502, statusText: "Bad Gateway", error: "Failed to proxy request" }` (no `message`, which is why the old `result.error.message ?? credential` path lied). Missing was **graphical proof of that source**, because 2026-09-15 screenshots hit the stale `:51701` image.
+
+Concrete follow-up:
+
+- Typed `statusText` on `AuthClientFailure` and added tests for the exact better-fetch 502 object plus status-only 502.
+- Built current frontend (`vite build` / adapter-node) and served it on `127.0.0.1:50701` with `API_URL=http://127.0.0.1:50700` (API down). Did not start compose; shared systemd Postgres `:5432` and SeaweedFS S3 `:18333` were not mutated.
+- Named agent-browser session `dmo-nn15-fu` (namespace `dmo-nn15-fu`).
+
+| Surface | Result |
+| --- | --- |
+| Keyboard login submit desktop 1440×900 light | `POST /api/auth/sign-in/email` **502** `{"error":"Failed to proxy request"}`. Visible alert: **Network error. Please check your connection.** Not credential copy. |
+| Desktop dark / mobile 390×844 light+dark | Same alert remains. |
+| Register mobile light + desktop dark | `POST /api/auth/sign-up/email` **502**. Same network alert. |
+
+Read-only production probe (no SSH writes, no DNS writes): `https://docsmint.com` HTTP/2 **200** via Cloudflare + Caddy (`x-sveltekit-page`, `via: 1.1 Caddy`). `https://www.docsmint.com` **301** → `https://docsmint.com/`. HTTP apex **301** → HTTPS. A/AAAA are Cloudflare anycast (`104.21.54.36`, `172.67.223.30` + `2606:4700:3034::…` / `3037::…`). Inventory: `docsmint.com` is owned, **frozen**, Cloudflare NS; product host is **DOCSMINT-01**, not this OSS tree. `ssh docsmint docker ps` (read-only): SaaS stack healthy including `docsmint-saas-docsmint-oss-api-1`. No production mutation.
+
+HEAD after this follow-up commit is the RC. CI on previous HEAD `1453f44` was SUCCESS run [35028658164](https://github.com/HiAi-gg/docsmint/actions/runs/35028658164) (Lint, Typecheck, Unit & Contract, Postgres integrations, Build, Docker Build & Scan, Clean Bun Consumer).
 
 ## Rollback
 
-Revert the RC commit on `review/next-night-20260915` (login/register helper only). v0.8.4 on `main` remains the last published source. No production host or DNS change to roll back. Local owner ROADMAP banner and TEAM_BACKLOG stay uncommitted.
+Revert the follow-up commit, then `2dd58e9` / `1453f44` if the whole RC is rejected. v0.8.4 on `main` (`2e85740`) remains the last published source. No production host or DNS change to roll back. Local owner ROADMAP banner and TEAM_BACKLOG stay uncommitted.
 
 ## Old-host disposition
 
-None. This is the OSS library, not a website cutover. Hosted DocsMint remains on DOCSMINT-01 with its own worker/coordinator path.
+None. This is the OSS library, not a website cutover. Hosted DocsMint remains on DOCSMINT-01 with its own worker/coordinator path. `docsmint.com` DNS/mail records were not changed.
 
 ## Next action
 
-Coordinator: review this RC, run/accept GitHub CI on the pushed branch/PR, close superseded draft PR #63, and only then consider hosted pin / Coolify. Do not treat this packet as accepted-live.
+Coordinator/Codex: review PR #66 (this follow-up SHA), close superseded draft PR #63, and only then consider merge / hosted submodule pin / Coolify / tag / npm. Do not treat this packet as accepted-live.

@@ -16,6 +16,25 @@ describe("authFailureMessage", () => {
 		).toBe(labels.networkError);
 	});
 
+	test("maps the better-fetch 502 object (statusText, no message) to the network error", () => {
+		expect(
+			authFailureMessage(
+				{
+					status: 502,
+					statusText: "Bad Gateway",
+					error: "Failed to proxy request",
+				},
+				labels,
+			),
+		).toBe(labels.networkError);
+	});
+
+	test("maps a 502 with only numeric status to the network error", () => {
+		expect(authFailureMessage({ status: 502 }, labels)).toBe(
+			labels.networkError,
+		);
+	});
+
 	test("maps a proxy error body with no status to the network error", () => {
 		expect(
 			authFailureMessage({ error: "Failed to proxy request" }, labels),

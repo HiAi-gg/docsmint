@@ -8,6 +8,7 @@ export type AuthClientFailure =
 			message?: string;
 			status?: number;
 			statusCode?: number;
+			statusText?: string;
 			error?: string;
 			code?: string;
 	  }
