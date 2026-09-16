@@ -990,13 +990,18 @@ describe("live category-scoped public surfaces", () => {
 		const related = await docs.getRelatedDocuments(ids.docDirectA);
 		expect(related.related.map(({ docId }) => docId)).toEqual([ids.docNestedA]);
 		const graph = await docs.graphSearch({
-			query: graphEntity,
+			query: "graph neighbor",
 			docIds: [ids.docDirectA],
 			maxResults: 10,
 		});
 		expect(graph.relatedDocs.map(({ docId }) => docId)).toEqual([
 			ids.docNestedA,
 		]);
+		const unmatchedGraph = await docs.graphSearch({
+			query: "unmatchedgraphquery", docIds: [ids.docDirectA], maxResults: 10,
+		});
+		expect(unmatchedGraph.relatedDocs).toEqual([]);
+		expect(unmatchedGraph.entities.length).toBeGreaterThan(0);
 
 		expect((await docs.listVersions(ids.docDirectA)).map(({ id }) => id)).toEqual([
 			ids.snapshotA,
