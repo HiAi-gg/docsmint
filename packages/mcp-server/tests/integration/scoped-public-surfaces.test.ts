@@ -1013,10 +1013,6 @@ describe("live category-scoped public surfaces", () => {
 			embeddingStatus: "ready",
 			searchable: true,
 		});
-		expect(await docs.refreshDocumentIndex(ids.docDirectA)).toMatchObject({
-			documentId: ids.docDirectA,
-		});
-
 		const created = await docs.createDoc(
 			{ title: "SDK scoped create", categoryId: ids.categoryA },
 			{ idempotencyKey: `sdk-create-${suffix}` },
@@ -1031,6 +1027,18 @@ describe("live category-scoped public surfaces", () => {
 			categoryId: null,
 		});
 		expect(moved.folderId).toBe(ids.folderNestedA);
+
+		// Refresh only a disposable CRUD document. The seeded graph fixtures
+		// are shared with the next retrieval test; a real refresh activates a
+		// new generation while graph extraction is disabled in this suite.
+		// Refreshing docDirectA would correctly invalidate its seeded AGE edges.
+		expect(await docs.refreshDocumentIndex(created.id)).toMatchObject({
+			documentId: created.id,
+		});
+		expect(await docs.getDocumentIndexStatus(ids.docDirectA)).toMatchObject({
+			activeGenerationId: ids.generationDirect,
+			searchable: true,
+		});
 
 		await expect(
 			docs.getDoc(ids.docOther),
