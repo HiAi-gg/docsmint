@@ -24,6 +24,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     "recursive folder category resolution executes on PostgreSQL",
     "occupied replay keys distinguish authorized replay from a non-disclosing conflict",
     "authorizes grandparent-inherited category documents and excludes foreign graph IDs",
+    "query changes the matching graph neighbors and ranks exact titles first",
     "finds direct and two-level effective-category documents in owner and workspace tenants",
     "holds deterministic descendant locks through the document snapshot",
     "keeps concurrent observers isolated and preserves client ownership",
@@ -41,7 +42,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     expect(workflow).toContain(suite);
   }
   expect(workflow).toContain(
-    "Required integration behavior cases: 26; skipped: 0",
+    "Required integration behavior cases: 27; skipped: 0",
   );
 });
 
@@ -94,7 +95,7 @@ test("tagged web publication receives the validated canonical PWA identity", asy
   const validator = await Bun.file(
     new URL("../../../scripts/release-version-validator.ts", import.meta.url),
   ).text();
-  const canonicalDeploymentId = "docsmint-oss-0.8.6";
+  const canonicalDeploymentId = "docsmint-oss-0.8.7";
 
   expect(vite).toContain(canonicalDeploymentId);
   expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);

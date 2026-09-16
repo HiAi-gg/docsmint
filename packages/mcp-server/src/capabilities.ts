@@ -22,6 +22,10 @@ export const capabilityCatalog = {
     'search_knowledge_graph',
     'get_document_index_status',
     'refresh_document_index',
+    'delete_document',
+    'delete_folder',
+    'delete_category',
+    'restore_document_version',
   ] as const,
   prompts: ['organize_workspace', 'research_workspace'] as const,
   resources: [
@@ -43,6 +47,7 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'list_categories',
     {
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
         'List categories visible to the API key. Category keys receive only their bound category.',
       inputSchema: z.object({}),
@@ -52,11 +57,12 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'create_category',
     {
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
       description:
         'Create a category. Requires a workspace key with write access; category keys cannot mutate categories.',
       inputSchema: z.object({
-        name: z.string().min(1),
-        description: z.string().optional(),
+        name: z.string().min(1).describe('Non-empty display name for the new category, for example Project notes.'),
+        description: z.string().optional().describe('Optional plain-text explanation of the category purpose; omit if not needed.'),
       }),
     },
     wrapHandler(async (input: { name: string; description?: string }) =>
@@ -66,6 +72,7 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'list_tags',
     {
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description: 'List tags visible in the workspace or bound category.',
       inputSchema: z.object({}),
     },
@@ -74,10 +81,11 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'get_related_documents',
     {
-      description: 'Traverse the knowledge graph from one authorized document.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      description: 'Find graph-related documents from one readable document, without a text query. Returns related documents and relation metadata. Use search_knowledge_graph to filter graph neighbors by text, or search_documents for normal retrieval. Results stay within the active scope and may be empty when graph data is unavailable.',
       inputSchema: z.object({
-        documentId: z.string().min(1),
-        limit: z.number().int().min(1).max(50).optional(),
+        documentId: z.string().min(1).describe('Document UUID returned by search_documents or list_documents; must be readable in the active scope.'),
+        limit: z.number().int().min(1).max(50).optional().describe('Maximum related documents to return, from 1 to 50. Omit to use the server default.'),
       }),
     },
     wrapHandler(async ({ documentId, limit }: { documentId: string; limit?: number }) =>
@@ -87,12 +95,13 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'search_knowledge_graph',
     {
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       description:
-        'Search connected knowledge using authorized seed documents. Category keys may use only documents in their category.',
+        'Retrieve graph context from one or more readable seed documents and filter/rank related documents by query text. Returns seed entities and relatedDocs; use search_documents first to obtain seed IDs. Returned documents stay within the active category. Graph data may be empty when unavailable.',
       inputSchema: z.object({
-        query: z.string().min(1).max(1000),
-        docIds: z.array(z.string().min(1)).min(1),
-        limit: z.number().int().min(1).max(50).optional(),
+        query: z.string().min(1).max(1000).describe('Search text used to filter and rank graph-related documents. Preserve the original query language.'),
+        docIds: z.array(z.string().min(1)).min(1).max(50).describe('Between 1 and 50 authorized document UUIDs from search_documents or list_documents to use as graph traversal seeds.'),
+        limit: z.number().int().min(1).max(50).optional().describe('Maximum related documents to return, from 1 to 50. Omit to use the server default.'),
       }),
     },
     wrapHandler(async (input: { query: string; docIds: string[]; limit?: number }) =>
@@ -102,8 +111,9 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'get_document_index_status',
     {
-      description: 'Read the current indexing and knowledge-pipeline status of a document.',
-      inputSchema: z.object({ documentId: z.string().min(1) }),
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      description: 'Read a document indexing and knowledge-pipeline status without starting any work. Use after a save or refresh_document_index to inspect progress and failures. Requires read access to the document.',
+      inputSchema: z.object({ documentId: z.string().min(1).describe('Document UUID returned by search_documents or list_documents; must be readable in the active scope.') }),
     },
     wrapHandler(async ({ documentId }: { documentId: string }) =>
       client.getDocumentIndexStatus(documentId)
@@ -112,8 +122,9 @@ export function registerExtendedCapabilities(
   server.registerTool(
     'refresh_document_index',
     {
-      description: 'Request reindexing after a document or metadata change. Requires write access.',
-      inputSchema: z.object({ documentId: z.string().min(1) }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      description: 'Queue document reindexing and return the server acknowledgment; processing completes asynchronously. Requires write access. Normal saves already schedule indexing; use this for an explicit refresh and inspect progress with get_document_index_status.',
+      inputSchema: z.object({ documentId: z.string().min(1).describe('Document UUID returned by search_documents or list_documents; must be readable in the active scope.') }),
     },
     wrapHandler(async ({ documentId }: { documentId: string }) =>
       client.refreshDocumentIndex(documentId)

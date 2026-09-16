@@ -990,13 +990,18 @@ describe("live category-scoped public surfaces", () => {
 		const related = await docs.getRelatedDocuments(ids.docDirectA);
 		expect(related.related.map(({ docId }) => docId)).toEqual([ids.docNestedA]);
 		const graph = await docs.graphSearch({
-			query: graphEntity,
+			query: "graph neighbor",
 			docIds: [ids.docDirectA],
 			maxResults: 10,
 		});
 		expect(graph.relatedDocs.map(({ docId }) => docId)).toEqual([
 			ids.docNestedA,
 		]);
+		const unmatchedGraph = await docs.graphSearch({
+			query: "unmatchedgraphquery", docIds: [ids.docDirectA], maxResults: 10,
+		});
+		expect(unmatchedGraph.relatedDocs).toEqual([]);
+		expect(unmatchedGraph.entities.length).toBeGreaterThan(0);
 
 		expect((await docs.listVersions(ids.docDirectA)).map(({ id }) => id)).toEqual([
 			ids.snapshotA,
@@ -1008,10 +1013,6 @@ describe("live category-scoped public surfaces", () => {
 			embeddingStatus: "ready",
 			searchable: true,
 		});
-		expect(await docs.refreshDocumentIndex(ids.docDirectA)).toMatchObject({
-			documentId: ids.docDirectA,
-		});
-
 		const created = await docs.createDoc(
 			{ title: "SDK scoped create", categoryId: ids.categoryA },
 			{ idempotencyKey: `sdk-create-${suffix}` },
@@ -1026,6 +1027,18 @@ describe("live category-scoped public surfaces", () => {
 			categoryId: null,
 		});
 		expect(moved.folderId).toBe(ids.folderNestedA);
+
+		// Refresh only a disposable CRUD document. The seeded graph fixtures
+		// are shared with the next retrieval test; a real refresh activates a
+		// new generation while graph extraction is disabled in this suite.
+		// Refreshing docDirectA would correctly invalidate its seeded AGE edges.
+		expect(await docs.refreshDocumentIndex(created.id)).toMatchObject({
+			documentId: created.id,
+		});
+		expect(await docs.getDocumentIndexStatus(ids.docDirectA)).toMatchObject({
+			activeGenerationId: ids.generationDirect,
+			searchable: true,
+		});
 
 		await expect(
 			docs.getDoc(ids.docOther),
@@ -1697,8 +1710,15 @@ describe("live category-scoped public surfaces", () => {
 		90_000,
 	);
 
-	test("executes all 17 MCP tools through one sanitized assertion-bound public client", async () => {
+	test("executes all 21 MCP tools through one sanitized assertion-bound public client", async () => {
 		const assertion = await createAssertion(["read", "edit", "write"]);
+		const disposableFolder = crypto.randomUUID();
+		const disposableDocument = crypto.randomUUID();
+		await database`INSERT INTO folders (id, owner_id, workspace_id, category_id, name)
+			VALUES (${disposableFolder}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP disposable folder')`;
+		await database`INSERT INTO documents (id, owner_id, workspace_id, category_id, title, content)
+			VALUES (${disposableDocument}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP disposable document', 'temporary')`;
+
 		const observedRequests: Array<{
 			url: string;
 			method: string;
@@ -1818,10 +1838,21 @@ describe("live category-scoped public surfaces", () => {
 				name: "refresh_document_index",
 				arguments: { documentId: ids.docDirectA },
 			},
+			{ name: "delete_document", arguments: { id: disposableDocument } },
+			{ name: "delete_folder", arguments: { id: disposableFolder } },
+			{
+				name: "delete_category",
+				arguments: { id: ids.categoryA },
+				error: { status: 403, code: "http_403" },
+			},
+			{
+				name: "restore_document_version",
+				arguments: { documentId: ids.docDirectA, versionId: ids.versionA },
+			},
 		];
-		expect(toolCases.map(({ name }) => name)).toEqual([
-			...capabilityCatalog.tools,
-		]);
+		expect(toolCases.map(({ name }) => name).sort()).toEqual(
+			[...capabilityCatalog.tools].sort(),
+		);
 
 		for (const tool of toolCases) {
 			const before = observedRequests.length;
@@ -1847,7 +1878,7 @@ describe("live category-scoped public surfaces", () => {
 			}
 		}
 
-		expect(observedRequests).toHaveLength(17);
+		expect(observedRequests).toHaveLength(21);
 		expect(observedRequests.every(({ method }) => method !== "OPTIONS")).toBe(
 			true,
 		);
@@ -1868,6 +1899,95 @@ describe("live category-scoped public surfaces", () => {
 		});
 		expect(catalog.contents).toHaveLength(1);
 		expect(observedRequests.length - beforeCatalog).toBe(3);
+	});
+
+	test("enforces lifecycle permissions and scope through MCP without losing document history", async () => {
+		const folderId = crypto.randomUUID();
+		const documentId = crypto.randomUUID();
+		const versionId = crypto.randomUUID();
+		const categoryId = crypto.randomUUID();
+		await database`INSERT INTO folders (id, owner_id, workspace_id, category_id, name)
+			VALUES (${folderId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'Lifecycle folder')`;
+		await database`INSERT INTO documents (id, owner_id, workspace_id, folder_id, category_id, title, content)
+			VALUES (${documentId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${folderId}::uuid, ${ids.categoryA}::uuid, 'Lifecycle document', 'current content')`;
+		await database`INSERT INTO versions (id, document_id, workspace_id, content, created_by)
+			VALUES (${versionId}::uuid, ${documentId}::uuid, ${workspaceA}, 'prior content', ${ids.actorA}::uuid)`;
+		await database`INSERT INTO categories (id, owner_id, workspace_id, name)
+			VALUES (${categoryId}::uuid, ${ids.actorA}::uuid, ${workspaceA}, 'Lifecycle category')`;
+
+		async function withMcp(
+			permissions: readonly WorkspaceResourcePermission[] | undefined,
+			run: (client: Client) => Promise<void>,
+		) {
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			const server = createDocsmintMcpServer({
+				docsClient: new DocsClient({ baseUrl, apiKey: serviceApiKey, retries: 1 }),
+				requestContext: { workspaceAssertion: await createAssertion(permissions) },
+			});
+			const client = new Client({ name: "lifecycle-contract", version: "1.0.0" });
+			await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+			try { await run(client); } finally { await client.close(); await server.close(); }
+		}
+		async function call(client: Client, name: string, args: Record<string, unknown>, status?: number) {
+			const result = await client.callTool({ name, arguments: args });
+			if (status) {
+				expect(result.isError, name).toBe(true);
+				const body = JSON.parse((result.content as Array<{ text?: string }>)[0]?.text ?? "{}");
+				expect(body.status, name).toBe(status);
+			} else {
+				expect(result.isError, name).not.toBe(true);
+			}
+		}
+		for (const permission of ["read", "edit"] as const) {
+			await withMcp([permission], async (client) => {
+				await call(client, "delete_document", { id: documentId }, 403);
+				await call(client, "delete_folder", { id: folderId }, 403);
+				await call(client, "delete_category", { id: categoryId }, 403);
+			});
+		}
+		for (const permission of ["read", "write"] as const) {
+			await withMcp([permission], async (client) => {
+				await call(client, "restore_document_version", { documentId, versionId }, 404);
+			});
+		}
+		const [unchanged] = await database`SELECT content, deleted_at, folder_id FROM documents WHERE id = ${documentId}::uuid`;
+		expect(unchanged).toMatchObject({ content: "current content", deleted_at: null, folder_id: folderId });
+		await withMcp(["edit"], async (client) => {
+			await call(client, "restore_document_version", { documentId, versionId: ids.versionA }, 404);
+			for (const foreignId of [ids.docOther, ids.docForeign]) {
+				await call(client, "restore_document_version", { documentId: foreignId, versionId }, 404);
+			}
+			await call(client, "restore_document_version", { documentId, versionId });
+		});
+		const [restored] = await database`SELECT content, deleted_at FROM documents WHERE id = ${documentId}::uuid`;
+		expect(restored?.content).toBe("prior content");
+		expect(restored?.deleted_at).toBeNull();
+		const history = await database`SELECT content FROM versions WHERE document_id = ${documentId}::uuid`;
+		expect(history.map((row) => row.content)).toContain("current content");
+		await withMcp(["write"], async (client) => {
+			for (const foreignId of [ids.docOther, ids.docForeign]) {
+				await call(client, "delete_document", { id: foreignId }, 404);
+			}
+			for (const foreignId of [ids.folderOther, ids.folderForeign]) {
+				await call(client, "delete_folder", { id: foreignId }, 403);
+			}
+			await call(client, "delete_category", { id: ids.categoryA }, 403);
+			await call(client, "delete_folder", { id: folderId });
+			const [detached] = await database`SELECT folder_id, deleted_at FROM documents WHERE id = ${documentId}::uuid`;
+			expect(detached?.folder_id).toBeNull();
+			expect(detached?.deleted_at).toBeNull();
+			await call(client, "delete_document", { id: documentId });
+		});
+		const [deleted] = await database`SELECT deleted_at FROM documents WHERE id = ${documentId}::uuid`;
+		expect(deleted?.deleted_at).toBeInstanceOf(Date);
+		const retained = await database`SELECT id FROM versions WHERE id = ${versionId}::uuid`;
+		expect(retained).toHaveLength(1);
+		await withMcp(undefined, async (client) => {
+			await call(client, "delete_category", { id: ids.categoryForeign }, 404);
+			await call(client, "delete_category", { id: categoryId });
+		});
+		const removed = await database`SELECT id FROM categories WHERE id = ${categoryId}::uuid`;
+		expect(removed).toHaveLength(0);
 	});
 
 	test("preserves structured SDK conflict errors", async () => {

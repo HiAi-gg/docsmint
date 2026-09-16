@@ -96,7 +96,7 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 
 ## MCP Features
 
-### Tools (17)
+### Tools (21)
 
 - `search_documents`: Hybrid search (full-text + semantic pgvector).
 - `get_document`: Fetch document content and metadata.
@@ -116,6 +116,26 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 - `get_document_index_status`: Read indexing and knowledge-pipeline status.
 - `refresh_document_index`: Request reindexing after a document or metadata change.
 
+- `delete_document`: Move a writable document to trash; no permanent purge.
+- `delete_folder`: Delete a writable folder while preserving its documents.
+- `delete_category`: Delete a category using full workspace write access; category keys are denied.
+- `restore_document_version`: Restore document content from a version or snapshot with edit access.
+
+### Lifecycle permissions
+
+| Operation | Required permission | Effect |
+|---|---|---|
+| Delete document | `write` in its effective category | Soft-delete to trash; content and version history remain stored. |
+| Delete folder | `write` in its effective category | Remove folder; direct child folders and documents are detached, not deleted. |
+| Delete category | Full workspace `write` | Detach category membership; preserve content and queue reindexing. Category keys cannot do this. |
+| Restore version | `edit` on the document | Back up current content, restore selected version content, queue indexing. Does not change title or placement. |
+
+Use UUIDs returned by the listing/history tools. A snapshot is a version with a label:
+pass its version ID to `restore_document_version`. Restoration does not recover
+trashed documents. Lifecycle tools advertise destructive annotations; authorization
+is enforced by the REST API, not by those advisory client hints. Failed requests
+return MCP `isError` with the REST status; they never acknowledge a successful deletion.
+
 ### Prompts (2)
 
 - `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
@@ -130,7 +150,7 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 ### Skills (1)
 
 - [`docsmint-document-manager`](https://github.com/HiAi-gg/docsmint/blob/main/skills/docsmint-document-manager/SKILL.md):
-  create, organize, edit, and research DocsMint documents through the 17 MCP
+  create, organize, edit, and research DocsMint documents through the 21 MCP
   tools.
 
 ## Tools and REST routes
@@ -154,6 +174,10 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 | `search_knowledge_graph` | `POST /api/graph/search` |
 | `get_document_index_status` | `GET /api/documents/:id/index-status` |
 | `refresh_document_index` | `POST /api/documents/:id/index/refresh` |
+| `delete_document` | `DELETE /api/documents/:id` |
+| `delete_folder` | `DELETE /api/folders/:id` |
+| `delete_category` | `DELETE /api/categories/:id` |
+| `restore_document_version` | `POST /api/documents/:id/versions/:versionId/restore` |
 
 ## Prompts and resources
 

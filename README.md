@@ -70,19 +70,21 @@ bridge to your running deployment, not a server installer. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.6?
+## What's new in 0.8.7?
 
-This patch completes the publication improvements from 0.8.5:
+Agents can now complete more document workflows without leaving MCP:
 
-- Corrected Docker Hub description updates and direct Docker links in LobeHub.
-- Clearer guides for choosing DocsMint Cloud or a self-hosted workspace.
-- One public package, `@hiai-gg/docsmint`, for the SDK, CLI, and MCP bridge.
-- A Docker image guide that distinguishes the API, web application, and Caddy proxy.
-- Consistent release notes and package documentation, with links that also work on npm.
+- Move documents to trash, remove folders or categories, and restore saved versions.
+- Keep changes within workspace/category permissions; version restoration requires edit access.
+- Discover clearer tool descriptions, parameter guidance, and destructive-operation annotations.
+- Apply GraphRAG query text and related-document result limits consistently.
 
-No database migration or public API change is required. Read the
-[release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.6),
-[changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md), or [roadmap](https://github.com/HiAi-gg/docsmint/blob/main/docs/ROADMAP.md).
+The MCP surface grows additively from 17 to 21 tools. Existing tool names remain
+available. No database migration is required. Hosted clients receive these tools
+when their DocsMint host adopts this release.
+
+Read the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.7)
+and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
 
@@ -134,7 +136,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.6`, `web-v0.8.6`, and `caddy-v0.8.6` for
+Use versioned tags `api-v0.8.7`, `web-v0.8.7`, and `caddy-v0.8.7` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
@@ -219,7 +221,7 @@ command and configuration precedence.
 ## Connect an MCP client
 
 Give agents a secure path to search, read, and maintain your knowledge without
-database or filesystem access. DocsMint publishes 17 tools plus ready-made
+database or filesystem access. DocsMint publishes 21 tools plus ready-made
 research prompts, scoped resources, and a document-manager skill.
 
 ### Hosted DocsMint

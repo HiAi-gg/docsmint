@@ -30,7 +30,15 @@ describe('DocsMint MCP protocol discovery', () => {
     const guide = await client.readResource({ uri: 'docsmint://guide/search' });
 
     expect(tools.tools.map((tool) => tool.name)).toEqual([...capabilityCatalog.tools]);
-    expect(tools.tools).toHaveLength(17);
+    expect(tools.tools).toHaveLength(21);
+    const lobeManifest = await Bun.file(new URL('../../../lhm.plugin.json', import.meta.url)).json();
+    expect(lobeManifest.tools).toEqual(tools.tools);
+    for (const tool of tools.tools) {
+      expect(tool.annotations?.readOnlyHint).toBeBoolean();
+      for (const property of Object.values(tool.inputSchema.properties ?? {})) {
+        expect((property as { description?: string }).description?.trim().length).toBeGreaterThan(10);
+      }
+    }
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([
       'organize_workspace',
       'research_workspace',
