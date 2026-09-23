@@ -42,17 +42,21 @@ instructions, and verify the connection. Hosted MCP follows your plan and
 workspace permissions. Prefer workspace-bound or category-scoped credentials.
 
 The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capable
-clients discover authorization and open DocsMint login and consent in the browser.
-Choose your workspace and explicit scopes; the authorization code uses PKCE S256.
-Access tokens expire after one hour; reconnect through browser authorization when
-they expire (no refresh tokens). API-key clients
-send `Authorization: Bearer <key>`. Credentials cannot create or elevate other
-credentials; lifecycle management belongs to the signed-in browser session.
+clients discover the hosted resource and authorization-server metadata; the current
+authorization metadata advertises client registration at
+`https://docsmint.com/oauth/register` (DCR). The hosted flow uses authorization-code
+PKCE S256; metadata advertises only the `authorization_code` grant and no token
+endpoint client authentication. CIMD is not part of the current contract. Browser consent binds the
+one-hour opaque access token to the selected workspace, optional category, and
+requested scopes. Refresh tokens are not issued. API-key clients can instead send
+`Authorization: Bearer <key>` with an MCP/API credential created in the authenticated
+browser UI. Credentials cannot create or elevate other credentials; lifecycle
+management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
 `npx --yes --package @hiai-gg/docsmint docsmint-mcp`. The npm package is a stdio
-bridge to your running deployment, not a server installer. See the
+bridge to your own API, not a server installer or hosted OAuth server. See the
 [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for client configuration.
 
 ## Why DocsMint?
@@ -70,20 +74,19 @@ bridge to your running deployment, not a server installer. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.7?
+## What's new in 0.8.8?
 
-Agents can now complete more document workflows without leaving MCP:
+- Clarify that hosted MCP authorization belongs to DocsMint Cloud and that the
+  stdio bridge uses an API key to connect to your own DocsMint API.
+- Synchronize MCP Registry and LobeHub descriptions with the current Cloud
+  authorization contract and the self-hosted boundary.
+- Keep the published catalog aligned with the implementation: 21 tools,
+  2 prompts, and 3 resources, with regression checks for route and metadata drift.
+- Update vulnerability reporting details and clarify that OAuth protocol flaws
+  remain in scope for the product where they occur.
 
-- Move documents to trash, remove folders or categories, and restore saved versions.
-- Keep changes within workspace/category permissions; version restoration requires edit access.
-- Discover clearer tool descriptions, parameter guidance, and destructive-operation annotations.
-- Apply GraphRAG query text and related-document result limits consistently.
-
-The MCP surface grows additively from 17 to 21 tools. Existing tool names remain
-available. No database migration is required. Hosted clients receive these tools
-when their DocsMint host adopts this release.
-
-Read the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.7)
+No MCP capabilities, existing integrations, or database schema change in this
+release. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.8)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -136,7 +139,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.7`, `web-v0.8.7`, and `caddy-v0.8.7` for
+Use versioned tags `api-v0.8.8`, `web-v0.8.8`, and `caddy-v0.8.8` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.

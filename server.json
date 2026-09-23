@@ -10,7 +10,7 @@
     "id": "1249550690",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.8.7",
+  "version": "0.8.8",
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
@@ -30,7 +30,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -44,12 +44,12 @@
       "environmentVariables": [
         {
           "name": "HIAI_DOCS_URL",
-          "description": "Base URL of your running self-hosted DocsMint API. For managed Cloud use https://docsmint.com/mcp.",
+          "description": "Base URL of your running self-hosted DocsMint REST API, for example http://localhost:50700. For Cloud MCP, use the Streamable HTTP remote below.",
           "default": "http://localhost:50700"
         },
         {
           "name": "HIAI_DOCS_API_KEY",
-          "description": "Create an API key in your self-hosted DocsMint browser UI. Prefer workspace-bound or category-scoped credentials.",
+          "description": "Create an API key in your self-hosted DocsMint browser UI. The stdio bridge uses it only with your own API; it does not install the Cloud OAuth server. Prefer workspace-bound or category-scoped credentials.",
           "isRequired": true,
           "isSecret": true
         }
@@ -63,7 +63,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "DocsMint Cloud: no self-hosting required. OAuth-capable clients use browser authorization discovered at the hosted endpoint. API-key clients: sign up or log in at https://docsmint.com/mcp/connect?source=mcp_registry and create a workspace-bound or category-scoped MCP/API credential in the authenticated browser UI. Enter Bearer <key>. Credential management requires a browser session; MCP cannot create or elevate credentials. Self-hosted users should use the stdio package.",
+          "description": "DocsMint Cloud remote at https://docsmint.com/mcp; no self-hosted server is required. Discovery advertises /oauth/authorize, /oauth/token, and active DCR at https://docsmint.com/oauth/register. Metadata supports the code response type, authorization_code grant only, no token-endpoint client authentication, and PKCE S256; CIMD is not part of the contract. Access tokens last one hour, have no refresh token, and are bound by browser consent to a workspace, optional category, and requested scopes. API-key clients can use Authorization: Bearer <key> with a workspace-bound or category-scoped credential created at https://docsmint.com/mcp/connect?source=mcp_registry. Credential management requires a browser session. For self-hosting, use the stdio package with your own API and API key; it does not install the Cloud OAuth server.",
           "isRequired": true,
           "isSecret": true
         },
@@ -83,7 +83,7 @@
       "licenseFile": "https://github.com/HiAi-gg/docsmint/blob/main/LICENSE",
       "documentationUrl": "https://docsmint.com/mcp/connect?source=mcp_registry",
       "catalog": {
-        "tools": 17,
+        "tools": 21,
         "prompts": 2,
         "resources": 3
       }

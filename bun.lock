@@ -28,7 +28,7 @@
     },
     "backend": {
       "name": "@hiai-docs/backend",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "dependencies": {
         "@aws-sdk/client-s3": "^3.1121.0",
         "@aws-sdk/s3-request-presigner": "^3.1121.0",
@@ -66,7 +66,7 @@
     },
     "frontend": {
       "name": "@hiai-docs/frontend",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "dependencies": {
         "@fontsource-variable/inter": "^5.3.0",
         "@hiai-gg/hiai-ui": "^0.1.3",
@@ -123,7 +123,7 @@
         "@tailwindcss/vite": "^4.3.3",
         "@types/bun": "^1.4.1",
         "@types/node": "25.9.3",
-        "devalue": "^5.8.1",
+        "devalue": "^5.9.4",
         "esm-env": "^1.2.2",
         "fake-indexeddb": "^6.2.5",
         "nanostores": "^1.4.0",
@@ -137,7 +137,7 @@
     },
     "packages/cli": {
       "name": "@hiai-docs/cli",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "bin": {
         "hiai-docs": "./src/index.ts",
       },
@@ -151,7 +151,7 @@
     },
     "packages/db": {
       "name": "@hiai-docs/db",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "dependencies": {
         "drizzle-orm": "^0.45.2",
         "postgres": "^3.4.9",
@@ -165,7 +165,7 @@
     },
     "packages/mcp-server": {
       "name": "@hiai-docs/mcp-server",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "bin": {
         "hiai-docs-mcp": "./src/index.ts",
       },
@@ -182,7 +182,7 @@
     },
     "packages/sdk": {
       "name": "@hiai-docs/sdk",
-      "version": "0.8.7",
+      "version": "0.8.8",
       "devDependencies": {
         "@types/bun": "^1.4.1",
         "@types/node": "25.9.3",
@@ -1003,7 +1003,7 @@
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
-    "devalue": ["devalue@5.8.1", "", {}, "sha512-4CXDYRBGqN+57wVJkuXBYmpAVUSg3L6JAQa/DFqm238G73E1wuyc/JhGQJzN7vUf/CMphYau2zXbfWzDR5aTEw=="],
+    "devalue": ["devalue@5.9.4", "", {}, "sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg=="],
 
     "devlop": ["devlop@1.1.0", "", { "dependencies": { "dequal": "^2.0.0" } }, "sha512-RWmIqhcFf1lRYBvNmr7qTNuyCt/7/ns2jbpp1+PalgE/rDQcBT0fioSMUpJ93irlUhC5hrg4cYqe6U+0ImW0rA=="],
 

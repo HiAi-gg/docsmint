@@ -4,20 +4,25 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.7.x   | :white_check_mark: |
-| 0.6.x   | :x:                |
-| < 0.6   | :x:                |
+| 0.8.x   | :white_check_mark: |
+| < 0.8   | :x:                |
 
-Security fixes land on the current minor line. Upgrade to 0.7.x for supported
+Security fixes land on the current minor line. Upgrade to 0.8.x for supported
 self-hosted deployments.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in DocsMint, please report it responsibly.
+This policy covers vulnerabilities in the DocsMint OSS source, distribution, and
+self-hosted deployments. The DocsMint Cloud hosted service at `docsmint.com`,
+including its hosted MCP authorization service, is maintained separately and is
+not part of the OSS self-hosted distribution. Report Cloud vulnerabilities under
+the [DocsMint Cloud security policy](https://docsmint.com/security).
+
+For OSS or self-hosted vulnerabilities, please report responsibly.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **hiai@webs.cool**
+Instead, please email: **docs@webs.cool**
 
 ### What to include
 
@@ -43,13 +48,21 @@ In-scope vulnerabilities include:
 - Path traversal or file upload abuse
 - Rate limiting bypass on public endpoints
 - Exposure of secrets or credentials
+- OAuth or other authorization-protocol flaws in an affected DocsMint component,
+  including redirect or client binding, PKCE validation, consent bypass,
+  scope or workspace escalation, and token confusion
 
 ### Out of scope
 
-- Social engineering attacks
+- Standalone social engineering or credential harvesting that does not rely on a
+  technical product flaw
 - Denial of service (DoS)
 - Issues in third-party dependencies (report upstream)
 - Issues requiring physical access to the server
+
+A phishing step does not make a technical authorization flaw out of scope. Report
+protocol weaknesses through the policy for the affected product; Cloud MCP
+authorization-service findings belong to the linked Cloud policy.
 
 ## Security Architecture
 

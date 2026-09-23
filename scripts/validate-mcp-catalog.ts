@@ -1,3 +1,5 @@
+import { capabilityCatalog } from "../packages/mcp-server/src/capabilities";
+
 type JsonObject = Record<string, unknown>;
 
 function asObject(value: unknown, label: string): JsonObject {
@@ -70,6 +72,17 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	}
 	if (meta.documentationUrl !== "https://docsmint.com/mcp/connect?source=mcp_registry") {
 		throw new Error("server.json documentationUrl must be the hosted MCP docs");
+	}
+	const catalog = asObject(meta.catalog, "server.json catalog");
+	const expectedCatalog = {
+		tools: capabilityCatalog.tools.length,
+		prompts: capabilityCatalog.prompts.length,
+		resources: capabilityCatalog.resources.length,
+	};
+	for (const key of ["tools", "prompts", "resources"] as const) {
+		if (catalog[key] !== expectedCatalog[key]) {
+			throw new Error(`server.json catalog ${key} must match the implementation`);
+		}
 	}
 
 	const remotes = asArray(registry.remotes, "server.json remotes");

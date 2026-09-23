@@ -58,11 +58,22 @@ describe('DocsMint MCP catalog contract', () => {
     expect(readme).toContain('[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)');
     expect(readme).toContain('"command": "npx"');
     expect(readme).toContain('"args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"]');
+    expect(publishedPackage.description).toContain('self-hosted MCP stdio bridge');
+    expect(publishedPackage.description).toContain('https://docsmint.com/mcp');
     expect(mcpReadme).toContain('"command": "npx"');
     expect(mcpReadme).toContain('npx --yes --package @hiai-gg/docsmint docsmint-mcp');
     expect(mcpReadme).toContain('## Option A — DocsMint Cloud (recommended)');
     expect(mcpReadme).toContain('https://docsmint.com/mcp');
+    expect(mcpReadme).toContain('https://docsmint.com/oauth/register');
+    expect(mcpReadme).toContain('CIMD is not part of the current Cloud contract.');
+    expect(mcpReadme).toContain('only the');
+    expect(mcpReadme).toContain('`authorization_code` grant');
+    expect(mcpReadme).toContain('with `S256`.');
+    expect(mcpReadme).toContain('No refresh tokens are');
+    expect(mcpReadme).toContain('issued; authorize again after expiry.');
     expect(mcpReadme).toContain('## Option B — Self-hosted stdio bridge (advanced)');
+    expect(mcpReadme).toContain('not install or expose the DocsMint Cloud');
+    expect(mcpReadme).toContain('OAuth authorization server.');
     expect(mcpReadme).toContain('### Run with Bun');
     expect(mcpReadme).toContain('### Run with NPX');
     expect(mcpReadme).toContain('### Run from a local checkout');
@@ -121,11 +132,30 @@ describe('DocsMint MCP catalog contract', () => {
         },
       ],
     });
+    const cloudAuthDescription = registryManifest.remotes[0].headers.find(
+      (header: { name: string }) => header.name === 'Authorization',
+    ).description;
+    expect(cloudAuthDescription).toContain('DCR at https://docsmint.com/oauth/register');
+    expect(cloudAuthDescription).toContain('authorization_code grant only');
+    expect(cloudAuthDescription).toContain('no token-endpoint client authentication');
+    expect(cloudAuthDescription).toContain('API-key clients can use Authorization: Bearer <key>');
+    const stdioEnvironment = registryManifest.packages[0].environmentVariables;
+    expect(stdioEnvironment.find((entry: { name: string }) => entry.name === 'HIAI_DOCS_URL').description)
+      .toContain('Cloud MCP, use the Streamable HTTP remote below');
+    expect(stdioEnvironment.find((entry: { name: string }) => entry.name === 'HIAI_DOCS_API_KEY').description)
+      .toContain('does not install the Cloud OAuth server');
     expect(publishedPackage.license).toBe('Apache-2.0');
     expect(registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided']).toMatchObject({
       license: 'Apache-2.0',
       licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
       documentationUrl: 'https://docsmint.com/mcp/connect?source=mcp_registry',
+    });
+    expect(
+      registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided'].catalog,
+    ).toEqual({
+      tools: capabilityCatalog.tools.length,
+      prompts: capabilityCatalog.prompts.length,
+      resources: capabilityCatalog.resources.length,
     });
   });
 
@@ -141,6 +171,10 @@ describe('DocsMint MCP catalog contract', () => {
       cloudEndpoint: 'https://docsmint.com/mcp',
       homepage: 'https://docsmint.com/mcp/connect?source=lobehub_mcp',
     });
+    const cloudAndSelfHostedCopy = lobeHubManifest.localizations[0].summary;
+    expect(cloudAndSelfHostedCopy).toContain('DCR at `https://docsmint.com/oauth/register`');
+    expect(cloudAndSelfHostedCopy).toContain('CIMD is not part of the current contract.');
+    expect(cloudAndSelfHostedCopy).toContain('does not install the application, database, or hosted Cloud OAuth server.');
   });
 
   test('uses the stable MCP v2 server packages for the current protocol', async () => {

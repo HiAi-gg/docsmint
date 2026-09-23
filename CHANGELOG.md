@@ -7,6 +7,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-09-23
+
+### Documentation and registry metadata
+
+- Clarify the DocsMint Cloud hosted MCP authorization contract and distinguish
+  it from the self-hosted stdio bridge, which uses the operator's own API key.
+- Synchronize the MCP Registry and LobeHub metadata with Cloud and self-hosted
+  setup guidance, including the current OAuth discovery and DCR behavior.
+- Correct the registry catalog count to the implemented surface: 21 tools,
+  2 prompts, and 3 resources.
+- Update the supported security version line, disclosure address, and scope
+  language while keeping technical authorization-protocol flaws reportable.
+
+### Verification
+
+- Add a focused self-hosted API route contract test for the absence of Cloud
+  MCP authorization-server and DCR endpoints.
+- Validate registry tool, prompt, and resource metadata against the canonical
+  MCP capability catalog.
+- Update the frontend's `devalue` dependency to 5.9.4 to resolve the moderate
+  malformed-input denial-of-service advisory caught by the release audit.
+
+No runtime capability, SDK, CLI, stdio authentication, or database schema
+change is intended by this release.
+
 ## [0.8.7] - 2026-09-16
 
 ### Added

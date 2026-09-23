@@ -5,24 +5,8 @@ import { Elysia } from "elysia";
 import { authMiddleware } from "./api/middleware/auth";
 import { csrfMiddleware } from "./api/middleware/csrf";
 import { healthRateLimiter } from "./api/middleware/rate-limit";
-import { adminRoutes } from "./api/routes/admin";
-import { attachmentRoutes } from "./api/routes/attachments";
-import { authRoutes } from "./api/routes/auth";
-import { categoryRoutes } from "./api/routes/categories";
-import { collaborationRoutes } from "./api/routes/collaboration";
-import { documentRoutes } from "./api/routes/documents";
-import { folderRoutes } from "./api/routes/folders";
-import { graphRoutes } from "./api/routes/graph";
+import { selfHostedApiRoutes } from "./api/register-routes";
 import { createHealthRoutes } from "./api/routes/health";
-import { keysRoutes } from "./api/routes/keys";
-import { metricsRoutes } from "./api/routes/metrics";
-import { pluginsRoutes } from "./api/routes/plugins";
-import { searchRoutes } from "./api/routes/search";
-import { shareRoutes } from "./api/routes/share";
-import { tagRoutes } from "./api/routes/tags";
-import { versionRoutes } from "./api/routes/versions";
-import { visibilityRoutes } from "./api/routes/visibility";
-import { webhookRoutes } from "./api/routes/webhooks";
 import { translateAccountPurgeFencedError } from "./lib/account-purge-fence";
 import { ensureApiKeyOwner } from "./lib/api-key-owner";
 import { startAttachmentUploadCleanup } from "./lib/attachment-upload-cleanup";
@@ -173,7 +157,7 @@ const swaggerConfig = {
 		},
 		info: {
 			title: "DocsMint API",
-			version: "0.8.7",
+			version: "0.8.8",
 			description:
 				"Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
 			contact: { name: "HiAi-gg", url: "https://github.com/HiAi-gg/docsmint" },
@@ -274,23 +258,7 @@ const app = new Elysia()
 	// dependency on plugin hook scope or Bun.serve internals.
 	.use(csrfMiddleware)
 	.use(authMiddleware)
-	.use(authRoutes)
-	.use(tagRoutes)
-	.use(categoryRoutes)
-	.use(attachmentRoutes)
-	.use(shareRoutes)
-	.use(searchRoutes)
-	.use(documentRoutes)
-	.use(folderRoutes)
-	.use(versionRoutes)
-	.use(webhookRoutes)
-	.use(collaborationRoutes)
-	.use(graphRoutes)
-	.use(keysRoutes)
-	.use(pluginsRoutes)
-	.use(visibilityRoutes)
-	.use(adminRoutes)
-	.use(metricsRoutes);
+	.use(selfHostedApiRoutes);
 
 app.listen({
 	port: config.API_PORT,

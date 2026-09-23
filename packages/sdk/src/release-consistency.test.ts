@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const repositoryRoot = new URL("../../../", import.meta.url);
-const releaseVersion = "0.8.7";
+const releaseVersion = "0.8.8";
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), "utf8"));
 }
 
-test("all published and workspace release metadata reports 0.8.7", async () => {
+test("all published and workspace release metadata reports 0.8.8", async () => {
   for (const path of [
     "package.json",
     "package.public.json",
@@ -132,17 +132,17 @@ test("all published and workspace release metadata reports 0.8.7", async () => {
 
   expect(
     await readFile(new URL("frontend/vite.config.ts", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-0.8.7");
+  ).toContain("docsmint-oss-0.8.8");
   expect(
     await readFile(new URL("docker-compose.yml", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-0.8.7");
+  ).toContain("docsmint-oss-0.8.8");
 });
 
-test("workspace and public package metadata share the 0.8.7 product identity", async () => {
+test("workspace and public package metadata share the 0.8.8 product identity", async () => {
   const workspaceManifest = await json("package.json");
   const publicManifest = await json("package.public.json");
   const description =
-    "Managed or self-hosted knowledge workspace for AI agents with hybrid search, reranking, GraphRAG, and scoped document tools.";
+    "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge that uses your API key. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.";
   const repository = {
     type: "git",
     url: "https://github.com/HiAi-gg/docsmint",

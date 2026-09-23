@@ -3,9 +3,11 @@
 Give your AI agents persistent project knowledge. Search, read, create, and
 organize documents with hybrid retrieval, reranking, GraphRAG, and scoped access.
 
-Connect to DocsMint Cloud over HTTP, or use the `docsmint-mcp` stdio bridge with
-your self-hosted deployment. The bridge ships in **`@hiai-gg/docsmint`** alongside
-the TypeScript SDK and CLI.
+**DocsMint Cloud is recommended:** connect to `https://docsmint.com/mcp` over
+Streamable HTTP. No server deployment is required. For an advanced self-hosted
+setup, run your own DocsMint API and connect the `docsmint-mcp` stdio bridge with
+your own API key. The bridge ships in **`@hiai-gg/docsmint`** alongside the
+TypeScript SDK and CLI.
 
 ## Option A — DocsMint Cloud (recommended)
 
@@ -21,11 +23,25 @@ No self-hosted server or local MCP process is required.
 5. Verify the connection with initialize and a permitted tool call.
 
 OAuth-capable clients use the same hosted URL. An unauthenticated request returns
-`401` with a `WWW-Authenticate` discovery link. Authorization uses your existing
-DocsMint account, browser consent and authorization code with PKCE S256. Tokens
-are bound to the hosted resource, expire after one hour and can be revoked in the
-browser UI. No refresh tokens are issued; authorize again after expiry. This is a
-DocsMint Cloud feature, not an OAuth server installed by the stdio npm bridge.
+`401` with a `WWW-Authenticate` link to
+`/.well-known/oauth-protected-resource/mcp`. That resource metadata points to
+`/.well-known/oauth-authorization-server`, which advertises
+`/oauth/authorize`, `/oauth/token`, and DCR registration at
+`https://docsmint.com/oauth/register`. DCR is an active hosted registration path;
+CIMD is not part of the current Cloud contract.
+
+Current authorization metadata advertises the `code` response type, only the
+`authorization_code` grant, no token-endpoint client authentication, and PKCE
+with `S256`. The token endpoint exchanges an authorization code and does not
+issue or accept refresh tokens.
+
+Authorization uses your existing DocsMint account and browser consent with the
+authorization-code grant and required PKCE S256. Consent binds access to the
+selected workspace, optional category, and requested `mcp:read`, `mcp:edit`, and
+`mcp:write` scopes. Opaque bearer tokens are bound to the hosted MCP resource,
+expire after one hour, and can be revoked in the browser UI. No refresh tokens are
+issued; authorize again after expiry. This is a DocsMint Cloud feature, not an
+OAuth server installed by the stdio npm bridge.
 
 API-key clients connect to `https://docsmint.com/mcp` using
 `Authorization: Bearer <key>`. Credential creation, changes, and revocation are
@@ -51,6 +67,8 @@ the package does not deploy DocsMint itself.
 Run DocsMint first, create an API key in its authenticated browser UI, set
 `HIAI_DOCS_URL` to your deployment API URL and `HIAI_DOCS_API_KEY` to that key,
 then start the stdio bridge. Do not use an `/api/health` URL as an MCP endpoint.
+The bridge authenticates to your own DocsMint API with that Bearer API key; it does
+not install or expose the DocsMint Cloud OAuth authorization server.
 
 ### Run with Bun
 

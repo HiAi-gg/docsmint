@@ -696,7 +696,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.7
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-0.8.8
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

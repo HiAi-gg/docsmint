@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "packages/*"
   ],
   "license": "Apache-2.0",
-  "description": "Managed or self-hosted knowledge workspace for AI agents with hybrid search, reranking, GraphRAG, and scoped document tools.",
+  "description": "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge that uses your API key. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"

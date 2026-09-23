@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/frontend",
-  "version": "0.8.7",
+  "version": "0.8.8",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -103,7 +103,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "^1.4.1",
     "@types/node": "25.9.3",
-    "devalue": "^5.8.1",
+    "devalue": "^5.9.4",
     "esm-env": "^1.2.2",
     "fake-indexeddb": "^6.2.5",
     "nanostores": "^1.4.0",
