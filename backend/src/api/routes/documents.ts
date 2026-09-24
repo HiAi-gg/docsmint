@@ -997,7 +997,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}).catch((err) =>
 				logger.warn({ err, documentId: created.id }, "Pipeline enqueue failed"),
 			);
-			invalidateDocListCache(userId);
+			invalidateDocListCache(userId, ctx.workspaceId);
 			set.status = 201;
 
 			const ipAddress =
@@ -2602,7 +2602,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}).catch((err) =>
 				logger.warn({ err, documentId: copy.id }, "Pipeline enqueue failed"),
 			);
-			invalidateDocListCache(userId);
+			invalidateDocListCache(userId, ctx.workspaceId);
 			set.status = 201;
 			return copy;
 		} catch (err) {
@@ -2726,7 +2726,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			return { error: "Document not found" };
 		}
 		invalidateDocCache(params.id);
-		invalidateDocListCache(ctx.userId);
+		invalidateDocListCache(ctx.userId, ctx.workspaceId);
 		return { success: true };
 	})
 	.delete("/trash/documents/:id", async ({ params, request, set }) => {
@@ -2887,7 +2887,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				});
 			}
 			invalidateDocCache(params.id);
-			invalidateDocListCache(ctx.userId);
+			invalidateDocListCache(ctx.userId, ctx.workspaceId);
 			return { success: true };
 		} catch (error) {
 			if (error instanceof DocumentPurgeNotFoundError) {
@@ -2993,7 +2993,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Document not found" };
 			}
 			invalidateDocCache(params.id);
-			invalidateDocListCache(userId);
+			invalidateDocListCache(userId, ctx.workspaceId);
 
 			const ipAddress =
 				request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
