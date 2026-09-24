@@ -104,6 +104,12 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		expect(attachmentStorageEnforcementForRuntimeVersion("0.7.2")).toBe(
 			"true",
 		);
+		expect(() => workspaceEnabledForRuntimeVersion("0.9.0")).toThrow(
+			"unsupported rehearsal runtime version",
+		);
+		expect(() =>
+			attachmentStorageEnforcementForRuntimeVersion("0.9.0"),
+		).toThrow("unsupported rehearsal runtime version");
 	});
 
 	const withAttachmentCleanupColumns = (columns: string[]) =>
