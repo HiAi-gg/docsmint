@@ -239,9 +239,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			adoptionCommit: expectedCommit,
 			candidateCommit: expectedCandidate,
 			packageVersions: Object.fromEntries(
-				packageManifests.map((path) => [path, "0.8.1"]),
+				packageManifests.map((path) => [path, "0.9.0"]),
 			),
-			lockfileVersion: "0.8.1",
+			lockfileVersion: "0.9.0",
 			localTarballResolved: true,
 			packageGitHead: expectedCandidate,
 			tarballSha256: "c".repeat(64),
@@ -264,9 +264,10 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		expect(
 			verifyAtomicAdoption(evidence, {
 				candidateCommit: expectedCandidate,
+				candidateVersion: "0.9.0",
 				packageManifests,
 			}),
-		).toEqual({ adoptionCommit: expectedCommit, version: "0.8.1" });
+		).toEqual({ adoptionCommit: expectedCommit, version: "0.9.0" });
 		expect(() =>
 			verifyAtomicAdoption(
 				{
@@ -275,25 +276,36 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 						(path) => path !== "docsmint-oss",
 					),
 				},
-				{ candidateCommit: expectedCandidate, packageManifests },
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
 			),
 		).toThrow("atomic adoption commit is missing docsmint-oss");
 		expect(() =>
 			verifyAtomicAdoption(
 				{ ...evidence, localTarballResolved: false },
-				{ candidateCommit: expectedCandidate, packageManifests },
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
 			),
 		).toThrow("local packed OSS candidate");
 		expect(() =>
 			verifyAtomicAdoption(
+				{
+					...evidence,
+					packageVersions: Object.fromEntries(
+						packageManifests.map((path) => [path, "0.8.1"]),
+					),
+				},
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
+			),
+		).toThrow("did not pin package.json to 0.9.0");
+		expect(() =>
+			verifyAtomicAdoption(
 				{ ...evidence, packageGitHead: "d".repeat(40) },
-				{ candidateCommit: expectedCandidate, packageManifests },
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
 			),
 		).toThrow("package provenance");
 		expect(() =>
 			verifyAtomicAdoption(
 				{ ...evidence, verifiedTarballSha256: "d".repeat(64) },
-				{ candidateCommit: expectedCandidate, packageManifests },
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
 			),
 		).toThrow("tarball content hash");
 		expect(() =>
@@ -305,7 +317,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 						candidateCommit: "d".repeat(40),
 					},
 				},
-				{ candidateCommit: expectedCandidate, packageManifests },
+				{ candidateCommit: expectedCandidate, candidateVersion: "0.9.0", packageManifests },
 			),
 		).toThrow("adoption provenance record");
 	});
@@ -612,7 +624,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			requiredKeys: ["BETTER_AUTH_SECRET"],
 		};
 		const runtime070 = {
-			version: "0.8.1",
+			version: "0.9.0",
 			health: true,
 			crud: { create: true, read: true, update: true, delete: true },
 			search: true,
@@ -630,8 +642,8 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		const adoption = {
 			adoptionCommit: "a".repeat(40),
 			candidateCommit: "b".repeat(40),
-			packageVersions: { "package.json": "0.8.1" },
-			lockfileVersion: "0.8.1",
+			packageVersions: { "package.json": "0.9.0" },
+			lockfileVersion: "0.9.0",
 			localTarballResolved: true,
 			packageGitHead: "b".repeat(40),
 			tarballSha256: "c".repeat(64),
@@ -690,10 +702,14 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 					events.push("cleanup");
 				},
 			},
-			{ candidateCommit: "b".repeat(40), packageManifests: ["package.json"] },
+			{
+				candidateCommit: "b".repeat(40),
+				candidateVersion: "0.9.0",
+				packageManifests: ["package.json"],
+			},
 		);
 
-		expect(report.runtime070.version).toBe("0.8.1");
+		expect(report.runtime070.version).toBe("0.9.0");
 		expect(report.runtime068.version).toBe("0.6.8");
 		expect(events).toEqual([
 			"clean:before",
@@ -737,7 +753,11 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 						events.push("cleanup");
 					},
 				},
-				{ candidateCommit: "b".repeat(40), packageManifests: ["package.json"] },
+				{
+					candidateCommit: "b".repeat(40),
+					candidateVersion: "0.9.0",
+					packageManifests: ["package.json"],
+				},
 			),
 		).rejects.toThrow("adoption failed");
 		expect(events).toEqual([
