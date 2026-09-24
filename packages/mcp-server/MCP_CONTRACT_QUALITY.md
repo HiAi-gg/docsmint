@@ -1,6 +1,6 @@
 # MCP Contract Quality Audit
 
-This report records the static review of the OSS MCP contract at 0.8.8. It is based
+This report records the static review of the OSS MCP contract at 0.8.9. It is based
 on the actual `tools/list` response from the MCP server, source definitions, the
 canonical SDK/API inputs, and the package/registry declarations. It contains no
 customer data or credentials.

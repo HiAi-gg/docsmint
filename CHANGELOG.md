@@ -7,6 +7,31 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-09-24
+
+### Improved
+
+- Improve all 21 MCP tool descriptions, parameter guidance, effect annotations,
+  and stable output schemas. Keep README, Registry, LobeHub, and runtime tool
+  declarations tied to the canonical capability catalog.
+- Export the canonical `capabilityCatalog` from the public MCP package entry so
+  hosted consumers can compare their advertised tools with the OSS contract.
+- Type `GET /api/categories` responses for both workspace principals and
+  API-key principals, whose response intentionally omits workspace permission
+  metadata.
+- Direct Cloud OAuth setup copy to the hosted connection guide so it does not
+  freeze currently supported client-registration methods into the OSS package.
+
+### Fixed
+
+- Reject document creation when a category-scoped credential selects a folder
+  in a different category, including requests that explicitly name the allowed
+  category ID.
+- Align MCP category and search-tag input contracts with their REST behavior;
+  unsupported category descriptions are no longer exposed by the MCP tool.
+
+No database migration is required.
+
 ## [0.8.8] - 2026-09-23
 
 ### Documentation and registry metadata

@@ -72,19 +72,19 @@ bridge to your own API, not a server installer or hosted OAuth server. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.8?
+## What's new in 0.8.9?
 
-- Clarify that hosted MCP authorization belongs to DocsMint Cloud and that the
-  stdio bridge uses an API key to connect to your own DocsMint API.
-- Synchronize MCP Registry and LobeHub descriptions with the current Cloud
-  authorization contract and the self-hosted boundary.
-- Keep the published catalog aligned with the implementation. The canonical
-  capability catalog and regression checks guard against route and metadata drift.
-- Update vulnerability reporting details and clarify that OAuth protocol flaws
-  remain in scope for the product where they occur.
+- Publish clearer definitions and stable output schemas for the 21 MCP tools,
+  with registry, marketplace, and documentation parity checks derived from the
+  canonical capability catalog.
+- Export `capabilityCatalog` from `@hiai-gg/docsmint/mcp` for hosted contract
+  comparisons and model sanitized API-key category-list responses accurately.
+- Prevent category-scoped credentials from creating a document in a folder
+  belonging to another category, even when the request names the allowed category.
+- Point Cloud authorization setup copy to the hosted connection guide so client
+  registration instructions stay aligned with supported connection methods.
 
-No MCP capabilities, existing integrations, or database schema change in this
-release. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.8)
+This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.9)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -137,7 +137,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.8`, `web-v0.8.8`, and `caddy-v0.8.8` for
+Use versioned tags `api-v0.8.9`, `web-v0.8.9`, and `caddy-v0.8.9` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
