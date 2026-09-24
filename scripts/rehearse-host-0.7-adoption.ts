@@ -2,8 +2,6 @@ import { cp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import postgres from "postgres";
 
-const OSS_CANDIDATE_VERSION = "0.8.1";
-
 export interface MigrationSnapshot {
 	journalEntries: number;
 	schemaFingerprint: string;
@@ -297,7 +295,11 @@ export function verifyNoNewRequiredEnvironment(
 
 export function verifyAtomicAdoption(
 	evidence: AtomicAdoptionEvidence,
-	expected: { candidateCommit: string; packageManifests: string[] },
+	expected: {
+		candidateCommit: string;
+		candidateVersion: string;
+		packageManifests: string[];
+	},
 ): { adoptionCommit: string; version: string } {
 	if (!COMMIT_PATTERN.test(evidence.adoptionCommit)) {
 		throw new Error("atomic adoption commit is not a full Git SHA");
@@ -312,8 +314,10 @@ export function verifyAtomicAdoption(
 		);
 	}
 	for (const manifest of expected.packageManifests) {
-		if (evidence.packageVersions[manifest] !== OSS_CANDIDATE_VERSION) {
-			throw new Error(`atomic adoption did not pin ${manifest} to ${OSS_CANDIDATE_VERSION}`);
+		if (evidence.packageVersions[manifest] !== expected.candidateVersion) {
+			throw new Error(
+				`atomic adoption did not pin ${manifest} to ${expected.candidateVersion}`,
+			);
 		}
 		if (!evidence.commitFiles.includes(manifest)) {
 			throw new Error(`atomic adoption commit is missing ${manifest}`);
@@ -328,8 +332,10 @@ export function verifyAtomicAdoption(
 			throw new Error(`atomic adoption commit is missing ${path}`);
 		}
 	}
-	if (evidence.lockfileVersion !== OSS_CANDIDATE_VERSION) {
-		throw new Error(`atomic adoption lockfile does not resolve ${OSS_CANDIDATE_VERSION}`);
+	if (evidence.lockfileVersion !== expected.candidateVersion) {
+		throw new Error(
+			`atomic adoption lockfile does not resolve ${expected.candidateVersion}`,
+		);
 	}
 	if (!evidence.localTarballResolved) {
 		throw new Error(
@@ -356,7 +362,10 @@ export function verifyAtomicAdoption(
 			"atomic adoption provenance record is not bound to the candidate",
 		);
 	}
-	return { adoptionCommit: evidence.adoptionCommit, version: OSS_CANDIDATE_VERSION };
+	return {
+		adoptionCommit: evidence.adoptionCommit,
+		version: expected.candidateVersion,
+	};
 }
 
 export function verifyRuntimeSmoke(
@@ -388,7 +397,11 @@ export function verifyRuntimeSmoke(
 
 export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 	operations: RehearsalWorkflowOperations<TPrepared>,
-	expectedAdoption: { candidateCommit: string; packageManifests: string[] },
+	expectedAdoption: {
+		candidateCommit: string;
+		candidateVersion: string;
+		packageManifests: string[];
+	},
 ): Promise<RehearsalWorkflowReport> {
 	await operations.assertRealCheckoutClean("before");
 	let prepared: TPrepared | undefined;
@@ -707,6 +720,7 @@ interface ActiveRuntime {
 interface ActualPreparedRehearsal extends PreparedRehearsal {
 	token: string;
 	candidateCommit: string;
+	candidateVersion: string;
 	hostRoot: string;
 	baselineRoot: string;
 	candidateSourceRoot: string;
@@ -1136,6 +1150,7 @@ async function runBaselineHostMigrations(
 async function prepareActualRehearsal(
 	runner: SafeCommandRunner,
 	candidateCommit: string,
+	candidateVersion: string,
 ): Promise<ActualPreparedRehearsal> {
 	const storageCredential = await localSeaweedCredentials(runner);
 	const root = validateTemporaryRoot(
@@ -1201,6 +1216,7 @@ async function prepareActualRehearsal(
 		root,
 		token: normalizedToken,
 		candidateCommit,
+		candidateVersion,
 		hostRoot: assertContainedPath(root, join(root, "host-070")),
 		baselineRoot: assertContainedPath(root, join(root, "host-068")),
 		candidateSourceRoot: assertContainedPath(root, join(root, "oss-candidate")),
@@ -1550,10 +1566,12 @@ async function stageCandidateTarball(
 	) as { name: string; version: string; files: string[]; gitHead?: string };
 	if (
 		publicManifest.name !== "@hiai-gg/docsmint" ||
-		publicManifest.version !== OSS_CANDIDATE_VERSION ||
+		publicManifest.version !== prepared.candidateVersion ||
 		!Array.isArray(publicManifest.files)
 	) {
-		throw new Error(`candidate public manifest is not @hiai-gg/docsmint@${OSS_CANDIDATE_VERSION}`);
+		throw new Error(
+			`candidate public manifest is not @hiai-gg/docsmint@${prepared.candidateVersion}`,
+		);
 	}
 	publicManifest.gitHead = prepared.candidateCommit;
 	await mkdir(prepared.stageRoot, { recursive: true });
@@ -1602,7 +1620,10 @@ async function stageCandidateTarball(
 	return { tarball: canonicalTarball, sha256 };
 }
 
-async function updatePackageVersion(path: string): Promise<void> {
+async function updatePackageVersion(
+	path: string,
+	candidateVersion: string,
+): Promise<void> {
 	const manifest = JSON.parse(await readFile(path, "utf8")) as {
 		dependencies?: Record<string, string>;
 		devDependencies?: Record<string, string>;
@@ -1614,7 +1635,7 @@ async function updatePackageVersion(path: string): Promise<void> {
 			? "devDependencies"
 			: undefined;
 	if (!field) throw new Error(`${path} has no @hiai-gg/docsmint dependency`);
-	(manifest[field] as Record<string, string>)["@hiai-gg/docsmint"] = OSS_CANDIDATE_VERSION;
+	(manifest[field] as Record<string, string>)["@hiai-gg/docsmint"] = candidateVersion;
 	await writeFile(path, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
@@ -1627,7 +1648,10 @@ async function packAndAdoptActual(
 		prepared,
 	);
 	for (const manifest of PACKAGE_MANIFESTS) {
-		await updatePackageVersion(join(prepared.hostRoot, manifest));
+		await updatePackageVersion(
+			join(prepared.hostRoot, manifest),
+			prepared.candidateVersion,
+		);
 	}
 	const rootManifestPath = join(prepared.hostRoot, "package.json");
 	const rootManifest = JSON.parse(await readFile(rootManifestPath, "utf8")) as {
@@ -1716,7 +1740,7 @@ async function packAndAdoptActual(
 	) as { version?: string; gitHead?: string };
 	const lockfile = await readFile(join(prepared.hostRoot, "bun.lock"), "utf8");
 	const localTarballResolved =
-		installedManifest.version === OSS_CANDIDATE_VERSION &&
+		installedManifest.version === prepared.candidateVersion &&
 		lockfile.includes(basename(tarball));
 	const verifiedTarballSha256 = new Bun.CryptoHasher("sha256")
 		.update(await readFile(tarball))
@@ -2388,7 +2412,7 @@ async function smoke070Actual(
 		runner,
 		prepared,
 		prepared.hostRoot,
-		OSS_CANDIDATE_VERSION,
+		prepared.candidateVersion,
 	);
 	try {
 		const unscoped = await signAssertion(prepared);
@@ -2477,7 +2501,7 @@ async function smoke070Actual(
 			`/api/documents/${allowedId}`,
 		);
 		return {
-			version: OSS_CANDIDATE_VERSION,
+			version: prepared.candidateVersion,
 			health: true,
 			crud: {
 				create: true,
@@ -2686,6 +2710,21 @@ async function main(): Promise<void> {
 	verifyCandidateProvenance(
 		await collectCandidateProvenance(runner, REPOSITORY_ROOT, candidateCommit),
 	);
+	const candidatePublicManifest = JSON.parse(
+		await readFile(join(REPOSITORY_ROOT, "package.public.json"), "utf8"),
+	) as { name?: string; version?: string };
+	if (
+		candidatePublicManifest.name !== "@hiai-gg/docsmint" ||
+		typeof candidatePublicManifest.version !== "string" ||
+		!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(
+			candidatePublicManifest.version,
+		)
+	) {
+		throw new Error(
+			"candidate public manifest has an invalid package name or version",
+		);
+	}
+	const candidateVersion = candidatePublicManifest.version;
 	let initialSiblingStatus: string | undefined;
 	let preparedForSummary: ActualPreparedRehearsal | undefined;
 	const report = await runRehearsalWorkflow<ActualPreparedRehearsal>(
@@ -2721,6 +2760,7 @@ async function main(): Promise<void> {
 				preparedForSummary = await prepareActualRehearsal(
 					runner,
 					candidateCommit,
+					candidateVersion,
 				);
 				return preparedForSummary;
 			},
@@ -2731,7 +2771,7 @@ async function main(): Promise<void> {
 			smoke068: (prepared) => smoke068Actual(runner, prepared),
 			cleanup: (prepared) => cleanupActualRehearsal(runner, prepared),
 		},
-		{ candidateCommit, packageManifests: PACKAGE_MANIFESTS },
+		{ candidateCommit, candidateVersion, packageManifests: PACKAGE_MANIFESTS },
 	);
 	console.log(
 		JSON.stringify(
