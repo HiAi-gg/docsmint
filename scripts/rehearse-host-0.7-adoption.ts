@@ -424,7 +424,9 @@ export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 
 const REPOSITORY_ROOT = resolve(import.meta.dir, "..");
 const HOST_SOURCE_ROOT = "/mnt/data/projects/docsmint";
+let hostSourceRoot = HOST_SOURCE_ROOT;
 const OSS_REPOSITORY_ROOT = "/mnt/data/projects/docsmint-oss";
+let ossSourceRoot = OSS_REPOSITORY_ROOT;
 const BASELINE_HOST_COMMIT = "31485e6679608a762b6fda4a8ee8f97afbf76577";
 const BASELINE_OSS_COMMIT = "ea83e5380596567434545ac2a34f65d241a9e75b";
 const PACKAGE_MANIFESTS = [
@@ -439,6 +441,161 @@ const POSTGRES_HOST_PORT = 5437;
 const STORAGE_HOST_PORT = 50702;
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_]{0,62}$/;
 const CONTAINER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+export interface HostSourceRootEvidence {
+	path: string;
+	repositoryRoot: string;
+	hostCommit: string;
+	gitlinkCommit: string;
+	submoduleCommit: string;
+	status: string;
+}
+
+export interface OssSourceRootEvidence {
+	path: string;
+	repositoryRoot: string;
+	commit: string;
+	status: string;
+}
+
+export function validateHostSourceRootEvidence(
+	evidence: HostSourceRootEvidence,
+): string {
+	if (!isAbsolute(evidence.path) || resolve(evidence.path) !== evidence.path) {
+		throw new Error("host source path must be an absolute normalized path");
+	}
+	if (evidence.repositoryRoot !== evidence.path) {
+		throw new Error("host source path must be the Git repository root");
+	}
+	if (evidence.hostCommit !== BASELINE_HOST_COMMIT) {
+		throw new Error("host source must be at the exact baseline commit");
+	}
+	if (
+		evidence.gitlinkCommit !== BASELINE_OSS_COMMIT ||
+		evidence.submoduleCommit !== BASELINE_OSS_COMMIT
+	) {
+		throw new Error("host source must contain the exact baseline OSS submodule");
+	}
+	if (evidence.status.trim()) {
+		throw new Error("host source checkout must be clean");
+	}
+	return evidence.path;
+}
+
+export function validateOssSourceRootEvidence(
+	evidence: OssSourceRootEvidence,
+	expectedCandidateCommit: string,
+): string {
+	if (!isAbsolute(evidence.path) || resolve(evidence.path) !== evidence.path) {
+		throw new Error("OSS source path must be an absolute normalized path");
+	}
+	if (evidence.repositoryRoot !== evidence.path) {
+		throw new Error("OSS source path must be the Git repository root");
+	}
+	if (
+		!COMMIT_PATTERN.test(expectedCandidateCommit) ||
+		evidence.commit !== expectedCandidateCommit
+	) {
+		throw new Error("OSS source must be at the exact candidate commit");
+	}
+	if (evidence.status.trim()) {
+		throw new Error("OSS source checkout must be clean");
+	}
+	return evidence.path;
+}
+
+async function resolveHostSourceRootOverride(
+	runner: SafeCommandRunner,
+	path: string,
+): Promise<string> {
+	if (!isAbsolute(path) || resolve(path) !== path) {
+		throw new Error("DOCSMINT_HOST_SOURCE_ROOT must be absolute and normalized");
+	}
+	const canonicalPath = await realpath(path);
+	const [repositoryRoot, hostCommit, gitlinkCommit, submoduleCommit, status] =
+		await Promise.all([
+			runner.run(["git", "rev-parse", "--show-toplevel"], {
+				cwd: canonicalPath,
+				env: safeEnvironment(),
+			}),
+			runner.run(["git", "rev-parse", "HEAD"], {
+				cwd: canonicalPath,
+				env: safeEnvironment(),
+			}),
+			runner.run(["git", "rev-parse", "HEAD:docsmint-oss"], {
+				cwd: canonicalPath,
+				env: safeEnvironment(),
+			}),
+			runner.run(
+				[
+					"git",
+					"-C",
+					join(canonicalPath, "docsmint-oss"),
+					"rev-parse",
+					"HEAD",
+				],
+				{ env: safeEnvironment() },
+			),
+			runner.run(
+				[
+					"git",
+					"status",
+					"--porcelain=v1",
+					"--untracked-files=all",
+					"--ignore-submodules=none",
+				],
+				{ cwd: canonicalPath, env: safeEnvironment() },
+			),
+		]);
+	return validateHostSourceRootEvidence({
+		path: canonicalPath,
+		repositoryRoot: resolve(repositoryRoot.stdout.trim()),
+		hostCommit: hostCommit.stdout.trim(),
+		gitlinkCommit: gitlinkCommit.stdout.trim(),
+		submoduleCommit: submoduleCommit.stdout.trim(),
+		status: status.stdout,
+	});
+}
+
+async function resolveOssSourceRootOverride(
+	runner: SafeCommandRunner,
+	path: string,
+	expectedCandidateCommit: string,
+): Promise<string> {
+	if (!isAbsolute(path) || resolve(path) !== path) {
+		throw new Error("DOCSMINT_OSS_SOURCE_ROOT must be absolute and normalized");
+	}
+	const canonicalPath = await realpath(path);
+	const [repositoryRoot, commit, status] = await Promise.all([
+		runner.run(["git", "rev-parse", "--show-toplevel"], {
+			cwd: canonicalPath,
+			env: safeEnvironment(),
+		}),
+		runner.run(["git", "rev-parse", "HEAD"], {
+			cwd: canonicalPath,
+			env: safeEnvironment(),
+		}),
+		runner.run(
+			[
+				"git",
+				"status",
+				"--porcelain=v1",
+				"--untracked-files=all",
+				"--ignore-submodules=none",
+			],
+			{ cwd: canonicalPath, env: safeEnvironment() },
+		),
+	]);
+	return validateOssSourceRootEvidence(
+		{
+			path: canonicalPath,
+			repositoryRoot: resolve(repositoryRoot.stdout.trim()),
+			commit: commit.stdout.trim(),
+			status: status.stdout,
+		},
+		expectedCandidateCommit,
+	);
+}
 
 interface CommandResult {
 	exitCode: number;
@@ -812,7 +969,7 @@ async function cloneSubmodule(
 			"clone",
 			"--local",
 			"--no-hardlinks",
-			OSS_REPOSITORY_ROOT,
+			ossSourceRoot,
 			destination,
 		],
 		{ cwd: hostRoot, env: safeEnvironment() },
@@ -1089,7 +1246,7 @@ async function prepareActualRehearsal(
 				"clone",
 				"--local",
 				"--no-hardlinks",
-				HOST_SOURCE_ROOT,
+				hostSourceRoot,
 				prepared.hostRoot,
 			],
 			{ cwd: root, env: safeEnvironment() },
@@ -1348,7 +1505,7 @@ async function stageCandidateTarball(
 			"clone",
 			"--local",
 			"--no-hardlinks",
-			OSS_REPOSITORY_ROOT,
+			ossSourceRoot,
 			prepared.candidateSourceRoot,
 		],
 		{ cwd: prepared.root, env: safeEnvironment() },
@@ -2503,6 +2660,13 @@ async function smoke068Actual(
 
 async function main(): Promise<void> {
 	const runner = new SafeCommandRunner();
+	const hostSourceOverride = process.env.DOCSMINT_HOST_SOURCE_ROOT?.trim();
+	if (hostSourceOverride) {
+		hostSourceRoot = await resolveHostSourceRootOverride(
+			runner,
+			hostSourceOverride,
+		);
+	}
 	const candidateCommit = (
 		await runner.run(["git", "rev-parse", "HEAD"], {
 			cwd: REPOSITORY_ROOT,
@@ -2511,6 +2675,14 @@ async function main(): Promise<void> {
 	).stdout.trim();
 	if (!COMMIT_PATTERN.test(candidateCommit))
 		throw new Error("candidate is not a full Git SHA");
+	const ossSourceOverride = process.env.DOCSMINT_OSS_SOURCE_ROOT?.trim();
+	if (ossSourceOverride) {
+		ossSourceRoot = await resolveOssSourceRootOverride(
+			runner,
+			ossSourceOverride,
+			candidateCommit,
+		);
+	}
 	verifyCandidateProvenance(
 		await collectCandidateProvenance(runner, REPOSITORY_ROOT, candidateCommit),
 	);
@@ -2528,7 +2700,7 @@ async function main(): Promise<void> {
 							"--untracked-files=all",
 							"--ignore-submodules=none",
 						],
-						{ cwd: HOST_SOURCE_ROOT, env: safeEnvironment() },
+						{ cwd: hostSourceRoot, env: safeEnvironment() },
 					)
 				).stdout;
 				if (status.trim())
@@ -2536,6 +2708,13 @@ async function main(): Promise<void> {
 				if (phase === "before") initialSiblingStatus = status;
 				if (phase === "after" && status !== initialSiblingStatus) {
 					throw new Error("real downstream checkout status changed during rehearsal");
+				}
+				if (phase === "after" && ossSourceOverride) {
+					await resolveOssSourceRootOverride(
+						runner,
+						ossSourceRoot,
+						candidateCommit,
+					);
 				}
 			},
 			async prepare() {

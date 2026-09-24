@@ -71,6 +71,11 @@ bun run test:release
 The canonical gate rejects any staged, modified, or untracked path before it
 runs. Supply its documented test-only service bindings explicitly in the
 process environment; it does not read or create a repository environment file.
+When the downstream checkout is not the clean historical baseline, set
+`DOCSMINT_HOST_SOURCE_ROOT` to a clean checkout at the exact baseline host and
+OSS submodule commits. Set `DOCSMINT_OSS_SOURCE_ROOT` to a clean checkout of the
+exact candidate commit. The rehearsal verifies both paths and reads them as
+sources; it performs adoption only in its disposable copies.
 The gate coordinates the frozen install, version and workflow validators,
 production audit, tracked-Git-blob secret scan, lint, typecheck, unit and
 contract suites, every workspace build, packed and clean-installed consumers,

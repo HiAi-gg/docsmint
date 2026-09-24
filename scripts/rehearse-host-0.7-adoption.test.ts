@@ -4,6 +4,8 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import {
 	attachmentStorageEnforcementForRuntimeVersion,
 	disposableRehearsalBuckets,
+	validateHostSourceRootEvidence,
+	validateOssSourceRootEvidence,
 	type IsolatedRedisServer,
 	redactSecrets,
 	runRehearsalWorkflow,
@@ -19,6 +21,71 @@ import {
 } from "./rehearse-host-0.7-adoption";
 
 describe("DocsMint host 0.7 adoption rehearsal", () => {
+	test("validates an explicit clean SaaS source at the exact baseline", () => {
+		const path = "/tmp/docsmint-host-source-090";
+		const valid = {
+			path,
+			repositoryRoot: path,
+			hostCommit: "31485e6679608a762b6fda4a8ee8f97afbf76577",
+			gitlinkCommit: "ea83e5380596567434545ac2a34f65d241a9e75b",
+			submoduleCommit: "ea83e5380596567434545ac2a34f65d241a9e75b",
+			status: "",
+		};
+
+		expect(validateHostSourceRootEvidence(valid)).toBe(path);
+		expect(() =>
+			validateHostSourceRootEvidence({ ...valid, path: "relative/source" }),
+		).toThrow("absolute");
+		expect(() =>
+			validateHostSourceRootEvidence({ ...valid, repositoryRoot: "/tmp/other" }),
+		).toThrow("Git repository root");
+		expect(() =>
+			validateHostSourceRootEvidence({ ...valid, hostCommit: "0".repeat(40) }),
+		).toThrow("baseline commit");
+		expect(() =>
+			validateHostSourceRootEvidence({ ...valid, submoduleCommit: "0".repeat(40) }),
+		).toThrow("baseline OSS submodule");
+		expect(() =>
+			validateHostSourceRootEvidence({ ...valid, status: " M README.md" }),
+		).toThrow("clean");
+	});
+	test("validates the OSS source at the exact release candidate commit", () => {
+		const path = "/tmp/docsmint-oss-source-090";
+		const expectedCommit = "b".repeat(40);
+		const valid = {
+			path,
+			repositoryRoot: path,
+			commit: expectedCommit,
+			status: "",
+		};
+
+		expect(validateOssSourceRootEvidence(valid, expectedCommit)).toBe(path);
+		expect(() =>
+			validateOssSourceRootEvidence(
+				{ ...valid, path: "relative/source" },
+				expectedCommit,
+			),
+		).toThrow("absolute");
+		expect(() =>
+			validateOssSourceRootEvidence(
+				{ ...valid, repositoryRoot: "/tmp/other" },
+				expectedCommit,
+			),
+		).toThrow("Git repository root");
+		expect(() =>
+			validateOssSourceRootEvidence(
+				{ ...valid, commit: "0".repeat(40) },
+				expectedCommit,
+			),
+		).toThrow("candidate commit");
+		expect(() =>
+			validateOssSourceRootEvidence(
+				{ ...valid, status: " M package.json" },
+				expectedCommit,
+			),
+		).toThrow("clean");
+	});
+
 	test("runs the 0.6.8 attachment rollback smoke through the quota-aware runtime", () => {
 		expect(workspaceEnabledForRuntimeVersion("0.6.8")).toBe("true");
 		expect(attachmentStorageEnforcementForRuntimeVersion("0.6.8")).toBe(
@@ -585,7 +652,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 
 		const report = await runRehearsalWorkflow(
 			{
-				assertRealCheckoutClean: async (phase) => events.push(`clean:${phase}`),
+				assertRealCheckoutClean: async (phase) => {
+					events.push(`clean:${phase}`);
+				},
 				prepare: async () => {
 					events.push("prepare");
 					return { root: "/tmp/docsmint-host-adoption-deadbeef" };
@@ -617,7 +686,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 					events.push("smoke:0.6.8");
 					return runtime068;
 				},
-				cleanup: async () => events.push("cleanup"),
+				cleanup: async () => {
+					events.push("cleanup");
+				},
 			},
 			{ candidateCommit: "b".repeat(40), packageManifests: ["package.json"] },
 		);
@@ -640,8 +711,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		await expect(
 			runRehearsalWorkflow(
 				{
-					assertRealCheckoutClean: async (phase) =>
-						events.push(`clean:${phase}`),
+					assertRealCheckoutClean: async (phase) => {
+						events.push(`clean:${phase}`);
+					},
 					prepare: async () => {
 						events.push("prepare");
 						return { root: "/tmp/docsmint-host-adoption-feedface" };
@@ -661,7 +733,9 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 					smoke068: async () => {
 						throw new Error("not reached");
 					},
-					cleanup: async () => events.push("cleanup"),
+					cleanup: async () => {
+						events.push("cleanup");
+					},
 				},
 				{ candidateCommit: "b".repeat(40), packageManifests: ["package.json"] },
 			),
