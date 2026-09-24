@@ -291,7 +291,7 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 				});
 				await Promise.all([
 					invalidateDocCache(documentId),
-					invalidateDocListCache(access.userId),
+					invalidateDocListCache(access.userId, access.ctx.workspaceId),
 				]);
 				enqueueReembed(
 					[

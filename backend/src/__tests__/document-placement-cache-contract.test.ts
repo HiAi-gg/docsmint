@@ -1,19 +1,30 @@
 import { describe, expect, test } from "bun:test";
 
-const source = await Bun.file(
+const documentSource = await Bun.file(
 	new URL("../api/routes/documents.ts", import.meta.url),
 ).text();
+const collaborationSource = await Bun.file(
+	new URL("../api/routes/collaboration.ts", import.meta.url),
+).text();
 
-const placementPatch = source.slice(
-	source.indexOf('.patch("/documents/:id"'),
-	source.indexOf('.delete("/documents/:id"'),
+const placementPatch = documentSource.slice(
+	documentSource.indexOf('.patch("/documents/:id"'),
+	documentSource.indexOf('.delete("/documents/:id"'),
 );
 
 describe("document placement list-cache contract", () => {
-	test("placement PATCH invalidates every member list in the workspace", () => {
+	test("every workspace document-list mutation invalidates all workspace members", () => {
 		expect(placementPatch).toContain("folderChanged || categoryChanged");
 		expect(placementPatch).toMatch(
 			/invalidateDocListCache\(userId,\s*ctx\.workspaceId\)/,
+		);
+		expect(
+			documentSource.match(
+				/invalidateDocListCache\((?:userId|ctx\.userId),\s*ctx\.workspaceId\)/g,
+			),
+		).toHaveLength(6);
+		expect(collaborationSource).toMatch(
+			/invalidateDocListCache\(access\.userId,\s*access\.ctx\.workspaceId\)/,
 		);
 	});
 });
