@@ -139,23 +139,32 @@ export async function cacheHttpResponse<T>(
 	return { ...value, cacheHit: false };
 }
 
-export async function invalidateDocListCache(userId: string): Promise<void> {
-	const pattern = `${LIST_PREFIX}${userId}:*`;
+export async function invalidateDocListCache(
+	userId: string,
+	workspaceId?: string | null,
+): Promise<void> {
+	const patterns = new Set([`${LIST_PREFIX}${userId}:*`]);
+	if (workspaceId) patterns.add(`${LIST_PREFIX}*:w:${workspaceId}:*`);
 	try {
-		let cursor = "0";
-		do {
-			const [newCursor, keys] = await redis.scan(
-				cursor,
-				"MATCH",
-				pattern,
-				"COUNT",
-				100,
-			);
-			cursor = newCursor;
-			if (keys.length > 0) await redis.del(...keys);
-		} while (cursor !== "0");
+		for (const pattern of patterns) {
+			let cursor = "0";
+			do {
+				const [newCursor, keys] = await redis.scan(
+					cursor,
+					"MATCH",
+					pattern,
+					"COUNT",
+					100,
+				);
+				cursor = newCursor;
+				if (keys.length > 0) await redis.del(...keys);
+			} while (cursor !== "0");
+		}
 	} catch (err) {
-		logger.warn({ err, userId }, "Failed to invalidate doc list cache");
+		logger.warn(
+			{ err, userId, workspaceId },
+			"Failed to invalidate doc list cache",
+		);
 	}
 }
 

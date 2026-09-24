@@ -137,6 +137,45 @@ describe("docListKey", () => {
 		expect(workspaceKey).not.toBe(otherWorkspaceKey);
 		expect(workspaceKey).toContain(":w:workspace-A:");
 	});
+
+	it("invalidates all members' lists for a changed workspace", async () => {
+		resetFakeStore();
+		const memberA = mod.docListKey(
+			"user-A",
+			undefined,
+			undefined,
+			1,
+			20,
+			"workspace-A",
+		);
+		const memberB = mod.docListKey(
+			"user-B",
+			undefined,
+			undefined,
+			1,
+			20,
+			"workspace-A",
+		);
+		const otherWorkspace = mod.docListKey(
+			"user-B",
+			undefined,
+			undefined,
+			1,
+			20,
+			"workspace-B",
+		);
+		const privateList = mod.docListKey("user-A");
+		for (const key of [memberA, memberB, otherWorkspace, privateList]) {
+			fakeStore.set(key, "cached location labels");
+		}
+
+		await mod.invalidateDocListCache("user-A", "workspace-A");
+
+		expect(fakeStore.has(memberA)).toBe(false);
+		expect(fakeStore.has(memberB)).toBe(false);
+		expect(fakeStore.has(privateList)).toBe(false);
+		expect(fakeStore.has(otherWorkspace)).toBe(true);
+	});
 });
 
 describe("docSingleKey", () => {

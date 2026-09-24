@@ -1874,6 +1874,30 @@ describe("live category-scoped public surfaces", () => {
 					body: { error: "Full workspace write access required" },
 				});
 			} else {
+				if (tool.name === "list_documents" && result.isError) {
+					const errorText =
+						(result.content as Array<{ text?: string }>)[0]?.text ?? "";
+					let status: number | "unknown" = "unknown";
+					let code = "unknown";
+					try {
+						const error = JSON.parse(errorText) as {
+							status?: unknown;
+							code?: unknown;
+						};
+						if (typeof error.status === "number") status = error.status;
+						if (
+							typeof error.code === "string" &&
+							/^[a-z0-9_-]{1,80}$/i.test(error.code)
+						) {
+							code = error.code;
+						}
+					} catch {
+						// Keep the failure useful without printing response bodies or credentials.
+					}
+					throw new Error(
+						`${tool.name} returned unexpected API error status=${status} code=${code}`,
+					);
+				}
 				expect(result.isError, tool.name).not.toBe(true);
 			}
 		}

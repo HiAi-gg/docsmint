@@ -689,7 +689,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					result.operationId,
 					metadataReembedPageSize("folder"),
 				);
-				await invalidateDocListCache(userId);
+				await invalidateDocListCache(userId, ctx.workspaceId);
 			}
 
 			return result.updated;
@@ -765,7 +765,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				set.status = 404;
 				return { error: "Folder not found" };
 			}
-			await invalidateDocListCache(ctx.userId);
+			await invalidateDocListCache(ctx.userId, ctx.workspaceId);
 
 			// FK ON DELETE SET NULL on documents.folder_id detaches the folder.
 			// Re-embed affected docs so the "Folder: <old-name>" preamble

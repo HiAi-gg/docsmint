@@ -35,7 +35,7 @@ describe("public 0.5.0 surface compatibility", () => {
 		).json()) as string[];
 
 		expect(snapshot.version).toBe("0.5.0");
-		expect(published.version).toMatch(/^0\.8\.\d+$/);
+		expect(published.version).toMatch(/^\d+\.\d+\.\d+$/);
 		for (const [exportPath, exportContract] of Object.entries(
 			snapshot.packageExports,
 		)) {

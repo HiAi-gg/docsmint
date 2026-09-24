@@ -7,13 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [0.8.10] - 2026-09-24
+## [0.9.0] - 2026-09-24
 
 ### Fixed
 
 - Return folder and category names from the offset document-list endpoint, as
-  promised by the public SDK type and MCP `list_documents` output schema. This
-  keeps structured MCP results valid without changing document permissions.
+  promised by the public SDK type and MCP `list_documents` output schema.
+- Invalidate cached document-list labels after category and folder metadata
+  changes across all members of the affected workspace.
+- Prevent category-scoped credentials from creating a document in a folder
+  belonging to another category.
+
+### Improved
+
+- Publish the canonical MCP catalog with stable tool schemas and clearer
+  parameter guidance; expose `capabilityCatalog` from the public MCP package.
+- Align category-list response types for API-key principals and Cloud
+  authorization setup guidance with the supported connection flow.
 
 No database migration is required.
 
