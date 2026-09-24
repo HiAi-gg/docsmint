@@ -19,6 +19,7 @@ import {
 	expect,
 	it,
 } from "bun:test";
+import { docListKey } from "../../src/lib/doc-cache";
 import {
 	getState,
 	noAuthHeaders,
@@ -27,6 +28,7 @@ import {
 	ownerHeaders,
 	request,
 	resetState,
+	seedRedisCacheValue,
 	setupHarness,
 } from "./_harness";
 
@@ -176,6 +178,31 @@ describe("GET /api/documents", () => {
 			categoryId,
 			categoryName: "Notes",
 		});
+	});
+
+	it("does not serve list cache entries written before the response contract version", async () => {
+		seedDocument({
+			id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+			title: "Fresh from the database",
+		});
+		seedRedisCacheValue(`${docListKey(OWNER_ID)}:scope:all`, {
+			items: [
+				{
+					id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+					title: "Stale cached shape",
+				},
+			],
+			page: 1,
+			limit: 20,
+			total: 1,
+		});
+
+		const res = await authedGet("/api/documents");
+
+		expect(res.status).toBe(200);
+		expect((res.body as any).items.map((item: any) => item.title)).toEqual([
+			"Fresh from the database",
+		]);
 	});
 
 	it("respects the page and limit query parameters", async () => {

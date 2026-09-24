@@ -218,6 +218,31 @@ describe("PATCH /api/categories/:id", () => {
     expect(updateIndex).toBeGreaterThan(topologyLockIndex);
   });
 
+  it("invalidates cached document location labels after a category rename", async () => {
+    const categoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    seedCategory(categoryId, OWNER_ID, "Before rename");
+    getState().documents.set("cccccccc-cccc-4ccc-8ccc-cccccccccccc", {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      ownerId: OWNER_ID,
+      workspaceId: null,
+      title: "Document",
+      content: "body",
+      folderId: null,
+      categoryId,
+    });
+
+    const before = await authedGet("/api/documents");
+    expect((before.body as any).items[0].categoryName).toBe("Before rename");
+
+    const rename = await authedPatch(`/api/categories/${categoryId}`, {
+      name: "After rename",
+    });
+    const after = await authedGet("/api/documents");
+
+    expect(rename.status).toBe(200);
+    expect((after.body as any).items[0].categoryName).toBe("After rename");
+  });
+
   it("returns 404 when the id is unknown", async () => {
     const res = await authedPatch("/api/categories/missing-id", {
       name: "anything",
@@ -367,6 +392,29 @@ describe("DELETE /api/categories/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ success: true });
     expect(getState().categories.has("cat-1")).toBe(false);
+  });
+
+  it("invalidates cached document location labels after category deletion", async () => {
+    const categoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    seedCategory(categoryId, OWNER_ID, "To delete");
+    getState().documents.set("cccccccc-cccc-4ccc-8ccc-cccccccccccc", {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      ownerId: OWNER_ID,
+      workspaceId: null,
+      title: "Document",
+      content: "body",
+      folderId: null,
+      categoryId,
+    });
+
+    const before = await authedGet("/api/documents");
+    expect((before.body as any).items[0].categoryName).toBe("To delete");
+
+    const deletion = await authedDelete(`/api/categories/${categoryId}`);
+    const after = await authedGet("/api/documents");
+
+    expect(deletion.status).toBe(200);
+    expect((after.body as any).items[0].categoryName).toBeNull();
   });
 
   it("snapshots direct and folder-derived documents before category FKs clear", async () => {

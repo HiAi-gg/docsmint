@@ -12,6 +12,7 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import { invalidateDocListCache } from "../../lib/doc-cache";
 import { logger } from "../../lib/logger";
 import {
 	dispatchMetadataReembedOutbox,
@@ -358,6 +359,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 				set.status = 404;
 				return { error: "Category not found" };
 			}
+			await invalidateDocListCache(ctx.userId);
 
 			// Re-embed every document whose category_id matches, plus every
 			// document in a folder whose category_id matches. The category
@@ -451,6 +453,7 @@ export const categoryRoutes = new Elysia({ prefix: "/api" })
 				set.status = 404;
 				return { error: "Category not found" };
 			}
+			await invalidateDocListCache(ctx.userId);
 			// ON DELETE SET NULL on folders.category_id / documents.category_id
 			// automatically detaches the category from any owned folders/docs.
 			// We re-embed those docs/folders so their preamble no longer mentions
