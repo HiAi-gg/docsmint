@@ -8,6 +8,7 @@ import {
 	validateOssSourceRootEvidence,
 	type IsolatedRedisServer,
 	redactSecrets,
+	migrationJournalEntryCount,
 	runRehearsalWorkflow,
 	stopIsolatedRedisServer,
 	validateTemporaryRoot,
@@ -178,13 +179,13 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		const afterSecond = structuredClone(afterFirst);
 
 		expect(
-			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond),
+			verifyAdditiveMigrationReapply(before, afterFirst, afterSecond, 7),
 		).toEqual({ addedJournalEntries: 7, secondRunNoOp: true });
 		expect(() =>
 			verifyAdditiveMigrationReapply(before, afterFirst, {
 				...afterSecond,
 				journalEntries: 51,
-			}),
+			}, 7),
 		).toThrow("second migration run changed the journal or schema");
 		expect(() =>
 			verifyAdditiveMigrationReapply(
@@ -194,8 +195,21 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 					columns: ["wrong", ...afterFirst.columns.slice(1)],
 				},
 				afterSecond,
+				7,
 			),
 		).toThrow("expected additive columns");
+	});
+
+	test("counts migration entries from validated candidate and baseline journals", () => {
+		expect(
+			migrationJournalEntryCount(
+				JSON.stringify({ entries: Array.from({ length: 52 }, (_, idx) => idx) }),
+			),
+		).toBe(52);
+		expect(() => migrationJournalEntryCount("{" )).toThrow("valid JSON");
+		expect(() => migrationJournalEntryCount('{"entries":[]}')).toThrow(
+			"no entries",
+		);
 	});
 
 	test("requires no new environment variables relative to 0.6.8", () => {
@@ -705,6 +719,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 			{
 				candidateCommit: "b".repeat(40),
 				candidateVersion: "0.9.0",
+				expectedAddedJournalEntries: 7,
 				packageManifests: ["package.json"],
 			},
 		);
@@ -756,6 +771,7 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 				{
 					candidateCommit: "b".repeat(40),
 					candidateVersion: "0.9.0",
+					expectedAddedJournalEntries: 7,
 					packageManifests: ["package.json"],
 				},
 			),

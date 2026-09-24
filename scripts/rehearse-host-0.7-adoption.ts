@@ -112,7 +112,6 @@ export interface RehearsalWorkflowReport {
 
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const TEMPORARY_ROOT_PATTERN = /^\/tmp\/docsmint-host-adoption-[0-9a-f]{8,64}$/;
-const EXPECTED_ADDITIVE_JOURNAL_ENTRIES = 7;
 const EXPECTED_ADDITIVE_COLUMNS = [
 	"attachment_storage_cleanup_outbox.actor_user_id:uuid:NO:",
 	"attachment_storage_cleanup_outbox.attempt_count:integer:NO:0",
@@ -238,14 +237,17 @@ export function verifyAdditiveMigrationReapply(
 	before: MigrationSnapshot,
 	afterFirst: MigrationSnapshot,
 	afterSecond: MigrationSnapshot,
+	expectedAddedJournalEntries: number,
 ): { addedJournalEntries: number; secondRunNoOp: true } {
 	const addedJournalEntries = afterFirst.journalEntries - before.journalEntries;
 	if (
-		addedJournalEntries !== EXPECTED_ADDITIVE_JOURNAL_ENTRIES ||
+		!Number.isInteger(expectedAddedJournalEntries) ||
+		expectedAddedJournalEntries <= 0 ||
+		addedJournalEntries !== expectedAddedJournalEntries ||
 		afterFirst.columns.length !== EXPECTED_ADDITIVE_COLUMNS.length
 	) {
 		throw new Error(
-			"first migration run did not apply exactly seven additive journal entries",
+			`first migration run did not apply exactly ${expectedAddedJournalEntries} additive journal entries`,
 		);
 	}
 	if (
@@ -264,6 +266,19 @@ export function verifyAdditiveMigrationReapply(
 		throw new Error("second migration run changed the journal or schema");
 	}
 	return { addedJournalEntries, secondRunNoOp: true };
+}
+
+export function migrationJournalEntryCount(contents: string): number {
+	let journal: { entries?: unknown };
+	try {
+		journal = JSON.parse(contents) as { entries?: unknown };
+	} catch {
+		throw new Error("migration journal is not valid JSON");
+	}
+	if (!Array.isArray(journal.entries) || journal.entries.length === 0) {
+		throw new Error("migration journal has no entries");
+	}
+	return journal.entries.length;
 }
 
 export function verifyNoNewRequiredEnvironment(
@@ -400,6 +415,7 @@ export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 	expectedAdoption: {
 		candidateCommit: string;
 		candidateVersion: string;
+		expectedAddedJournalEntries: number;
 		packageManifests: string[];
 	},
 ): Promise<RehearsalWorkflowReport> {
@@ -415,6 +431,7 @@ export async function runRehearsalWorkflow<TPrepared extends PreparedRehearsal>(
 			snapshots.before,
 			snapshots.afterFirst,
 			snapshots.afterSecond,
+			expectedAdoption.expectedAddedJournalEntries,
 		);
 		const probes = await operations.probeEnvironment(prepared);
 		const environment = verifyNoNewRequiredEnvironment(
@@ -2725,6 +2742,26 @@ async function main(): Promise<void> {
 		);
 	}
 	const candidateVersion = candidatePublicManifest.version;
+	const baselineMigrationEntries = migrationJournalEntryCount(
+		await readFile(
+			join(
+				hostSourceRoot,
+				"docsmint-oss/packages/db/src/migrations/meta/_journal.json",
+			),
+			"utf8",
+		),
+	);
+	const candidateMigrationEntries = migrationJournalEntryCount(
+		await readFile(
+			join(ossSourceRoot, "packages/db/src/migrations/meta/_journal.json"),
+			"utf8",
+		),
+	);
+	const expectedAddedJournalEntries =
+		candidateMigrationEntries - baselineMigrationEntries;
+	if (expectedAddedJournalEntries <= 0) {
+		throw new Error("candidate migration journal does not advance the host baseline");
+	}
 	let initialSiblingStatus: string | undefined;
 	let preparedForSummary: ActualPreparedRehearsal | undefined;
 	const report = await runRehearsalWorkflow<ActualPreparedRehearsal>(
@@ -2771,7 +2808,12 @@ async function main(): Promise<void> {
 			smoke068: (prepared) => smoke068Actual(runner, prepared),
 			cleanup: (prepared) => cleanupActualRehearsal(runner, prepared),
 		},
-		{ candidateCommit, candidateVersion, packageManifests: PACKAGE_MANIFESTS },
+		{
+			candidateCommit,
+			candidateVersion,
+			expectedAddedJournalEntries,
+			packageManifests: PACKAGE_MANIFESTS,
+		},
 	);
 	console.log(
 		JSON.stringify(
