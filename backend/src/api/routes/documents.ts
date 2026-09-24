@@ -464,7 +464,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const { folderId, tag, page, limit } = parsed.data;
 		const offset = (page - 1) * limit;
-		const cacheKey = `${docListKey(userId, folderId, tag, page, limit, ctx.workspaceId)}:scope:${access.categoryId ?? "all"}`;
+		const cacheKey = `${docListKey(userId, folderId, tag, page, limit, ctx.workspaceId)}:scope:${access.categoryId ?? "all"}:response:v2`;
 		try {
 			return await cacheGetOrSet(cacheKey, 30, async () => {
 				const conditions = [

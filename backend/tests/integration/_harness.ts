@@ -1277,6 +1277,13 @@ function buildMockDb() {
 
 const mockDb = buildMockDb();
 
+// Route contract tests do not exercise Redis-backed rate-limit policy. Keep
+// them hermetic so the suite is independent of the caller's REDIS_URL;
+// rate-limit-factory has focused tests for counter/window behavior.
+mock.module("../../src/lib/rate-limit-factory.js", () => ({
+	createRateLimiter: () => async () => ({ allowed: true, remaining: 1_000 }),
+}));
+
 mock.module("../../src/lib/config.js", () => ({
 	config: {
 		API_KEY,
@@ -1420,6 +1427,10 @@ const redisStore: Map<string, string> = new Map();
 
 export function resetRedisStore(): void {
 	redisStore.clear();
+}
+
+export function seedRedisCacheValue(key: string, value: unknown): void {
+	redisStore.set(key, JSON.stringify(value));
 }
 
 mock.module("../../src/lib/redis.js", () => ({

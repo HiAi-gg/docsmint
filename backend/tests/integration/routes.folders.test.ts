@@ -530,6 +530,34 @@ describe("DELETE /api/folders/:id", () => {
     expect(state.folders.has(id)).toBe(false);
   });
 
+  it("invalidates cached document location labels after folder deletion", async () => {
+    const id = "66666666-6666-4666-8666-666666666666";
+    getState().folders.set(id, {
+      id,
+      ownerId: OWNER_ID,
+      name: "Before delete",
+      parentId: null,
+    });
+    getState().documents.set("88888888-8888-4888-8888-888888888888", {
+      id: "88888888-8888-4888-8888-888888888888",
+      ownerId: OWNER_ID,
+      workspaceId: null,
+      title: "Document",
+      content: "body",
+      folderId: id,
+      categoryId: null,
+    });
+
+    const before = await authedGet("/api/documents");
+    expect((before.body as any).items[0].folderName).toBe("Before delete");
+
+    const deletion = await authedDelete(`/api/folders/${id}`);
+    const after = await authedGet("/api/documents");
+
+    expect(deletion.status).toBe(200);
+    expect((after.body as any).items[0].folderName).toBeNull();
+  });
+
   it("snapshots every affected document before the folder FK is cleared", async () => {
     const state = getState();
     const id = "folder-delete-snapshot";
