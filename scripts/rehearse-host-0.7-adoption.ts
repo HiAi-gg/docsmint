@@ -281,6 +281,17 @@ export function migrationJournalEntryCount(contents: string): number {
 	return journal.entries.length;
 }
 
+export function updateQuotaLauncherPin(
+	source: string,
+	candidateVersion: string,
+): string {
+	const baselinePin = "'0.6.8'";
+	if (!source.includes(baselinePin)) {
+		throw new Error("disposable quota launcher is not pinned to baseline 0.6.8");
+	}
+	return source.replaceAll(baselinePin, `'${candidateVersion}'`);
+}
+
 export function verifyNoNewRequiredEnvironment(
 	baseline: EnvironmentProbe,
 	candidate: EnvironmentProbe,
@@ -1687,12 +1698,10 @@ async function packAndAdoptActual(
 		"apps/api/src/lib/oss-034-quota-launcher.ts",
 	);
 	const oldQuota = await readFile(quotaPath, "utf8");
-	if (!oldQuota.includes("0.6.8")) {
-		throw new Error(
-			"disposable quota launcher is not pinned to baseline 0.6.8",
-		);
-	}
-	await writeFile(quotaPath, oldQuota.replaceAll("0.6.8", "0.7.0"));
+	await writeFile(
+		quotaPath,
+		updateQuotaLauncherPin(oldQuota, prepared.candidateVersion),
+	);
 	const provenanceRecord = {
 		candidateCommit: prepared.candidateCommit,
 		packageGitHead: prepared.candidateCommit,

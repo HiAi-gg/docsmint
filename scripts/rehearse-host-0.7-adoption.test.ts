@@ -11,6 +11,7 @@ import {
 	migrationJournalEntryCount,
 	runRehearsalWorkflow,
 	stopIsolatedRedisServer,
+	updateQuotaLauncherPin,
 	validateTemporaryRoot,
 	verifyAdditiveMigrationReapply,
 	verifyAtomicAdoption,
@@ -216,6 +217,19 @@ describe("DocsMint host 0.7 adoption rehearsal", () => {
 		expect(() => migrationJournalEntryCount('{"entries":[]}')).toThrow(
 			"no entries",
 		);
+	});
+
+	test("updates only the disposable quota launcher to the exact candidate pin", () => {
+		const launcher = [
+			"export const OSS_QUOTA_LAUNCHER_VERSION = '0.6.8' as const;",
+			"export function assertExactOssQuotaLauncherPin(version: string): asserts version is '0.6.8' {",
+		].join("\n");
+		const updated = updateQuotaLauncherPin(launcher, "0.9.0");
+		expect(updated).toContain("OSS_QUOTA_LAUNCHER_VERSION = '0.9.0' as const");
+		expect(updated).toContain("asserts version is '0.9.0'");
+		expect(updated).not.toContain("'0.6.8'");
+		expect(() => updateQuotaLauncherPin("export const VERSION = '0.8.1';", "0.9.0"))
+			.toThrow("not pinned to baseline 0.6.8");
 	});
 
 	test("requires no new environment variables relative to 0.6.8", () => {
