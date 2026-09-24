@@ -257,3 +257,82 @@ test("hermetic release phases cannot inherit live integration triggers", () => {
 		expect(environment.PATH).toBe("/test/bin");
 	}
 });
+
+test("release DB bindings constrain test targets and runtime roles", () => {
+	if (!releaseGate) return;
+	const validate = (
+		releaseGate as unknown as {
+			validateTestDatabaseBindings?: (
+				environment: Record<string, string | undefined>,
+			) => void;
+		}
+	).validateTestDatabaseBindings;
+	expect(typeof validate).toBe("function");
+	if (!validate) return;
+	const safeEnvironment = {
+		PGUSER: "vlgalib",
+		DATABASE_URL: "postgresql:///app_docsmint_oss_release",
+		PIPELINE_RLS_TEST_DATABASE_URL: "postgresql:///app_docsmint_oss_release",
+		LIFECYCLE_TEST_DATABASE_URL: "postgresql:///app_docsmint_oss_release",
+		CONTENT_ACCESS_TEST_DATABASE_URL: "postgresql:///app_docsmint_oss_release",
+		DOCSMINT_CONTRACT_DATABASE_URL:
+			"postgresql://app_docsmint_oss_release:runtime@127.0.0.1:5432/app_docsmint_oss_release",
+	};
+	expect(() => validate(safeEnvironment)).not.toThrow();
+	const ciLiveEnvironment = {
+		DATABASE_URL: "postgresql://hiai_app:runtime@127.0.0.1:5437/hiai_docs",
+		DOCSMINT_CONTRACT_DATABASE_URL:
+			"postgresql://hiai_app:runtime@127.0.0.1:5437/hiai_docs",
+		PIPELINE_RLS_TEST_DATABASE_URL:
+			"postgresql://aiuser:admin@127.0.0.1:5437/hiai_docs",
+		LIFECYCLE_TEST_DATABASE_URL:
+			"postgresql://aiuser:admin@127.0.0.1:5437/hiai_docs",
+		CONTENT_ACCESS_TEST_DATABASE_URL:
+			"postgresql://aiuser:admin@127.0.0.1:5437/hiai_docs",
+	};
+	expect(() => validate(ciLiveEnvironment)).not.toThrow();
+	expect(() =>
+		validate({
+			...safeEnvironment,
+			CONTENT_ACCESS_TEST_DATABASE_URL:
+				"postgresql://aiuser:test@db.production.invalid:5432/app_docsmint_oss_release",
+		}),
+	).toThrow("loopback");
+	expect(() =>
+		validate({
+			...safeEnvironment,
+			CONTENT_ACCESS_TEST_DATABASE_URL:
+				"postgresql://aiuser:test@127.0.0.1:5432/customer_prod",
+		}),
+	).toThrow("disposable");
+	expect(() =>
+		validate({
+			...safeEnvironment,
+			DOCSMINT_CONTRACT_DATABASE_URL:
+				"postgresql://aiuser:test@127.0.0.1:5432/app_docsmint_oss_release",
+		}),
+	).toThrow("runtime role");
+	expect(() =>
+		validate({ ...safeEnvironment, PGHOST: "db.production.invalid" }),
+	).toThrow("loopback");
+	expect(() => validate({ ...safeEnvironment, PGPORT: "5439" })).toThrow(
+		"local PostgreSQL test port",
+	);
+	expect(() =>
+		validate({ ...safeEnvironment, PGUSERNAME: "customer_admin" }),
+	).toThrow("allowlisted test role");
+});
+
+test("release gate output redacts PostgreSQL and Redis credentials", () => {
+	if (!releaseGate) return;
+	const redact = (
+		releaseGate as unknown as { redactGateOutput?: (output: string) => string }
+	).redactGateOutput;
+	expect(typeof redact).toBe("function");
+	if (!redact) return;
+	expect(
+		redact(
+			"postgresql://fixture:secret@127.0.0.1/db redis://default:token@127.0.0.1/4",
+		),
+	).toBe("postgresql://[REDACTED]@127.0.0.1/db redis://[REDACTED]@127.0.0.1/4");
+});
