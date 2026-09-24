@@ -72,23 +72,19 @@ bridge to your own API, not a server installer or hosted OAuth server. See the
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.8.10?
+## What's new in 0.9.0?
 
-- Publish clearer definitions and stable output schemas for the 21 MCP tools,
-  with registry, marketplace, and documentation parity checks derived from the
-  canonical capability catalog.
-- Export `capabilityCatalog` from `@hiai-gg/docsmint/mcp` for hosted contract
-  comparisons and model sanitized API-key category-list responses accurately.
-- Include folder and category names in document-list responses so the REST
-  payload matches the SDK type and MCP output schema.
-- Prevent category-scoped credentials from creating a document in a folder
-  belonging to another category, even when the request names the allowed category.
-- Return folder and category names from document listings so REST, SDK, and
-  MCP structured output agree.
-- Point Cloud authorization setup copy to the hosted connection guide so client
-  registration instructions stay aligned with supported connection methods.
+- Keep MCP `list_documents` output aligned with the public SDK by returning
+  folder and category names, and invalidate stale list entries after metadata
+  changes for every member of the affected workspace.
+- Publish all 21 MCP tools with stable schemas and clearer parameter guidance;
+  expose the canonical `capabilityCatalog` for hosted contract checks.
+- Reject category-scoped document creation when the selected folder belongs to
+  a different category.
+- Keep category-list response types and Cloud connection guidance aligned with
+  the public API and supported setup flow.
 
-This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.10)
+This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.0)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -141,7 +137,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.8.10`, `web-v0.8.10`, and `caddy-v0.8.10` for
+Use versioned tags `api-v0.9.0`, `web-v0.9.0`, and `caddy-v0.9.0` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
