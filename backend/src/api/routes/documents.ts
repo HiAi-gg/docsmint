@@ -2177,7 +2177,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			// successful move appear only after a later cache expiry/refresh.
 			await Promise.all([
 				invalidateDocCache(params.id),
-				invalidateDocListCache(userId),
+				invalidateDocListCache(userId, ctx.workspaceId),
 			]);
 
 			const ipAddress =
