@@ -231,8 +231,23 @@ export function environmentForStep(
 		}
 		return hermetic;
 	}
+	if (step.name === "required PostgreSQL integrations") {
+		const databaseUrl = base.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
+		if (!databaseUrl) {
+			throw new Error(
+				"required PostgreSQL integrations require CONTENT_ACCESS_TEST_DATABASE_URL",
+			);
+		}
+		return { ...base, DATABASE_URL: databaseUrl };
+	}
 	if (step.name === "required live public surfaces") {
 		const contractStorageUrl = base.DOCSMINT_CONTRACT_STORAGE_URL;
+		const runtimeDatabaseUrl = base.DOCSMINT_CONTRACT_DATABASE_URL?.trim();
+		if (!runtimeDatabaseUrl) {
+			throw new Error(
+				"required live public surfaces require DOCSMINT_CONTRACT_DATABASE_URL",
+			);
+		}
 		return {
 			...base,
 			// Keep the real Seaweed presign-expiry lifecycle regression bounded.
@@ -240,6 +255,7 @@ export function environmentForStep(
 			// release contract stack uses the minimum accepted lifetime.
 			ATTACHMENT_PRESIGN_EXPIRY_SECONDS: "60",
 			API_PORT: base.DOCSMINT_LIVE_API_PORT,
+			DATABASE_URL: runtimeDatabaseUrl,
 			BETTER_AUTH_URL: base.DOCSMINT_CONTRACT_BASE_URL,
 			STORAGE_INTERNAL_ENDPOINT_URL: contractStorageUrl,
 			STORAGE_PUBLIC_ENDPOINT_URL: contractStorageUrl,

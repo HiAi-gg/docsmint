@@ -160,6 +160,8 @@ test("live public surfaces bind every service to the isolated contract stack", (
 		{ name: "required live public surfaces", command: [] },
 		{
 			DOCSMINT_CONTRACT_BASE_URL: "http://127.0.0.1:51710",
+			DOCSMINT_CONTRACT_DATABASE_URL: "postgresql://hiai_app:runtime@127.0.0.1/test",
+			DATABASE_URL: "postgresql://aiuser:admin@127.0.0.1/test",
 			DOCSMINT_LIVE_API_PORT: "51710",
 			DOCSMINT_CONTRACT_STORAGE_URL: "http://127.0.0.1:51702",
 			STORAGE_INTERNAL_ENDPOINT_URL: "http://stale.invalid:8333",
@@ -168,6 +170,9 @@ test("live public surfaces bind every service to the isolated contract stack", (
 	);
 
 	expect(environment.API_PORT).toBe("51710");
+	expect(environment.DATABASE_URL).toBe(
+		"postgresql://hiai_app:runtime@127.0.0.1/test",
+	);
 	expect(environment.BETTER_AUTH_URL).toBe("http://127.0.0.1:51710");
 	expect(environment.STORAGE_INTERNAL_ENDPOINT_URL).toBe(
 		"http://127.0.0.1:51702",
@@ -175,6 +180,44 @@ test("live public surfaces bind every service to the isolated contract stack", (
 	expect(environment.STORAGE_PUBLIC_ENDPOINT_URL).toBe(
 		"http://127.0.0.1:51702",
 	);
+	expect(() =>
+		environmentForStep(
+			{ name: "required live public surfaces", command: [] },
+			{
+				DOCSMINT_CONTRACT_BASE_URL: "http://127.0.0.1:51710",
+				DOCSMINT_LIVE_API_PORT: "51710",
+			},
+		),
+	).toThrow("DOCSMINT_CONTRACT_DATABASE_URL");
+});
+
+test("PostgreSQL integration routes use the task admin URL for fixture-backed tests", () => {
+	if (!releaseGate) return;
+	const environmentForStep = (
+		releaseGate as unknown as {
+			environmentForStep?: (
+				step: { name: string; command: readonly string[] },
+				environment: Record<string, string | undefined>,
+			) => Record<string, string | undefined>;
+		}
+	).environmentForStep;
+	expect(typeof environmentForStep).toBe("function");
+	if (!environmentForStep) return;
+
+	const environment = environmentForStep(
+		{ name: "required PostgreSQL integrations", command: [] },
+		{
+			DATABASE_URL: "postgresql://app_runtime@127.0.0.1/test",
+			CONTENT_ACCESS_TEST_DATABASE_URL: "postgresql:///test",
+		},
+	);
+	expect(environment.DATABASE_URL).toBe("postgresql:///test");
+	expect(() =>
+		environmentForStep(
+			{ name: "required PostgreSQL integrations", command: [] },
+			{ DATABASE_URL: "postgresql://stale.invalid/db" },
+		),
+	).toThrow("CONTENT_ACCESS_TEST_DATABASE_URL");
 });
 
 test("hermetic release phases cannot inherit live integration triggers", () => {
