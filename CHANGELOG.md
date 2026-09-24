@@ -7,6 +7,16 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-09-24
+
+### Fixed
+
+- Return folder and category names from the offset document-list endpoint, as
+  promised by the public SDK type and MCP `list_documents` output schema. This
+  keeps structured MCP results valid without changing document permissions.
+
+No database migration is required.
+
 ## [0.8.9] - 2026-09-24
 
 ### Improved

@@ -95,7 +95,7 @@ test("tagged web publication receives the validated canonical PWA identity", asy
   const validator = await Bun.file(
     new URL("../../../scripts/release-version-validator.ts", import.meta.url),
   ).text();
-  const canonicalDeploymentId = "docsmint-oss-0.8.9";
+  const canonicalDeploymentId = "docsmint-oss-0.8.10";
 
   expect(vite).toContain(canonicalDeploymentId);
   expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);

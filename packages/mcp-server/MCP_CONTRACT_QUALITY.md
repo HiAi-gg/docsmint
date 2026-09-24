@@ -1,6 +1,6 @@
 # MCP Contract Quality Audit
 
-This report records the static review of the OSS MCP contract at 0.8.9. It is based
+This report records the static review of the OSS MCP contract at 0.8.10. It is based
 on the actual `tools/list` response from the MCP server, source definitions, the
 canonical SDK/API inputs, and the package/registry declarations. It contains no
 customer data or credentials.
@@ -86,3 +86,12 @@ category-scoped credential whose folder is outside its configured category, even
 when `categoryId` is explicitly supplied. The regression now returns 403 with no
 document created; a same-category placement remains allowed. This is a verified
 authorization defect fix, separate from the MCP definition-quality improvements.
+
+## Document-list output contract
+
+The hosted-style MCP integration initially rejected `list_documents` because the
+REST offset-list response omitted `folderName` and `categoryName`, fields required
+by the public SDK type and MCP output schema. The REST route now supplies both
+labels with bounded, tenant-scoped lookups, and an HTTP route regression verifies
+the populated case. This is additive response metadata; authorization and list
+behavior remain unchanged.

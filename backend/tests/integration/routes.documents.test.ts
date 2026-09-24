@@ -146,6 +146,38 @@ describe("GET /api/documents", () => {
 		expect(ids).not.toContain("33333333-3333-4333-8333-333333333333");
 	});
 
+	it("returns the folder and category names promised by the SDK list response", async () => {
+		const folderId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const categoryId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+		getState().folders.set(folderId, {
+			id: folderId,
+			ownerId: OWNER_ID,
+			workspaceId: null,
+			categoryId,
+			name: "Research",
+		});
+		getState().categories.set(categoryId, {
+			id: categoryId,
+			ownerId: OWNER_ID,
+			workspaceId: null,
+			name: "Notes",
+		});
+		seedDocument({
+			id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+			folderId,
+			categoryId,
+		});
+
+		const res = await authedGet("/api/documents");
+		expect(res.status).toBe(200);
+		expect((res.body as any).items[0]).toMatchObject({
+			folderId,
+			folderName: "Research",
+			categoryId,
+			categoryName: "Notes",
+		});
+	});
+
 	it("respects the page and limit query parameters", async () => {
 		for (let i = 0; i < 5; i++) {
 			seedDocument({

@@ -380,6 +380,57 @@ async function withTags<T extends { id: string }>(
 	return rows.map((r) => ({ ...r, tags: byDoc.get(r.id) ?? [] }));
 }
 
+/**
+ * Attach the folder and category labels promised by DocsDocumentListItem.
+ * The offset list fetches documents first, so this resolves names in two
+ * bounded queries instead of issuing one lookup per result.
+ */
+async function withDocumentLocationNames<
+	T extends { folderId: string | null; categoryId: string | null },
+>(
+	ctx: import("../../api/middleware/tenant").TenantContext,
+	rows: T[],
+): Promise<
+	Array<T & { folderName: string | null; categoryName: string | null }>
+> {
+	if (rows.length === 0) return [];
+	const folderIds = [
+		...new Set(rows.flatMap((row) => (row.folderId ? [row.folderId] : []))),
+	];
+	const categoryIds = [
+		...new Set(rows.flatMap((row) => (row.categoryId ? [row.categoryId] : []))),
+	];
+	const [folderRows, categoryRows] = await withTenant(ctx, async (tx) =>
+		Promise.all([
+			folderIds.length > 0
+				? tx
+						.select({ id: folders.id, name: folders.name })
+						.from(folders)
+						.where(inArray(folders.id, folderIds))
+				: Promise.resolve([]),
+			categoryIds.length > 0
+				? tx
+						.select({ id: categories.id, name: categories.name })
+						.from(categories)
+						.where(inArray(categories.id, categoryIds))
+				: Promise.resolve([]),
+		]),
+	);
+	const folderNames = new Map(
+		folderRows.map((folder) => [folder.id, folder.name]),
+	);
+	const categoryNames = new Map(
+		categoryRows.map((category) => [category.id, category.name]),
+	);
+	return rows.map((row) => ({
+		...row,
+		folderName: row.folderId ? (folderNames.get(row.folderId) ?? null) : null,
+		categoryName: row.categoryId
+			? (categoryNames.get(row.categoryId) ?? null)
+			: null,
+	}));
+}
+
 export const documentRoutes = new Elysia({ prefix: "/api" })
 	// GET /api/documents — List documents with pagination
 	.get("/documents", async ({ query, set, request }) => {
@@ -470,7 +521,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						]);
 					});
 					return {
-						items: await withTags(ctx, rows),
+						items: await withDocumentLocationNames(
+							ctx,
+							await withTags(ctx, rows),
+						),
 						total: countResult[0]?.total ?? 0,
 						page,
 						limit,
@@ -504,7 +558,10 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					]);
 				});
 				return {
-					items: await withTags(ctx, rows),
+					items: await withDocumentLocationNames(
+						ctx,
+						await withTags(ctx, rows),
+					),
 					total: countResult[0]?.total ?? 0,
 					page,
 					limit,
