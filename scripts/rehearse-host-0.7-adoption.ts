@@ -2430,6 +2430,10 @@ async function smoke070Actual(
 		prepared,
 		prepared.hostRoot,
 		prepared.candidateVersion,
+		{
+			workspaceEnabled: "true",
+			attachmentStorageEnforcement: "true",
+		},
 	);
 	try {
 		const unscoped = await signAssertion(prepared);
