@@ -71,6 +71,28 @@ describe("hiai-docs MCP REST client contract", () => {
 		});
 	});
 
+	test("forwards tag names to search and leaves an omitted title to the REST default", async () => {
+		const calls: Array<{ url: string; method: string; body?: BodyInit | null }> = [];
+		globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+			calls.push({
+				url: String(input),
+				method: init?.method ?? "GET",
+				body: init?.body,
+			});
+			return Response.json({ items: [], total: 0, page: 1, limit: 20 });
+		}) as unknown as typeof fetch;
+
+		await client.search({ query: "architecture", tags: ["planning"] });
+		await client.createDocument({ content: "Initial body" });
+
+		expect(calls[0]?.url).toBe(
+			"https://docs.example.test/api/search?q=architecture&tags=planning",
+		);
+		expect(calls[1]?.url).toBe("https://docs.example.test/api/documents");
+		expect(calls[1]?.method).toBe("POST");
+		expect(calls[1]?.body).toBe(JSON.stringify({ content: "Initial body" }));
+	});
+
 	test("routes manager, graph, and index operations through the public API", async () => {
 		const calls: Array<{
 			url: string;

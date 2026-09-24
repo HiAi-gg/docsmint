@@ -173,13 +173,12 @@ LobeHub after the release if its organization claim flow is available.
 The [Glama connector](https://glama.ai/mcp/connectors/io.github.HiAi-gg/docsmint)
 indexes the hosted Streamable HTTP URL from `server.json`. Anonymous health
 probes receive HTTP 401 because hosted MCP requires authentication; that does not
-mean the remote is down. Current Cloud discovery advertises authorization-code
-with PKCE S256 and DCR at `/oauth/register`; CIMD is not part of the current
-contract. Tokens last one hour, have no refresh token, and are bound by browser
-consent to the selected workspace, optional category, and scopes. API-key clients
-retain the Bearer credential flow. The npm/stdio bridge uses an API key for the
-operator's own self-hosted API and does not install the Cloud OAuth server. Guided
-Cloud onboarding starts at `https://docsmint.com/mcp/connect` and requires no
+mean the remote is down. Hosted Cloud authorization and client-connection methods
+are documented at `https://docsmint.com/mcp/connect`. Browser consent binds access
+to the selected workspace, optional category, and scopes. API-key clients retain
+the Bearer credential flow. The npm/stdio bridge uses an API key for the
+operator's own self-hosted API and does not install the Cloud authorization server.
+Guided Cloud onboarding starts at `https://docsmint.com/mcp/connect` and requires no
 self-hosted server. After tagging, claim the listing with root `glama.json` using the Glama
 connector schema and public contact `app.croco.team@gmail.com`. That email must
 match the Glama account. Supply private test credentials in Glama so the

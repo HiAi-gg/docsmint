@@ -4,11 +4,25 @@ import type { Version } from '../types.js';
 
 export const definition = {
   name: 'create_snapshot',
-  description: 'Create a named snapshot (labelled version) of a document from its current content.',
+  description:
+    'Save a named, retained snapshot of an existing document’s current content before a planned change. Requires edit access and adds an entry to get_version_history without changing the document itself. Use restore_document_version with the returned version ID to restore its content later.',
   inputSchema: {
-    documentId: z.string().describe('Document ID to snapshot.'),
-    label: z.string().describe("Short label for the snapshot (e.g. 'v1.0-release')."),
-    description: z.string().optional().describe('Optional longer description of the snapshot.'),
+    documentId: z
+      .string()
+      .uuid()
+      .describe(
+        'UUID of the existing document, obtained from search_documents or list_documents and visible in the active scope.'
+      ),
+    label: z
+      .string()
+      .min(1)
+      .max(200)
+      .describe("Non-empty snapshot label up to 200 characters, for example 'v1.0-release'."),
+    description: z
+      .string()
+      .max(1000)
+      .optional()
+      .describe('Optional snapshot note up to 1,000 characters; omit if not needed.'),
   },
 } as const;
 

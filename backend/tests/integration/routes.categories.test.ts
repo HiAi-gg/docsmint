@@ -136,6 +136,16 @@ describe("POST /api/categories", () => {
     expect(body.id).toBeTruthy();
 	});
 
+	it("does not accept or persist an unsupported description field", async () => {
+		const res = await authedPost("/api/categories", {
+			name: "research",
+			description: "This field is not part of the category API contract",
+		});
+		expect(res.status).toBe(201);
+		expect(res.body).not.toHaveProperty("description");
+		expect(getState().categories.get((res.body as { id: string }).id)).not.toHaveProperty("description");
+	});
+
 	it("persists global API access and its permissions", async () => {
 		const res = await authedPost("/api/categories", {
 			name: "public-docs",

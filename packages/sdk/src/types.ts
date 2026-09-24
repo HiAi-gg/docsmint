@@ -140,6 +140,17 @@ export interface DocsCategory {
 	folderCount?: number;
 }
 
+/**
+ * Category records returned by GET /api/categories. API-key principals receive
+ * the public category fields without the workspace API-access configuration.
+ */
+export type DocsCategoryListItem =
+	| DocsCategory
+	| Omit<
+			DocsCategory,
+			"apiMode" | "apiPermissionRead" | "apiPermissionEdit" | "apiPermissionWrite"
+		>;
+
 export interface DocsCategoryInput {
 	name: string;
 	apiMode?: DocsCategoryApiMode;

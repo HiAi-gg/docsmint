@@ -4,6 +4,7 @@ import {
 	type DocsRequestContext,
 } from "@hiai-gg/docsmint";
 import {
+	capabilityCatalog,
 	createDocsmintMcpServer,
 	registerDocsmintMcpCapabilities,
 	type CreateDocsmintMcpServerOptions,
@@ -19,6 +20,7 @@ const options: CreateDocsmintMcpServerOptions = {
 	requestContext: context,
 };
 const server = createDocsmintMcpServer(options);
+const canonicalToolNames: readonly string[] = capabilityCatalog.tools;
 declare const capabilityClient: HiaiDocsClient;
 registerDocsmintMcpCapabilities(server, capabilityClient);
 const error = new DocsApiError(
@@ -28,4 +30,4 @@ const error = new DocsApiError(
 	undefined,
 	"workspace_forbidden",
 );
-void [server, error];
+void [server, error, canonicalToolNames];

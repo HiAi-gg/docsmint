@@ -66,6 +66,19 @@ describe("DocsClient public contract", () => {
 		expect(new Headers(seen?.init.headers).get("x-tenant-id")).toBe("tenant-a");
 	});
 
+	it("preserves API-key category list responses without workspace API fields", async () => {
+		const apiKeyCategory = {
+			id: "category-scoped",
+			name: "Scoped",
+			order: 0,
+			createdAt: "2026-09-24T00:00:00.000Z",
+			updatedAt: "2026-09-24T00:00:00.000Z",
+		};
+		const docs = client(async () => jsonResponse([apiKeyCategory]));
+
+		await expect(docs.listCategories()).resolves.toEqual([apiKeyCategory]);
+	});
+
 	it("preserves an arbitrary Authorization header without a workspace assertion", async () => {
 		let seenHeaders: Headers | undefined;
 		const docs = client(async (_input, init) => {

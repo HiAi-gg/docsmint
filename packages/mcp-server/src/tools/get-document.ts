@@ -4,9 +4,15 @@ import type { DocumentDetail } from '../types.js';
 
 export const definition = {
   name: 'get_document',
-  description: 'Read one document with its content, metadata, and tags before editing or citing it. Requires read access. Use export_document when you only need portable Markdown.',
+  description:
+    'Read an existing document by UUID with its content, metadata, and tags before editing or citing it. Requires read access in the active workspace/category. Use export_document when you only need the portable Markdown body.',
   inputSchema: {
-    id: z.string().describe('Document ID.'),
+    id: z
+      .string()
+      .uuid()
+      .describe(
+        'UUID of the document, obtained from search_documents or list_documents, and visible in the active scope.'
+      ),
   },
 } as const;
 

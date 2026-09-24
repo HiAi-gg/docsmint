@@ -1,14 +1,20 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { DocsClient } from '@hiai-docs/sdk';
+import { execPath } from 'node:process';
 
 import { capabilityCatalog } from './capabilities.js';
 import { client as defaultClient } from './client.js';
-import { createDocsmintMcpServer } from './server.js';
+import { capabilityCatalog as publicCapabilityCatalog, createDocsmintMcpServer } from './server.js';
 
 describe('DocsMint MCP protocol discovery', () => {
   let close: (() => Promise<void>) | undefined;
   afterEach(async () => close?.());
+
+  test('exports the canonical catalog from the public MCP module', () => {
+    expect(publicCapabilityCatalog).toEqual(capabilityCatalog);
+  });
 
   test('advertises tools, prompts, and resources over MCP', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -30,26 +36,28 @@ describe('DocsMint MCP protocol discovery', () => {
     const guide = await client.readResource({ uri: 'docsmint://guide/search' });
 
     expect(tools.tools.map((tool) => tool.name)).toEqual([...capabilityCatalog.tools]);
-    expect(tools.tools).toHaveLength(21);
-    const lobeManifest = await Bun.file(new URL('../../../lhm.plugin.json', import.meta.url)).json();
-    expect(lobeManifest.tools).toEqual(tools.tools);
+    expect(tools.tools).toHaveLength(capabilityCatalog.tools.length);
+    const lobeManifest = await Bun.file(
+      new URL('../../../lhm.plugin.json', import.meta.url)
+    ).json();
+    expect(lobeManifest.tools).toEqual(JSON.parse(JSON.stringify(tools.tools)));
+    expect(lobeManifest.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      ...capabilityCatalog.tools,
+    ]);
     for (const tool of tools.tools) {
       expect(tool.annotations?.readOnlyHint).toBeBoolean();
       for (const property of Object.values(tool.inputSchema.properties ?? {})) {
-        expect((property as { description?: string }).description?.trim().length).toBeGreaterThan(10);
+        expect((property as { description?: string }).description?.trim().length).toBeGreaterThan(
+          10
+        );
       }
     }
-    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([
-      'organize_workspace',
-      'research_workspace',
-    ]);
-    expect(prompts.prompts).toHaveLength(2);
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([...capabilityCatalog.prompts]);
+    expect(prompts.prompts).toHaveLength(capabilityCatalog.prompts.length);
     expect(resources.resources.map((resource) => resource.uri)).toEqual([
-      'docsmint://guide/editor',
-      'docsmint://guide/search',
-      'docsmint://workspace/catalog',
+      ...capabilityCatalog.resources,
     ]);
-    expect(resources.resources).toHaveLength(3);
+    expect(resources.resources).toHaveLength(capabilityCatalog.resources.length);
     expect(prompt.messages[0]?.content).toMatchObject({
       type: 'text',
       text: expect.stringContaining('What changed?'),
@@ -60,17 +68,66 @@ describe('DocsMint MCP protocol discovery', () => {
     });
   });
 
+  test('stdio binary serves the canonical catalog and output schemas', async () => {
+    const root = new URL('../../../', import.meta.url);
+    const transport = new StdioClientTransport({
+      command: execPath,
+      args: ['run', 'packages/mcp-server/src/index.ts'],
+      cwd: root.pathname,
+      env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
+      stderr: 'pipe',
+    });
+    const client = new Client({ name: 'stdio-contract-test', version: '1.0.0' });
+    close = async () => {
+      await client.close();
+    };
+    await client.connect(transport);
+
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual([...capabilityCatalog.tools]);
+    expect(tools).toHaveLength(capabilityCatalog.tools.length);
+    for (const tool of tools) expect(tool.outputSchema, tool.name).toBeDefined();
+  });
+
   test('binds every capability to the injected scoped API client', async () => {
     const calls: string[] = [];
     const scopedClient = {
       ...defaultClient,
       search: async () => {
         calls.push('search');
-        return { results: [{ id: 'document-scoped', title: 'Scoped result' }] };
+        return {
+          items: [
+            {
+              id: 'document-scoped',
+              title: 'Scoped result',
+              snippet: 'A scoped result',
+              score: 0.9,
+              folder_id: null,
+              folder_name: null,
+              created_at: '2026-09-24T00:00:00.000Z',
+              updated_at: '2026-09-24T00:00:00.000Z',
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 20,
+        };
       },
       listCategories: async () => {
         calls.push('categories');
-        return [{ id: 'category-scoped', name: 'Scoped' }];
+        return [
+          {
+            id: 'category-scoped',
+            name: 'Scoped',
+            order: 0,
+            apiMode: 'global',
+            apiPermissionRead: true,
+            apiPermissionEdit: true,
+            apiPermissionWrite: true,
+            createdAt: '2026-09-24T00:00:00.000Z',
+            updatedAt: '2026-09-24T00:00:00.000Z',
+          },
+        ];
       },
       listFolders: async () => {
         calls.push('folders');
@@ -78,7 +135,7 @@ describe('DocsMint MCP protocol discovery', () => {
       },
       listTags: async () => {
         calls.push('tags');
-        return [{ id: 'tag-scoped', name: 'Scoped tag' }];
+        return [{ id: 'tag-scoped', name: 'Scoped tag', color: null }];
       },
     };
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -105,7 +162,23 @@ describe('DocsMint MCP protocol discovery', () => {
     expect(categories.content).toEqual([
       {
         type: 'text',
-        text: JSON.stringify([{ id: 'category-scoped', name: 'Scoped' }], null, 2),
+        text: JSON.stringify(
+          [
+            {
+              id: 'category-scoped',
+              name: 'Scoped',
+              order: 0,
+              apiMode: 'global',
+              apiPermissionRead: true,
+              apiPermissionEdit: true,
+              apiPermissionWrite: true,
+              createdAt: '2026-09-24T00:00:00.000Z',
+              updatedAt: '2026-09-24T00:00:00.000Z',
+            },
+          ],
+          null,
+          2
+        ),
       },
     ]);
     expect(catalog.contents[0]).toMatchObject({
@@ -115,13 +188,59 @@ describe('DocsMint MCP protocol discovery', () => {
       {
         type: 'text',
         text: JSON.stringify(
-          { results: [{ id: 'document-scoped', title: 'Scoped result' }] },
+          {
+            items: [
+              {
+                id: 'document-scoped',
+                title: 'Scoped result',
+                snippet: 'A scoped result',
+                score: 0.9,
+                folder_id: null,
+                folder_name: null,
+                created_at: '2026-09-24T00:00:00.000Z',
+                updated_at: '2026-09-24T00:00:00.000Z',
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          },
           null,
           2
         ),
       },
     ]);
     expect(calls).toEqual(['categories', 'search', 'categories', 'folders', 'tags']);
+  });
+
+  test('returns API-key category records without workspace permission metadata', async () => {
+    const apiKeyCategory = {
+      id: 'category-scoped',
+      name: 'Scoped',
+      order: 0,
+      createdAt: '2026-09-24T00:00:00.000Z',
+      updatedAt: '2026-09-24T00:00:00.000Z',
+    };
+    const scopedClient = {
+      ...defaultClient,
+      listCategories: async () => [apiKeyCategory],
+    };
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const server = createDocsmintMcpServer({ client: scopedClient });
+    const client = new Client({ name: 'api-key-category-test', version: '1.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    close = async () => {
+      await client.close();
+      await server.close();
+    };
+
+    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent).toEqual({ result: [apiKeyCategory] });
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify([apiKeyCategory], null, 2) },
+    ]);
   });
 
   test('adapts a public DocsClient through one sanitized scoped context', async () => {
@@ -132,7 +251,19 @@ describe('DocsMint MCP protocol discovery', () => {
       retries: 1,
       fetch: (async (_input, init) => {
         seenHeaders.push(new Headers(init?.headers));
-        return Response.json([{ id: 'category-scoped', name: 'Scoped' }]);
+        return Response.json([
+          {
+            id: 'category-scoped',
+            name: 'Scoped',
+            order: 0,
+            apiMode: 'global',
+            apiPermissionRead: true,
+            apiPermissionEdit: true,
+            apiPermissionWrite: true,
+            createdAt: '2026-09-24T00:00:00.000Z',
+            updatedAt: '2026-09-24T00:00:00.000Z',
+          },
+        ]);
       }) as typeof fetch,
     });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -163,16 +294,30 @@ describe('DocsMint MCP protocol discovery', () => {
       content: [
         {
           type: 'text',
-          text: JSON.stringify([{ id: 'category-scoped', name: 'Scoped' }], null, 2),
+          text: JSON.stringify(
+            [
+              {
+                id: 'category-scoped',
+                name: 'Scoped',
+                order: 0,
+                apiMode: 'global',
+                apiPermissionRead: true,
+                apiPermissionEdit: true,
+                apiPermissionWrite: true,
+                createdAt: '2026-09-24T00:00:00.000Z',
+                updatedAt: '2026-09-24T00:00:00.000Z',
+              },
+            ],
+            null,
+            2
+          ),
         },
       ],
     });
     expect(seenHeaders).toHaveLength(1);
     expect(seenHeaders[0]?.get('authorization')).toBe('Bearer service-key');
     expect(seenHeaders[0]?.get('cookie')).toBeNull();
-    expect(seenHeaders[0]?.get('x-docsmint-workspace-context')).toBe(
-      'signed-workspace-assertion'
-    );
+    expect(seenHeaders[0]?.get('x-docsmint-workspace-context')).toBe('signed-workspace-assertion');
     expect(seenHeaders[0]?.get('x-request-id')).toBe('req-mcp');
     expect(seenHeaders[0]?.get('idempotency-key')).toBe('idem-mcp');
   });
@@ -233,7 +378,7 @@ describe('DocsMint MCP protocol discovery', () => {
 
     expect(result.isError).toBe(true);
     expect((result.content as Array<{ text: string }>)[0]?.text).toBe(
-      "Tool 'extended' failed: spoofed failure"
+      "Tool 'list_categories' failed: spoofed failure"
     );
   });
 });

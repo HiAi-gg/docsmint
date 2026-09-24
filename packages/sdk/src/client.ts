@@ -17,6 +17,7 @@ import type {
 	DocsAttachmentPresignInput,
 	DocsAttachmentPresignResponse,
 	DocsCategory,
+	DocsCategoryListItem,
 	DocsCategoryInput,
 	DocsCategoryUpdate,
 	DocsDocument,
@@ -575,8 +576,8 @@ export class DocsClient {
 
 	// ── Categories ───────────────────────────────────────────────────────
 
-	async listCategories(context?: DocsRequestContext): Promise<DocsCategory[]> {
-		return this.request<DocsCategory[]>(
+	async listCategories(context?: DocsRequestContext): Promise<DocsCategoryListItem[]> {
+		return this.request<DocsCategoryListItem[]>(
 			"GET",
 			"/api/categories",
 			undefined,

@@ -25,10 +25,9 @@ No self-hosted server or local MCP process is required.
 OAuth-capable clients use the same hosted URL. An unauthenticated request returns
 `401` with a `WWW-Authenticate` link to
 `/.well-known/oauth-protected-resource/mcp`. That resource metadata points to
-`/.well-known/oauth-authorization-server`, which advertises
-`/oauth/authorize`, `/oauth/token`, and DCR registration at
-`https://docsmint.com/oauth/register`. DCR is an active hosted registration path;
-CIMD is not part of the current Cloud contract.
+`/.well-known/oauth-authorization-server`. The current hosted authorization and
+client-connection methods are described in the
+[DocsMint Cloud setup guide](https://docsmint.com/mcp/connect).
 
 Current authorization metadata advertises the `code` response type, only the
 `authorization_code` grant, no token-endpoint client authentication, and PKCE
@@ -114,30 +113,30 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 
 ## MCP Features
 
-### Tools (21)
+### Tools
 
-- `search_documents`: Hybrid search (full-text + semantic pgvector).
-- `get_document`: Fetch document content and metadata.
-- `create_document`: Create a document with optional markdown, folder, and category.
-- `update_document`: Update title, content, folder, or category.
-- `list_documents`: Paginated document list, optionally filtered by folder or tag.
-- `list_folders`: List folders, optionally under a parent.
-- `create_folder`: Create a folder, optionally nested.
-- `create_snapshot`: Create a named snapshot of the current document.
-- `get_version_history`: List versions, optionally snapshots only.
-- `export_document`: Export a document as Markdown.
-- `list_categories`: List categories visible to the API key.
-- `create_category`: Create a category (workspace key with write access).
-- `list_tags`: List tags in the workspace or bound category.
-- `get_related_documents`: Traverse the knowledge graph from one authorized document.
-- `search_knowledge_graph`: Search connected knowledge from authorized seed documents.
-- `get_document_index_status`: Read indexing and knowledge-pipeline status.
-- `refresh_document_index`: Request reindexing after a document or metadata change.
+- `search_documents`: Retrieve readable documents with hybrid full-text and semantic search; optional tags are tag names. Use graph tools for graph-only exploration.
+- `get_document`: Read one document with editable content and metadata; use `export_document` when only portable Markdown is needed.
+- `create_document`: Create new content with optional title, Markdown, and placement; requires write access, schedules normal indexing, and defaults an omitted title to “Untitled”. Category-scoped credentials must stay in their configured category. Use `update_document` for an existing document.
+- `update_document`: Patch an existing document after reading it; omitted fields stay unchanged, `null` clears folder/category placement, prior content is retained in version history, and changed content or placement queues indexing. Use `create_document` for new content.
+- `list_documents`: Page through readable documents and optionally filter by folder UUID or tag UUID; use `search_documents` for text or semantic retrieval.
+- `list_folders`: List root folders or the immediate children of a folder in the active scope.
+- `create_folder`: Create a root or nested folder; nested folders inherit their parent's category, and a category-scoped credential stays inside its configured category.
+- `create_snapshot`: Save a named snapshot of current content without changing the document; use its returned version ID with `restore_document_version`.
+- `get_version_history`: Read auto-saved revisions and snapshots; use `restore_document_version` to restore a selected version.
+- `export_document`: Render a readable document as portable Markdown without the full metadata returned by `get_document`.
+- `list_categories`: List categories visible in the active workspace or category scope.
+- `create_category`: Create a category with workspace-level write access; category-scoped credentials cannot create categories.
+- `list_tags`: List visible tags with both IDs (for `list_documents`) and names (for `search_documents`).
+- `get_related_documents`: Traverse graph neighbors from one readable document without a text query; use `search_knowledge_graph` to filter/rank neighbors with query text.
+- `search_knowledge_graph`: Search graph relations from readable seed document IDs; use `search_documents` for normal hybrid retrieval.
+- `get_document_index_status`: Inspect indexing state without starting work; use `refresh_document_index` only when a retry is intended.
+- `refresh_document_index`: Queue an explicit asynchronous reindex for a readable document after checking status; routine content or placement changes already schedule indexing as needed.
 
 - `delete_document`: Move a writable document to trash; no permanent purge.
 - `delete_folder`: Delete a writable folder while preserving its documents.
 - `delete_category`: Delete a category using full workspace write access; category keys are denied.
-- `restore_document_version`: Restore document content from a version or snapshot with edit access.
+- `restore_document_version`: Restore content from a version or snapshot with edit access; `get_version_history` lists eligible version IDs. Current content is backed up first, and indexing is queued.
 
 ### Lifecycle permissions
 
@@ -154,21 +153,21 @@ trashed documents. Lifecycle tools advertise destructive annotations; authorizat
 is enforced by the REST API, not by those advisory client hints. Failed requests
 return MCP `isError` with the REST status; they never acknowledge a successful deletion.
 
-### Prompts (2)
+### Prompts
 
 - `organize_workspace`: Plan safe document organization using DocsMint categories and folders.
 - `research_workspace`: Research a question with hybrid search, GraphRAG, and rerank citing document IDs.
 
-### Resources (3)
+### Resources
 
 - `docsmint://guide/editor`: Editor usage guide.
 - `docsmint://guide/search`: Search, GraphRAG, and rerank guide.
 - `docsmint://workspace/catalog`: Live scoped workspace catalog.
 
-### Skills (1)
+### Skills
 
 - [`docsmint-document-manager`](https://github.com/HiAi-gg/docsmint/blob/main/skills/docsmint-document-manager/SKILL.md):
-  create, organize, edit, and research DocsMint documents through the 21 MCP
+  create, organize, edit, and research DocsMint documents through DocsMint's MCP
   tools.
 
 ## Tools and REST routes

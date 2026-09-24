@@ -2,6 +2,14 @@ import type { McpServer } from "@modelcontextprotocol/server";
 
 import type { DocsClient, DocsRequestContext } from "./index.js";
 
+export interface DocsMintMcpCapabilityCatalog {
+	readonly tools: readonly string[];
+	readonly prompts: readonly string[];
+	readonly resources: readonly string[];
+}
+
+export declare const capabilityCatalog: DocsMintMcpCapabilityCatalog;
+
 export interface HiaiDocsClient {
 	deleteDocument?(id: string): Promise<void>;
 	deleteFolder?(id: string): Promise<void>;
@@ -9,16 +17,16 @@ export interface HiaiDocsClient {
 	restoreDocumentVersion?(documentId: string, versionId: string): Promise<unknown>;
 	search(params: { query: string; folder?: string; tags?: string[]; limit?: number }): Promise<unknown>;
 	getDocument(id: string): Promise<unknown>;
-	createDocument(input: { title: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
+	createDocument(input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	updateDocument(id: string, input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	listDocuments(params: { folderId?: string; tag?: string; page?: number; limit?: number }): Promise<unknown>;
 	listFolders(params: { parentId?: string }): Promise<unknown>;
-	createFolder(input: { name: string; parentId?: string; categoryId?: string }): Promise<unknown>;
+	createFolder(input: { name: string; parentId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	listCategories(): Promise<unknown>;
-	createCategory(input: { name: string; description?: string }): Promise<unknown>;
+	createCategory(input: { name: string }): Promise<unknown>;
 	listTags(): Promise<unknown>;
 	getRelatedDocuments(documentId: string, limit?: number): Promise<unknown>;
-	searchGraph(input: { query: string; docIds: string[]; limit?: number }): Promise<unknown>;
+	searchGraph(input: { query?: string; docIds: string[]; limit?: number }): Promise<unknown>;
 	getDocumentIndexStatus(documentId: string): Promise<unknown>;
 	refreshDocumentIndex(documentId: string): Promise<unknown>;
 	createSnapshot(documentId: string, input: { label: string; description?: string }): Promise<unknown>;

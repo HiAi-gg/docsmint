@@ -265,7 +265,7 @@ await writeFile(
   `import { DocsClient, createDocsmintWorkspaceAssertion, verifyDocsmintWorkspaceAssertion } from "${manifest.name}";
 import { encodeUserDataExportNdjson } from "${manifest.name}/lifecycle";
 import { createPersistentLifecycleRuntime } from "${manifest.name}/lifecycle/persistent";
-import { createDocsmintMcpServer, registerDocsmintMcpCapabilities } from "${manifest.name}/mcp";
+import { capabilityCatalog, createDocsmintMcpServer, registerDocsmintMcpCapabilities } from "${manifest.name}/mcp";
 import { createPersistentLifecycleRuntime as createDurableLifecycleRuntime } from "${manifest.name}/lifecycle/runtime";
 import { createDocsmintWorkspaceAssertion as createWorkspaceAssertion, verifyDocsmintWorkspaceAssertion as verifyWorkspaceAssertion } from "${manifest.name}/workspace";
 import { launchDocsmintBackend, launchDocsMintApi, resolveDocsmintBackendEntrypoint } from "${manifest.name}/backend/launcher";
@@ -273,7 +273,7 @@ import { createStorageQuotaService, StorageQuotaExceededError, requireAttachment
 import { createAccountRuntimeCleanup } from "${manifest.name}/backend/account-runtime-cleanup";
 import { issueApiKey, verifyApiKey } from "${manifest.name}/backend/lib/api-key-facade";
 const docsClient = new DocsClient({ baseUrl: "https://docs.example.test" });
-if (!DocsClient || !createDocsmintWorkspaceAssertion || !verifyDocsmintWorkspaceAssertion || !createWorkspaceAssertion || !verifyWorkspaceAssertion || !docsClient.getDocumentIndexStatus || !docsClient.refreshDocumentIndex || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !createDurableLifecycleRuntime || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission || !createAccountRuntimeCleanup || !issueApiKey || !verifyApiKey || !createDocsmintMcpServer || !registerDocsmintMcpCapabilities) throw new Error("missing server export");
+if (!DocsClient || !createDocsmintWorkspaceAssertion || !verifyDocsmintWorkspaceAssertion || !createWorkspaceAssertion || !verifyWorkspaceAssertion || !docsClient.getDocumentIndexStatus || !docsClient.refreshDocumentIndex || !encodeUserDataExportNdjson || !createPersistentLifecycleRuntime || !createDurableLifecycleRuntime || !launchDocsmintBackend || !launchDocsMintApi || !resolveDocsmintBackendEntrypoint || !createStorageQuotaService || !StorageQuotaExceededError || !requireAttachmentStorageQuotaAdmission || !createAccountRuntimeCleanup || !issueApiKey || !verifyApiKey || !createDocsmintMcpServer || !registerDocsmintMcpCapabilities || !capabilityCatalog.tools.length) throw new Error("missing server export");
 console.log("server imports: pass");
 `
 );
@@ -281,12 +281,16 @@ await run(['bun', 'server-import-smoke.ts'], packageRoot);
 
 const mcpClientLink = join(packageRoot, 'node_modules', '@modelcontextprotocol', 'client');
 await mkdir(dirname(mcpClientLink), { recursive: true });
-await symlink(join(root, 'packages/mcp-server/node_modules/@modelcontextprotocol/client'), mcpClientLink, 'dir');
+await symlink(
+  join(root, 'packages/mcp-server/node_modules/@modelcontextprotocol/client'),
+  mcpClientLink,
+  'dir'
+);
 await writeFile(
   join(packageRoot, 'mcp-public-error-smoke.ts'),
   `import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { DocsApiError, DocsClient } from "${manifest.name}";
-import { createDocsmintMcpServer } from "${manifest.name}/mcp";
+import { capabilityCatalog, createDocsmintMcpServer } from "${manifest.name}/mcp";
 const docsClient = new DocsClient({
   baseUrl: "https://docs.example.test",
   retries: 1,
@@ -302,6 +306,10 @@ const server = createDocsmintMcpServer({ docsClient });
 const client = new Client({ name: "packed-error-contract", version: "1.0.0" });
 await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
 try {
+  const listed = await client.listTools();
+  if (JSON.stringify(listed.tools.map((tool) => tool.name)) !== JSON.stringify(capabilityCatalog.tools)) {
+    throw new Error("packed MCP runtime does not match the exported canonical capability catalog");
+  }
   const result = await client.callTool({ name: "list_categories", arguments: {} });
   const body = JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? "");
   const expected = {
@@ -396,7 +404,7 @@ for (const dependency of new Set([
 }
 await writeFile(
   join(packageRoot, 'declaration-smoke.ts'),
-  `import { DocsApiError, DocsClient, type DocsRequestContext } from "${manifest.name}";
+  `import { DocsApiError, DocsClient, type DocsCategory, type DocsCategoryApiMode, type DocsCategoryListItem, type DocsRequestContext } from "${manifest.name}";
 import { createDocsmintMcpServer, registerDocsmintMcpCapabilities, type CreateDocsmintMcpServerOptions, type HiaiDocsClient } from "${manifest.name}/mcp";
 import type { PurgeUserDataContext, UserDataExportRecord } from "${manifest.name}/lifecycle";
 import type { LifecycleRuntimeAdapters } from "${manifest.name}/lifecycle/persistent";
@@ -440,6 +448,18 @@ const mcpServer = createDocsmintMcpServer(mcpOptions);
 declare const capabilityClient: HiaiDocsClient;
 registerDocsmintMcpCapabilities(mcpServer, capabilityClient);
 const publicError = new DocsApiError(403, { error: "forbidden" }, "Forbidden");
+async function assertCategoryResponseTypes(client: DocsClient) {
+  const categories = await client.listCategories();
+  const category: DocsCategoryListItem | undefined = categories[0];
+  if (category) {
+    // @ts-expect-error list results may omit API access metadata for API-key principals
+    category.apiMode;
+  }
+  const created: DocsCategory = await client.createCategory({ name: "typecheck" });
+  const mode: DocsCategoryApiMode = created.apiMode;
+  void mode;
+}
+void assertCategoryResponseTypes;
 void [DocsClient, DocsApiError, publicError, mcpServer, launchDocsmintBackend, launchDocsMintApi, createStorageQuotaService, StorageQuotaExceededError, createAccountRuntimeCleanup, DocsmintDashboardHost, DocsmintSearchHost, DocsmintSharedDocumentHost, DocsmintExtensionProvider, listCategories, listDocuments, listFolders, listTags, getProfile, uploadAttachment, createShareLink, startCollaboration, CreateSnapshotDialog, DeleteDialog, CategoryDialog, FolderNode, createDocumentDropCoordinator, resolveOfflineIdentity, createDocTabRegistry, registerShortcut, refreshFolders, cn, formatRelativeTime, copyToClipboard, dndzone, Sidebar, SettingsDialog, theme, setTheme, toggleTheme, messages, getMessage, setLocale, supportedLocales];
 type PublicTypes = DocsRequestContext | PurgeUserDataContext | UserDataExportRecord | LifecycleRuntimeAdapters | WorkspaceRole | WorkspaceResourcePermission | WorkspaceResourceScope | WorkspaceAssertionPayload | DocsmintWorkspaceContext | WorkspaceAssertionOptions | WorkspaceRoleFromWorkspace | WorkspaceResourcePermissionFromWorkspace | WorkspaceResourceScopeFromWorkspace | WorkspaceAssertionPayloadFromWorkspace | DocsmintWorkspaceContextFromWorkspace | WorkspaceAssertionOptionsFromWorkspace | DocsmintBackendHandle | DocsMintRuntimeOptions | StorageQuotaAdapter | StorageQuotaReservation | AttachmentStorageQuotaAdmission | AttachmentStorageQuotaContext | AttachmentStorageQuotaFinalization | AccountRuntimeCleanup | ThemeMode | Locale | CategoryDto | CreateCategoryInput | DocumentDto | UpdateDocumentInput | FolderDto | CreateFolderData | TagDto | CreateTagInput | ProfileDto | EmbeddingConfigDto | Attachment | CreateShareLinkInput | ShareLink | CollaborationSession | FolderNodeItem | SidebarDocumentPlacement | OfflineIdentity | PublicDocTabDefinition | FrontendDocument | FrontendFolder | FrontendTag | Shortcut | Item | DashboardWidgetProps | DocTabPanelProps | SharedDocumentExtensionContext | FrontendExtensions | CreateDocsmintMcpServerOptions | HiaiDocsClient;
 declare const publicTypes: PublicTypes;

@@ -42,13 +42,11 @@ instructions, and verify the connection. Hosted MCP follows your plan and
 workspace permissions. Prefer workspace-bound or category-scoped credentials.
 
 The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capable
-clients discover the hosted resource and authorization-server metadata; the current
-authorization metadata advertises client registration at
-`https://docsmint.com/oauth/register` (DCR). The hosted flow uses authorization-code
-PKCE S256; metadata advertises only the `authorization_code` grant and no token
-endpoint client authentication. CIMD is not part of the current contract. Browser consent binds the
-one-hour opaque access token to the selected workspace, optional category, and
-requested scopes. Refresh tokens are not issued. API-key clients can instead send
+clients discover the hosted resource and authorization-server metadata; current
+authorization and client-connection methods are described in the
+[DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=github_mcp).
+Browser consent binds the one-hour opaque access token to the selected workspace,
+optional category, and requested scopes. Refresh tokens are not issued. API-key clients can instead send
 `Authorization: Bearer <key>` with an MCP/API credential created in the authenticated
 browser UI. Credentials cannot create or elevate other credentials; lifecycle
 management belongs to the signed-in browser session.
@@ -80,8 +78,8 @@ bridge to your own API, not a server installer or hosted OAuth server. See the
   stdio bridge uses an API key to connect to your own DocsMint API.
 - Synchronize MCP Registry and LobeHub descriptions with the current Cloud
   authorization contract and the self-hosted boundary.
-- Keep the published catalog aligned with the implementation: 21 tools,
-  2 prompts, and 3 resources, with regression checks for route and metadata drift.
+- Keep the published catalog aligned with the implementation. The canonical
+  capability catalog and regression checks guard against route and metadata drift.
 - Update vulnerability reporting details and clarify that OAuth protocol flaws
   remain in scope for the product where they occur.
 
@@ -224,7 +222,7 @@ command and configuration precedence.
 ## Connect an MCP client
 
 Give agents a secure path to search, read, and maintain your knowledge without
-database or filesystem access. DocsMint publishes 21 tools plus ready-made
+database or filesystem access. DocsMint publishes MCP tools plus ready-made
 research prompts, scoped resources, and a document-manager skill.
 
 ### Hosted DocsMint

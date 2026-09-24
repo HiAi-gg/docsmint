@@ -5,12 +5,13 @@ import type { Folder } from '../types.js';
 export const definition = {
   name: 'list_folders',
   description:
-    'List folders, optionally scoped to a parent folder. Returns a flat list of immediate children.',
+    'List folders readable in the active workspace/category. Omit parentId to list root folders, or supply a parent UUID to list its immediate children as a flat list. Use create_folder to add a folder.',
   inputSchema: {
     parentId: z
       .string()
+      .uuid()
       .optional()
-      .describe('Optional parent folder ID. Omit to list top-level (root) folders.'),
+      .describe('Optional parent folder UUID from list_folders; omit to list root folders.'),
   },
 } as const;
 

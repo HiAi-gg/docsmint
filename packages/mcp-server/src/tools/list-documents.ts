@@ -4,18 +4,27 @@ import type { ListDocumentsResponse } from '../types.js';
 
 export const definition = {
   name: 'list_documents',
-  description: 'List documents with pagination, optionally filtered by folder or tag.',
+  description:
+    'List readable documents in the active workspace or category with page-based results. Optionally filter by folder or tag; page defaults to 1 and limit to 20 (maximum 1,000). Use search_documents for text or semantic retrieval.',
   inputSchema: {
-    folderId: z.string().optional().describe('Optional folder ID to filter by.'),
-    tag: z.string().optional().describe('Optional tag ID to filter by.'),
-    page: z.number().int().positive().optional().describe('Page number (1-indexed, default 1).'),
+    folderId: z
+      .string()
+      .uuid()
+      .optional()
+      .describe('Optional folder UUID from list_folders to limit the listing.'),
+    tag: z
+      .string()
+      .uuid()
+      .optional()
+      .describe('Optional tag UUID from list_tags to filter the documents.'),
+    page: z.number().int().min(1).optional().describe('1-indexed result page; defaults to 1.'),
     limit: z
       .number()
       .int()
-      .positive()
-      .max(100)
+      .min(1)
+      .max(1000)
       .optional()
-      .describe('Items per page (default 20, max 100).'),
+      .describe('Number of documents per page, from 1 to 1,000; defaults to 20.'),
   },
 } as const;
 

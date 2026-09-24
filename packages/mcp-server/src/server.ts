@@ -10,6 +10,7 @@ import {
   HiaiDocsError,
   type HiaiDocsClient,
 } from './client.js';
+import { toolOutputSchemas } from './output-schemas.js';
 import * as createDocument from './tools/create-document.js';
 import * as createFolder from './tools/create-folder.js';
 import * as createSnapshot from './tools/create-snapshot.js';
@@ -21,20 +22,30 @@ import * as search from './tools/search.js';
 import * as updateDocument from './tools/update-document.js';
 import * as versionHistory from './tools/version-history.js';
 
+export { capabilityCatalog } from './capabilities.js';
+
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 interface McpToolResult {
   content: Array<{ type: 'text'; text: string }>;
+  structuredContent?: unknown;
   isError?: boolean;
 }
 
 function wrapHandler<Args>(
   name: string,
-  handler: (args: Args) => Promise<unknown>
+  handler: (args: Args) => Promise<unknown>,
+  outputSchema?: z.ZodType
 ): (args: Args) => Promise<McpToolResult> {
   return async (args) => {
     try {
+      const output = await handler(args);
+      const parsedOutput = outputSchema ? await outputSchema.safeParseAsync(output) : undefined;
+      if (parsedOutput && !parsedOutput.success) {
+        throw new Error(`Tool '${name}' returned a result outside its published output schema`);
+      }
       return {
-        content: [{ type: 'text', text: JSON.stringify(await handler(args), null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(output, null, 2) }],
+        ...(parsedOutput?.success ? { structuredContent: parsedOutput.data } : {}),
       };
     } catch (error) {
       if (isDocsApiError(error) || error instanceof HiaiDocsError) {
@@ -71,13 +82,32 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
   ): void => {
     server.registerTool(
       name,
-      { description, inputSchema: z.object(inputSchema), annotations: {
-        readOnlyHint: !['create_document', 'update_document', 'create_folder', 'create_snapshot'].includes(name),
-        destructiveHint: name === 'update_document',
-        idempotentHint: !['create_document', 'update_document', 'create_folder', 'create_snapshot'].includes(name),
-        openWorldHint: false,
-      } },
-      wrapHandler(name, handler as ToolHandler) as never
+      {
+        description,
+        inputSchema: z.object(inputSchema),
+        annotations: {
+          readOnlyHint: ![
+            'create_document',
+            'update_document',
+            'create_folder',
+            'create_snapshot',
+          ].includes(name),
+          destructiveHint: name === 'update_document',
+          idempotentHint: ![
+            'create_document',
+            'update_document',
+            'create_folder',
+            'create_snapshot',
+          ].includes(name),
+          openWorldHint: false,
+        },
+        outputSchema: toolOutputSchemas[name as keyof typeof toolOutputSchemas],
+      },
+      wrapHandler(
+        name,
+        handler as ToolHandler,
+        toolOutputSchemas[name as keyof typeof toolOutputSchemas]
+      ) as never
     );
   };
 
@@ -101,8 +131,12 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
       tool.createHandler(client) as ToolHandler
     );
   }
-  registerExtendedCapabilities(server, client, (handler) => wrapHandler('extended', handler));
-  registerLifecycleCapabilities(server, client, (handler) => wrapHandler('lifecycle', handler));
+  registerExtendedCapabilities(server, client, (name, handler) =>
+    wrapHandler(name, handler, toolOutputSchemas[name as keyof typeof toolOutputSchemas])
+  );
+  registerLifecycleCapabilities(server, client, (name, handler) =>
+    wrapHandler(name, handler, toolOutputSchemas[name as keyof typeof toolOutputSchemas])
+  );
 }
 
 export interface CreateDocsmintMcpServerOptions {

@@ -17,6 +17,9 @@ import {
 } from "./_harness";
 
 const CATEGORY_ID = "22222222-2222-4222-8222-222222222222";
+const OTHER_CATEGORY_ID = "33333333-3333-4333-8333-333333333333";
+const CATEGORY_FOLDER_ID = "44444444-4444-4444-8444-444444444444";
+const OTHER_CATEGORY_FOLDER_ID = "55555555-5555-4555-8555-555555555555";
 const DOC_ID = "00000000-0000-4000-8000-0000000000aa";
 const ATTACHMENT_ID = "00000000-0000-4000-8000-0000000000cc";
 const STORAGE_KEY = `${OWNER_ID}/${DOC_ID}/seeded.png`;
@@ -54,6 +57,54 @@ function bearerHeaders(token: string) {
 }
 
 describe("0.8.3 editing and access HTTP regression", () => {
+	it("does not let a category-scoped writer create in a folder from another category", async () => {
+		getState().folders.set(OTHER_CATEGORY_FOLDER_ID, {
+			id: OTHER_CATEGORY_FOLDER_ID,
+			ownerId: OWNER_ID,
+			parentId: null,
+			categoryId: OTHER_CATEGORY_ID,
+			name: "Other category folder",
+		});
+
+		const res = await request(app, "/api/documents", {
+			method: "POST",
+			headers: bearerHeaders(CATEGORY_WRITE_KEY),
+			body: JSON.stringify({
+				title: "Out of scope placement",
+				categoryId: CATEGORY_ID,
+				folderId: OTHER_CATEGORY_FOLDER_ID,
+			}),
+		});
+
+		expect(res.status).toBe(403);
+		expect(getState().documents.size).toBe(0);
+	});
+
+	it("allows a category-scoped writer to create in a folder in its category", async () => {
+		getState().folders.set(CATEGORY_FOLDER_ID, {
+			id: CATEGORY_FOLDER_ID,
+			ownerId: OWNER_ID,
+			parentId: null,
+			categoryId: CATEGORY_ID,
+			name: "Allowed category folder",
+		});
+
+		const res = await request(app, "/api/documents", {
+			method: "POST",
+			headers: bearerHeaders(CATEGORY_WRITE_KEY),
+			body: JSON.stringify({
+				title: "In scope placement",
+				folderId: CATEGORY_FOLDER_ID,
+			}),
+		});
+
+		expect(res.status).toBe(201);
+		expect(res.body).toMatchObject({
+			categoryId: CATEGORY_ID,
+			folderId: CATEGORY_FOLDER_ID,
+		});
+	});
+
 	it("preserves omitted category API permissions on name-only PATCH", async () => {
 		getState().categories.set("cat-1", {
 			id: "cat-1",

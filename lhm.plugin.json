@@ -22,36 +22,202 @@
   "tools": [
     {
       "name": "search_documents",
-      "description": "Hybrid search across documents (full-text + semantic). Supports filtering by folder and tags.",
+      "description": "Search readable DocsMint documents with hybrid full-text and semantic retrieval, optionally filtered by folder and tag names. Requires read access and stays within the active workspace/category. Use search_knowledge_graph for graph relations from seed documents or get_related_documents for neighbors without a text query.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
-            "description": "Search query string."
+            "description": "Text to search for; preserve the language and terms relevant to the user request."
           },
           "folder": {
-            "description": "Optional folder ID to scope the search to.",
+            "description": "Optional folder UUID from list_folders to scope retrieval.",
             "type": "string"
           },
           "tags": {
-            "description": "Optional tag IDs to filter by.",
+            "description": "Optional tag names as shown by list_tags; documents match when they have any supplied tag name.",
             "type": "array",
             "items": {
               "type": "string"
             }
           },
           "limit": {
-            "description": "Maximum number of results to return (default 20).",
+            "description": "Maximum result count, from 1 to 100; defaults to 20.",
             "type": "integer",
             "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 100
           }
         },
         "required": [
           "query"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "folder_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folder_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "documentCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "color"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "chunks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "chunkIndex": {
+                        "type": "number"
+                      },
+                      "chunkText": {
+                        "type": "string"
+                      },
+                      "charStart": {
+                        "type": "number"
+                      },
+                      "charEnd": {
+                        "type": "number"
+                      },
+                      "score": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "chunkIndex",
+                      "chunkText",
+                      "charStart",
+                      "charEnd",
+                      "score"
+                    ],
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "snippet",
+                "score",
+                "folder_id",
+                "folder_name",
+                "created_at",
+                "updated_at"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "graphAttempted": {
+                "type": "boolean"
+              },
+              "graphFailed": {
+                "type": "boolean"
+              },
+              "graphContribution": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "graphAttempted",
+              "graphFailed",
+              "graphContribution"
+            ],
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -62,19 +228,133 @@
     },
     {
       "name": "get_document",
-      "description": "Read one document with its content, metadata, and tags before editing or citing it. Requires read access. Use export_document when you only need portable Markdown.",
+      "description": "Read an existing document by UUID with its content, metadata, and tags before editing or citing it. Requires read access in the active workspace/category. Use export_document when you only need the portable Markdown body.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Document ID."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the document, obtained from search_documents or list_documents, and visible in the active scope."
           }
         },
         "required": [
           "id"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentJson": {},
+          "metadata": {},
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "documentCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "folderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "folderId",
+          "categoryId",
+          "title",
+          "content",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -85,59 +365,52 @@
     },
     {
       "name": "create_document",
-      "description": "Create a new document. Optionally provide initial markdown content and a folder ID.",
+      "description": "Create a new DocsMint document when no existing document should be modified. Optionally set a title, initial Markdown content, and folder or category placement; an omitted title defaults to “Untitled”. Requires write access in the target scope. A category-scoped credential must create inside its configured category, by selecting that category or a folder within it. Normal creation schedules indexing asynchronously and returns the created document. Use update_document for an existing document.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "title": {
+            "description": "Optional title from 1 to 500 characters; omit to use the API default “Untitled”.",
             "type": "string",
-            "description": "Document title."
+            "minLength": 1,
+            "maxLength": 500
           },
           "content": {
-            "description": "Initial markdown content for the document.",
+            "description": "Optional initial Markdown content; omit to create an empty document.",
             "type": "string"
           },
           "folderId": {
-            "description": "Optional folder ID to place the document in.",
-            "type": "string"
+            "description": "Optional folder UUID from list_folders; the folder must be writable in the active workspace or category.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "categoryId": {
-            "description": "Optional category ID. Category keys are always rebound to their configured category.",
-            "type": "string"
+            "description": "Optional category UUID from list_categories; omit or pass null to leave the explicit category unset. A categorized folder still supplies the document’s effective category; without one the document remains uncategorized. Category-scoped credentials stay bound to their configured category.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": [
-          "title"
-        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "update_document",
-      "description": "Update an existing document's title and/or content. The server creates a new version on each update.",
-      "inputSchema": {
+      "outputSchema": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string",
-            "description": "Document ID to update."
-          },
-          "title": {
-            "description": "New title for the document.",
             "type": "string"
           },
-          "content": {
-            "description": "New markdown content for the document.",
+          "ownerId": {
             "type": "string"
           },
           "folderId": {
-            "description": "Move the document to a folder.",
             "anyOf": [
               {
                 "type": "string"
@@ -148,10 +421,147 @@
             ]
           },
           "categoryId": {
-            "description": "Move the document to a category. Category keys cannot escape their configured category.",
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentJson": {},
+          "metadata": {},
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "documentCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "folderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "folderId",
+          "categoryId",
+          "title",
+          "content",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "update_document",
+      "description": "Modify an existing document by UUID after reading its current state. Omitted fields remain unchanged; null folderId removes folder placement and null categoryId clears the explicit category, while a categorized folder can still supply the effective category. Changing title or Markdown content requires edit access, while moving placement requires write access in the active workspace/category. The server stores the prior content in version history and queues indexing when content or placement changes. Returns the updated document. Use create_document for new content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the existing document, obtained from search_documents, list_documents, or get_document."
+          },
+          "title": {
+            "description": "Optional replacement title, 1 to 500 characters; omit to leave the current title unchanged.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "content": {
+            "description": "New markdown content for the document.",
+            "type": "string"
+          },
+          "folderId": {
+            "description": "Optional destination folder UUID from list_folders; omit to keep current placement or pass null to remove folder placement.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "description": "Optional destination category UUID from list_categories; omit to keep the explicit category or pass null to clear it. A categorized folder may still supply the effective category. Category-scoped credentials cannot move outside their configured category.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               },
               {
                 "type": "null"
@@ -164,6 +574,118 @@
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentJson": {},
+          "metadata": {},
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "documentCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "folderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "folderId",
+          "categoryId",
+          "title",
+          "content",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -173,32 +695,170 @@
     },
     {
       "name": "list_documents",
-      "description": "List documents with pagination, optionally filtered by folder or tag.",
+      "description": "List readable documents in the active workspace or category with page-based results. Optionally filter by folder or tag; page defaults to 1 and limit to 20 (maximum 1,000). Use search_documents for text or semantic retrieval.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "folderId": {
-            "description": "Optional folder ID to filter by.",
-            "type": "string"
+            "description": "Optional folder UUID from list_folders to limit the listing.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "tag": {
-            "description": "Optional tag ID to filter by.",
-            "type": "string"
+            "description": "Optional tag UUID from list_tags to filter the documents.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "page": {
-            "description": "Page number (1-indexed, default 1).",
+            "description": "1-indexed result page; defaults to 1.",
             "type": "integer",
-            "exclusiveMinimum": 0,
+            "minimum": 1,
             "maximum": 9007199254740991
           },
           "limit": {
-            "description": "Items per page (default 20, max 100).",
+            "description": "Number of documents per page, from 1 to 1,000; defaults to 20.",
             "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 100
+            "minimum": 1,
+            "maximum": 1000
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "categoryId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "categoryName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "documentCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "color"
+                    ],
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "content",
+                "folderId",
+                "folderName",
+                "categoryId",
+                "categoryName",
+                "createdAt",
+                "updatedAt",
+                "tags"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "limit"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -209,15 +869,211 @@
     },
     {
       "name": "list_folders",
-      "description": "List folders, optionally scoped to a parent folder. Returns a flat list of immediate children.",
+      "description": "List folders readable in the active workspace/category. Omit parentId to list root folders, or supply a parent UUID to list its immediate children as a flat list. Use create_folder to add a folder.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "parentId": {
-            "description": "Optional parent folder ID. Omit to list top-level (root) folders.",
-            "type": "string"
+            "description": "Optional parent folder UUID from list_folders; omit to list root folders.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "array",
+            "items": {
+              "$ref": "#/properties/result/$defs/__schema0"
+            },
+            "$defs": {
+              "__schema0": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string"
+                  },
+                  "parentId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "categoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "order": {
+                    "type": "number"
+                  },
+                  "documentCount": {
+                    "type": "number"
+                  },
+                  "subfolderCount": {
+                    "type": "number"
+                  },
+                  "children": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/properties/result/$defs/__schema0"
+                    }
+                  },
+                  "documents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "folderId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "folderName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "categoryId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "categoryName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "documentCount": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "color"
+                            ],
+                            "additionalProperties": {}
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "content",
+                        "folderId",
+                        "folderName",
+                        "categoryId",
+                        "categoryName",
+                        "createdAt",
+                        "updatedAt",
+                        "tags"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "ownerId",
+                  "parentId",
+                  "name",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": {}
+              }
+            }
+          }
+        },
+        "required": [
+          "result"
+        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "annotations": {
@@ -229,27 +1085,224 @@
     },
     {
       "name": "create_folder",
-      "description": "Create a new folder, optionally nested under a parent folder.",
+      "description": "Create a new folder in the active workspace or category scope. Requires write access and returns the created folder. A nested folder inherits its parent category; for a root folder, pass categoryId when using a category-scoped credential. Category-scoped credentials cannot create outside their configured category.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Folder name."
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "Non-empty folder name up to 255 characters."
           },
           "parentId": {
-            "description": "Optional parent folder ID for nesting.",
-            "type": "string"
+            "description": "Optional parent folder UUID from list_folders; omit or pass null to create a root-level folder.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "categoryId": {
-            "description": "Optional category ID. Category keys are always rebound to their configured category.",
-            "type": "string"
+            "description": "Optional category UUID from list_categories for a root-level folder. A nested folder inherits its parent category; category-scoped credentials cannot escape their configured category.",
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "name"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order": {
+            "type": "number"
+          },
+          "documentCount": {
+            "type": "number"
+          },
+          "subfolderCount": {
+            "type": "number"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#"
+            }
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "folderId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "folderName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "categoryId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "categoryName": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "color": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "documentCount": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "color"
+                    ],
+                    "additionalProperties": {}
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "content",
+                "folderId",
+                "folderName",
+                "categoryId",
+                "categoryName",
+                "createdAt",
+                "updatedAt",
+                "tags"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "parentId",
+          "name",
+          "createdAt",
+          "updatedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -260,21 +1313,26 @@
     },
     {
       "name": "create_snapshot",
-      "description": "Create a named snapshot (labelled version) of a document from its current content.",
+      "description": "Save a named, retained snapshot of an existing document’s current content before a planned change. Requires edit access and adds an entry to get_version_history without changing the document itself. Use restore_document_version with the returned version ID to restore its content later.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "description": "Document ID to snapshot."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the existing document, obtained from search_documents or list_documents and visible in the active scope."
           },
           "label": {
             "type": "string",
-            "description": "Short label for the snapshot (e.g. 'v1.0-release')."
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Non-empty snapshot label up to 200 characters, for example 'v1.0-release'."
           },
           "description": {
-            "description": "Optional longer description of the snapshot.",
-            "type": "string"
+            "description": "Optional snapshot note up to 1,000 characters; omit if not needed.",
+            "type": "string",
+            "maxLength": 1000
           }
         },
         "required": [
@@ -282,6 +1340,69 @@
           "label"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentJson": {},
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isSnapshot": {
+            "type": "boolean"
+          },
+          "restoredFrom": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "documentId",
+          "content",
+          "createdBy",
+          "createdAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -292,21 +1413,98 @@
     },
     {
       "name": "get_version_history",
-      "description": "List the version history for a document. Optionally restrict to named snapshots.",
+      "description": "Read versions for an existing document, including saved snapshots. Requires read access and returns version IDs with content and timestamps; pass a version ID to restore_document_version when the user asks to restore content. This is read-only and does not change the document.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "description": "Document ID whose versions should be listed."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the readable document whose version history you need; obtain it from search_documents or list_documents."
           },
           "onlySnapshots": {
-            "description": "When true, only return named snapshots (skip auto-saved revisions).",
+            "description": "When true, return only named snapshots and omit auto-saved revisions; omit or use false for the full history.",
             "type": "boolean"
           }
         },
         "required": [
           "documentId"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "documentId": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "contentJson": {},
+                "createdBy": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "label": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "isSnapshot": {
+                  "type": "boolean"
+                },
+                "restoredFrom": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "documentId",
+                "content",
+                "createdBy",
+                "createdAt"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "result"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
@@ -325,13 +1523,31 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Document ID to export."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the readable document to export, obtained from search_documents or list_documents."
           }
         },
         "required": [
           "id"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "markdown"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -342,10 +1558,116 @@
     },
     {
       "name": "list_categories",
-      "description": "List categories visible to the API key. Category keys receive only their bound category.",
+      "description": "List categories visible in the active workspace or category scope. Requires read access; a category-scoped credential sees only its configured category. Use this before create_document or create_folder when you need an existing category ID.",
       "inputSchema": {
         "type": "object",
         "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "documentCount": {
+                      "type": "number"
+                    },
+                    "folderCount": {
+                      "type": "number"
+                    },
+                    "apiMode": {
+                      "type": "string",
+                      "enum": [
+                        "unavailable",
+                        "global",
+                        "category"
+                      ]
+                    },
+                    "apiPermissionRead": {
+                      "type": "boolean"
+                    },
+                    "apiPermissionEdit": {
+                      "type": "boolean"
+                    },
+                    "apiPermissionWrite": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "order",
+                    "createdAt",
+                    "updatedAt",
+                    "apiMode",
+                    "apiPermissionRead",
+                    "apiPermissionEdit",
+                    "apiPermissionWrite"
+                  ],
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "order": {
+                      "type": "number"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "documentCount": {
+                      "type": "number"
+                    },
+                    "folderCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "order",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "additionalProperties": {}
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "result"
+        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "annotations": {
@@ -357,24 +1679,77 @@
     },
     {
       "name": "create_category",
-      "description": "Create a category. Requires a workspace key with write access; category keys cannot mutate categories.",
+      "description": "Create a new category for the active workspace. Requires workspace-level write access; category-scoped credentials cannot create categories. Returns the created category. Use list_categories to inspect existing categories.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "minLength": 1,
-            "description": "Non-empty display name for the new category, for example Project notes."
-          },
-          "description": {
-            "description": "Optional plain-text explanation of the category purpose; omit if not needed.",
-            "type": "string"
+            "maxLength": 255,
+            "description": "Non-empty display name, up to 255 characters, for example Project notes."
           }
         },
         "required": [
           "name"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "documentCount": {
+            "type": "number"
+          },
+          "folderCount": {
+            "type": "number"
+          },
+          "apiMode": {
+            "type": "string",
+            "enum": [
+              "unavailable",
+              "global",
+              "category"
+            ]
+          },
+          "apiPermissionRead": {
+            "type": "boolean"
+          },
+          "apiPermissionEdit": {
+            "type": "boolean"
+          },
+          "apiPermissionWrite": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "order",
+          "createdAt",
+          "updatedAt",
+          "apiMode",
+          "apiPermissionRead",
+          "apiPermissionEdit",
+          "apiPermissionWrite"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -385,10 +1760,56 @@
     },
     {
       "name": "list_tags",
-      "description": "List tags visible in the workspace or bound category.",
+      "description": "List tags visible in the active workspace or configured category scope. Requires read access; use returned tag IDs to filter list_documents and returned tag names to filter search_documents.",
       "inputSchema": {
         "type": "object",
         "properties": {},
+        "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "documentCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "result"
+        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
       "annotations": {
@@ -400,26 +1821,59 @@
     },
     {
       "name": "get_related_documents",
-      "description": "Find graph-related documents from one readable document, without a text query. Returns related documents and relation metadata. Use search_knowledge_graph to filter graph neighbors by text, or search_documents for normal retrieval. Results stay within the active scope and may be empty when graph data is unavailable.",
+      "description": "Traverse graph relations from one readable document without a text query. Requires read access and returns related document IDs plus relation metadata. Use search_knowledge_graph to rank graph neighbors with query text, or search_documents for normal hybrid retrieval. Results stay in the active scope and may be empty when graph data is unavailable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
             "minLength": 1,
-            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
+            "description": "Document ID returned by search_documents or list_documents; it must be readable in the active scope."
           },
           "limit": {
-            "description": "Maximum related documents to return, from 1 to 50. Omit to use the server default.",
+            "description": "Maximum related documents to return, from 1 to 100. Omit to use the server default.",
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 100
           }
         },
         "required": [
           "documentId"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "related": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "docId": {
+                  "type": "string"
+                },
+                "relationType": {
+                  "type": "string"
+                },
+                "hopDistance": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "docId",
+                "relationType",
+                "hopDistance"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "related"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -430,15 +1884,14 @@
     },
     {
       "name": "search_knowledge_graph",
-      "description": "Retrieve graph context from one or more readable seed documents and filter/rank related documents by query text. Returns seed entities and relatedDocs; use search_documents first to obtain seed IDs. Returned documents stay within the active category. Graph data may be empty when unavailable.",
+      "description": "Search graph relations from one or more readable seed documents, optionally using query text to filter and rank related documents. Requires read access and returns seed entities plus relatedDocs. Use search_documents first to obtain authorized seed IDs; use get_related_documents for one-seed neighbors without graph search. Results stay in the active scope and graph data may be empty when unavailable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
+            "description": "Optional search text up to 2,000 characters to filter and rank graph-related documents; omit it to inspect relations without query filtering.",
             "type": "string",
-            "minLength": 1,
-            "maxLength": 1000,
-            "description": "Search text used to filter and rank graph-related documents. Preserve the original query language."
+            "maxLength": 2000
           },
           "docIds": {
             "minItems": 1,
@@ -448,20 +1901,83 @@
               "type": "string",
               "minLength": 1
             },
-            "description": "Between 1 and 50 authorized document UUIDs from search_documents or list_documents to use as graph traversal seeds."
+            "description": "Between 1 and 50 document IDs returned by search_documents or list_documents; each seed must be readable in the active scope."
           },
           "limit": {
-            "description": "Maximum related documents to return, from 1 to 50. Omit to use the server default.",
+            "description": "Maximum related documents to return, from 1 to 100. Omit to use the server default.",
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 100
           }
         },
         "required": [
-          "query",
           "docIds"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "relatedDocs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "docId": {
+                  "type": "string"
+                },
+                "relationType": {
+                  "type": "string"
+                },
+                "hopDistance": {
+                  "type": "number"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "snippet": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "docId",
+                "relationType",
+                "hopDistance",
+                "title",
+                "snippet"
+              ],
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "entities",
+          "relatedDocs"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -472,20 +1988,278 @@
     },
     {
       "name": "get_document_index_status",
-      "description": "Read a document indexing and knowledge-pipeline status without starting any work. Use after a save or refresh_document_index to inspect progress and failures. Requires read access to the document.",
+      "description": "Read indexing and knowledge-pipeline status for an existing document without starting work. Requires read access. Use after a save or refresh_document_index to check progress or failures.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "minLength": 1,
-            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of a document returned by search_documents or list_documents; it must be readable in the active scope."
           }
         },
         "required": [
           "documentId"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "embeddingStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "ready",
+              "failed",
+              "stale"
+            ]
+          },
+          "activeGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pendingGenerationId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embeddingProfile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embeddingErrorCode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "embeddingUpdatedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "searchable": {
+            "type": "boolean"
+          },
+          "pipeline": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "documentId": {
+                    "type": "string"
+                  },
+                  "generationId": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "pending",
+                      "processing",
+                      "ready",
+                      "retrying",
+                      "failed",
+                      "ready_with_warnings",
+                      "skipped",
+                      "cancelled"
+                    ]
+                  },
+                  "revision": {
+                    "type": "string"
+                  },
+                  "stages": {
+                    "type": "object",
+                    "properties": {
+                      "prepare": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "processing",
+                          "ready",
+                          "retrying",
+                          "failed",
+                          "ready_with_warnings",
+                          "skipped",
+                          "cancelled"
+                        ]
+                      },
+                      "embed": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "processing",
+                          "ready",
+                          "retrying",
+                          "failed",
+                          "ready_with_warnings",
+                          "skipped",
+                          "cancelled"
+                        ]
+                      },
+                      "graph": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "processing",
+                          "ready",
+                          "retrying",
+                          "failed",
+                          "ready_with_warnings",
+                          "skipped",
+                          "cancelled"
+                        ]
+                      },
+                      "summarize": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "processing",
+                          "ready",
+                          "retrying",
+                          "failed",
+                          "ready_with_warnings",
+                          "skipped",
+                          "cancelled"
+                        ]
+                      },
+                      "finalize": {
+                        "type": "string",
+                        "enum": [
+                          "pending",
+                          "processing",
+                          "ready",
+                          "retrying",
+                          "failed",
+                          "ready_with_warnings",
+                          "skipped",
+                          "cancelled"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "prepare",
+                      "embed",
+                      "graph",
+                      "summarize",
+                      "finalize"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "batches": {
+                    "type": "object",
+                    "properties": {
+                      "total": {
+                        "type": "number"
+                      },
+                      "completed": {
+                        "type": "number"
+                      },
+                      "failed": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "total",
+                      "completed",
+                      "failed"
+                    ],
+                    "additionalProperties": {}
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "stage": {
+                          "type": "string",
+                          "enum": [
+                            "graph",
+                            "summarize"
+                          ]
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "retryable": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "stage",
+                        "code",
+                        "retryable"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "documentId",
+                  "generationId",
+                  "status",
+                  "revision",
+                  "stages",
+                  "batches",
+                  "warnings",
+                  "updatedAt"
+                ],
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "documentId",
+          "embeddingStatus",
+          "activeGenerationId",
+          "pendingGenerationId",
+          "embeddingProfile",
+          "embeddingErrorCode",
+          "embeddingUpdatedAt",
+          "searchable",
+          "pipeline"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": true,
@@ -496,20 +2270,42 @@
     },
     {
       "name": "refresh_document_index",
-      "description": "Queue document reindexing and return the server acknowledgment; processing completes asynchronously. Requires write access. Normal saves already schedule indexing; use this for an explicit refresh and inspect progress with get_document_index_status.",
+      "description": "Queue an explicit reindex for an existing document; processing is asynchronous and the response acknowledges the generation. Requires write access. Normal content and placement changes schedule indexing when needed, so use get_document_index_status first and refresh only when a retry is intended.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "documentId": {
             "type": "string",
-            "minLength": 1,
-            "description": "Document UUID returned by search_documents or list_documents; must be readable in the active scope."
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID of the document to refresh, obtained from search_documents or list_documents and visible in the active scope."
           }
         },
         "required": [
           "documentId"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "generationId": {
+            "type": "string"
+          },
+          "deduplicated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "documentId",
+          "generationId",
+          "deduplicated"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -520,7 +2316,7 @@
     },
     {
       "name": "delete_document",
-      "description": "Move a document to trash. Requires write access to the document; category keys are limited to their category. Does not permanently purge content. Returns the document ID and deleted=true. Use only when the user intends deletion.",
+      "description": "Move an existing document to trash; this is a soft delete and does not permanently purge its content or version history. Requires write access in the active workspace/category. Returns {id, deleted:true}. Use only when the user intends to delete it.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -536,6 +2332,26 @@
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
       },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
       "annotations": {
         "readOnlyHint": false,
         "destructiveHint": true,
@@ -545,7 +2361,7 @@
     },
     {
       "name": "delete_folder",
-      "description": "Delete a folder while preserving its documents. Direct child folders and documents are detached according to the server folder rules, and reindexing is queued for affected documents. Requires write access in the permitted workspace or category. Returns the folder ID and deleted=true.",
+      "description": "Delete a folder while preserving its documents. Direct child folders and documents are detached according to the server folder rules, and reindexing is queued for affected documents. Requires write access in the active workspace/category. Returns {id, deleted:true}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -553,13 +2369,33 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the folder to delete; obtain it from list_folders. This does not delete the documents inside it."
+            "description": "UUID of the folder to delete; obtain it from list_folders. This detaches, but does not delete, the documents inside it."
           }
         },
         "required": [
           "id"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -570,7 +2406,7 @@
     },
     {
       "name": "delete_category",
-      "description": "Delete a category and detach its folders and documents without deleting their content. Requires full workspace write access; category-scoped keys cannot delete any category, including their own. Returns the category ID and deleted=true.",
+      "description": "Delete a category and detach its folders and documents without deleting their content. Requires full workspace write access; category-scoped credentials cannot delete any category, including their configured one. Returns {id, deleted:true}.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -578,13 +2414,33 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the category to delete; obtain it from list_categories using a workspace key."
+            "description": "UUID of the category to delete; obtain it from list_categories using a workspace-scoped credential."
           }
         },
         "required": [
           "id"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -595,7 +2451,7 @@
     },
     {
       "name": "restore_document_version",
-      "description": "Restore document content from a version or named snapshot returned by get_version_history. Requires edit access to that document. The server backs up the current content, records the restoration, and queues document reindexing. Returns the updated document. Does not restore a document from trash or restore folder/category placement.",
+      "description": "Restore content for an existing document from a version or named snapshot returned by get_version_history. Requires edit access. The server saves current content in history, records the restoration, and queues indexing. Returns the updated document; it does not recover a trashed document or change folder/category placement.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -617,6 +2473,118 @@
           "versionId"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema"
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string"
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentJson": {},
+          "metadata": {},
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "documentCount": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "color"
+              ],
+              "additionalProperties": {}
+            }
+          },
+          "folderName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "folderId",
+          "categoryId",
+          "title",
+          "content",
+          "visibility",
+          "createdAt",
+          "updatedAt"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
       },
       "annotations": {
         "readOnlyHint": false,
@@ -658,7 +2626,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Current metadata advertises the code response, authorization_code grant, no token-endpoint client authentication, PKCE S256, and DCR at `https://docsmint.com/oauth/register`; CIMD is not part of the current contract. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.8.8 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Browse folders, tags, version history, and indexing status.\n\n## Latest release: 0.8.8\n\nClarifies the DocsMint Cloud authorization contract and the self-hosted API-key bridge. Registry metadata matches the 21-tool, 2-prompt, 3-resource catalog. No database migration or capability change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.8) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
+      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.8.8 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Browse folders, tags, version history, and indexing status.\n\n## Latest release: 0.8.8\n\nClarifies the DocsMint Cloud authorization contract and the self-hosted API-key bridge. Registry metadata matches the 21-tool, 2-prompt, 3-resource catalog. No database migration or capability change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.8.8) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
       "tags": [
         "knowledge-base",
         "mcp",

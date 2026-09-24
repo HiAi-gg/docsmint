@@ -5,6 +5,17 @@ import { createDocsmintMcpServer } from './server.js';
 
 const id = 'd1bf444e-15aa-42fe-9f58-687d479a16bd';
 const versionId = 'e2bf444e-15aa-42fe-9f58-687d479a16bd';
+const restoredDocument = {
+  id,
+  ownerId: 'owner-1',
+  folderId: null,
+  categoryId: null,
+  title: 'Restored',
+  content: 'Restored markdown',
+  visibility: 'private',
+  createdAt: '2026-09-24T00:00:00.000Z',
+  updatedAt: '2026-09-24T00:00:00.000Z',
+};
 const operations = [
   ['delete_document', { id }, 'DELETE', `/api/documents/${id}`],
   ['delete_folder', { id }, 'DELETE', `/api/folders/${id}`],
@@ -32,7 +43,7 @@ describe('MCP lifecycle contract', () => {
       const requests: Array<{ url: string; method?: string; headers: Headers }> = [];
       const client = await connect((async (url: string | URL | Request, init?: RequestInit) => {
         requests.push({ url: String(url), method: init?.method, headers: new Headers(init?.headers) });
-        return method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json({ id, title: 'Restored' });
+        return method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json(restoredDocument);
       }) as unknown as typeof fetch);
       const tools = await client.listTools();
       expect(tools.tools.find(t => t.name === name)?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: true, openWorldHint: false });
@@ -40,7 +51,7 @@ describe('MCP lifecycle contract', () => {
       expect(result.isError).not.toBe(true);
       expect(result.content).toEqual([{ type: 'text', text: expect.any(String) }]);
       expect(JSON.parse((result.content as Array<{ text: string }>)[0]!.text)).toEqual(
-        method === 'DELETE' ? { id, deleted: true } : { id, title: 'Restored' },
+        method === 'DELETE' ? { id, deleted: true } : restoredDocument,
       );
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toBe('https://docs.example.test'+path);

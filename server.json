@@ -15,13 +15,17 @@
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
       "mimeType": "image/png",
-      "sizes": ["256x256"],
+      "sizes": [
+        "256x256"
+      ],
       "theme": "light"
     },
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo.png",
       "mimeType": "image/png",
-      "sizes": ["256x256"],
+      "sizes": [
+        "256x256"
+      ],
       "theme": "dark"
     }
   ],
@@ -63,7 +67,7 @@
       "headers": [
         {
           "name": "Authorization",
-          "description": "DocsMint Cloud remote at https://docsmint.com/mcp; no self-hosted server is required. Discovery advertises /oauth/authorize, /oauth/token, and active DCR at https://docsmint.com/oauth/register. Metadata supports the code response type, authorization_code grant only, no token-endpoint client authentication, and PKCE S256; CIMD is not part of the contract. Access tokens last one hour, have no refresh token, and are bound by browser consent to a workspace, optional category, and requested scopes. API-key clients can use Authorization: Bearer <key> with a workspace-bound or category-scoped credential created at https://docsmint.com/mcp/connect?source=mcp_registry. Credential management requires a browser session. For self-hosting, use the stdio package with your own API and API key; it does not install the Cloud OAuth server.",
+          "description": "DocsMint Cloud remote at https://docsmint.com/mcp; no self-hosted server is required. Follow https://docsmint.com/mcp/connect?source=mcp_registry for the currently supported OAuth discovery and client-connection methods. Browser consent binds access tokens to a workspace, optional category, and requested scopes. API-key clients can use Authorization: Bearer <key> with a workspace-bound or category-scoped credential created in the authenticated browser UI. Credential management requires a browser session. For self-hosting, use the stdio package with your own API and API key; it does not install the Cloud authorization server.",
           "isRequired": true,
           "isSecret": true
         },

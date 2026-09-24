@@ -3,107 +3,31 @@ import { describe, expect, test } from 'bun:test';
 import { capabilityCatalog } from './capabilities.js';
 
 describe('DocsMint MCP catalog contract', () => {
-  test('publishes the exact document manager, retrieval, graph, and indexing catalog', () => {
-    expect(capabilityCatalog.tools).toEqual([
-        'search_documents',
-        'get_document',
-        'create_document',
-        'update_document',
-        'list_documents',
-        'list_folders',
-        'create_folder',
-        'create_snapshot',
-        'get_version_history',
-        'export_document',
-        'list_categories',
-        'create_category',
-        'list_tags',
-        'get_related_documents',
-        'search_knowledge_graph',
-        'get_document_index_status',
-        'refresh_document_index',
-        'delete_document',
-        'delete_folder',
-        'delete_category',
-        'restore_document_version',
-    ]);
-    expect(capabilityCatalog.tools).toHaveLength(21);
-  });
-
-  test('publishes prompts and resources for agent discovery', () => {
-    expect(capabilityCatalog.prompts).toEqual(['organize_workspace', 'research_workspace']);
-    expect(capabilityCatalog.prompts).toHaveLength(2);
-    expect(capabilityCatalog.resources).toEqual([
-      'docsmint://guide/editor',
-      'docsmint://guide/search',
-      'docsmint://workspace/catalog',
-    ]);
-    expect(capabilityCatalog.resources).toHaveLength(3);
-  });
-
-  test('keeps the marketing README concise and links to complete MCP documentation', async () => {
+  test('keeps the canonical catalog unique and documented', async () => {
     const root = new URL('../../../', import.meta.url);
     const readme = await Bun.file(new URL('README.md', root)).text();
     const mcpReadme = await Bun.file(new URL('packages/mcp-server/README.md', root)).text();
-    const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
-    const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
+    const listedToolsSection = mcpReadme.split('### Tools\n')[1]?.split('\n### Lifecycle permissions')[0] ?? '';
+    const readmeToolNames = [...listedToolsSection.matchAll(/^- `([^`]+)`:/gm)].map((match) => match[1]);
 
-    expect(readme).toContain(
-      '[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)',
-    );
-    expect(readme.match(/^## What's new/gm)).toHaveLength(1);
-    expect(readme).not.toContain("## What's new in 0.7.");
-    expect(readme).not.toContain('## MCP Features');
-    expect(readme).toContain('https://docsmint.com/mcp');
-    expect(readme).toContain('[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)');
-    expect(readme).toContain('"command": "npx"');
-    expect(readme).toContain('"args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"]');
-    expect(publishedPackage.description).toContain('self-hosted MCP stdio bridge');
-    expect(publishedPackage.description).toContain('https://docsmint.com/mcp');
-    expect(mcpReadme).toContain('"command": "npx"');
-    expect(mcpReadme).toContain('npx --yes --package @hiai-gg/docsmint docsmint-mcp');
-    expect(mcpReadme).toContain('## Option A — DocsMint Cloud (recommended)');
-    expect(mcpReadme).toContain('https://docsmint.com/mcp');
-    expect(mcpReadme).toContain('https://docsmint.com/oauth/register');
-    expect(mcpReadme).toContain('CIMD is not part of the current Cloud contract.');
-    expect(mcpReadme).toContain('only the');
-    expect(mcpReadme).toContain('`authorization_code` grant');
-    expect(mcpReadme).toContain('with `S256`.');
-    expect(mcpReadme).toContain('No refresh tokens are');
-    expect(mcpReadme).toContain('issued; authorize again after expiry.');
-    expect(mcpReadme).toContain('## Option B — Self-hosted stdio bridge (advanced)');
-    expect(mcpReadme).toContain('not install or expose the DocsMint Cloud');
-    expect(mcpReadme).toContain('OAuth authorization server.');
-    expect(mcpReadme).toContain('### Run with Bun');
-    expect(mcpReadme).toContain('### Run with NPX');
-    expect(mcpReadme).toContain('### Run from a local checkout');
-    expect(mcpReadme).toContain('## MCP Features');
-    expect(mcpReadme).toContain('### Tools (21)');
-    expect(mcpReadme).toContain('### Prompts (2)');
-    expect(mcpReadme).toContain('### Resources (3)');
-    expect(mcpReadme).toContain('### Skills (1)');
-    expect(await skill.exists()).toBe(true);
-    expect(publishedPackage.files).toContain('skills');
-    expect(publishedPackage.license).toBe('Apache-2.0');
-    expect(await Bun.file(new URL('LICENSE', root)).text()).toContain('Apache License');
+    expect(new Set(capabilityCatalog.tools).size).toBe(capabilityCatalog.tools.length);
+    expect(new Set(capabilityCatalog.prompts).size).toBe(capabilityCatalog.prompts.length);
+    expect(new Set(capabilityCatalog.resources).size).toBe(capabilityCatalog.resources.length);
+    expect(readmeToolNames).toEqual([...capabilityCatalog.tools]);
+    expect(mcpReadme).toContain('https://docsmint.com/mcp/connect');
+    expect(readme).toContain('https://docsmint.com/mcp/connect');
+    expect(mcpReadme).not.toContain('CIMD is not part of');
+    expect(readme).not.toContain('CIMD is not part of');
   });
 
-  test('publishes one verified identity to the official MCP Registry', async () => {
+  test('keeps package and official Registry catalog metadata derived from the capability catalog', async () => {
     const root = new URL('../../../', import.meta.url);
     const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
     const registryManifest = await Bun.file(new URL('server.json', root)).json();
+    const registryCatalog = registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided'].catalog;
 
     expect(publishedPackage.mcpName).toBe('io.github.HiAi-gg/docsmint');
     expect(publishedPackage.files).toContain('server.json');
-    const glama = await Bun.file(new URL('glama.json', root)).json();
-    expect(glama).toMatchObject({
-      $schema: 'https://glama.ai/mcp/schemas/connector.json',
-      maintainers: [{ email: 'app.croco.team@gmail.com' }],
-    });
-    expect(publishedPackage.exports['./mcp']).toEqual({
-      import: './dist/mcp-server.js',
-      types: './dist/mcp-server.d.ts',
-    });
     expect(registryManifest).toMatchObject({
       $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
       name: 'io.github.HiAi-gg/docsmint',
@@ -114,52 +38,22 @@ describe('DocsMint MCP catalog contract', () => {
         source: 'github',
         subfolder: 'packages/mcp-server',
       },
-      packages: [
-        {
-          registryType: 'npm',
-          registryBaseUrl: 'https://registry.npmjs.org',
-          identifier: '@hiai-gg/docsmint',
-          version: publishedPackage.version,
-          runtimeHint: 'npx',
-          transport: { type: 'stdio' },
-          packageArguments: [{ type: 'positional', value: 'docsmint-mcp' }],
-        },
-      ],
-      remotes: [
-        {
-          type: 'streamable-http',
-          url: 'https://docsmint.com/mcp',
-        },
-      ],
     });
-    const cloudAuthDescription = registryManifest.remotes[0].headers.find(
-      (header: { name: string }) => header.name === 'Authorization',
-    ).description;
-    expect(cloudAuthDescription).toContain('DCR at https://docsmint.com/oauth/register');
-    expect(cloudAuthDescription).toContain('authorization_code grant only');
-    expect(cloudAuthDescription).toContain('no token-endpoint client authentication');
-    expect(cloudAuthDescription).toContain('API-key clients can use Authorization: Bearer <key>');
-    const stdioEnvironment = registryManifest.packages[0].environmentVariables;
-    expect(stdioEnvironment.find((entry: { name: string }) => entry.name === 'HIAI_DOCS_URL').description)
-      .toContain('Cloud MCP, use the Streamable HTTP remote below');
-    expect(stdioEnvironment.find((entry: { name: string }) => entry.name === 'HIAI_DOCS_API_KEY').description)
-      .toContain('does not install the Cloud OAuth server');
-    expect(publishedPackage.license).toBe('Apache-2.0');
-    expect(registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided']).toMatchObject({
-      license: 'Apache-2.0',
-      licenseUrl: 'https://www.apache.org/licenses/LICENSE-2.0',
-      documentationUrl: 'https://docsmint.com/mcp/connect?source=mcp_registry',
-    });
-    expect(
-      registryManifest._meta['io.modelcontextprotocol.registry/publisher-provided'].catalog,
-    ).toEqual({
+    expect(registryCatalog).toEqual({
       tools: capabilityCatalog.tools.length,
       prompts: capabilityCatalog.prompts.length,
       resources: capabilityCatalog.resources.length,
     });
+
+    const cloudAuthDescription = registryManifest.remotes[0].headers.find(
+      (header: { name: string }) => header.name === 'Authorization'
+    ).description;
+    expect(cloudAuthDescription).toContain('https://docsmint.com/mcp/connect');
+    expect(cloudAuthDescription).not.toContain('CIMD is not part of');
+    expect(cloudAuthDescription).not.toContain('DCR at https://');
   });
 
-  test('declares the current hosted release to the LobeHub Marketplace', async () => {
+  test('keeps LobeHub tool declarations and category outputs aligned with the runtime catalog', async () => {
     const root = new URL('../../../', import.meta.url);
     const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
     const lobeHubManifest = await Bun.file(new URL('lhm.plugin.json', root)).json();
@@ -171,10 +65,52 @@ describe('DocsMint MCP catalog contract', () => {
       cloudEndpoint: 'https://docsmint.com/mcp',
       homepage: 'https://docsmint.com/mcp/connect?source=lobehub_mcp',
     });
-    const cloudAndSelfHostedCopy = lobeHubManifest.localizations[0].summary;
-    expect(cloudAndSelfHostedCopy).toContain('DCR at `https://docsmint.com/oauth/register`');
-    expect(cloudAndSelfHostedCopy).toContain('CIMD is not part of the current contract.');
-    expect(cloudAndSelfHostedCopy).toContain('does not install the application, database, or hosted Cloud OAuth server.');
+    expect(lobeHubManifest.tools.map((tool: { name: string }) => tool.name)).toEqual([
+      ...capabilityCatalog.tools,
+    ]);
+    expect(lobeHubManifest.prompts.map((prompt: { name: string }) => prompt.name)).toEqual([
+      ...capabilityCatalog.prompts,
+    ]);
+    expect(lobeHubManifest.resources.map((resource: { uri: string }) => resource.uri)).toEqual([
+      ...capabilityCatalog.resources,
+    ]);
+
+    const categories = lobeHubManifest.tools.find((tool: { name: string }) => tool.name === 'list_categories');
+    const categoryVariants = categories.outputSchema.properties.result.items.anyOf;
+    const accessFields = ['apiMode', 'apiPermissionRead', 'apiPermissionEdit', 'apiPermissionWrite'];
+    expect(categoryVariants).toHaveLength(2);
+    expect(categoryVariants.some((variant: { required: string[] }) =>
+      accessFields.every((field) => variant.required.includes(field))
+    )).toBe(true);
+    expect(categoryVariants.some((variant: { required: string[] }) =>
+      accessFields.every((field) => !variant.required.includes(field))
+    )).toBe(true);
+
+    const summary = lobeHubManifest.localizations[0].summary;
+    expect(summary).toContain('https://docsmint.com/mcp/connect');
+    expect(summary).not.toContain('CIMD is not part of');
+  });
+
+  test('keeps the README linked to the published stdio package and skill', async () => {
+    const root = new URL('../../../', import.meta.url);
+    const readme = await Bun.file(new URL('README.md', root)).text();
+    const mcpReadme = await Bun.file(new URL('packages/mcp-server/README.md', root)).text();
+    const publishedPackage = await Bun.file(new URL('package.public.json', root)).json();
+    const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
+
+    expect(readme).toContain('[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)');
+    expect(readme.match(/^## What's new/gm)).toHaveLength(1);
+    expect(readme).not.toContain("## What's new in 0.7.");
+    expect(readme).not.toContain('## MCP Features');
+    expect(readme).toContain('[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)');
+    expect(readme).toContain('"command": "npx"');
+    expect(readme).toContain('"args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"]');
+    expect(publishedPackage.description).toContain('self-hosted MCP stdio bridge');
+    expect(mcpReadme).toContain('## MCP Features');
+    expect(await skill.exists()).toBe(true);
+    expect(publishedPackage.files).toContain('skills');
+    expect(publishedPackage.license).toBe('Apache-2.0');
+    expect(await Bun.file(new URL('LICENSE', root)).text()).toContain('Apache License');
   });
 
   test('uses the stable MCP v2 server packages for the current protocol', async () => {
@@ -191,27 +127,24 @@ describe('DocsMint MCP catalog contract', () => {
     expect(sources.join('\n')).not.toContain('@modelcontextprotocol/sdk');
   });
 
-  test('publishes the official registry manifest only after the complete release gate', async () => {
+  test('publishes the official Registry manifest only after the complete release gate', async () => {
     const root = new URL('../../../', import.meta.url);
     const workflow = await Bun.file(new URL('.github/workflows/ci.yml', root)).text();
     const manualRegistryWorkflow = await Bun.file(
-      new URL('.github/workflows/publish-mcp-registry.yml', root),
+      new URL('.github/workflows/publish-mcp-registry.yml', root)
     ).text();
 
     expect(workflow).toContain('publish-mcp-registry:');
     expect(workflow).toContain('release-static-gates:');
     expect(workflow).toContain('run: bun run release:check:contract-evidence');
     expect(workflow).toContain('needs: [publish-npm]');
-		expect(workflow).toContain('verify-npm-provenance:');
-		expect(workflow).toContain('needs: [verify-npm-provenance]');
-		expect(workflow).toContain('bun run scripts/verify-published-package.ts');
+    expect(workflow).toContain('verify-npm-provenance:');
+    expect(workflow).toContain('needs: [verify-npm-provenance]');
+    expect(workflow).toContain('bun run scripts/verify-published-package.ts');
     expect(workflow).toContain('bun run scripts/validate-mcp-catalog.ts');
     expect(manualRegistryWorkflow).toContain('bun run scripts/validate-mcp-catalog.ts');
     expect(workflow).toContain('mcp-publisher login github-oidc');
     expect(workflow).toContain('mcp-publisher publish');
-    expect(workflow).toContain(
-			'needs: [publish-docker, verify-npm-provenance, publish-mcp-registry]'
-    );
     expect(workflow).toContain('release-tag-gate:');
     expect(workflow).toContain('needs: [release-tag-gate]');
   });

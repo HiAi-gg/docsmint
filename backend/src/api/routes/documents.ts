@@ -781,13 +781,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					await acquireTenantTopologyLock(tx, ctx);
 				}
 				let categoryId = requestedCategoryId;
-				if (folderId && !categoryId) {
-					const resolvedCategoryId = await resolveFolderEffectiveCategory(
+				if (folderId) {
+					const folderCategoryId = await resolveFolderEffectiveCategory(
 						tx,
 						ctx,
 						folderId,
 					);
-					if (resolvedCategoryId === undefined) {
+					if (folderCategoryId === undefined) {
 						return {
 							row: null,
 							replayed: false,
@@ -795,7 +795,18 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 							forbidden: true,
 						};
 					}
-					categoryId = resolvedCategoryId;
+					if (
+						access.restricted &&
+						!isAuthorizedCategory(access, folderCategoryId)
+					) {
+						return {
+							row: null,
+							replayed: false,
+							conflict: false,
+							forbidden: true,
+						};
+					}
+					if (!categoryId) categoryId = folderCategoryId;
 				}
 				if (!isAuthorizedCategory(access, categoryId)) {
 					return {
