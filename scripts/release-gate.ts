@@ -6,6 +6,110 @@ export type ReleaseGateStep = Readonly<{
 	command: readonly string[];
 }>;
 
+const ALLOWED_TEST_DATABASES = new Set([
+	"hiai_docs_test",
+	"hiai_docs",
+	"app_docsmint_oss_release",
+]);
+const ALLOWED_DATABASE_HOSTS = new Set(["", "localhost", "127.0.0.1", "::1"]);
+const ALLOWED_DATABASE_PORTS = new Set(["5432", "5437"]);
+const ALLOWED_ADMIN_ROLES = new Set(["aiuser", "vlgalib", "postgres"]);
+const ALLOWED_RUNTIME_ROLES = new Set([
+	"hiai_app",
+	"app_docsmint_oss_release",
+]);
+
+type DatabaseUrlIdentity = Readonly<{
+	database: string;
+	host: string;
+	port: string;
+	role: string;
+}>;
+
+function databaseUrlIdentity(
+	name: string,
+	value: string | undefined,
+	environment: Record<string, string | undefined>,
+): DatabaseUrlIdentity {
+	if (!value?.trim()) throw new Error(`${name} is required`);
+	let url: URL;
+	try {
+		url = new URL(value.trim());
+	} catch {
+		throw new Error(`${name} must be a PostgreSQL URL`);
+	}
+	if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
+		throw new Error(`${name} must use PostgreSQL`);
+	}
+	const parsedHost = url.hostname.toLowerCase();
+	const host = parsedHost.replace(/^\[|\]$/g, "");
+	const inheritedHost = environment.PGHOST?.toLowerCase() ?? "";
+	const effectiveHost =
+		host || (inheritedHost.startsWith("/") ? "" : inheritedHost);
+	if (!ALLOWED_DATABASE_HOSTS.has(effectiveHost)) {
+		throw new Error(`${name} must use a loopback or Unix-socket host`);
+	}
+	const port = url.port || environment.PGPORT || "5432";
+	if (!ALLOWED_DATABASE_PORTS.has(port)) {
+		throw new Error(`${name} must use the local PostgreSQL test port`);
+	}
+	const database = decodeURIComponent(url.pathname.replace(/^\//, ""));
+	if (!ALLOWED_TEST_DATABASES.has(database)) {
+		throw new Error(`${name} must target an allowlisted disposable database`);
+	}
+	const role = decodeURIComponent(
+		url.username || environment.PGUSERNAME || environment.PGUSER || "",
+	);
+	if (!role) throw new Error(`${name} must identify a PostgreSQL role`);
+	return { database, host: effectiveHost, port, role };
+}
+
+export function validateTestDatabaseBindings(
+	environment: Record<string, string | undefined>,
+): void {
+	const adminNames = [
+		"PIPELINE_RLS_TEST_DATABASE_URL",
+		"LIFECYCLE_TEST_DATABASE_URL",
+		"CONTENT_ACCESS_TEST_DATABASE_URL",
+	] as const;
+	const base = databaseUrlIdentity("DATABASE_URL", environment.DATABASE_URL, environment);
+	if (
+		!ALLOWED_ADMIN_ROLES.has(base.role) &&
+		!ALLOWED_RUNTIME_ROLES.has(base.role)
+	) {
+		throw new Error("DATABASE_URL must use an allowlisted test role");
+	}
+	let database = base.database;
+	for (const name of adminNames) {
+		const identity = databaseUrlIdentity(name, environment[name], environment);
+		if (!ALLOWED_ADMIN_ROLES.has(identity.role)) {
+			throw new Error(`${name} must use an allowlisted integration role`);
+		}
+		if (identity.database !== database) {
+			throw new Error("release integration URLs must target one disposable database");
+		}
+	}
+	const runtime = databaseUrlIdentity(
+		"DOCSMINT_CONTRACT_DATABASE_URL",
+		environment.DOCSMINT_CONTRACT_DATABASE_URL,
+		environment,
+	);
+	if (!ALLOWED_RUNTIME_ROLES.has(runtime.role)) {
+		throw new Error(
+			"DOCSMINT_CONTRACT_DATABASE_URL must use an allowlisted non-superuser runtime role",
+		);
+	}
+	if (runtime.database !== database) {
+		throw new Error("integration and live URLs must target one disposable database");
+	}
+}
+
+export function redactGateOutput(output: string): string {
+	return output
+		.replace(/\b(postgres(?:ql)?|redis):\/\/[^\s"'<>@]+@/gi, "$1://[REDACTED]@")
+		.replace(/\b(password|token|secret)=([^&\s]+)/gi, "$1=[REDACTED]");
+}
+
 const requiredEnvironment = [
 	"COMPOSE_PROJECT_NAME",
 	"DB_PASSWORD",
@@ -165,12 +269,12 @@ async function runStep(
 		stderr: "pipe",
 	});
 	const stdoutPromise = (async () => {
-		const output = await new Response(child.stdout).text();
+		const output = redactGateOutput(await new Response(child.stdout).text());
 		if (output) globalThis.process.stdout.write(output);
 		return output;
 	})();
 	const stderrPromise = (async () => {
-		const output = await new Response(child.stderr).text();
+		const output = redactGateOutput(await new Response(child.stderr).text());
 		if (output) globalThis.process.stderr.write(output);
 		return output;
 	})();
@@ -278,6 +382,7 @@ if (import.meta.main) {
 	const root = resolve(import.meta.dir, "..");
 	await assertCleanRepository(root);
 	requireEnvironment();
+	validateTestDatabaseBindings(Bun.env);
 	const manifest = (await Bun.file(join(root, "package.public.json")).json()) as {
 		version: string;
 	};
