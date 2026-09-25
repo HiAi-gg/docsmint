@@ -7,6 +7,19 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-25
+
+### Documentation and registry metadata
+
+- Replace the repository-root Glama Connector claim with the current Glama
+  Server schema and the authorized GitHub maintainer for the OSS listing.
+- Clarify the published stdio command, Bun requirement, reachable self-hosted
+  API URL, and API key needed for Glama Server hosting. Keep the Cloud Connector
+  and its ownership process separate.
+- Update the MCP catalog validator to check the Glama Server claim format.
+
+No MCP capabilities, API routes, or database migrations changed.
+
 ## [0.9.0] - 2026-09-24
 
 ### Fixed
