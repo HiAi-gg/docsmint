@@ -7,7 +7,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [0.9.1] - 2026-09-25
+## [0.9.2] - 2026-09-25
 
 ### Documentation and registry metadata
 
@@ -19,6 +19,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 - Update the MCP catalog validator to check the Glama Server claim format.
 
 No MCP capabilities, API routes, or database migrations changed.
+
+## [0.9.1] - Unpublished candidate
+
+The `v0.9.1` tag failed the required unit gate before artifact publication.
+The Glama metadata changes are included in 0.9.2.
 
 ## [0.9.0] - 2026-09-24
 

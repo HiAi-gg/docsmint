@@ -74,7 +74,7 @@ stdio bridge; the hosted DocsMint Cloud Connector is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.9.1?
+## What's new in 0.9.2?
 
 - Prepare the open-source MCP stdio bridge for a separate Glama Server listing
   with a schema-valid organization maintainer claim.
@@ -82,7 +82,7 @@ stdio bridge; the hosted DocsMint Cloud Connector is a separate listing.
   and an API key; DocsMint Cloud remains a separate hosted Connector.
 - Keep the existing 21 tools, 2 prompts, 3 resources, and API-key behavior.
 
-This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.1)
+This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.2)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -135,7 +135,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.9.1`, `web-v0.9.1`, and `caddy-v0.9.1` for
+Use versioned tags `api-v0.9.2`, `web-v0.9.2`, and `caddy-v0.9.2` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
