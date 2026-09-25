@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { validateMcpCatalog } from "./validate-mcp-catalog";
 
-const glamaSchema = "https://glama.ai/mcp/schemas/connector.json";
+const glamaSchema = "https://glama.ai/mcp/schemas/server.json";
 
 async function copyCatalogFixture() {
 	const directory = await mkdtemp(join(tmpdir(), "docsmint-mcp-catalog-"));
@@ -23,15 +23,15 @@ test("accepts the committed MCP catalog manifests", async () => {
 	await expect(validateMcpCatalog()).resolves.toBeUndefined();
 });
 
-test("rejects a Glama claim file without the public maintainer contact", async () => {
+test("rejects a Glama claim file without the GitHub repository maintainer", async () => {
 	const { directory, root } = await copyCatalogFixture();
 	try {
 		await Bun.write(
 			new URL("glama.json", root),
-			`${JSON.stringify({ $schema: glamaSchema, maintainers: [{ email: "other@example.com" }] })}\n`,
+			`${JSON.stringify({ $schema: glamaSchema, maintainers: ["other-user"] })}\n`,
 		);
 		await expect(validateMcpCatalog(root)).rejects.toThrow(
-			"glama.json must list the public maintainer contact",
+			"glama.json must list the GitHub repository maintainer",
 		);
 	} finally {
 		await rm(directory, { recursive: true, force: true });

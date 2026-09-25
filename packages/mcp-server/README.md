@@ -111,6 +111,20 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
 
 `HIAI_DOCS_URL` defaults to `http://localhost:50700`. The optional API key is sent as a Bearer token. Prefer a category key for a category-bound agent and a global key for trusted owner-wide automation. Category `read`, `edit`, and `write` scopes are explicit rather than hierarchical; configure the combination required by the tools you expose.
 
+### Glama Server listing
+
+For the [Glama MCP Server directory](https://glama.ai/mcp/servers), submit this
+open-source stdio bridge from the [DocsMint repository](https://github.com/HiAi-gg/docsmint).
+Start it with the NPX command above (Bun must be installed to execute the published
+binary). Provide `HIAI_DOCS_URL` as the URL of an already running, reachable
+DocsMint API and `HIAI_DOCS_API_KEY` as a secret API key with the permissions
+your tools need. Both values are required for a usable hosted Glama process:
+the default `localhost` URL refers to Glama's own environment, not your API.
+The process can advertise tools, prompts, and resources without API access,
+but document operations need a reachable API and a valid key. Glama's
+[hosted Connector](https://glama.ai/mcp/connectors/io.github.HiAi-gg/docsmint)
+uses DocsMint Cloud at `https://docsmint.com/mcp` and is a separate listing.
+
 ## MCP Features
 
 ### Tools

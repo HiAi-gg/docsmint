@@ -56,6 +56,8 @@ key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
 `npx --yes --package @hiai-gg/docsmint docsmint-mcp`. The npm package is a stdio
 bridge to your own API, not a server installer or hosted OAuth server. See the
 [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for client configuration.
+The open-source [Glama Server directory](https://glama.ai/mcp/servers) uses this
+stdio bridge; the hosted DocsMint Cloud Connector is a separate listing.
 
 ## Why DocsMint?
 

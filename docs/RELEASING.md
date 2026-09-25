@@ -184,11 +184,13 @@ to the selected workspace, optional category, and scopes. API-key clients retain
 the Bearer credential flow. The npm/stdio bridge uses an API key for the
 operator's own self-hosted API and does not install the Cloud authorization server.
 Guided Cloud onboarding starts at `https://docsmint.com/mcp/connect` and requires no
-self-hosted server. After tagging, claim the listing with root `glama.json` using the Glama
-connector schema and public contact `app.croco.team@gmail.com`. That email must
-match the Glama account. Supply private test credentials in Glama so the
-connector can move from Unhealthy to Healthy. Do not put personal GitHub
-usernames in that file. The repository license is
+self-hosted server. The repository-root `glama.json` uses Glama's server schema
+and GitHub maintainer username to claim the separate open-source MCP Server
+listing under `/mcp/servers`. Submit the canonical GitHub repository and verify
+the indexed stdio command, discovered capabilities, license, build, health, and
+security results. The hosted Connector under `/mcp/connectors` has its own
+Cloud-side ownership and credential process; handle its health and claim in
+SaaS operations, not through the repository-root server manifest. The repository license is
 Apache-2.0; catalog UIs that show `Other` must be corrected from the detected
 `LICENSE` and package metadata rather than changing the project license.
 

@@ -134,16 +134,16 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 		throw new Error("LobeHub icon must be the dark catalog logo");
 	}
 
-	if (glama.$schema !== "https://glama.ai/mcp/schemas/connector.json") {
-		throw new Error("glama.json must use the Glama connector schema");
+	if (glama.$schema !== "https://glama.ai/mcp/schemas/server.json") {
+		throw new Error("glama.json must use the Glama server schema");
 	}
 	const maintainers = asArray(glama.maintainers, "glama.json maintainers");
-	const emails = maintainers.map((entry) => asString(asObject(entry, "maintainer").email, "maintainer email"));
-	if (!emails.includes("app.croco.team@gmail.com")) {
-		throw new Error("glama.json must list the public maintainer contact");
+	const usernames = maintainers.map((entry) => asString(entry, "maintainer GitHub username"));
+	if (!usernames.includes("vlgalib")) {
+		throw new Error("glama.json must list the GitHub repository maintainer");
 	}
-	if (emails.some((email) => email === "vlgalib" || email.endsWith("@users.noreply.github.com"))) {
-		throw new Error("glama.json must not list a personal GitHub username");
+	if (usernames.some((username) => username.includes("@"))) {
+		throw new Error("glama.json maintainers must be GitHub usernames");
 	}
 }
 
