@@ -7,6 +7,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-09-27
+
+### Added
+
+- Extend the self-hosted MCP catalog from 21 to 31 tools: create, update,
+  delete, assign, and remove tags; update folders and categories; list trash;
+  restore trashed documents; and permanently purge documents already in trash.
+- Add typed SDK methods for listing trash, restoring a trashed document, and
+  permanently deleting one. Existing REST authorization remains authoritative.
+
+### Improved
+
+- Synchronize MCP runtime, README, Registry, and LobeHub tool definitions,
+  including input validation, output schemas, and destructive annotations.
+- Keep the hosted DocsMint Cloud Connector separate from the self-hosted stdio
+  bridge. No database migration or hosted OAuth change is required.
+
 ## [0.9.2] - 2026-09-25
 
 ### Documentation and registry metadata

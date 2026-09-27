@@ -82,6 +82,11 @@ new DocsClient({
 - `retryDocumentPipelineWarnings(id)` → retry only failed optional stages on the active generation
 - `publishDoc(id)` / `unpublishDoc(id)`
 
+### Trash
+- `listTrash()` → `DocsTrashResponse` for the active scope
+- `restoreTrashedDocument(id)` → restore a soft-deleted document
+- `permanentlyDeleteDocument(id)` → irreversibly purge a document already in trash
+
 ### Folders
 - `listFolders(parentId?)` → `DocsFolder[]`
 - `getFolder(id)` → `DocsFolder`

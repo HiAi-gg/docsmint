@@ -1710,14 +1710,23 @@ describe("live category-scoped public surfaces", () => {
 		90_000,
 	);
 
-	test("executes all 21 MCP tools through one sanitized assertion-bound public client", async () => {
+	test("executes all MCP tools through one sanitized assertion-bound public client", async () => {
 		const assertion = await createAssertion(["read", "edit", "write"]);
 		const disposableFolder = crypto.randomUUID();
 		const disposableDocument = crypto.randomUUID();
+		const disposableRenameFolder = crypto.randomUUID();
+		const disposableTagDocument = crypto.randomUUID();
+		const disposablePurgeDocument = crypto.randomUUID();
 		await database`INSERT INTO folders (id, owner_id, workspace_id, category_id, name)
 			VALUES (${disposableFolder}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP disposable folder')`;
 		await database`INSERT INTO documents (id, owner_id, workspace_id, category_id, title, content)
 			VALUES (${disposableDocument}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP disposable document', 'temporary')`;
+		await database`INSERT INTO folders (id, owner_id, workspace_id, category_id, name)
+			VALUES (${disposableRenameFolder}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP rename folder')`;
+		await database`INSERT INTO documents (id, owner_id, workspace_id, category_id, title, content)
+			VALUES (${disposableTagDocument}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP tag document', 'temporary')`;
+		await database`INSERT INTO documents (id, owner_id, workspace_id, category_id, title, content, deleted_at)
+			VALUES (${disposablePurgeDocument}::uuid, ${ids.actorA}::uuid, ${workspaceA}, ${ids.categoryA}::uuid, 'MCP purge document', 'temporary', now())`;
 
 		const observedRequests: Array<{
 			url: string;
@@ -1849,6 +1858,16 @@ describe("live category-scoped public surfaces", () => {
 				name: "restore_document_version",
 				arguments: { documentId: ids.docDirectA, versionId: ids.versionA },
 			},
+			{ name: "create_tag", arguments: { name: `MCP forbidden tag ${suffix}` }, error: { status: 403, code: "http_403" } },
+			{ name: "update_tag", arguments: { id: ids.tagA, name: "Forbidden rename" }, error: { status: 403, code: "http_403" } },
+			{ name: "delete_tag", arguments: { id: ids.tagA }, error: { status: 403, code: "http_403" } },
+			{ name: "add_tag_to_document", arguments: { documentId: disposableTagDocument, tagId: ids.tagA } },
+			{ name: "remove_tag_from_document", arguments: { documentId: disposableTagDocument, tagId: ids.tagA } },
+			{ name: "update_folder", arguments: { id: disposableRenameFolder, name: "MCP renamed folder" } },
+			{ name: "update_category", arguments: { id: ids.categoryA, name: "Forbidden category rename" }, error: { status: 403, code: "http_403" } },
+			{ name: "list_trash", arguments: {} },
+			{ name: "restore_trashed_document", arguments: { id: disposableDocument } },
+			{ name: "permanently_delete_document", arguments: { id: disposablePurgeDocument } },
 		];
 		expect(toolCases.map(({ name }) => name).sort()).toEqual(
 			[...capabilityCatalog.tools].sort(),
@@ -1902,7 +1921,7 @@ describe("live category-scoped public surfaces", () => {
 			}
 		}
 
-		expect(observedRequests).toHaveLength(21);
+		expect(observedRequests).toHaveLength(capabilityCatalog.tools.length);
 		expect(observedRequests.every(({ method }) => method !== "OPTIONS")).toBe(
 			true,
 		);

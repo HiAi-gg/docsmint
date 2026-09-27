@@ -180,6 +180,11 @@ export interface DocsTag {
 	documentCount?: number;
 }
 
+export interface DocsTrashResponse {
+	documents: Array<{ id: string; title: string; deletedAt: string; purgeAfter: string | null }>;
+	folders: [];
+}
+
 // ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------

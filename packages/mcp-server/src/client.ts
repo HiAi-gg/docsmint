@@ -31,6 +31,16 @@ export class HiaiDocsError extends Error {
 }
 
 export interface HiaiDocsClient {
+	createTag?(input: { name: string; color?: string }): Promise<unknown>;
+	updateTag?(id: string, input: { name?: string; color?: string }): Promise<unknown>;
+	deleteTag?(id: string): Promise<void>;
+	addTagToDocument?(documentId: string, tagId: string): Promise<void>;
+	removeTagFromDocument?(documentId: string, tagId: string): Promise<void>;
+	updateFolder?(id: string, input: { name?: string; parentId?: string | null; categoryId?: string | null; order?: number }): Promise<unknown>;
+	updateCategory?(id: string, input: { name?: string; order?: number }): Promise<unknown>;
+	listTrash?(): Promise<unknown>;
+	restoreTrashedDocument?(id: string): Promise<unknown>;
+	permanentlyDeleteDocument?(id: string): Promise<unknown>;
 	deleteDocument?(id: string): Promise<void>;
 	deleteFolder?(id: string): Promise<void>;
 	deleteCategory?(id: string): Promise<void>;
@@ -79,6 +89,16 @@ export function createMcpDocsClient(
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
 	return {
+		createTag: (input) => docsClient.createTag(input, context),
+		updateTag: (id, input) => docsClient.updateTag(id, input, context),
+		deleteTag: (id) => docsClient.deleteTag(id, context),
+		addTagToDocument: (documentId, tagId) => docsClient.addTagToDoc(documentId, tagId, context),
+		removeTagFromDocument: (documentId, tagId) => docsClient.removeTagFromDoc(documentId, tagId, context),
+		updateFolder: (id, input) => docsClient.updateFolder(id, input, context),
+		updateCategory: (id, input) => docsClient.updateCategory(id, input, context),
+		listTrash: () => docsClient.listTrash(context),
+		restoreTrashedDocument: (id) => docsClient.restoreTrashedDocument(id, context),
+		permanentlyDeleteDocument: (id) => docsClient.permanentlyDeleteDocument(id, context),
 		deleteDocument: (id) => docsClient.deleteDoc(id, context),
 		deleteFolder: (id) => docsClient.deleteFolder(id, context),
 		deleteCategory: (id) => docsClient.deleteCategory(id, context),

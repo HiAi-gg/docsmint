@@ -3,6 +3,7 @@ import { z, type ZodRawShape } from 'zod';
 import { isDocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
 import { registerLifecycleCapabilities } from './lifecycle.js';
+import { registerManagementCapabilities } from './management.js';
 import { registerExtendedCapabilities } from './capabilities.js';
 import {
   createDefaultDocsClient,
@@ -137,6 +138,9 @@ export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiD
   registerLifecycleCapabilities(server, client, (name, handler) =>
     wrapHandler(name, handler, toolOutputSchemas[name as keyof typeof toolOutputSchemas])
   );
+  registerManagementCapabilities(server, client, (name, handler) =>
+    wrapHandler(name, handler, toolOutputSchemas[name as keyof typeof toolOutputSchemas])
+  );
 }
 
 export interface CreateDocsmintMcpServerOptions {
@@ -147,7 +151,7 @@ export interface CreateDocsmintMcpServerOptions {
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'docsmint', version: '0.9.2' });
+  const server = new McpServer({ name: 'docsmint', version: '0.9.3' });
   const client = options.docsClient
     ? createMcpDocsClient(options.docsClient, options.requestContext)
     : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);

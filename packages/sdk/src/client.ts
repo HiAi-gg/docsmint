@@ -46,6 +46,7 @@ import type {
 	DocsShareListResponse,
 	DocsShareRole,
 	DocsTag,
+	DocsTrashResponse,
 	DocsVersion,
 	DocsVersionDiff,
 } from "./types.js";
@@ -546,6 +547,18 @@ export class DocsClient {
 			undefined,
 			context,
 		);
+	}
+
+	async listTrash(context?: DocsRequestContext): Promise<DocsTrashResponse> {
+		return this.request<DocsTrashResponse>("GET", "/api/trash", undefined, context);
+	}
+
+	async restoreTrashedDocument(id: string, context?: DocsRequestContext): Promise<{ success: true }> {
+		return this.request<{ success: true }>("POST", `/api/trash/documents/${encodeURIComponent(id)}/restore`, undefined, context);
+	}
+
+	async permanentlyDeleteDocument(id: string, context?: DocsRequestContext): Promise<{ success: true }> {
+		return this.request<{ success: true }>("DELETE", `/api/trash/documents/${encodeURIComponent(id)}`, undefined, context);
 	}
 
 	async addTagToDoc(

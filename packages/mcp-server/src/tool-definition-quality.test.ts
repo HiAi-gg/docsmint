@@ -26,6 +26,16 @@ const annotations = {
   delete_folder: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   delete_category: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
   restore_document_version: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  create_tag: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+  update_tag: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  delete_tag: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  add_tag_to_document: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+  remove_tag_from_document: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  update_folder: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  update_category: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  list_trash: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  restore_trashed_document: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+  permanently_delete_document: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
 } as const;
 
 describe('DocsMint MCP tool definitions', () => {

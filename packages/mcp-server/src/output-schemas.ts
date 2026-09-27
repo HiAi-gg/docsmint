@@ -258,6 +258,16 @@ const toolOutputSchemas = {
   delete_folder: deleteAcknowledgmentSchema,
   delete_category: deleteAcknowledgmentSchema,
   restore_document_version: documentSchema,
+  create_tag: tagSchema,
+  update_tag: tagSchema,
+  delete_tag: deleteAcknowledgmentSchema,
+  add_tag_to_document: z.looseObject({ documentId: z.string().uuid(), tagId: z.string().uuid(), assigned: z.literal(true) }),
+  remove_tag_from_document: z.looseObject({ documentId: z.string().uuid(), tagId: z.string().uuid(), removed: z.literal(true) }),
+  update_folder: folderSchema,
+  update_category: categorySchema,
+  list_trash: z.looseObject({ documents: z.array(z.looseObject({ id: z.string().uuid(), title: z.string(), deletedAt: z.string(), purgeAfter: z.string().nullable() })), folders: z.array(z.unknown()) }),
+  restore_trashed_document: z.looseObject({ success: z.literal(true) }),
+  permanently_delete_document: deleteAcknowledgmentSchema,
 } satisfies Record<(typeof capabilityCatalog.tools)[number], z.ZodType>;
 
 export { toolOutputSchemas };

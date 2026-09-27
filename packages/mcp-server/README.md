@@ -151,6 +151,16 @@ uses DocsMint Cloud at `https://docsmint.com/mcp` and is a separate listing.
 - `delete_folder`: Delete a writable folder while preserving its documents.
 - `delete_category`: Delete a category using full workspace write access; category keys are denied.
 - `restore_document_version`: Restore content from a version or snapshot with edit access; `get_version_history` lists eligible version IDs. Current content is backed up first, and indexing is queued.
+- `create_tag`: Create a workspace tag with full workspace write access; use `add_tag_to_document` to assign it.
+- `update_tag`: Rename or recolor a workspace tag with full workspace write access; affected documents are reindexed.
+- `delete_tag`: Delete a workspace tag and its assignments with full workspace write access.
+- `add_tag_to_document`: Assign an existing tag to a document with edit access.
+- `remove_tag_from_document`: Remove a document's tag assignment with edit access without deleting the tag.
+- `update_folder`: Rename or move a folder with write access; the API enforces category boundaries and queues reindexing.
+- `update_category`: Rename or reorder a category with full workspace write access; category-scoped credentials cannot change it.
+- `list_trash`: List soft-deleted documents visible to the active key.
+- `restore_trashed_document`: Recover a document from trash with write access; unlike `restore_document_version`, this restores the document itself.
+- `permanently_delete_document`: Irreversibly purge a document already in trash with write access, only on an explicit user request.
 
 ### Lifecycle permissions
 
@@ -160,10 +170,17 @@ uses DocsMint Cloud at `https://docsmint.com/mcp` and is a separate listing.
 | Delete folder | `write` in its effective category | Remove folder; direct child folders and documents are detached, not deleted. |
 | Delete category | Full workspace `write` | Detach category membership; preserve content and queue reindexing. Category keys cannot do this. |
 | Restore version | `edit` on the document | Back up current content, restore selected version content, queue indexing. Does not change title or placement. |
+| Create, update, or delete tag | Full workspace `write` | Manage the workspace tag catalog; category keys cannot do this. |
+| Assign or remove document tag | `edit` on the document | Change one document's tag membership and queue metadata reindexing. |
+| Update folder | `write` in its effective category | Rename or move a folder within the API's scope rules; queue metadata reindexing. |
+| Update category | Full workspace `write` | Rename or reorder a category; category keys cannot do this. |
+| List trash | `read` in the active scope | Show soft-deleted documents visible to the key. |
+| Restore trashed document | `write` in its effective category | Return a soft-deleted document to the active library. |
+| Permanently delete document | `write` in its effective category | Irreversibly purge a document already in trash, including version history. |
 
 Use UUIDs returned by the listing/history tools. A snapshot is a version with a label:
-pass its version ID to `restore_document_version`. Restoration does not recover
-trashed documents. Lifecycle tools advertise destructive annotations; authorization
+pass its version ID to `restore_document_version`. Use `restore_trashed_document`
+to recover a trashed document. Lifecycle tools advertise destructive annotations; authorization
 is enforced by the REST API, not by those advisory client hints. Failed requests
 return MCP `isError` with the REST status; they never acknowledge a successful deletion.
 

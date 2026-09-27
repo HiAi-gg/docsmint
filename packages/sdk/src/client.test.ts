@@ -403,6 +403,25 @@ describe("DocsClient public contract", () => {
 		});
 	});
 
+	it("uses scoped trash endpoints and preserves API denials", async () => {
+		const calls: Array<{ url: string; method: string }> = [];
+		const docs = client(async (input, init) => {
+			const url = String(input);
+			calls.push({ url, method: init?.method ?? "GET" });
+			if (url.endsWith('/forbidden/restore')) return jsonResponse({ error: 'Forbidden' }, 403);
+			return jsonResponse(url.endsWith('/api/trash') ? { documents: [], folders: [] } : { success: true });
+		});
+		expect(await docs.listTrash()).toEqual({ documents: [], folders: [] });
+		expect(await docs.restoreTrashedDocument('doc-1')).toEqual({ success: true });
+		expect(await docs.permanentlyDeleteDocument('doc-2')).toEqual({ success: true });
+		expect(calls.slice(0, 3)).toEqual([
+			{ url: 'https://docs.example.test/api/trash', method: 'GET' },
+			{ url: 'https://docs.example.test/api/trash/documents/doc-1/restore', method: 'POST' },
+			{ url: 'https://docs.example.test/api/trash/documents/doc-2', method: 'DELETE' },
+		]);
+		await expect(docs.restoreTrashedDocument('forbidden')).rejects.toMatchObject({ status: 403 });
+	});
+
 	it("exposes browser-session API key lifecycle endpoints", async () => {
 		const calls: Array<{ url: string; method: string; body?: string }> = [];
 		const docs = client(async (input, init) => {
