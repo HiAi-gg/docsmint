@@ -75,8 +75,9 @@ describe('DocsMint MCP catalog contract', () => {
       ...capabilityCatalog.resources,
     ]);
 
-    const categories = lobeHubManifest.tools.find((tool: { name: string }) => tool.name === 'list_categories');
-    const categoryVariants = categories.outputSchema.properties.result.items.anyOf;
+    const structure = lobeHubManifest.tools.find((tool: { name: string }) => tool.name === 'list_workspace_structure');
+    const categories = structure.outputSchema.anyOf.find((variant: { properties: { operation: { const: string } } }) => variant.properties.operation.const === 'categories');
+    const categoryVariants = categories.properties.result.items.anyOf;
     const accessFields = ['apiMode', 'apiPermissionRead', 'apiPermissionEdit', 'apiPermissionWrite'];
     expect(categoryVariants).toHaveLength(2);
     expect(categoryVariants.some((variant: { required: string[] }) =>

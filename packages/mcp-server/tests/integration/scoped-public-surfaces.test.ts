@@ -1788,7 +1788,7 @@ describe("live category-scoped public surfaces", () => {
 		]);
 
 		const toolCases: Array<{
-			name: (typeof capabilityCatalog.tools)[number];
+			name: string;
 			arguments: Record<string, unknown>;
 			error?: { status: number; code: string };
 		}> = [
@@ -1869,15 +1869,42 @@ describe("live category-scoped public surfaces", () => {
 			{ name: "restore_trashed_document", arguments: { id: disposableDocument } },
 			{ name: "permanently_delete_document", arguments: { id: disposablePurgeDocument } },
 		];
-		expect(toolCases.map(({ name }) => name).sort()).toEqual(
-			[...capabilityCatalog.tools].sort(),
+		const compactRoute: Record<string, { name: (typeof capabilityCatalog.tools)[number]; selector?: Record<string, string> }> = {
+			search_documents: { name: "find_documents", selector: { mode: "search" } },
+			list_documents: { name: "find_documents", selector: { mode: "list" } },
+			get_document: { name: "read_document", selector: { view: "detail" } },
+			export_document: { name: "read_document", selector: { view: "markdown" } },
+			get_version_history: { name: "read_document", selector: { view: "versions" } },
+			create_document: { name: "save_document", selector: { action: "create" } },
+			update_document: { name: "save_document", selector: { action: "update" } },
+			list_folders: { name: "list_workspace_structure", selector: { kind: "folders" } },
+			list_categories: { name: "list_workspace_structure", selector: { kind: "categories" } },
+			list_tags: { name: "list_workspace_structure", selector: { kind: "tags" } },
+			create_folder: { name: "save_folder", selector: { action: "create" } },
+			update_folder: { name: "save_folder", selector: { action: "update" } },
+			create_category: { name: "save_category", selector: { action: "create" } },
+			update_category: { name: "save_category", selector: { action: "update" } },
+			create_tag: { name: "save_tag", selector: { action: "create" } },
+			update_tag: { name: "save_tag", selector: { action: "update" } },
+			add_tag_to_document: { name: "set_document_tag", selector: { action: "add" } },
+			remove_tag_from_document: { name: "set_document_tag", selector: { action: "remove" } },
+			get_related_documents: { name: "explore_graph", selector: { mode: "neighbors" } },
+			search_knowledge_graph: { name: "explore_graph", selector: { mode: "search" } },
+		};
+		expect(toolCases).toHaveLength(31);
+		expect(new Set(toolCases.map(({ name }) => compactRoute[name]?.name ?? name))).toEqual(
+			new Set(capabilityCatalog.tools),
 		);
 
 		for (const tool of toolCases) {
 			const before = observedRequests.length;
+			const route = compactRoute[tool.name] ?? { name: tool.name };
+			const args = tool.name === "get_version_history"
+				? { ...route.selector, id: tool.arguments.documentId }
+				: { ...route.selector, ...tool.arguments };
 			const result = await mcpClient.callTool({
-				name: tool.name,
-				arguments: tool.arguments,
+				name: route.name,
+				arguments: args,
 			});
 			expect(observedRequests.length - before, tool.name).toBe(1);
 			if (tool.error) {
@@ -1921,7 +1948,7 @@ describe("live category-scoped public surfaces", () => {
 			}
 		}
 
-		expect(observedRequests).toHaveLength(capabilityCatalog.tools.length);
+		expect(observedRequests).toHaveLength(toolCases.length);
 		expect(observedRequests.every(({ method }) => method !== "OPTIONS")).toBe(
 			true,
 		);

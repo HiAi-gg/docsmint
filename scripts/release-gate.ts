@@ -337,12 +337,24 @@ export function environmentForStep(
 	}
 	if (step.name === "required PostgreSQL integrations") {
 		const databaseUrl = base.CONTENT_ACCESS_TEST_DATABASE_URL?.trim();
+		const storageUrl = base.DOCSMINT_CONTRACT_STORAGE_URL?.trim();
 		if (!databaseUrl) {
 			throw new Error(
 				"required PostgreSQL integrations require CONTENT_ACCESS_TEST_DATABASE_URL",
 			);
 		}
-		return { ...base, DATABASE_URL: databaseUrl };
+		if (!storageUrl) {
+			throw new Error(
+				"required PostgreSQL integrations require DOCSMINT_CONTRACT_STORAGE_URL",
+			);
+		}
+		return {
+			...base,
+			DATABASE_URL: databaseUrl,
+			NODE_ENV: "test",
+			STORAGE_INTERNAL_ENDPOINT_URL: storageUrl,
+			STORAGE_PUBLIC_ENDPOINT_URL: storageUrl,
+		};
 	}
 	if (step.name === "required live public surfaces") {
 		const contractStorageUrl = base.DOCSMINT_CONTRACT_STORAGE_URL;

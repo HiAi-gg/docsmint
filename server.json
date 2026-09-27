@@ -10,7 +10,7 @@
     "id": "1249550690",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.9.4",
+  "version": "0.10.0",
   "icons": [
     {
       "src": "https://raw.githubusercontent.com/HiAi-gg/docsmint/main/frontend/static/logo-dark.png",
@@ -34,7 +34,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@hiai-gg/docsmint",
-      "version": "0.9.4",
+      "version": "0.10.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -87,7 +87,7 @@
       "licenseFile": "https://github.com/HiAi-gg/docsmint/blob/main/LICENSE",
       "documentationUrl": "https://docsmint.com/mcp/connect?source=mcp_registry",
       "catalog": {
-        "tools": 31,
+        "tools": 20,
         "prompts": 2,
         "resources": 3
       }

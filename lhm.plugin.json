@@ -1,7 +1,7 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "0.9.4",
+  "version": "0.10.0",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
@@ -21,203 +21,420 @@
   ],
   "tools": [
     {
-      "name": "search_documents",
-      "description": "Search readable DocsMint documents with hybrid full-text and semantic retrieval, optionally filtered by folder and tag names. Requires read access and stays within the active workspace/category. Use search_knowledge_graph for graph relations from seed documents or get_related_documents for neighbors without a text query.",
+      "name": "find_documents",
+      "description": "Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.",
       "inputSchema": {
         "type": "object",
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "Text to search for; preserve the language and terms relevant to the user request."
-          },
-          "folder": {
-            "description": "Optional folder UUID from list_folders to scope retrieval.",
-            "type": "string"
-          },
-          "tags": {
-            "description": "Optional tag names as shown by list_tags; documents match when they have any supplied tag name.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "limit": {
-            "description": "Maximum result count, from 1 to 100; defaults to 20.",
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 100
-          }
-        },
-        "required": [
-          "query"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "snippet": {
-                  "type": "string"
-                },
-                "score": {
-                  "type": "number"
-                },
-                "folder_id": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "folder_name": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "created_at": {
-                  "type": "string"
-                },
-                "updated_at": {
-                  "type": "string"
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "color": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "documentCount": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "color"
-                    ],
-                    "additionalProperties": {}
-                  }
-                },
-                "chunks": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "chunkIndex": {
-                        "type": "number"
-                      },
-                      "chunkText": {
-                        "type": "string"
-                      },
-                      "charStart": {
-                        "type": "number"
-                      },
-                      "charEnd": {
-                        "type": "number"
-                      },
-                      "score": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "chunkIndex",
-                      "chunkText",
-                      "charStart",
-                      "charEnd",
-                      "score"
-                    ],
-                    "additionalProperties": {}
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "title",
-                "snippet",
-                "score",
-                "folder_id",
-                "folder_name",
-                "created_at",
-                "updated_at"
-              ],
-              "additionalProperties": {}
-            }
-          },
-          "total": {
-            "type": "number"
-          },
-          "page": {
-            "type": "number"
-          },
-          "limit": {
-            "type": "number"
-          },
-          "diagnostics": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
             "type": "object",
             "properties": {
-              "graphAttempted": {
-                "type": "boolean"
+              "mode": {
+                "type": "string",
+                "const": "list",
+                "description": "Select the list operation explicitly."
               },
-              "graphFailed": {
-                "type": "boolean"
+              "folderId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
               },
-              "graphContribution": {
-                "type": "boolean"
+              "tag": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "page": {
+                "description": "One-based page number; defaults to the API first page.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "limit": {
+                "description": "Maximum documents per page, up to 1000.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
               }
             },
             "required": [
-              "graphAttempted",
-              "graphFailed",
-              "graphContribution"
+              "mode"
             ],
-            "additionalProperties": {}
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              },
+              "query": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Text to search in the original language."
+              },
+              "folder": {
+                "description": "Optional folder UUID filter for search.",
+                "type": "string"
+              },
+              "tags": {
+                "description": "Optional tag names; all supplied names must match.",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "limit": {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "mode",
+              "query"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ],
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "list"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "content": {
+                          "type": "string"
+                        },
+                        "folderId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "folderName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "categoryId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "categoryName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "documentCount": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "color"
+                            ],
+                            "additionalProperties": {}
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "content",
+                        "folderId",
+                        "folderName",
+                        "categoryId",
+                        "categoryName",
+                        "createdAt",
+                        "updatedAt",
+                        "tags"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "number"
+                  },
+                  "page": {
+                    "type": "number"
+                  },
+                  "limit": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "items",
+                  "total",
+                  "page",
+                  "limit"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "snippet": {
+                          "type": "string"
+                        },
+                        "score": {
+                          "type": "number"
+                        },
+                        "folder_id": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "folder_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        },
+                        "tags": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "color": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "documentCount": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "color"
+                            ],
+                            "additionalProperties": {}
+                          }
+                        },
+                        "chunks": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "chunkIndex": {
+                                "type": "number"
+                              },
+                              "chunkText": {
+                                "type": "string"
+                              },
+                              "charStart": {
+                                "type": "number"
+                              },
+                              "charEnd": {
+                                "type": "number"
+                              },
+                              "score": {
+                                "type": "number"
+                              }
+                            },
+                            "required": [
+                              "chunkIndex",
+                              "chunkText",
+                              "charStart",
+                              "charEnd",
+                              "score"
+                            ],
+                            "additionalProperties": {}
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "snippet",
+                        "score",
+                        "folder_id",
+                        "folder_name",
+                        "created_at",
+                        "updated_at"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "total": {
+                    "type": "number"
+                  },
+                  "page": {
+                    "type": "number"
+                  },
+                  "limit": {
+                    "type": "number"
+                  },
+                  "diagnostics": {
+                    "type": "object",
+                    "properties": {
+                      "graphAttempted": {
+                        "type": "boolean"
+                      },
+                      "graphFailed": {
+                        "type": "boolean"
+                      },
+                      "graphContribution": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "graphAttempted",
+                      "graphFailed",
+                      "graphContribution"
+                    ],
+                    "additionalProperties": {}
+                  }
+                },
+                "required": [
+                  "items",
+                  "total",
+                  "page",
+                  "limit"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "annotations": {
         "readOnlyHint": true,
@@ -227,8 +444,705 @@
       }
     },
     {
-      "name": "get_document",
-      "description": "Read an existing document by UUID with its content, metadata, and tags before editing or citing it. Requires read access in the active workspace/category. Use export_document when you only need the portable Markdown body.",
+      "name": "read_document",
+      "description": "Read one document by UUID. Choose detail for content and metadata, markdown for portable export, or versions for saved revisions and snapshots. All views are read-only.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "const": "detail",
+                "description": "Select the detail operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              }
+            },
+            "required": [
+              "view",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "const": "markdown",
+                "description": "Select the markdown operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              }
+            },
+            "required": [
+              "view",
+              "id"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "const": "versions",
+                "description": "Select the versions operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "onlySnapshots": {
+                "description": "When true, return only named snapshots.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "view",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "detail"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string"
+                  },
+                  "folderId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "categoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentJson": {},
+                  "metadata": {},
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "color": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "color"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "folderName": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "ownerId",
+                  "folderId",
+                  "categoryId",
+                  "title",
+                  "content",
+                  "visibility",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "markdown"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "markdown": {
+                    "type": "string"
+                  },
+                  "filename": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "markdown"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "versions"
+              },
+              "result": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "documentId": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "contentJson": {},
+                    "createdBy": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "isSnapshot": {
+                      "type": "boolean"
+                    },
+                    "restoredFrom": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "documentId",
+                    "content",
+                    "createdBy",
+                    "createdAt"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_document",
+      "description": "Create a new document or update an existing document. action=create requires write access; action=update requires edit access for content, and placement changes may require write access. Content or placement changes queue normal indexing.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              },
+              "content": {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              },
+              "folderId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "categoryId": {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              },
+              "content": {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              },
+              "folderId": {
+                "description": "Optional folder UUID; null clears the placement on update.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "categoryId": {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "create"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string"
+                  },
+                  "folderId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "categoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentJson": {},
+                  "metadata": {},
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "color": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "color"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "folderName": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "ownerId",
+                  "folderId",
+                  "categoryId",
+                  "title",
+                  "content",
+                  "visibility",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "update"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "ownerId": {
+                    "type": "string"
+                  },
+                  "folderId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "categoryId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentJson": {},
+                  "metadata": {},
+                  "visibility": {
+                    "type": "string",
+                    "enum": [
+                      "private",
+                      "shared",
+                      "public"
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "color": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "color"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "folderName": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "ownerId",
+                  "folderId",
+                  "categoryId",
+                  "title",
+                  "content",
+                  "visibility",
+                  "createdAt",
+                  "updatedAt"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_document",
+      "description": "Move a writable document to trash without purging content or versions. Use only on an explicit delete request; permanently_delete_document is a separate irreversible action.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -236,125 +1150,462 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document, obtained from search_documents or list_documents, and visible in the active scope."
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
           "id"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
-          },
-          "ownerId": {
-            "type": "string"
-          },
-          "folderId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "contentJson": {},
-          "metadata": {},
-          "visibility": {
             "type": "string",
-            "enum": [
-              "private",
-              "shared",
-              "public"
-            ]
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "color": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "documentCount": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "color"
-              ],
-              "additionalProperties": {}
-            }
-          },
-          "folderName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "deleted": {
+            "type": "boolean",
+            "const": true
           }
         },
         "required": [
           "id",
-          "ownerId",
-          "folderId",
-          "categoryId",
-          "title",
-          "content",
-          "visibility",
-          "createdAt",
-          "updatedAt"
+          "deleted"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "list_workspace_structure",
+      "description": "List visible folders, categories, or tags in the active workspace or category scope. Set kind=folders to inspect root folders or children of parentId.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "folders",
+                "description": "Select the folders operation explicitly."
+              },
+              "parentId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "categories",
+                "description": "Select the categories operation explicitly."
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "tags",
+                "description": "Select the tags operation explicitly."
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "folders"
+              },
+              "result": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "categories"
+              },
+              "result": {
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "order": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "number"
+                        },
+                        "folderCount": {
+                          "type": "number"
+                        },
+                        "apiMode": {
+                          "type": "string",
+                          "enum": [
+                            "unavailable",
+                            "global",
+                            "category"
+                          ]
+                        },
+                        "apiPermissionRead": {
+                          "type": "boolean"
+                        },
+                        "apiPermissionEdit": {
+                          "type": "boolean"
+                        },
+                        "apiPermissionWrite": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "order",
+                        "createdAt",
+                        "updatedAt",
+                        "apiMode",
+                        "apiPermissionRead",
+                        "apiPermissionEdit",
+                        "apiPermissionWrite"
+                      ],
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "order": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        },
+                        "documentCount": {
+                          "type": "number"
+                        },
+                        "folderCount": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "order",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "tags"
+              },
+              "result": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "color": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "documentCount": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "color"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "ownerId": {
+                "type": "string"
+              },
+              "parentId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "categoryId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "type": "number"
+              },
+              "documentCount": {
+                "type": "number"
+              },
+              "subfolderCount": {
+                "type": "number"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "documents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "folderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "folderName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "categoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "documentCount": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "color"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "content",
+                    "folderId",
+                    "folderName",
+                    "categoryId",
+                    "categoryName",
+                    "createdAt",
+                    "updatedAt",
+                    "tags"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "id",
+              "ownerId",
+              "parentId",
+              "name",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": {}
+          }
+        }
       },
       "annotations": {
         "readOnlyHint": true,
@@ -364,42 +1615,1031 @@
       }
     },
     {
-      "name": "create_document",
-      "description": "Create a new DocsMint document when no existing document should be modified. Optionally set a title, initial Markdown content, and folder or category placement; an omitted title defaults to “Untitled”. Requires write access in the target scope. A category-scoped credential must create inside its configured category, by selecting that category or a folder within it. Normal creation schedules indexing asynchronously and returns the created document. Use update_document for an existing document.",
+      "name": "save_folder",
+      "description": "Create or update a folder. action=update can rename or move an existing folder; the API enforces category boundaries and queues affected documents for reindexing.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              "parentId": {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "categoryId": {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              "parentId": {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "categoryId": {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "description": "New non-negative display order.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "action",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "create"
+              },
+              "result": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "update"
+              },
+              "result": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "ownerId": {
+                "type": "string"
+              },
+              "parentId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "updatedAt": {
+                "type": "string"
+              },
+              "categoryId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "type": "number"
+              },
+              "documentCount": {
+                "type": "number"
+              },
+              "subfolderCount": {
+                "type": "number"
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              "documents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "folderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "folderName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "categoryName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "color": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "documentCount": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "color"
+                        ],
+                        "additionalProperties": {}
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "content",
+                    "folderId",
+                    "folderName",
+                    "categoryId",
+                    "categoryName",
+                    "createdAt",
+                    "updatedAt",
+                    "tags"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "required": [
+              "id",
+              "ownerId",
+              "parentId",
+              "name",
+              "createdAt",
+              "updatedAt"
+            ],
+            "additionalProperties": {}
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_folder",
+      "description": "Delete a folder while preserving its documents; child folders and documents are detached under the API rules. Requires write access.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "title": {
-            "description": "Optional title from 1 to 500 characters; omit to use the API default “Untitled”.",
+          "id": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 500
-          },
-          "content": {
-            "description": "Optional initial Markdown content; omit to create an empty document.",
-            "type": "string"
-          },
-          "folderId": {
-            "description": "Optional folder UUID from list_folders; the folder must be writable in the active workspace or category.",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "categoryId": {
-            "description": "Optional category UUID from list_categories; omit or pass null to leave the explicit category unset. A categorized folder still supplies the document’s effective category; without one the document remains uncategorized. Category-scoped credentials stay bound to their configured category.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "deleted": {
+            "type": "boolean",
+            "const": true
           }
         },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_category",
+      "description": "Create or update a workspace category. Full workspace write access is required; category-scoped credentials cannot manage categories.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              }
+            },
+            "required": [
+              "action",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              "order": {
+                "description": "New non-negative display order.",
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "action",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "create"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "order": {
+                    "type": "number"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "documentCount": {
+                    "type": "number"
+                  },
+                  "folderCount": {
+                    "type": "number"
+                  },
+                  "apiMode": {
+                    "type": "string",
+                    "enum": [
+                      "unavailable",
+                      "global",
+                      "category"
+                    ]
+                  },
+                  "apiPermissionRead": {
+                    "type": "boolean"
+                  },
+                  "apiPermissionEdit": {
+                    "type": "boolean"
+                  },
+                  "apiPermissionWrite": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "order",
+                  "createdAt",
+                  "updatedAt",
+                  "apiMode",
+                  "apiPermissionRead",
+                  "apiPermissionEdit",
+                  "apiPermissionWrite"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "update"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "order": {
+                    "type": "number"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "documentCount": {
+                    "type": "number"
+                  },
+                  "folderCount": {
+                    "type": "number"
+                  },
+                  "apiMode": {
+                    "type": "string",
+                    "enum": [
+                      "unavailable",
+                      "global",
+                      "category"
+                    ]
+                  },
+                  "apiPermissionRead": {
+                    "type": "boolean"
+                  },
+                  "apiPermissionEdit": {
+                    "type": "boolean"
+                  },
+                  "apiPermissionWrite": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "order",
+                  "createdAt",
+                  "updatedAt",
+                  "apiMode",
+                  "apiPermissionRead",
+                  "apiPermissionEdit",
+                  "apiPermissionWrite"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_category",
+      "description": "Delete a workspace category and detach its documents without deleting them. Requires full workspace write access; category-scoped credentials are denied.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "save_tag",
+      "description": "Create or update a workspace tag. Full workspace write access is required; renaming or recoloring a tag causes affected documents to be reindexed.",
+      "inputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              },
+              "color": {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              }
+            },
+            "required": [
+              "action",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              },
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              },
+              "color": {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              }
+            },
+            "required": [
+              "action",
+              "id"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "create"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "documentCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "color"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "update"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "documentCount": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "color"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "delete_tag",
+      "description": "Delete a workspace tag and remove its document assignments. Full workspace write access is required; documents themselves remain.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "deleted": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "id",
+          "deleted"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "set_document_tag",
+      "description": "Add or remove one existing tag assignment on a readable document. Requires edit access to that document; action=remove preserves the tag itself.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove"
+            ],
+            "description": "Add or remove exactly one tag assignment."
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "tagId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
+        "required": [
+          "action",
+          "documentId",
+          "tagId"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "add"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "documentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "tagId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "assigned": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "documentId",
+                  "tagId",
+                  "assigned"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "remove"
+              },
+              "result": {
+                "type": "object",
+                "properties": {
+                  "documentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "tagId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "removed": {
+                    "type": "boolean",
+                    "const": true
+                  }
+                },
+                "required": [
+                  "documentId",
+                  "tagId",
+                  "removed"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "create_snapshot",
+      "description": "Save a named snapshot of an existing document before a planned change. The snapshot can later be restored with restore_document_version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Snapshot label, from 1 to 200 characters."
+          },
+          "description": {
+            "description": "Optional snapshot note, at most 1000 characters.",
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "documentId",
+          "label"
+        ],
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -407,88 +2647,43 @@
           "id": {
             "type": "string"
           },
-          "ownerId": {
-            "type": "string"
-          },
-          "folderId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
+          "documentId": {
             "type": "string"
           },
           "content": {
             "type": "string"
           },
           "contentJson": {},
-          "metadata": {},
-          "visibility": {
-            "type": "string",
-            "enum": [
-              "private",
-              "shared",
-              "public"
-            ]
+          "createdBy": {
+            "type": "string"
           },
           "createdAt": {
             "type": "string"
           },
-          "updatedAt": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "color": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "documentCount": {
-                  "type": "number"
-                }
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
               },
-              "required": [
-                "id",
-                "name",
-                "color"
-              ],
-              "additionalProperties": {}
-            }
+              {
+                "type": "null"
+              }
+            ]
           },
-          "folderName": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "isSnapshot": {
+            "type": "boolean"
+          },
+          "restoredFrom": {
             "anyOf": [
               {
                 "type": "string"
@@ -501,14 +2696,10 @@
         },
         "required": [
           "id",
-          "ownerId",
-          "folderId",
-          "categoryId",
-          "title",
+          "documentId",
           "content",
-          "visibility",
-          "createdAt",
-          "updatedAt"
+          "createdBy",
+          "createdAt"
         ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": {}
@@ -521,58 +2712,30 @@
       }
     },
     {
-      "name": "update_document",
-      "description": "Modify an existing document by UUID after reading its current state. Omitted fields remain unchanged; null folderId removes folder placement and null categoryId clears the explicit category, while a categorized folder can still supply the effective category. Changing title or Markdown content requires edit access, while moving placement requires write access in the active workspace/category. The server stores the prior content in version history and queues indexing when content or placement changes. Returns the updated document. Use create_document for new content.",
+      "name": "restore_document_version",
+      "description": "Restore content from a version or snapshot listed by read_document(view=versions). This changes current content and queues indexing; it does not restore a trashed document.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": {
+          "documentId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the existing document, obtained from search_documents, list_documents, or get_document."
+            "description": "UUID returned by the corresponding list or read operation."
           },
-          "title": {
-            "description": "Optional replacement title, 1 to 500 characters; omit to leave the current title unchanged.",
+          "versionId": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 500
-          },
-          "content": {
-            "description": "New markdown content for the document.",
-            "type": "string"
-          },
-          "folderId": {
-            "description": "Optional destination folder UUID from list_folders; omit to keep current placement or pass null to remove folder placement.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "description": "Optional destination category UUID from list_categories; omit to keep the explicit category or pass null to clear it. A categorized folder may still supply the effective category. Category-scoped credentials cannot move outside their configured category.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
-          "id"
+          "documentId",
+          "versionId"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -694,1290 +2857,207 @@
       }
     },
     {
-      "name": "list_documents",
-      "description": "List readable documents in the active workspace or category with page-based results. Optionally filter by folder or tag; page defaults to 1 and limit to 20 (maximum 1,000). Use search_documents for text or semantic retrieval.",
+      "name": "explore_graph",
+      "description": "Explore graph relations from readable seed documents. mode=neighbors traverses one document without a query; mode=search ranks relations from one or more seed IDs with optional query text.",
       "inputSchema": {
         "type": "object",
-        "properties": {
-          "folderId": {
-            "description": "Optional folder UUID from list_folders to limit the listing.",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "tag": {
-            "description": "Optional tag UUID from list_tags to filter the documents.",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "page": {
-            "description": "1-indexed result page; defaults to 1.",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "limit": {
-            "description": "Number of documents per page, from 1 to 1,000; defaults to 20.",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 1000
-          }
-        },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "content": {
-                  "type": "string"
-                },
-                "folderId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "folderName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "type": "string"
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "color": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "documentCount": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "color"
-                    ],
-                    "additionalProperties": {}
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "title",
-                "content",
-                "folderId",
-                "folderName",
-                "categoryId",
-                "categoryName",
-                "createdAt",
-                "updatedAt",
-                "tags"
-              ],
-              "additionalProperties": {}
-            }
-          },
-          "total": {
-            "type": "number"
-          },
-          "page": {
-            "type": "number"
-          },
-          "limit": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "page",
-          "limit"
-        ],
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "list_folders",
-      "description": "List folders readable in the active workspace/category. Omit parentId to list root folders, or supply a parent UUID to list its immediate children as a flat list. Use create_folder to add a folder.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "parentId": {
-            "description": "Optional parent folder UUID from list_folders; omit to list root folders.",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "neighbors",
+                "description": "Select the neighbors operation explicitly."
+              },
+              "documentId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              "limit": {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "mode",
+              "documentId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              },
+              "docIds": {
+                "minItems": 1,
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID returned by the corresponding list or read operation."
+                },
+                "description": "One to 50 authorized seed document UUIDs."
+              },
+              "query": {
+                "description": "Optional graph relevance query, at most 2000 characters.",
+                "type": "string",
+                "maxLength": 2000
+              },
+              "limit": {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "mode",
+              "docIds"
+            ],
+            "additionalProperties": false
           }
-        },
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        ]
       },
       "outputSchema": {
         "type": "object",
-        "properties": {
-          "result": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "array",
-            "items": {
-              "$ref": "#/properties/result/$defs/__schema0"
-            },
-            "$defs": {
-              "__schema0": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "neighbors"
+              },
+              "result": {
                 "type": "object",
                 "properties": {
-                  "id": {
-                    "type": "string"
-                  },
-                  "ownerId": {
-                    "type": "string"
-                  },
-                  "parentId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "name": {
-                    "type": "string"
-                  },
-                  "createdAt": {
-                    "type": "string"
-                  },
-                  "updatedAt": {
-                    "type": "string"
-                  },
-                  "categoryId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "order": {
-                    "type": "number"
-                  },
-                  "documentCount": {
-                    "type": "number"
-                  },
-                  "subfolderCount": {
-                    "type": "number"
-                  },
-                  "children": {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/properties/result/$defs/__schema0"
-                    }
-                  },
-                  "documents": {
+                  "related": {
                     "type": "array",
                     "items": {
                       "type": "object",
                       "properties": {
-                        "id": {
+                        "docId": {
                           "type": "string"
                         },
-                        "title": {
+                        "relationType": {
                           "type": "string"
                         },
-                        "content": {
-                          "type": "string"
-                        },
-                        "folderId": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "folderName": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "categoryId": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "categoryName": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "createdAt": {
-                          "type": "string"
-                        },
-                        "updatedAt": {
-                          "type": "string"
-                        },
-                        "tags": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string"
-                              },
-                              "name": {
-                                "type": "string"
-                              },
-                              "color": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "createdAt": {
-                                "type": "string"
-                              },
-                              "documentCount": {
-                                "type": "number"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "name",
-                              "color"
-                            ],
-                            "additionalProperties": {}
-                          }
+                        "hopDistance": {
+                          "type": "number"
                         }
                       },
                       "required": [
-                        "id",
-                        "title",
-                        "content",
-                        "folderId",
-                        "folderName",
-                        "categoryId",
-                        "categoryName",
-                        "createdAt",
-                        "updatedAt",
-                        "tags"
+                        "docId",
+                        "relationType",
+                        "hopDistance"
                       ],
                       "additionalProperties": {}
                     }
                   }
                 },
                 "required": [
-                  "id",
-                  "ownerId",
-                  "parentId",
-                  "name",
-                  "createdAt",
-                  "updatedAt"
+                  "related"
                 ],
                 "additionalProperties": {}
               }
-            }
-          }
-        },
-        "required": [
-          "result"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "create_folder",
-      "description": "Create a new folder in the active workspace or category scope. Requires write access and returns the created folder. A nested folder inherits its parent category; for a root folder, pass categoryId when using a category-scoped credential. Category-scoped credentials cannot create outside their configured category.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Non-empty folder name up to 255 characters."
-          },
-          "parentId": {
-            "description": "Optional parent folder UUID from list_folders; omit or pass null to create a root-level folder.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "description": "Optional category UUID from list_categories for a root-level folder. A nested folder inherits its parent category; category-scoped credentials cannot escape their configured category.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "ownerId": {
-            "type": "string"
-          },
-          "parentId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "order": {
-            "type": "number"
-          },
-          "documentCount": {
-            "type": "number"
-          },
-          "subfolderCount": {
-            "type": "number"
-          },
-          "children": {
-            "type": "array",
-            "items": {
-              "$ref": "#"
-            }
-          },
-          "documents": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "content": {
-                  "type": "string"
-                },
-                "folderId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "folderName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "type": "string"
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "color": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "documentCount": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "color"
-                    ],
-                    "additionalProperties": {}
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "title",
-                "content",
-                "folderId",
-                "folderName",
-                "categoryId",
-                "categoryName",
-                "createdAt",
-                "updatedAt",
-                "tags"
-              ],
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "id",
-          "ownerId",
-          "parentId",
-          "name",
-          "createdAt",
-          "updatedAt"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "create_snapshot",
-      "description": "Save a named, retained snapshot of an existing document’s current content before a planned change. Requires edit access and adds an entry to get_version_history without changing the document itself. Use restore_document_version with the returned version ID to restore its content later.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the existing document, obtained from search_documents or list_documents and visible in the active scope."
-          },
-          "label": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200,
-            "description": "Non-empty snapshot label up to 200 characters, for example 'v1.0-release'."
-          },
-          "description": {
-            "description": "Optional snapshot note up to 1,000 characters; omit if not needed.",
-            "type": "string",
-            "maxLength": 1000
-          }
-        },
-        "required": [
-          "documentId",
-          "label"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "documentId": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "contentJson": {},
-          "createdBy": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "isSnapshot": {
-            "type": "boolean"
-          },
-          "restoredFrom": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "documentId",
-          "content",
-          "createdBy",
-          "createdAt"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "get_version_history",
-      "description": "Read versions for an existing document, including saved snapshots. Requires read access and returns version IDs with content and timestamps; pass a version ID to restore_document_version when the user asks to restore content. This is read-only and does not change the document.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the readable document whose version history you need; obtain it from search_documents or list_documents."
-          },
-          "onlySnapshots": {
-            "description": "When true, return only named snapshots and omit auto-saved revisions; omit or use false for the full history.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "documentId"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "result": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "documentId": {
-                  "type": "string"
-                },
-                "content": {
-                  "type": "string"
-                },
-                "contentJson": {},
-                "createdBy": {
-                  "type": "string"
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "label": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "description": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "isSnapshot": {
-                  "type": "boolean"
-                },
-                "restoredFrom": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                }
-              },
-              "required": [
-                "id",
-                "documentId",
-                "content",
-                "createdBy",
-                "createdAt"
-              ],
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "result"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "export_document",
-      "description": "Render one readable document as portable Markdown and return a markdown string in the response object. Does not modify the document or include its complete metadata; use get_document to inspect the editable document.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the readable document to export, obtained from search_documents or list_documents."
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "markdown": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "markdown"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "list_categories",
-      "description": "List categories visible in the active workspace or category scope. Requires read access; a category-scoped credential sees only its configured category. Use this before create_document or create_folder when you need an existing category ID.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "result": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "array",
-            "items": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "order": {
-                      "type": "number"
-                    },
-                    "createdAt": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "type": "string"
-                    },
-                    "documentCount": {
-                      "type": "number"
-                    },
-                    "folderCount": {
-                      "type": "number"
-                    },
-                    "apiMode": {
-                      "type": "string",
-                      "enum": [
-                        "unavailable",
-                        "global",
-                        "category"
-                      ]
-                    },
-                    "apiPermissionRead": {
-                      "type": "boolean"
-                    },
-                    "apiPermissionEdit": {
-                      "type": "boolean"
-                    },
-                    "apiPermissionWrite": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "name",
-                    "order",
-                    "createdAt",
-                    "updatedAt",
-                    "apiMode",
-                    "apiPermissionRead",
-                    "apiPermissionEdit",
-                    "apiPermissionWrite"
-                  ],
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "order": {
-                      "type": "number"
-                    },
-                    "createdAt": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "type": "string"
-                    },
-                    "documentCount": {
-                      "type": "number"
-                    },
-                    "folderCount": {
-                      "type": "number"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "name",
-                    "order",
-                    "createdAt",
-                    "updatedAt"
-                  ],
-                  "additionalProperties": {}
-                }
-              ]
-            }
-          }
-        },
-        "required": [
-          "result"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "create_category",
-      "description": "Create a new category for the active workspace. Requires workspace-level write access; category-scoped credentials cannot create categories. Returns the created category. Use list_categories to inspect existing categories.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255,
-            "description": "Non-empty display name, up to 255 characters, for example Project notes."
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "order": {
-            "type": "number"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "documentCount": {
-            "type": "number"
-          },
-          "folderCount": {
-            "type": "number"
-          },
-          "apiMode": {
-            "type": "string",
-            "enum": [
-              "unavailable",
-              "global",
-              "category"
-            ]
-          },
-          "apiPermissionRead": {
-            "type": "boolean"
-          },
-          "apiPermissionEdit": {
-            "type": "boolean"
-          },
-          "apiPermissionWrite": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "order",
-          "createdAt",
-          "updatedAt",
-          "apiMode",
-          "apiPermissionRead",
-          "apiPermissionEdit",
-          "apiPermissionWrite"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "list_tags",
-      "description": "List tags visible in the active workspace or configured category scope. Requires read access; use returned tag IDs to filter list_documents and returned tag names to filter search_documents.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "result": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "color": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "documentCount": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "color"
-              ],
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "result"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "get_related_documents",
-      "description": "Traverse graph relations from one readable document without a text query. Requires read access and returns related document IDs plus relation metadata. Use search_knowledge_graph to rank graph neighbors with query text, or search_documents for normal hybrid retrieval. Results stay in the active scope and may be empty when graph data is unavailable.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Document ID returned by search_documents or list_documents; it must be readable in the active scope."
-          },
-          "limit": {
-            "description": "Maximum related documents to return, from 1 to 100. Omit to use the server default.",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          }
-        },
-        "required": [
-          "documentId"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "related": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "docId": {
-                  "type": "string"
-                },
-                "relationType": {
-                  "type": "string"
-                },
-                "hopDistance": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "docId",
-                "relationType",
-                "hopDistance"
-              ],
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "related"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "search_knowledge_graph",
-      "description": "Search graph relations from one or more readable seed documents, optionally using query text to filter and rank related documents. Requires read access and returns seed entities plus relatedDocs. Use search_documents first to obtain authorized seed IDs; use get_related_documents for one-seed neighbors without graph search. Results stay in the active scope and graph data may be empty when unavailable.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "description": "Optional search text up to 2,000 characters to filter and rank graph-related documents; omit it to inspect relations without query filtering.",
-            "type": "string",
-            "maxLength": 2000
-          },
-          "docIds": {
-            "minItems": 1,
-            "maxItems": 50,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
             },
-            "description": "Between 1 and 50 document IDs returned by search_documents or list_documents; each seed must be readable in the active scope."
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
           },
-          "limit": {
-            "description": "Maximum related documents to return, from 1 to 100. Omit to use the server default.",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 100
-          }
-        },
-        "required": [
-          "docIds"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "entities": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                }
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "search"
               },
-              "required": [
-                "name",
-                "type"
-              ],
-              "additionalProperties": {}
-            }
-          },
-          "relatedDocs": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "docId": {
-                  "type": "string"
+              "result": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "entities": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "type"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "relatedDocs": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "docId": {
+                          "type": "string"
+                        },
+                        "relationType": {
+                          "type": "string"
+                        },
+                        "hopDistance": {
+                          "type": "number"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "snippet": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "docId",
+                        "relationType",
+                        "hopDistance",
+                        "title",
+                        "snippet"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  }
                 },
-                "relationType": {
-                  "type": "string"
-                },
-                "hopDistance": {
-                  "type": "number"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "snippet": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "docId",
-                "relationType",
-                "hopDistance",
-                "title",
-                "snippet"
-              ],
-              "additionalProperties": {}
-            }
+                "required": [
+                  "entities",
+                  "relatedDocs"
+                ],
+                "additionalProperties": {}
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "entities",
-          "relatedDocs"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
+        ]
       },
       "annotations": {
         "readOnlyHint": true,
@@ -1988,7 +3068,7 @@
     },
     {
       "name": "get_document_index_status",
-      "description": "Read indexing and knowledge-pipeline status for an existing document without starting work. Requires read access. Use after a save or refresh_document_index to check progress or failures.",
+      "description": "Read current indexing and pipeline status for one document without starting work. Use refresh_document_index only when an explicit retry is intended.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1996,13 +3076,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of a document returned by search_documents or list_documents; it must be readable in the active scope."
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
           "documentId"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2270,7 +3351,7 @@
     },
     {
       "name": "refresh_document_index",
-      "description": "Queue an explicit reindex for an existing document; processing is asynchronous and the response acknowledges the generation. Requires write access. Normal content and placement changes schedule indexing when needed, so use get_document_index_status first and refresh only when a retry is intended.",
+      "description": "Queue an explicit asynchronous reindex for one document. Routine content and placement changes already schedule indexing; check get_document_index_status first.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2278,13 +3359,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document to refresh, obtained from search_documents or list_documents and visible in the active scope."
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
           "documentId"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2315,921 +3397,13 @@
       }
     },
     {
-      "name": "delete_document",
-      "description": "Move an existing document to trash; this is a soft delete and does not permanently purge its content or version history. Requires write access in the active workspace/category. Returns {id, deleted:true}. Use only when the user intends to delete it.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document to move to trash; obtain it from search_documents, list_documents, or get_document."
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "deleted": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "id",
-          "deleted"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "delete_folder",
-      "description": "Delete a folder while preserving its documents. Direct child folders and documents are detached according to the server folder rules, and reindexing is queued for affected documents. Requires write access in the active workspace/category. Returns {id, deleted:true}.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the folder to delete; obtain it from list_folders. This detaches, but does not delete, the documents inside it."
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "deleted": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "id",
-          "deleted"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "delete_category",
-      "description": "Delete a category and detach its folders and documents without deleting their content. Requires full workspace write access; category-scoped credentials cannot delete any category, including their configured one. Returns {id, deleted:true}.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the category to delete; obtain it from list_categories using a workspace-scoped credential."
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "deleted": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "id",
-          "deleted"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "restore_document_version",
-      "description": "Restore content for an existing document from a version or named snapshot returned by get_version_history. Requires edit access. The server saves current content in history, records the restoration, and queues indexing. Returns the updated document; it does not recover a trashed document or change folder/category placement.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document whose content should be restored; it must be visible in the active workspace or category."
-          },
-          "versionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of a version belonging to this document, from get_version_history. Use the version ID, not a snapshot label."
-          }
-        },
-        "required": [
-          "documentId",
-          "versionId"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "ownerId": {
-            "type": "string"
-          },
-          "folderId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "title": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "contentJson": {},
-          "metadata": {},
-          "visibility": {
-            "type": "string",
-            "enum": [
-              "private",
-              "shared",
-              "public"
-            ]
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "color": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "documentCount": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "id",
-                "name",
-                "color"
-              ],
-              "additionalProperties": {}
-            }
-          },
-          "folderName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "ownerId",
-          "folderId",
-          "categoryId",
-          "title",
-          "content",
-          "visibility",
-          "createdAt",
-          "updatedAt"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "create_tag",
-      "description": "Create a tag in the active workspace. Requires full workspace write access; category-scoped credentials cannot manage tags. Use add_tag_to_document to assign it.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100,
-            "description": "New tag name, up to 100 characters."
-          },
-          "color": {
-            "description": "Optional display color for the new tag, up to 20 characters.",
-            "type": "string",
-            "maxLength": 20
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "documentCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "color"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "update_tag",
-      "description": "Rename or recolor an existing tag. Requires full workspace write access; category-scoped credentials cannot manage tags. Affected documents are reindexed by the API.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
-          },
-          "name": {
-            "description": "Replacement tag name; omit to keep the current name.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 100
-          },
-          "color": {
-            "description": "Replacement display color; omit to keep the current color.",
-            "type": "string",
-            "maxLength": 20
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "color": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "documentCount": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "color"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "delete_tag",
-      "description": "Delete a tag in the active workspace and remove its document assignments. Requires full workspace write access; category-scoped credentials cannot manage tags.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "deleted": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "id",
-          "deleted"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "add_tag_to_document",
-      "description": "Assign a tag from list_tags to an existing document. Requires edit access to the document and permission to use the tag.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document to tag."
-          },
-          "tagId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the tag returned by list_tags."
-          }
-        },
-        "required": [
-          "documentId",
-          "tagId"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "tagId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "assigned": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "documentId",
-          "tagId",
-          "assigned"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "remove_tag_from_document",
-      "description": "Remove a tag assignment from a document. Requires edit access; the tag itself is preserved.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the document whose tag assignment changes."
-          },
-          "tagId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the assigned tag to remove."
-          }
-        },
-        "required": [
-          "documentId",
-          "tagId"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "tagId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "removed": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": [
-          "documentId",
-          "tagId",
-          "removed"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "update_folder",
-      "description": "Rename or move a folder; changes to category or parent follow API scope rules and trigger reindexing. Requires write access.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
-          },
-          "name": {
-            "description": "Replacement folder name; omit to preserve the name.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "parentId": {
-            "description": "New parent folder UUID, or null for a root folder.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUID of the target object, obtained from the corresponding list tool."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "categoryId": {
-            "description": "New category UUID, or null to clear the category.",
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                "description": "UUID of the target object, obtained from the corresponding list tool."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "order": {
-            "description": "New non-negative order within the containing folder.",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "ownerId": {
-            "type": "string"
-          },
-          "parentId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "order": {
-            "type": "number"
-          },
-          "documentCount": {
-            "type": "number"
-          },
-          "subfolderCount": {
-            "type": "number"
-          },
-          "children": {
-            "type": "array",
-            "items": {
-              "$ref": "#"
-            }
-          },
-          "documents": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "content": {
-                  "type": "string"
-                },
-                "folderId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "folderName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryId": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "categoryName": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "createdAt": {
-                  "type": "string"
-                },
-                "updatedAt": {
-                  "type": "string"
-                },
-                "tags": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "id": {
-                        "type": "string"
-                      },
-                      "name": {
-                        "type": "string"
-                      },
-                      "color": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "createdAt": {
-                        "type": "string"
-                      },
-                      "documentCount": {
-                        "type": "number"
-                      }
-                    },
-                    "required": [
-                      "id",
-                      "name",
-                      "color"
-                    ],
-                    "additionalProperties": {}
-                  }
-                }
-              },
-              "required": [
-                "id",
-                "title",
-                "content",
-                "folderId",
-                "folderName",
-                "categoryId",
-                "categoryName",
-                "createdAt",
-                "updatedAt",
-                "tags"
-              ],
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "id",
-          "ownerId",
-          "parentId",
-          "name",
-          "createdAt",
-          "updatedAt"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "update_category",
-      "description": "Rename or reorder a category. Requires full workspace write access; category-scoped credentials cannot modify categories.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
-          },
-          "name": {
-            "description": "New category name, up to 255 characters.",
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 255
-          },
-          "order": {
-            "description": "New non-negative category order.",
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": [
-          "id"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "order": {
-            "type": "number"
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "documentCount": {
-            "type": "number"
-          },
-          "folderCount": {
-            "type": "number"
-          },
-          "apiMode": {
-            "type": "string",
-            "enum": [
-              "unavailable",
-              "global",
-              "category"
-            ]
-          },
-          "apiPermissionRead": {
-            "type": "boolean"
-          },
-          "apiPermissionEdit": {
-            "type": "boolean"
-          },
-          "apiPermissionWrite": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "order",
-          "createdAt",
-          "updatedAt",
-          "apiMode",
-          "apiPermissionRead",
-          "apiPermissionEdit",
-          "apiPermissionWrite"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
-      },
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
       "name": "list_trash",
-      "description": "List soft-deleted documents visible to the active workspace/category. Requires read access.",
+      "description": "List soft-deleted documents visible to the active workspace or category scope. Requires read access and does not restore or purge anything.",
       "inputSchema": {
         "type": "object",
         "properties": {},
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3291,7 +3465,7 @@
     },
     {
       "name": "restore_trashed_document",
-      "description": "Restore a soft-deleted document from list_trash. Requires write access. This is different from restoring a content version.",
+      "description": "Return one soft-deleted document to the active library. This restores the document itself, unlike restore_document_version which changes content.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3299,13 +3473,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
           "id"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3330,7 +3505,7 @@
     },
     {
       "name": "permanently_delete_document",
-      "description": "Irreversibly purge a document already in trash, including its content and version history. Requires write access. Use only on explicit user request after checking list_trash.",
+      "description": "Irreversibly purge a document already in trash, including its version history. Use only on an explicit user request after checking list_trash.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3338,13 +3513,14 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID of the target object, obtained from the corresponding list tool."
+            "description": "UUID returned by the corresponding list or read operation."
           }
         },
         "required": [
           "id"
         ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema"
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3406,7 +3582,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.9.4 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n\n## Latest release: 0.9.4\n\nExpands the self-hosted MCP bridge to 31 tools for tags, folder and category updates, and document trash recovery or permanent purge. The hosted DocsMint Cloud Connector remains separate. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.4) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
+      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@0.10.0 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n\n## Latest release: 0.10.0\n\nPresents 20 focused MCP tools while preserving all 31 document, tag, folder, category, graph, version, indexing, and trash operations. Existing MCP callers must use the new explicit selectors. The hosted DocsMint Cloud Connector remains separate. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.10.0) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
       "tags": [
         "knowledge-base",
         "mcp",

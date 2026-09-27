@@ -37,38 +37,49 @@ describe('MCP management operations', () => {
     return client;
   }
 
-  for (const [name, args, method, path, expected] of operations) {
+  for (const [legacyName, legacyArgs, method, path, expected] of operations) {
+    const mapping: Record<string, [string, Record<string, unknown>]> = {
+      create_tag: ['save_tag', { action: 'create', ...legacyArgs }],
+      update_tag: ['save_tag', { action: 'update', ...legacyArgs }],
+      add_tag_to_document: ['set_document_tag', { action: 'add', ...legacyArgs }],
+      remove_tag_from_document: ['set_document_tag', { action: 'remove', ...legacyArgs }],
+      update_folder: ['save_folder', { action: 'update', ...legacyArgs }],
+      update_category: ['save_category', { action: 'update', ...legacyArgs }],
+    };
+    const [name, args] = mapping[legacyName] ?? [legacyName, legacyArgs];
+    const wrapped = Object.hasOwn(mapping, legacyName);
+    const operation = (args as { action?: string }).action;
     test(`${name} forwards scoped REST request and returns its result`, async () => {
       const requests: Array<{ url: string; method?: string; headers: Headers; body?: string }> = [];
       const client = await connect((async (url: string | URL | Request, init?: RequestInit) => {
         requests.push({ url: String(url), method: init?.method, headers: new Headers(init?.headers), body: init?.body as string | undefined });
-        if (name === 'permanently_delete_document') return Response.json({ success: true });
-        return method === 'DELETE' || name === 'add_tag_to_document' ? new Response(null, { status: 204 }) : Response.json(expected);
+        if (legacyName === 'permanently_delete_document') return Response.json({ success: true });
+        return method === 'DELETE' || legacyName === 'add_tag_to_document' ? new Response(null, { status: 204 }) : Response.json(expected);
       }) as unknown as typeof fetch);
       expect((await client.listTools()).tools.some(tool => tool.name === name)).toBe(true);
       const result = await client.callTool({ name, arguments: args });
       expect(result.isError).not.toBe(true);
-      expect(JSON.parse((result.content as Array<{ text: string }>)[0]!.text)).toEqual(expected);
+      expect(JSON.parse((result.content as Array<{ text: string }>)[0]!.text)).toEqual(wrapped ? { operation, result: expected } : expected);
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toBe(`https://docs.example.test${path}`);
       expect(requests[0]?.method).toBe(method);
       expect(requests[0]?.headers.get('authorization')).toBe('Bearer service-key');
       expect(requests[0]?.headers.get('cookie')).toBeNull();
       expect(requests[0]?.headers.get('x-docsmint-workspace-context')).toBe('signed-scope');
-      if (name === 'create_tag') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ name: 'Research' });
-      if (name === 'add_tag_to_document') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ tagId });
-      if (name === 'update_folder' || name === 'update_category') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ name: 'Renamed' });
+      if (legacyName === 'create_tag') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ name: 'Research' });
+      if (legacyName === 'add_tag_to_document') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ tagId });
+      if (legacyName === 'update_folder' || legacyName === 'update_category') expect(JSON.parse(requests[0]?.body ?? '{}')).toEqual({ name: 'Renamed' });
     });
     test(`${name} reports API denial`, async () => {
       const client = await connect((async () => Response.json({ error: 'Forbidden' }, { status: 403 })) as unknown as typeof fetch);
       const result = await client.callTool({ name, arguments: args });
       expect(result.isError).toBe(true);
     });
-    if (name !== 'list_trash') test(`${name} validates identifiers and required fields before REST`, async () => {
+    if (legacyName !== 'list_trash') test(`${name} validates identifiers and required fields before REST`, async () => {
       let calls = 0;
       const client = await connect((async () => { calls++; return Response.json(expected); }) as unknown as typeof fetch);
-      const invalid = name === 'create_tag' ? { name: '' }
-        : name === 'add_tag_to_document' || name === 'remove_tag_from_document'
+      const invalid = legacyName === 'create_tag' ? { name: '' }
+        : legacyName === 'add_tag_to_document' || legacyName === 'remove_tag_from_document'
           ? { documentId: '../escape', tagId }
           : { ...args, id: '../escape' };
       expect((await client.callTool({ name, arguments: invalid })).isError).toBe(true);

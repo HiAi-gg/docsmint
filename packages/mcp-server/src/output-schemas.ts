@@ -18,8 +18,6 @@ import type {
   DocsVersion,
 } from '@hiai-docs/sdk';
 
-import { capabilityCatalog } from './capabilities.js';
-
 const tagSchema: z.ZodType<DocsTag> = z.looseObject({
   id: z.string(),
   name: z.string(),
@@ -215,7 +213,7 @@ const deleteAcknowledgmentSchema = z.looseObject({
   deleted: z.literal(true),
 });
 
-const toolOutputSchemas = {
+const operationOutputSchemas = {
   search_documents: z.looseObject({
     items: z.array(searchResultSchema),
     total: z.number(),
@@ -268,6 +266,61 @@ const toolOutputSchemas = {
   list_trash: z.looseObject({ documents: z.array(z.looseObject({ id: z.string().uuid(), title: z.string(), deletedAt: z.string(), purgeAfter: z.string().nullable() })), folders: z.array(z.unknown()) }),
   restore_trashed_document: z.looseObject({ success: z.literal(true) }),
   permanently_delete_document: deleteAcknowledgmentSchema,
-} satisfies Record<(typeof capabilityCatalog.tools)[number], z.ZodType>;
+} as const;
+
+const variant = <Name extends string, Schema extends z.ZodType>(operation: Name, result: Schema) =>
+  z.object({ operation: z.literal(operation), result });
+
+const toolOutputSchemas = {
+  delete_document: operationOutputSchemas.delete_document,
+  delete_folder: operationOutputSchemas.delete_folder,
+  delete_category: operationOutputSchemas.delete_category,
+  delete_tag: operationOutputSchemas.delete_tag,
+  create_snapshot: operationOutputSchemas.create_snapshot,
+  restore_document_version: operationOutputSchemas.restore_document_version,
+  get_document_index_status: operationOutputSchemas.get_document_index_status,
+  refresh_document_index: operationOutputSchemas.refresh_document_index,
+  list_trash: operationOutputSchemas.list_trash,
+  restore_trashed_document: operationOutputSchemas.restore_trashed_document,
+  permanently_delete_document: operationOutputSchemas.permanently_delete_document,
+  find_documents: z.union([
+    variant('list', operationOutputSchemas.list_documents),
+    variant('search', operationOutputSchemas.search_documents),
+  ]),
+  read_document: z.union([
+    variant('detail', operationOutputSchemas.get_document),
+    variant('markdown', operationOutputSchemas.export_document),
+    variant('versions', operationOutputSchemas.get_version_history),
+  ]),
+  save_document: z.union([
+    variant('create', operationOutputSchemas.create_document),
+    variant('update', operationOutputSchemas.update_document),
+  ]),
+  list_workspace_structure: z.union([
+    variant('folders', operationOutputSchemas.list_folders),
+    variant('categories', operationOutputSchemas.list_categories),
+    variant('tags', operationOutputSchemas.list_tags),
+  ]),
+  save_folder: z.union([
+    variant('create', operationOutputSchemas.create_folder),
+    variant('update', operationOutputSchemas.update_folder),
+  ]),
+  save_category: z.union([
+    variant('create', operationOutputSchemas.create_category),
+    variant('update', operationOutputSchemas.update_category),
+  ]),
+  save_tag: z.union([
+    variant('create', operationOutputSchemas.create_tag),
+    variant('update', operationOutputSchemas.update_tag),
+  ]),
+  set_document_tag: z.union([
+    variant('add', operationOutputSchemas.add_tag_to_document),
+    variant('remove', operationOutputSchemas.remove_tag_from_document),
+  ]),
+  explore_graph: z.union([
+    variant('neighbors', operationOutputSchemas.get_related_documents),
+    variant('search', operationOutputSchemas.search_knowledge_graph),
+  ]),
+} as const;
 
 export { toolOutputSchemas };

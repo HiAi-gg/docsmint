@@ -310,7 +310,7 @@ try {
   if (JSON.stringify(listed.tools.map((tool) => tool.name)) !== JSON.stringify(capabilityCatalog.tools)) {
     throw new Error("packed MCP runtime does not match the exported canonical capability catalog");
   }
-  const result = await client.callTool({ name: "list_categories", arguments: {} });
+  const result = await client.callTool({ name: "list_workspace_structure", arguments: { kind: "categories" } });
   const body = JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? "");
   const expected = {
     type: "DocsApiError",

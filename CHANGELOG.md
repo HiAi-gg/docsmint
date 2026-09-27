@@ -7,6 +7,27 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-27
+
+### Changed
+
+- Consolidate the MCP discovery surface from 31 to 20 tools while preserving
+  all 31 operations. Explicit `mode`, `view`, `kind`, and `action` selectors
+  separate browse/search, read/export/history, create/update, and graph flows.
+- Keep deletion, version restore, trash restore, and permanent purge as
+  separate operations. Grouped results include an `operation` discriminator.
+- Update the runtime catalog, Glama-facing docs, MCP Registry count, and
+  LobeHub declarations together. The SDK, CLI, REST API, prompts, resources,
+  API-key scope enforcement, and Docker deployment are unchanged.
+
+### Migration
+
+- MCP clients must replace old tool names with the 20-tool catalog and supply
+  the selector shown in `packages/mcp-server/README.md`. Old tool names are not
+  advertised as aliases. Hosted Cloud deployment must adopt the matching
+  package before Cloud clients use the new names. No database migration is required.
+
+
 ## [0.9.4] - 2026-09-27
 
 ### Added

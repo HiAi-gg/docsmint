@@ -129,38 +129,50 @@ uses DocsMint Cloud at `https://docsmint.com/mcp` and is a separate listing.
 
 ### Tools
 
-- `search_documents`: Retrieve readable documents with hybrid full-text and semantic search; optional tags are tag names. Use graph tools for graph-only exploration.
-- `get_document`: Read one document with editable content and metadata; use `export_document` when only portable Markdown is needed.
-- `create_document`: Create new content with optional title, Markdown, and placement; requires write access, schedules normal indexing, and defaults an omitted title to “Untitled”. Category-scoped credentials must stay in their configured category. Use `update_document` for an existing document.
-- `update_document`: Patch an existing document after reading it; omitted fields stay unchanged, `null` clears folder/category placement, prior content is retained in version history, and changed content or placement queues indexing. Use `create_document` for new content.
-- `list_documents`: Page through readable documents and optionally filter by folder UUID or tag UUID; use `search_documents` for text or semantic retrieval.
-- `list_folders`: List root folders or the immediate children of a folder in the active scope.
-- `create_folder`: Create a root or nested folder; nested folders inherit their parent's category, and a category-scoped credential stays inside its configured category.
-- `create_snapshot`: Save a named snapshot of current content without changing the document; use its returned version ID with `restore_document_version`.
-- `get_version_history`: Read auto-saved revisions and snapshots; use `restore_document_version` to restore a selected version.
-- `export_document`: Render a readable document as portable Markdown without the full metadata returned by `get_document`.
-- `list_categories`: List categories visible in the active workspace or category scope.
-- `create_category`: Create a category with workspace-level write access; category-scoped credentials cannot create categories.
-- `list_tags`: List visible tags with both IDs (for `list_documents`) and names (for `search_documents`).
-- `get_related_documents`: Traverse graph neighbors from one readable document without a text query; use `search_knowledge_graph` to filter/rank neighbors with query text.
-- `search_knowledge_graph`: Search graph relations from readable seed document IDs; use `search_documents` for normal hybrid retrieval.
-- `get_document_index_status`: Inspect indexing state without starting work; use `refresh_document_index` only when a retry is intended.
-- `refresh_document_index`: Queue an explicit asynchronous reindex for a readable document after checking status; routine content or placement changes already schedule indexing as needed.
+DocsMint exposes 20 MCP tools. The former 31 operations are still available;
+grouped tools require an explicit `mode`, `view`, `kind`, or `action` so an agent
+cannot confuse browsing with search, restoring a version with restoring trash,
+or a reversible delete with permanent purge. No second or legacy tool catalog is
+advertised. Use a matching version of the self-hosted bridge or Cloud endpoint
+when migrating an MCP client that invokes the old tool names.
 
-- `delete_document`: Move a writable document to trash; no permanent purge.
-- `delete_folder`: Delete a writable folder while preserving its documents.
-- `delete_category`: Delete a category using full workspace write access; category keys are denied.
-- `restore_document_version`: Restore content from a version or snapshot with edit access; `get_version_history` lists eligible version IDs. Current content is backed up first, and indexing is queued.
-- `create_tag`: Create a workspace tag with full workspace write access; use `add_tag_to_document` to assign it.
-- `update_tag`: Rename or recolor a workspace tag with full workspace write access; affected documents are reindexed.
-- `delete_tag`: Delete a workspace tag and its assignments with full workspace write access.
-- `add_tag_to_document`: Assign an existing tag to a document with edit access.
-- `remove_tag_from_document`: Remove a document's tag assignment with edit access without deleting the tag.
-- `update_folder`: Rename or move a folder with write access; the API enforces category boundaries and queues reindexing.
-- `update_category`: Rename or reorder a category with full workspace write access; category-scoped credentials cannot change it.
-- `list_trash`: List soft-deleted documents visible to the active key.
-- `restore_trashed_document`: Recover a document from trash with write access; unlike `restore_document_version`, this restores the document itself.
-- `permanently_delete_document`: Irreversibly purge a document already in trash with write access, only on an explicit user request.
+- `find_documents`: Browse by folder/tag UUID with `mode=list`, or hybrid-search by text/tag names with `mode=search`.
+- `read_document`: Read content and metadata with `view=detail`, export Markdown with `view=markdown`, or list revisions and snapshots with `view=versions`.
+- `save_document`: Create a document with `action=create` or patch an existing one with `action=update`. Omitted patch fields remain unchanged; null placement clears it. The API enforces the effective category and schedules indexing.
+- `delete_document`: Move a document to trash without purging its content or versions.
+- `list_workspace_structure`: List folders, categories, or tags with `kind=folders|categories|tags`; folders optionally accept `parentId`.
+- `save_folder`: Create with `action=create` or rename, move, or reorder with `action=update`; metadata changes queue reindexing.
+- `delete_folder`: Remove a folder while preserving its documents under the API's detachment rules.
+- `save_category`: Create with `action=create` or rename/reorder with `action=update`; requires full workspace write access.
+- `delete_category`: Remove a category and detach its documents; requires full workspace write access.
+- `save_tag`: Create with `action=create` or rename/recolor with `action=update`; requires full workspace write access.
+- `delete_tag`: Delete a tag and its assignments without deleting documents.
+- `set_document_tag`: Assign with `action=add` or unassign with `action=remove`; requires edit access to the document.
+- `create_snapshot`: Save a named version of the current document content.
+- `restore_document_version`: Restore content from a revision or snapshot selected through `read_document(view=versions)`; pass that document's UUID as `documentId`.
+- `explore_graph`: Traverse one document with `mode=neighbors` or rank relations from seed IDs with `mode=search`.
+- `get_document_index_status`: Inspect indexing state without starting work.
+- `refresh_document_index`: Queue an explicit asynchronous retry after checking status.
+- `list_trash`: List soft-deleted documents visible in the active scope.
+- `restore_trashed_document`: Recover a soft-deleted document; this does not restore an older version.
+- `permanently_delete_document`: Irreversibly purge a document already in trash on explicit user request.
+
+Grouped tools return `{ "operation": "<selected variant>", "result": ... }` in both
+text and structured MCP content. Other tools preserve their prior result shapes.
+The 31-to-20 migration is:
+
+| Previous tools | Current tool and selector |
+|---|---|
+| `search_documents`, `list_documents` | `find_documents` with `mode=search|list` |
+| `get_document`, `export_document`, `get_version_history` | `read_document` with `view=detail|markdown|versions` |
+| `create_document`, `update_document` | `save_document` with `action=create|update` |
+| `list_folders`, `list_categories`, `list_tags` | `list_workspace_structure` with `kind=folders|categories|tags` |
+| `create_folder`, `update_folder` | `save_folder` with `action=create|update` |
+| `create_category`, `update_category` | `save_category` with `action=create|update` |
+| `create_tag`, `update_tag` | `save_tag` with `action=create|update` |
+| `add_tag_to_document`, `remove_tag_from_document` | `set_document_tag` with `action=add|remove` |
+| `get_related_documents`, `search_knowledge_graph` | `explore_graph` with `mode=neighbors|search` |
+| `delete_document`, `delete_folder`, `delete_category`, `delete_tag`, `create_snapshot`, `restore_document_version`, `get_document_index_status`, `refresh_document_index`, `list_trash`, `restore_trashed_document`, `permanently_delete_document` | Same names and behavior |
 
 ### Lifecycle permissions
 
@@ -203,29 +215,10 @@ return MCP `isError` with the REST status; they never acknowledge a successful d
 
 ## Tools and REST routes
 
-| MCP tool | REST route |
-|---|---|
-| `search_documents` | `GET /api/search` |
-| `get_document` | `GET /api/documents/:id` |
-| `create_document` | `POST /api/documents` |
-| `update_document` | `PATCH /api/documents/:id` |
-| `list_documents` | `GET /api/documents` |
-| `list_folders` | `GET /api/folders` |
-| `create_folder` | `POST /api/folders` |
-| `create_snapshot` | `POST /api/documents/:id/versions` |
-| `get_version_history` | `GET /api/documents/:id/versions` |
-| `export_document` | `GET /api/documents/:id/export` |
-| `list_categories` | `GET /api/categories` |
-| `create_category` | `POST /api/categories` |
-| `list_tags` | `GET /api/tags` |
-| `get_related_documents` | `GET /api/graph/related/:id` |
-| `search_knowledge_graph` | `POST /api/graph/search` |
-| `get_document_index_status` | `GET /api/documents/:id/index-status` |
-| `refresh_document_index` | `POST /api/documents/:id/index/refresh` |
-| `delete_document` | `DELETE /api/documents/:id` |
-| `delete_folder` | `DELETE /api/folders/:id` |
-| `delete_category` | `DELETE /api/categories/:id` |
-| `restore_document_version` | `POST /api/documents/:id/versions/:versionId/restore` |
+The grouped selectors map to the same documented REST operations; the stdio
+bridge has no database or auth-server implementation of its own. See the
+[machine-readable REST contract](../../docs/openapi.json) and the operation
+mapping above for endpoint details.
 
 ## Prompts and resources
 

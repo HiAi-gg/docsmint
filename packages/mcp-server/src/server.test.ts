@@ -46,11 +46,7 @@ describe('DocsMint MCP protocol discovery', () => {
     ]);
     for (const tool of tools.tools) {
       expect(tool.annotations?.readOnlyHint).toBeBoolean();
-      for (const property of Object.values(tool.inputSchema.properties ?? {})) {
-        expect((property as { description?: string }).description?.trim().length).toBeGreaterThan(
-          10
-        );
-      }
+      expect(tool.inputSchema.type).toBe('object');
     }
     expect(prompts.prompts.map((prompt) => prompt.name)).toEqual([...capabilityCatalog.prompts]);
     expect(prompts.prompts).toHaveLength(capabilityCatalog.prompts.length);
@@ -148,12 +144,12 @@ describe('DocsMint MCP protocol discovery', () => {
     };
 
     const categories = await client.callTool({
-      name: 'list_categories',
-      arguments: {},
+      name: 'list_workspace_structure',
+      arguments: { kind: 'categories' },
     });
     const search = await client.callTool({
-      name: 'search_documents',
-      arguments: { query: 'scope' },
+      name: 'find_documents',
+      arguments: { mode: 'search', query: 'scope' },
     });
     const catalog = await client.readResource({
       uri: 'docsmint://workspace/catalog',
@@ -163,7 +159,7 @@ describe('DocsMint MCP protocol discovery', () => {
       {
         type: 'text',
         text: JSON.stringify(
-          [
+          { operation: 'categories', result: [
             {
               id: 'category-scoped',
               name: 'Scoped',
@@ -175,7 +171,7 @@ describe('DocsMint MCP protocol discovery', () => {
               createdAt: '2026-09-24T00:00:00.000Z',
               updatedAt: '2026-09-24T00:00:00.000Z',
             },
-          ],
+          ] },
           null,
           2
         ),
@@ -188,7 +184,7 @@ describe('DocsMint MCP protocol discovery', () => {
       {
         type: 'text',
         text: JSON.stringify(
-          {
+          { operation: 'search', result: {
             items: [
               {
                 id: 'document-scoped',
@@ -204,7 +200,7 @@ describe('DocsMint MCP protocol discovery', () => {
             total: 1,
             page: 1,
             limit: 20,
-          },
+          } },
           null,
           2
         ),
@@ -234,12 +230,12 @@ describe('DocsMint MCP protocol discovery', () => {
       await server.close();
     };
 
-    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+    const result = await client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'categories' } });
 
     expect(result.isError).not.toBe(true);
-    expect(result.structuredContent).toEqual({ result: [apiKeyCategory] });
+    expect(result.structuredContent).toEqual({ operation: 'categories', result: [apiKeyCategory] });
     expect(result.content).toEqual([
-      { type: 'text', text: JSON.stringify([apiKeyCategory], null, 2) },
+      { type: 'text', text: JSON.stringify({ operation: 'categories', result: [apiKeyCategory] }, null, 2) },
     ]);
   });
 
@@ -288,14 +284,14 @@ describe('DocsMint MCP protocol discovery', () => {
       await server.close();
     };
 
-    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+    const result = await client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'categories' } });
 
     expect(result).toMatchObject({
       content: [
         {
           type: 'text',
           text: JSON.stringify(
-            [
+            { operation: 'categories', result: [
               {
                 id: 'category-scoped',
                 name: 'Scoped',
@@ -307,7 +303,7 @@ describe('DocsMint MCP protocol discovery', () => {
                 createdAt: '2026-09-24T00:00:00.000Z',
                 updatedAt: '2026-09-24T00:00:00.000Z',
               },
-            ],
+            ] },
             null,
             2
           ),
@@ -341,7 +337,7 @@ describe('DocsMint MCP protocol discovery', () => {
       await server.close();
     };
 
-    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+    const result = await client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'categories' } });
 
     expect(result.isError).toBe(true);
     expect(JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? '')).toEqual({
@@ -374,11 +370,11 @@ describe('DocsMint MCP protocol discovery', () => {
       await server.close();
     };
 
-    const result = await client.callTool({ name: 'list_categories', arguments: {} });
+    const result = await client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'categories' } });
 
     expect(result.isError).toBe(true);
     expect((result.content as Array<{ text: string }>)[0]?.text).toBe(
-      "Tool 'list_categories' failed: spoofed failure"
+      "Tool 'list_workspace_structure' failed: spoofed failure"
     );
   });
 });

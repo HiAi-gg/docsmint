@@ -191,7 +191,7 @@ test("live public surfaces bind every service to the isolated contract stack", (
 	).toThrow("DOCSMINT_CONTRACT_DATABASE_URL");
 });
 
-test("PostgreSQL integration routes use the task admin URL for fixture-backed tests", () => {
+test("PostgreSQL integrations use the isolated database and reachable storage", () => {
 	if (!releaseGate) return;
 	const environmentForStep = (
 		releaseGate as unknown as {
@@ -209,9 +209,14 @@ test("PostgreSQL integration routes use the task admin URL for fixture-backed te
 		{
 			DATABASE_URL: "postgresql://app_runtime@127.0.0.1/test",
 			CONTENT_ACCESS_TEST_DATABASE_URL: "postgresql:///test",
+			DOCSMINT_CONTRACT_STORAGE_URL: "http://127.0.0.1:50702",
+			STORAGE_PUBLIC_ENDPOINT_URL: "https://storage.release.invalid",
 		},
 	);
 	expect(environment.DATABASE_URL).toBe("postgresql:///test");
+	expect(environment.NODE_ENV).toBe("test");
+	expect(environment.STORAGE_INTERNAL_ENDPOINT_URL).toBe("http://127.0.0.1:50702");
+	expect(environment.STORAGE_PUBLIC_ENDPOINT_URL).toBe("http://127.0.0.1:50702");
 	expect(() =>
 		environmentForStep(
 			{ name: "required PostgreSQL integrations", command: [] },
