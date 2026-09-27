@@ -34,21 +34,21 @@ images; a single `docker run` command does not install the complete workspace.
 
 | Service | Versioned tag | Moving tag | Purpose |
 | --- | --- | --- | --- |
-| API | `api-v0.9.3` | `api-latest` | Backend API and document processing |
-| Web | `web-v0.9.3` | `web-latest` | Browser workspace |
-| Caddy | `caddy-v0.9.3` | `caddy-latest` | Supporting reverse proxy with rate limiting |
+| API | `api-v0.9.4` | `api-latest` | Backend API and document processing |
+| Web | `web-v0.9.4` | `web-latest` | Browser workspace |
+| Caddy | `caddy-v0.9.4` | `caddy-latest` | Supporting reverse proxy with rate limiting |
 
 **There is no bare `latest` tag.** Specify the service when pulling an image:
 
 ```bash
-docker pull vgalibov/docsmint:api-v0.9.3
-docker pull vgalibov/docsmint:web-v0.9.3
-docker pull vgalibov/docsmint:caddy-v0.9.3
+docker pull vgalibov/docsmint:api-v0.9.4
+docker pull vgalibov/docsmint:web-v0.9.4
+docker pull vgalibov/docsmint:caddy-v0.9.4
 ```
 
-Caddy is the proxy component, not the DocsMint editor or API. Select `web-v0.9.3` for the browser workspace and `api-v0.9.3` for its backend.
+Caddy is the proxy component, not the DocsMint editor or API. Select `web-v0.9.4` for the browser workspace and `api-v0.9.4` for its backend.
 
-The 0.9.3 images are published for **Linux amd64**. Use matching versioned tags
+The 0.9.4 images are published for **Linux amd64**. Use matching versioned tags
 for all three components; pin image digests when immutable references are needed.
 The quickstart builds the repository's Compose stack, including its supporting
 PostgreSQL, Redis, and SeaweedFS services.

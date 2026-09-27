@@ -7,7 +7,7 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## [0.9.3] - 2026-09-27
+## [0.9.4] - 2026-09-27
 
 ### Added
 
@@ -23,6 +23,11 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   including input validation, output schemas, and destructive annotations.
 - Keep the hosted DocsMint Cloud Connector separate from the self-hosted stdio
   bridge. No database migration or hosted OAuth change is required.
+
+## [0.9.3] - Unpublished candidate
+
+The `v0.9.3` tag failed the contract-evidence gate before artifact publication.
+The MCP management expansion and README updates are included in 0.9.4.
 
 ## [0.9.2] - 2026-09-25
 

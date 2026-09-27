@@ -80,14 +80,14 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.9.3?
+## What's new in 0.9.4?
 
 - Expand the self-hosted MCP bridge to 31 tools, adding tag management,
   folder and category updates, and document trash recovery or permanent purge.
 - Keep workspace and category permissions enforced by the existing DocsMint API.
 - Preserve the separate DocsMint Cloud Connector and the self-hosted API-key bridge.
 
-This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.3)
+This release adds no database migration. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.9.4)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -140,7 +140,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.9.3`, `web-v0.9.3`, and `caddy-v0.9.3` for
+Use versioned tags `api-v0.9.4`, `web-v0.9.4`, and `caddy-v0.9.4` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
