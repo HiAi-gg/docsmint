@@ -99,6 +99,7 @@ describe('DocsMint MCP catalog contract', () => {
     const skill = Bun.file(new URL('skills/docsmint-document-manager/SKILL.md', root));
 
     expect(readme).toContain('[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)');
+    expect(readme).toContain('[![DocsMint MCP server](https://glama.ai/mcp/servers/HiAi-gg/docsmint/badges/score.svg)](https://glama.ai/mcp/servers/HiAi-gg/docsmint)');
     expect(readme.match(/^## What's new/gm)).toHaveLength(1);
     expect(readme).not.toContain("## What's new in 0.7.");
     expect(readme).not.toContain('## MCP Features');

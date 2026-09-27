@@ -14,32 +14,36 @@ Apache-2.0 application on your own infrastructure.
 [![Release](https://img.shields.io/github/v/release/hiai-gg/docsmint?sort=semver)](https://github.com/hiai-gg/docsmint/releases)
 [![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?logo=npm)](https://www.npmjs.com/package/@hiai-gg/docsmint)
 [![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
-[![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
+
+[![DocsMint MCP server](https://glama.ai/mcp/servers/HiAi-gg/docsmint/badges/score.svg)](https://glama.ai/mcp/servers/HiAi-gg/docsmint)
+[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
+[![MCP Registry](https://img.shields.io/badge/MCP_Registry-Listed-0891b2)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.HiAi-gg%2Fdocsmint/versions/latest)
+[![DocsMint Cloud](https://img.shields.io/badge/DocsMint_Cloud-Connect-16a34a)](https://docsmint.com/mcp/connect?source=github_mcp)
+
 [![Bun](https://img.shields.io/badge/Runtime-Bun_1.4-black?logo=bun&logoColor=white)](https://bun.sh)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Svelte](https://img.shields.io/badge/Svelte-5.x-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev)
 [![Elysia](https://img.shields.io/badge/Elysia-1.4-lightgrey?logo=elysia&logoColor=white)](https://elysiajs.com)
 [![Tailwind_CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Drizzle_ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-C5F74F?logo=drizzle&logoColor=black)](https://orm.drizzle.team)
+[![Stars](https://img.shields.io/github/stars/hiai-gg/docsmint)](https://github.com/hiai-gg/docsmint/stargazers)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
-[![DocsMint Cloud](https://img.shields.io/badge/DocsMint_Cloud-Connect-16a34a)](https://docsmint.com/mcp/connect?source=github_mcp)
-[![MCP Registry](https://img.shields.io/badge/MCP_Registry-Listed-0891b2)](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.HiAi-gg%2Fdocsmint/versions/latest)
 
 <img width="1920" height="974" alt="DocsMint installable document workspace" src="https://github.com/user-attachments/assets/94701d01-a361-4ca1-b16d-de2a0c64d684" />
 
 ## Connect your AI agent
 
-Connect DocsMint Cloud instantly or use your own self-hosted deployment. Search,
-read, create, organize and update persistent knowledge through MCP with hybrid
-retrieval, reranking and GraphRAG.
+Connect DocsMint Cloud instantly or run the self-hosted stdio bridge against
+your own DocsMint API. Both paths give agents access to persistent knowledge;
+the self-hosted bridge exposes 31 tools, 2 prompts, and 3 resources.
 
 **Recommended: [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=github_mcp).**
 No server installation is required. Sign up or log in, choose your workspace,
-create an MCP/API credential in the authenticated browser UI, follow your client's
-instructions, and verify the connection. Hosted MCP follows your plan and
-workspace permissions. Prefer workspace-bound or category-scoped credentials.
+and follow your client's connection instructions. OAuth-capable clients use
+browser consent; API-key clients create an MCP/API credential in the authenticated
+browser UI. Hosted MCP follows your plan and workspace permissions. Prefer
+workspace-bound or category-scoped credentials.
 
 The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capable
 clients discover the hosted resource and authorization-server metadata; current
@@ -53,11 +57,13 @@ management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. The npm package is a stdio
-bridge to your own API, not a server installer or hosted OAuth server. See the
-[MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for client configuration.
-The open-source [Glama Server directory](https://glama.ai/mcp/servers) uses this
-stdio bridge; the hosted DocsMint Cloud Connector is a separate listing.
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.3.14 or
+later to execute the published binary. The npm package is a stdio bridge to
+your own API; it does not install the DocsMint application or Cloud OAuth server.
+See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
+for client configuration. The [Glama OSS Server listing](https://glama.ai/mcp/servers/HiAi-gg/docsmint)
+describes this bridge; the hosted [DocsMint Cloud Connector](https://glama.ai/mcp/connectors/io.github.HiAi-gg/docsmint)
+is a separate listing.
 
 ## Why DocsMint?
 
