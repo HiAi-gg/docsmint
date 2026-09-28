@@ -7,6 +7,30 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-28
+
+### Added
+
+- Add `batch_documents` for one bounded action across 1–25 explicit document
+  IDs: move, set category, add/remove a tag, trash, restore, or refresh index.
+  Results are per-document and partial success is explicit. The existing API
+  enforces each operation's workspace and category permissions; authentication
+  and rate-limit failures stop remaining calls. Permanent purge is excluded.
+- Add `get_workspace_item` for a visible folder, category, or tag by UUID.
+  Folder reads use the direct API route; categories and tags use complete,
+  permission-filtered lists. No new authorization path is introduced.
+
+### Changed
+
+- Synchronize the 22-tool MCP catalog across the runtime, README, MCP Registry,
+  and LobeHub metadata. The existing 20 tools, SDK, CLI, REST routes, prompts,
+  resources, and self-hosted API-key setup remain available.
+
+### Compatibility
+
+- The two new tools require the 1.0.1 bridge or matching hosted Cloud package.
+  Batch actions are sequential and non-atomic. No database migration is needed.
+
 ## [0.10.0] - 2026-09-27
 
 ### Changed

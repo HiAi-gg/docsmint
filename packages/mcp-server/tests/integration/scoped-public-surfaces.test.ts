@@ -1804,6 +1804,7 @@ describe("live category-scoped public surfaces", () => {
 			},
 			{ name: "list_documents", arguments: { page: 1, limit: 2 } },
 			{ name: "list_folders", arguments: {} },
+			{ name: "get_workspace_item", arguments: { kind: "folder", id: ids.folderRootA } },
 			{
 				name: "create_folder",
 				arguments: {
@@ -1846,6 +1847,10 @@ describe("live category-scoped public surfaces", () => {
 			{
 				name: "refresh_document_index",
 				arguments: { documentId: ids.docDirectA },
+			},
+			{
+				name: "batch_documents",
+				arguments: { action: "refresh_index", documentIds: [ids.docDirectA] },
 			},
 			{ name: "delete_document", arguments: { id: disposableDocument } },
 			{ name: "delete_folder", arguments: { id: disposableFolder } },
@@ -1891,7 +1896,7 @@ describe("live category-scoped public surfaces", () => {
 			get_related_documents: { name: "explore_graph", selector: { mode: "neighbors" } },
 			search_knowledge_graph: { name: "explore_graph", selector: { mode: "search" } },
 		};
-		expect(toolCases).toHaveLength(31);
+		expect(toolCases).toHaveLength(33);
 		expect(new Set(toolCases.map(({ name }) => compactRoute[name]?.name ?? name))).toEqual(
 			new Set(capabilityCatalog.tools),
 		);

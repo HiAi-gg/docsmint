@@ -6,11 +6,13 @@ import { createDocsmintMcpServer } from './server.js';
 const readOnly = new Set([
   'find_documents', 'read_document', 'list_workspace_structure', 'explore_graph',
   'get_document_index_status', 'list_trash',
+  'get_workspace_item',
 ]);
 const destructive = new Set([
   'save_document', 'delete_document', 'save_folder', 'delete_folder',
   'save_category', 'delete_category', 'save_tag', 'delete_tag',
   'set_document_tag', 'restore_document_version', 'permanently_delete_document',
+  'batch_documents',
 ]);
 
 describe('DocsMint MCP tool definitions', () => {

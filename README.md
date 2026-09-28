@@ -36,7 +36,7 @@ Apache-2.0 application on your own infrastructure.
 
 Connect DocsMint Cloud instantly or run the self-hosted stdio bridge against
 your own DocsMint API. Both paths give agents access to persistent knowledge;
-the self-hosted bridge exposes 20 focused tools covering all 31 existing operations, plus 2 prompts and 3 resources.
+the self-hosted bridge exposes 22 focused tools covering all 31 existing operations plus bounded batch actions and direct workspace-item inspection, with 2 prompts and 3 resources.
 
 **Recommended: [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=github_mcp).**
 No server installation is required. Sign up or log in, choose your workspace,
@@ -80,17 +80,18 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 0.10.0?
+## What's new in 1.0.1?
 
-- Present 20 focused MCP tools while preserving every document, tag, folder,
-  category, graph, version, indexing, and trash operation from 0.9.4.
-- Use explicit selectors for grouped operations and keep irreversible actions
-  separate. MCP clients that call the old tool names need to update their calls;
-  SDK, CLI, REST, and self-hosted API-key authentication are unchanged.
-- Keep the Cloud Connector and self-hosted stdio bridge distinct. The Cloud
-  endpoint must deploy the matching contract before hosted clients use it.
+- Apply one action to up to 25 explicitly selected documents with
+  `batch_documents`, receiving a success or error for each ID. The API checks
+  workspace and category permissions on every operation; partial success is
+  reported and permanent purge is excluded.
+- Read a visible folder, category, or tag by UUID with `get_workspace_item`.
+  The compact 0.10.0 catalog and its 31 original operations remain available.
+- Keep the Cloud Connector and self-hosted stdio bridge distinct. Hosted MCP
+  clients need the matching Cloud deployment for these new tools.
 
-No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v0.10.0)
+No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.1)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -143,7 +144,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v0.10.0`, `web-v0.10.0`, and `caddy-v0.10.0` for
+Use versioned tags `api-v1.0.1`, `web-v1.0.1`, and `caddy-v1.0.1` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.

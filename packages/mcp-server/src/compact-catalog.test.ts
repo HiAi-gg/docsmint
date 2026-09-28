@@ -10,10 +10,11 @@ const names = [
   'create_snapshot', 'restore_document_version', 'explore_graph',
   'get_document_index_status', 'refresh_document_index', 'list_trash',
   'restore_trashed_document', 'permanently_delete_document',
+  'batch_documents', 'get_workspace_item',
 ] as const;
 
 describe('compact MCP catalog', () => {
-  test('advertises one 20-tool catalog with all existing prompts and resources', async () => {
+  test('advertises one 22-tool catalog with all existing prompts and resources', async () => {
     expect(capabilityCatalog.tools).toEqual(names);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createDocsmintMcpServer();

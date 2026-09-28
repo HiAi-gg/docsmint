@@ -129,7 +129,7 @@ uses DocsMint Cloud at `https://docsmint.com/mcp` and is a separate listing.
 
 ### Tools
 
-DocsMint exposes 20 MCP tools. The former 31 operations are still available;
+DocsMint exposes 22 MCP tools. The former 31 operations are still available;
 grouped tools require an explicit `mode`, `view`, `kind`, or `action` so an agent
 cannot confuse browsing with search, restoring a version with restoring trash,
 or a reversible delete with permanent purge. No second or legacy tool catalog is
@@ -156,10 +156,12 @@ when migrating an MCP client that invokes the old tool names.
 - `list_trash`: List soft-deleted documents visible in the active scope.
 - `restore_trashed_document`: Recover a soft-deleted document; this does not restore an older version.
 - `permanently_delete_document`: Irreversibly purge a document already in trash on explicit user request.
+- `batch_documents`: Apply one action to 1–25 explicit document IDs: move, set category, add/remove one tag, trash, restore, or refresh indexing. Results identify success or failure for each ID; partial success is possible. It never permanently purges documents.
+- `get_workspace_item`: Read one visible folder, category, or tag by UUID. Categories and tags are selected from the complete permission-filtered lists; an inaccessible ID is reported as not found.
 
 Grouped tools return `{ "operation": "<selected variant>", "result": ... }` in both
 text and structured MCP content. Other tools preserve their prior result shapes.
-The 31-to-20 migration is:
+The 31-to-20 migration from version 0.10.0 is:
 
 | Previous tools | Current tool and selector |
 |---|---|
@@ -189,6 +191,7 @@ The 31-to-20 migration is:
 | List trash | `read` in the active scope | Show soft-deleted documents visible to the key. |
 | Restore trashed document | `write` in its effective category | Return a soft-deleted document to the active library. |
 | Permanently delete document | `write` in its effective category | Irreversibly purge a document already in trash, including version history. |
+| Batch document action | Same permission as the selected single-document action, checked for each ID | Sequential and non-atomic; one denied item does not authorize or cancel another. Authentication and rate-limit failures stop the remaining calls. |
 
 Use UUIDs returned by the listing/history tools. A snapshot is a version with a label:
 pass its version ID to `restore_document_version`. Use `restore_trashed_document`

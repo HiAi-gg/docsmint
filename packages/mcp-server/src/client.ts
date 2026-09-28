@@ -31,6 +31,7 @@ export class HiaiDocsError extends Error {
 }
 
 export interface HiaiDocsClient {
+	getFolder?(id: string): Promise<unknown>;
 	createTag?(input: { name: string; color?: string }): Promise<unknown>;
 	updateTag?(id: string, input: { name?: string; color?: string }): Promise<unknown>;
 	deleteTag?(id: string): Promise<void>;
@@ -89,6 +90,7 @@ export function createMcpDocsClient(
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
 	return {
+		getFolder: (id) => docsClient.getFolder(id, context),
 		createTag: (input) => docsClient.createTag(input, context),
 		updateTag: (id, input) => docsClient.updateTag(id, input, context),
 		deleteTag: (id) => docsClient.deleteTag(id, context),

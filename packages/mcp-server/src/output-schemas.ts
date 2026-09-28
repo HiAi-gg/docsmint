@@ -321,6 +321,23 @@ const toolOutputSchemas = {
     variant('neighbors', operationOutputSchemas.get_related_documents),
     variant('search', operationOutputSchemas.search_knowledge_graph),
   ]),
+  batch_documents: z.looseObject({
+    action: z.enum(['move', 'set_category', 'add_tag', 'remove_tag', 'trash', 'restore', 'refresh_index']),
+    total: z.number().int().min(1).max(25),
+    succeeded: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    aborted: z.boolean(),
+    results: z.array(z.union([
+      z.looseObject({ id: z.string().uuid(), status: z.literal('ok') }),
+      z.looseObject({ id: z.string().uuid(), status: z.literal('error'), error: z.looseObject({ status: z.number().int(), code: z.string(), message: z.string() }) }),
+      z.looseObject({ id: z.string().uuid(), status: z.literal('skipped') }),
+    ])),
+  }),
+  get_workspace_item: z.union([
+    variant('folder', folderSchema),
+    variant('category', categoryListItemSchema),
+    variant('tag', tagSchema),
+  ]),
 } as const;
 
 export { toolOutputSchemas };

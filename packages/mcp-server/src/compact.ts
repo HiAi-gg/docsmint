@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { HiaiDocsClient } from './client.js';
 import { toolOutputSchemas } from './output-schemas.js';
 import type { capabilityCatalog } from './capabilities.js';
+import { registerBatchAndWorkspaceCapabilities } from './batch-workspace.js';
 
 type ToolName = (typeof capabilityCatalog.tools)[number];
 type Wrapper = <Args>(name: string, handler: (args: Args) => Promise<unknown>, outputSchema?: z.ZodType) => (args: Args) => Promise<unknown>;
@@ -141,4 +142,5 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     await required(client.permanentlyDeleteDocument, 'permanently_delete_document')(id);
     return { id, deleted: true };
   });
+  registerBatchAndWorkspaceCapabilities(server, client, wrap);
 }

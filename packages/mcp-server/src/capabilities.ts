@@ -21,6 +21,8 @@ export const capabilityCatalog = {
     'list_trash',
     'restore_trashed_document',
     'permanently_delete_document',
+    'batch_documents',
+    'get_workspace_item',
   ] as const,
   prompts: ['organize_workspace', 'research_workspace'] as const,
   resources: [

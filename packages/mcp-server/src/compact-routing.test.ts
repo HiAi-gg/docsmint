@@ -39,7 +39,7 @@ const cases = [
 ] as const;
 
 describe('compact MCP operation routing', () => {
-  test('keeps all 31 SDK operations reachable through the 20-tool catalog', async () => {
+  test('keeps all 31 SDK operations reachable through the compact catalog', async () => {
     const calls: string[] = [];
     const clientImpl = new Proxy({} as HiaiDocsClient, {
       get: (_target, name) => async () => {
@@ -53,7 +53,7 @@ describe('compact MCP operation routing', () => {
     try {
       await Promise.all([server.connect(b), client.connect(a)]);
       const tools = new Set((await client.listTools()).tools.map(tool => tool.name));
-      expect(tools.size).toBe(20);
+      expect(tools.size).toBe(22);
       for (const [method, tool, args] of cases) {
         expect(tools.has(tool), tool).toBe(true);
         const result = await client.callTool({ name: tool, arguments: args });
