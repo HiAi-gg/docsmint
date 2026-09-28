@@ -186,13 +186,12 @@ version in the Glama admin form:
 ```json
 [
   "npm install -g bun@1.4.0",
-  "bun add --global @hiai-gg/docsmint@$(node -p \"require('./package.public.json').version\")",
-  "ln -s /root/.bun/bin/docsmint-mcp /usr/local/bin/docsmint-mcp"
+  "bun add --global @hiai-gg/docsmint@$(node -p \"require('./package.public.json').version\")"
 ]
 ```
 
 ```json
-["mcp-proxy", "--", "docsmint-mcp"]
+["mcp-proxy", "--", "/root/.bun/bin/docsmint-mcp"]
 ```
 
 The Glama environment schema must require both `HIAI_DOCS_URL` and
