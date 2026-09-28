@@ -73,7 +73,7 @@ export function registerBatchAndWorkspaceCapabilities(server: McpServer, client:
   }
 
   server.registerTool('batch_documents', {
-    description: 'Apply one action to 1–25 explicitly selected document IDs. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API so each document keeps its own workspace and category permission check. Returns per-ID success or error; partial success is possible. Stops after authentication or rate-limit failure. Permanent purge and version restore are intentionally separate tools.',
+    description: 'Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.',
     inputSchema: batchInput,
     outputSchema: toolOutputSchemas.batch_documents,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },

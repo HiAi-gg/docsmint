@@ -7,6 +7,12 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Clarify when MCP clients should choose a single-document tool or
+  `batch_documents`, and keep the LobeHub tool descriptions aligned. The
+  22-tool catalog, input schemas, and behavior are unchanged.
+
 ## [1.0.1] - 2026-09-28
 
 ### Added

@@ -67,6 +67,19 @@ describe('DocsMint MCP tool definitions', () => {
     expect(description('get_document_index_status')).toContain('refresh_document_index');
   });
 
+  test('explains when to choose one-document tools or a batch', async () => {
+    const tools = await listTools();
+    const description = (name: string) => tools.find(tool => tool.name === name)?.description ?? '';
+    expect(description('batch_documents')).toContain('multiple');
+    expect(description('batch_documents')).toContain('one document');
+    expect(description('batch_documents')).toContain('partial success');
+    expect(description('save_document')).toContain('one document');
+    expect(description('delete_document')).toContain('one document');
+    expect(description('set_document_tag')).toContain('one document');
+    expect(description('refresh_document_index')).toContain('one document');
+    expect(description('restore_trashed_document')).toContain('one document');
+  });
+
   test('grouped inputs and outputs expose explicit variants', async () => {
     const tools = await listTools();
     const variants = new Map([

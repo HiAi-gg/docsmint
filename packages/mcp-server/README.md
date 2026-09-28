@@ -136,6 +136,18 @@ or a reversible delete with permanent purge. No second or legacy tool catalog is
 advertised. Use a matching version of the self-hosted bridge or Cloud endpoint
 when migrating an MCP client that invokes the old tool names.
 
+Choose the tool by resource and intent. `save_*` creates or updates one document,
+folder, category, or tag; `delete_*` removes one resource under its documented
+rules. For one document, prefer the matching single-document tool. Use
+`batch_documents` when multiple explicitly selected documents need the **same**
+placement, tag, trash, restore, or indexing action. It accepts one ID for
+automation compatibility, but runs sequentially and can return partial success.
+It does not discover IDs, perform arbitrary updates, restore versions, or purge.
+Read-only browsing, graph exploration, version history, trash inspection, and
+index status remain distinct intents and do not add parallel CRUD sets.
+`create_snapshot` uses `create` because snapshots are new, immutable history
+entries; it cannot update an existing snapshot like a `save_*` resource.
+
 - `find_documents`: Browse by folder/tag UUID with `mode=list`, or hybrid-search by text/tag names with `mode=search`.
 - `read_document`: Read content and metadata with `view=detail`, export Markdown with `view=markdown`, or list revisions and snapshots with `view=versions`.
 - `save_document`: Create a document with `action=create` or patch an existing one with `action=update`. Omitted patch fields remain unchanged; null placement clears it. The API enforces the effective category and schedules indexing.
@@ -156,7 +168,7 @@ when migrating an MCP client that invokes the old tool names.
 - `list_trash`: List soft-deleted documents visible in the active scope.
 - `restore_trashed_document`: Recover a soft-deleted document; this does not restore an older version.
 - `permanently_delete_document`: Irreversibly purge a document already in trash on explicit user request.
-- `batch_documents`: Apply one action to 1–25 explicit document IDs: move, set category, add/remove one tag, trash, restore, or refresh indexing. Results identify success or failure for each ID; partial success is possible. It never permanently purges documents.
+- `batch_documents`: Apply one action to 1–25 explicit document IDs: move, set category, add/remove one tag, trash, restore, or refresh indexing. Prefer it for multiple IDs; use the corresponding single-document tool for one ID. Results identify success or failure for each ID; partial success is possible. It never permanently purges documents.
 - `get_workspace_item`: Read one visible folder, category, or tag by UUID. Categories and tags are selected from the complete permission-filtered lists; an inaccessible ID is reported as not found.
 
 Grouped tools return `{ "operation": "<selected variant>", "result": ... }` in both

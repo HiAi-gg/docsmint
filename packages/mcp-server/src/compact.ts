@@ -42,7 +42,7 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     return { operation: 'versions', result: await client.getVersionHistory(input.id, input.onlySnapshots) };
   });
 
-  register('save_document', 'Create a new document or update an existing document. action=create requires write access; action=update requires edit access for content, and placement changes may require write access. Content or placement changes queue normal indexing.', z.discriminatedUnion('action', [
+  register('save_document', 'Create or update one document. Use action=create for a new document or action=update for an existing one; batch_documents handles the same placement change across multiple existing documents. Creation requires write access; content edits require edit access, and placement changes may require write access. Content or placement changes queue normal indexing.', z.discriminatedUnion('action', [
     z.strictObject({ action: z.literal('create').describe('Select the create operation explicitly.'), title: title.optional(), content: content.optional(), folderId: uuid.optional(), categoryId: uuid.nullable().optional().describe('Optional category UUID; null clears the explicit category.') }),
     z.strictObject({ action: z.literal('update').describe('Select the update operation explicitly.'), id: uuid, title: title.optional(), content: content.optional(), folderId: uuid.nullable().optional().describe('Optional folder UUID; null clears the placement on update.'), categoryId: uuid.nullable().optional().describe('Optional category UUID; null clears the explicit category.') }).refine(value => value.title !== undefined || value.content !== undefined || value.folderId !== undefined || value.categoryId !== undefined),
   ]), destructive, async input => {
@@ -54,7 +54,7 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     return { operation: 'update', result: await client.updateDocument(id, data) };
   });
 
-  register('delete_document', 'Move a writable document to trash without purging content or versions. Use only on an explicit delete request; permanently_delete_document is a separate irreversible action.', z.strictObject({ id: uuid }), destructive, async ({ id }) => {
+  register('delete_document', 'Move one document to trash without purging content or versions. Use batch_documents(action=trash) for multiple explicit IDs. Requires write access and an explicit delete request; permanently_delete_document is a separate irreversible action.', z.strictObject({ id: uuid }), destructive, async ({ id }) => {
     await required(client.deleteDocument, 'delete_document')(id);
     return { id, deleted: true };
   });
@@ -114,7 +114,7 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     return { id, deleted: true };
   });
 
-  register('set_document_tag', 'Add or remove one existing tag assignment on a readable document. Requires edit access to that document; action=remove preserves the tag itself.', z.strictObject({ action: z.enum(['add', 'remove']).describe('Add or remove exactly one tag assignment.'), documentId: uuid, tagId: uuid }), destructive, async ({ action, documentId, tagId }) => {
+  register('set_document_tag', 'Add or remove an existing tag assignment on one document. Use batch_documents for the same tag action across multiple explicit IDs. Requires edit access to each document; action=remove preserves the tag itself.', z.strictObject({ action: z.enum(['add', 'remove']).describe('Add or remove exactly one tag assignment.'), documentId: uuid, tagId: uuid }), destructive, async ({ action, documentId, tagId }) => {
     if (action === 'add') {
       await required(client.addTagToDocument, 'add_tag_to_document')(documentId, tagId);
       return { operation: 'add', result: { documentId, tagId, assigned: true } };
@@ -135,9 +135,9 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     : { operation: 'search', result: await client.searchGraph(input) });
 
   register('get_document_index_status', 'Read current indexing and pipeline status for one document without starting work. Use refresh_document_index only when an explicit retry is intended.', z.strictObject({ documentId: uuid }), read, async ({ documentId }) => client.getDocumentIndexStatus(documentId));
-  register('refresh_document_index', 'Queue an explicit asynchronous reindex for one document. Routine content and placement changes already schedule indexing; check get_document_index_status first.', z.strictObject({ documentId: uuid }), write, async ({ documentId }) => client.refreshDocumentIndex(documentId));
+  register('refresh_document_index', 'Queue an explicit asynchronous reindex for one document; use batch_documents(action=refresh_index) for multiple explicit IDs. Routine content and placement changes already schedule indexing; check get_document_index_status first.', z.strictObject({ documentId: uuid }), write, async ({ documentId }) => client.refreshDocumentIndex(documentId));
   register('list_trash', 'List soft-deleted documents visible to the active workspace or category scope. Requires read access and does not restore or purge anything.', z.strictObject({}), read, async () => required(client.listTrash, 'list_trash')());
-  register('restore_trashed_document', 'Return one soft-deleted document to the active library. This restores the document itself, unlike restore_document_version which changes content.', z.strictObject({ id: uuid }), write, async ({ id }) => required(client.restoreTrashedDocument, 'restore_trashed_document')(id));
+  register('restore_trashed_document', 'Return one document from trash to the active library; use batch_documents(action=restore) for multiple explicit IDs. This restores the document itself, unlike restore_document_version which changes content.', z.strictObject({ id: uuid }), write, async ({ id }) => required(client.restoreTrashedDocument, 'restore_trashed_document')(id));
   register('permanently_delete_document', 'Irreversibly purge a document already in trash, including its version history. Use only on an explicit user request after checking list_trash.', z.strictObject({ id: uuid }), destructive, async ({ id }) => {
     await required(client.permanentlyDeleteDocument, 'permanently_delete_document')(id);
     return { id, deleted: true };

@@ -767,7 +767,7 @@
     },
     {
       "name": "save_document",
-      "description": "Create a new document or update an existing document. action=create requires write access; action=update requires edit access for content, and placement changes may require write access. Content or placement changes queue normal indexing.",
+      "description": "Create or update one document. Use action=create for a new document or action=update for an existing one; batch_documents handles the same placement change across multiple existing documents. Creation requires write access; content edits require edit access, and placement changes may require write access. Content or placement changes queue normal indexing.",
       "inputSchema": {
         "type": "object",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1142,7 +1142,7 @@
     },
     {
       "name": "delete_document",
-      "description": "Move a writable document to trash without purging content or versions. Use only on an explicit delete request; permanently_delete_document is a separate irreversible action.",
+      "description": "Move one document to trash without purging content or versions. Use batch_documents(action=trash) for multiple explicit IDs. Requires write access and an explicit delete request; permanently_delete_document is a separate irreversible action.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -2486,7 +2486,7 @@
     },
     {
       "name": "set_document_tag",
-      "description": "Add or remove one existing tag assignment on a readable document. Requires edit access to that document; action=remove preserves the tag itself.",
+      "description": "Add or remove an existing tag assignment on one document. Use batch_documents for the same tag action across multiple explicit IDs. Requires edit access to each document; action=remove preserves the tag itself.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3351,7 +3351,7 @@
     },
     {
       "name": "refresh_document_index",
-      "description": "Queue an explicit asynchronous reindex for one document. Routine content and placement changes already schedule indexing; check get_document_index_status first.",
+      "description": "Queue an explicit asynchronous reindex for one document; use batch_documents(action=refresh_index) for multiple explicit IDs. Routine content and placement changes already schedule indexing; check get_document_index_status first.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3465,7 +3465,7 @@
     },
     {
       "name": "restore_trashed_document",
-      "description": "Return one soft-deleted document to the active library. This restores the document itself, unlike restore_document_version which changes content.",
+      "description": "Return one document from trash to the active library; use batch_documents(action=restore) for multiple explicit IDs. This restores the document itself, unlike restore_document_version which changes content.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -3551,7 +3551,7 @@
     },
     {
       "name": "batch_documents",
-      "description": "Apply one action to 1\u201325 explicitly selected document IDs. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API so each document keeps its own workspace and category permission check. Returns per-ID success or error; partial success is possible. Stops after authentication or rate-limit failure. Permanent purge and version restore are intentionally separate tools.",
+      "description": "Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.",
       "inputSchema": {
         "type": "object",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4354,7 +4354,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud \u2014 recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted \u2014 advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@1.0.1 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) \u00b7 [Docker images](https://hub.docker.com/r/vgalibov/docsmint) \u00b7 [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n- Apply bounded batch actions and inspect one visible folder, category, or tag by UUID.\n\n## Latest release: 1.0.1\n\nPresents 22 focused MCP tools: the 20-tool compact catalog plus bounded per-document batch actions and direct folder/category/tag inspection. All 31 original operations remain available. Batch actions are sequential, preserve per-item API authorization, and report partial success. The hosted DocsMint Cloud Connector remains separate. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.1) \u00b7 [Current README](https://github.com/HiAi-gg/docsmint#readme) \u00b7 [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
+      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@1.0.1 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n- Apply bounded batch actions and inspect one visible folder, category, or tag by UUID.\n\n## Latest release: 1.0.1\n\nPresents 22 focused MCP tools: the 20-tool compact catalog plus bounded per-document batch actions and direct folder/category/tag inspection. All 31 original operations remain available. Batch actions are sequential, preserve per-item API authorization, and report partial success. The hosted DocsMint Cloud Connector remains separate. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.1) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
       "tags": [
         "knowledge-base",
         "mcp",
