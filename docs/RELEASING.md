@@ -154,6 +154,51 @@ Publishing is a separate, explicitly authorized operation.
 9. Confirm the expected npm package and Docker images exist and report the
    released version.
 10. Confirm `io.github.HiAi-gg/docsmint` resolves in the official MCP Registry.
+11. Confirm the LobeHub Market API reports the tagged version and the expected
+    tools, prompts, and resources. `lhm.plugin.json` is version-checked by the
+    release gate, but GitHub Actions does not currently publish it: the Market
+    CLI's `plugin update` requires a maintainer's refreshable user OAuth session.
+    Do not copy a personal login session into GitHub Actions secrets or claim
+    LobeHub has updated merely because the manifest is on `main`. From an
+    authenticated maintainer environment, run
+    `bunx --yes @lobehub/market-cli@0.0.41 plugin update --dir .`, then verify
+    `https://market.lobehub.com/api/v1/plugins/hiai-gg-docsmint` and the
+    rendered listing. Record any stale deployment options separately; the
+    owner CLI's version update does not edit those options.
+12. Confirm the separate Glama Server listing has built and published a Glama
+    release for the same version. In Glama Admin → Dockerfile, maintainers must
+    enable Auto-Release for GitHub releases, remove a pinned commit, and use
+    build steps that install the current published `@hiai-gg/docsmint` stdio
+    bridge. The GitHub Release is created only after npm provenance and Docker
+    publication, so it is the correct event for Glama's Auto-Release. Glama's
+    own build, startup, security, and publication status must be inspected;
+    the GitHub release alone does not prove a Glama release exists. Keep the
+    self-hosted `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` requirements and
+    `docsmint-mcp` startup command in the Glama build spec. The hosted Cloud
+    Connector remains a separate SaaS/ops concern.
+
+The one-time Glama Dockerfile configuration should keep `Pinned commit SHA`
+empty and use these build steps and command. Glama's generated image includes
+Node 24 and `mcp-proxy`; Bun is installed explicitly. Reading the package
+version from the checked-out repository avoids a permanently pinned npm
+version in the Glama admin form:
+
+```json
+[
+  "npm install -g bun@1.4.0",
+  "bun add --global @hiai-gg/docsmint@$(node -p \"require('./package.public.json').version\")",
+  "ln -s /root/.bun/bin/docsmint-mcp /usr/local/bin/docsmint-mcp"
+]
+```
+
+```json
+["mcp-proxy", "--", "docsmint-mcp"]
+```
+
+The Glama environment schema must require both `HIAI_DOCS_URL` and
+`HIAI_DOCS_API_KEY`. Use non-secret placeholders only for its startup probe;
+the bridge can answer MCP introspection without a reachable DocsMint API.
+Check that the Glama release version equals the GitHub tag after Auto-Release.
 
 The tag workflow publishes `server.json` only after the exact npm artifact has
 passed the commit and tarball provenance check. It authenticates

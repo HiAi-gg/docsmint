@@ -89,6 +89,8 @@ export async function validateReleaseVersion({
 
 	const server = await readJson(new URL("server.json", root));
 	recordMismatch(mismatches, "server.json version", server.version, expected);
+	const lobeHub = await readJson(new URL("lhm.plugin.json", root));
+	recordMismatch(mismatches, "lhm.plugin.json version", lobeHub.version, expected);
 	const serverPackages = server.packages;
 	if (!Array.isArray(serverPackages) || serverPackages.length !== 1) {
 		mismatches.push("server.json packages");
