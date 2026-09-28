@@ -2,7 +2,7 @@
 
 Try [managed DocsMint](https://docsmint.com), or start with the
 [project README](../README.md#quickstart) to self-host. These guides cover the
-1.0.1 release and its public interfaces.
+1.0.2 release and its public interfaces.
 
 ## Use DocsMint
 
