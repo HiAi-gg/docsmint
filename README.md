@@ -1,5 +1,7 @@
 # DocsMint
 
+[![AgentShield Security](https://merx.help/badge/A+.svg)](https://merx.help/shield)
+
 **Turn your documents into knowledge you and your AI agents can use.**
 
 Write and organize notes, guides, and project documentation in one workspace.
