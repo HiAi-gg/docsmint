@@ -5,6 +5,17 @@ All notable changes to DocsMint are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-10-23
+
+### Fixed
+
+- Export closed MCP operation unions with a shared root property closure so clients can add account-routing fields without invalidating every operation branch.
+- Preserve provider-side validation and reject unknown or operation-incompatible arguments. No account-routing field becomes a business API parameter.
+
+### Security
+
+- Update the MCP server/client SDK to 2.3.0 and patch Vite, ProseMirror view and source-map-js audit findings without disabling release gates.
+
 ## [Unreleased]
 
 ## [1.0.2] - 2026-09-28

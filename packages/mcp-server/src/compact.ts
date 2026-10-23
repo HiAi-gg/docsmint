@@ -4,6 +4,7 @@ import type { HiaiDocsClient } from './client.js';
 import { toolOutputSchemas } from './output-schemas.js';
 import type { capabilityCatalog } from './capabilities.js';
 import { registerBatchAndWorkspaceCapabilities } from './batch-workspace.js';
+import { withClientRoutingSchema } from './client-routing-schema.js';
 
 type ToolName = (typeof capabilityCatalog.tools)[number];
 type Wrapper = <Args>(name: string, handler: (args: Args) => Promise<unknown>, outputSchema?: z.ZodType) => (args: Args) => Promise<unknown>;
@@ -22,7 +23,7 @@ function required<T>(value: T | undefined, name: string): T {
 
 export function registerCompactCapabilities(server: McpServer, client: HiaiDocsClient, wrap: Wrapper): void {
   function register<Schema extends z.ZodType>(name: ToolName, description: string, inputSchema: Schema, annotations: typeof read | typeof write | typeof destructive, handler: (input: z.infer<Schema>) => Promise<unknown>): void {
-    server.registerTool(name, { description, inputSchema, outputSchema: toolOutputSchemas[name], annotations }, wrap(name, handler, toolOutputSchemas[name]) as never);
+    server.registerTool(name, { description, inputSchema: withClientRoutingSchema(inputSchema), outputSchema: toolOutputSchemas[name], annotations }, wrap(name, handler, toolOutputSchemas[name]) as never);
   }
 
   register('find_documents', 'Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.', z.discriminatedUnion('mode', [

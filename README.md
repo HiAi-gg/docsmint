@@ -80,7 +80,7 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 1.0.2?
+## What's new in 1.0.3?
 
 - Make MCP tool selection clearer: use a single-document tool for one document
   and `batch_documents` when multiple explicit IDs need the same action.
@@ -90,7 +90,7 @@ is a separate listing.
 - DocsMint Cloud remains a separate hosted Connector. Cloud descriptions
   change only when the hosted service adopts this package version.
 
-No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.2)
+No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.3)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -143,7 +143,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v1.0.2`, `web-v1.0.2`, and `caddy-v1.0.2` for
+Use versioned tags `api-v1.0.3`, `web-v1.0.3`, and `caddy-v1.0.3` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.

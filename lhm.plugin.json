@@ -1,7 +1,7 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
@@ -25,6 +25,72 @@
       "description": "Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "list",
+                "description": "Select the list operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              }
+            ]
+          },
+          "folderId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "tag": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "page": {
+            "description": "One-based page number; defaults to the API first page.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum documents per page, up to 1000.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Text to search in the original language."
+          },
+          "folder": {
+            "description": "Optional folder UUID filter for search.",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Optional tag names; all supplied names must match.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -63,7 +129,29 @@
             "required": [
               "mode"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "query"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "folder"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tags"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -100,9 +188,32 @@
               "mode",
               "query"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tag"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "page"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -448,6 +559,53 @@
       "description": "Read one document by UUID. Choose detail for content and metadata, markdown for portable export, or versions for saved revisions and snapshots. All views are read-only.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "view": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "detail",
+                "description": "Select the detail operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "markdown",
+                "description": "Select the markdown operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "versions",
+                "description": "Select the versions operation explicitly."
+              }
+            ]
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              }
+            ]
+          },
+          "onlySnapshots": {
+            "description": "When true, return only named snapshots.",
+            "type": "boolean"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -469,7 +627,19 @@
               "view",
               "id"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "onlySnapshots"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -490,7 +660,19 @@
               "view",
               "id"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "onlySnapshots"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -514,10 +696,10 @@
             "required": [
               "view",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -770,6 +952,112 @@
       "description": "Create or update one document. Use action=create for a new document or action=update for an existing one; batch_documents handles the same placement change across multiple existing documents. Creation requires write access; content edits require edit access, and placement changes may require write access. Content or placement changes queue normal indexing.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              }
+            ]
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              },
+              {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              }
+            ]
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "description": "Optional folder UUID; null clears the placement on update.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -814,7 +1102,19 @@
             "required": [
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -872,10 +1172,10 @@
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -1191,6 +1491,33 @@
       "description": "List visible folders, categories, or tags in the active workspace or category scope. Set kind=folders to inspect root folders or children of parentId.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "folders",
+                "description": "Select the folders operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "categories",
+                "description": "Select the categories operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "tags",
+                "description": "Select the tags operation explicitly."
+              }
+            ]
+          },
+          "parentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -1210,8 +1537,7 @@
             },
             "required": [
               "kind"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -1225,7 +1551,19 @@
             "required": [
               "kind"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "parentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -1239,9 +1577,22 @@
             "required": [
               "kind"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "parentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -1619,6 +1970,114 @@
       "description": "Create or update a folder. action=update can rename or move an existing folder; the API enforces category boundaries and queues affected documents for reindexing.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "order": {
+            "description": "New non-negative display order.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -1668,7 +2127,24 @@
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "order"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -1728,10 +2204,10 @@
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2009,6 +2485,50 @@
       "description": "Create or update a workspace category. Full workspace write access is required; category-scoped credentials cannot manage categories.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "order": {
+            "description": "New non-negative display order.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2030,7 +2550,24 @@
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "order"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2062,10 +2599,10 @@
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2269,6 +2806,58 @@
       "description": "Create or update a workspace tag. Full workspace write access is required; renaming or recoloring a tag causes affected documents to be reindexed.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "color": {
+            "anyOf": [
+              {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2295,7 +2884,19 @@
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2326,10 +2927,10 @@
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2861,6 +3462,61 @@
       "description": "Explore graph relations from readable seed documents. mode=neighbors traverses one document without a query; mode=search ranks relations from one or more seed IDs with optional query text.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "neighbors",
+                "description": "Select the neighbors operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              }
+            ]
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            ]
+          },
+          "docIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUID returned by the corresponding list or read operation."
+            },
+            "description": "One to 50 authorized seed document UUIDs."
+          },
+          "query": {
+            "description": "Optional graph relevance query, at most 2000 characters.",
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2888,7 +3544,24 @@
               "mode",
               "documentId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "docIds"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "query"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2926,9 +3599,22 @@
               "mode",
               "docIds"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "documentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3551,9 +4237,182 @@
     },
     {
       "name": "batch_documents",
-      "description": "Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.",
+      "description": "Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1\u201325 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "documentIds": {
+            "anyOf": [
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              }
+            ]
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "move",
+                "description": "Move each document to the same folder."
+              },
+              {
+                "type": "string",
+                "const": "set_category",
+                "description": "Set one explicit category on every document."
+              },
+              {
+                "type": "string",
+                "const": "add_tag",
+                "description": "Assign one existing tag to every document."
+              },
+              {
+                "type": "string",
+                "const": "remove_tag",
+                "description": "Remove one tag assignment from every document."
+              },
+              {
+                "type": "string",
+                "const": "trash",
+                "description": "Move every document to trash without permanent deletion."
+              },
+              {
+                "type": "string",
+                "const": "restore",
+                "description": "Restore every selected document from trash."
+              },
+              {
+                "type": "string",
+                "const": "refresh_index",
+                "description": "Request explicit indexing retry for every document."
+              }
+            ]
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID of an item visible to the active API key."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Destination folder UUID, or null for no folder."
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID of an item visible to the active API key."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Category UUID, or null to clear explicit category."
+          },
+          "tagId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "Existing tag UUID to assign to each document."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "Existing tag UUID to unassign from each document."
+              }
+            ]
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -3596,7 +4455,24 @@
               "action",
               "folderId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3638,7 +4514,24 @@
               "action",
               "categoryId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3672,7 +4565,24 @@
               "action",
               "tagId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3706,7 +4616,24 @@
               "action",
               "tagId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3733,7 +4660,29 @@
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3760,7 +4709,29 @@
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3787,9 +4758,32 @@
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -4354,7 +5348,7 @@
       "locale": "en-US",
       "name": "DocsMint",
       "description": "Cloud or self-hosted knowledge for AI agents: hybrid search, reranking, GraphRAG, scoped MCP tools.",
-      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud — recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted — advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@1.0.2 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) · [Docker images](https://hub.docker.com/r/vgalibov/docsmint) · [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n- Apply bounded batch actions and inspect one visible folder, category, or tag by UUID.\n\n## Latest release: 1.0.2\n\nClarifies when agents should choose a single-document tool or bounded batch_documents. The 22-tool catalog, all 31 underlying operations, schemas, permissions, and stdio behavior remain unchanged. Batch actions remain sequential and can report partial success. The hosted DocsMint Cloud Connector remains separate; this OSS release does not change its deployed tool descriptions. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.2) · [Current README](https://github.com/HiAi-gg/docsmint#readme) · [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
+      "summary": "Search, read, create, and organize the same documents you use in DocsMint. Choose DocsMint Cloud for the simplest connection, or connect a self-hosted workspace with the stdio bridge.\n\n## DocsMint Cloud \u2014 recommended\n\n1. Open [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=lobehub_mcp).\n2. Connect to `https://docsmint.com/mcp` over Streamable HTTP; no server deployment or local process is required.\n3. OAuth clients discover hosted authorization. Follow the [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=lobehub_mcp) for currently supported discovery and client-connection methods. Consent binds one-hour access tokens to a workspace, optional category, and scopes. Refresh tokens are not issued.\n4. Clients using API keys can send `Authorization: Bearer <key>` with a workspace-bound or category-scoped credential created in the authenticated browser UI.\n\n## Self-hosted \u2014 advanced\n\n1. [Install DocsMint with Docker](https://github.com/HiAi-gg/docsmint#quickstart).\n2. Create an API key in your DocsMint browser UI.\n3. Set `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` in your MCP client's environment, then run the stdio bridge:\n\n```sh\nbunx --package @hiai-gg/docsmint@1.0.2 docsmint-mcp\n```\n\nThe npm package connects to your existing DocsMint API with your API key; it does not install the application, database, or hosted Cloud OAuth server.\n\n[Client configuration](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) \u00b7 [Docker images](https://hub.docker.com/r/vgalibov/docsmint) \u00b7 [Deployment guide](https://github.com/HiAi-gg/docsmint/blob/main/docs/DEPLOYMENT.md)\n\n## What your agent can do\n\n- Search documents with hybrid retrieval and GraphRAG.\n- Read, create, update, and organize documents within the granted scope.\n- Manage tags, folders, categories, version history, indexing, and document trash.\n- Apply bounded batch actions and inspect one visible folder, category, or tag by UUID.\n\n## Latest release: 1.0.2\n\nClarifies when agents should choose a single-document tool or bounded batch_documents. The 22-tool catalog, all 31 underlying operations, schemas, permissions, and stdio behavior remain unchanged. Batch actions remain sequential and can report partial success. The hosted DocsMint Cloud Connector remains separate; this OSS release does not change its deployed tool descriptions. No database migration or hosted OAuth change is required.\n\n[Release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.2) \u00b7 [Current README](https://github.com/HiAi-gg/docsmint#readme) \u00b7 [Full changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md)",
       "tags": [
         "knowledge-base",
         "mcp",

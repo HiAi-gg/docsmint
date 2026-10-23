@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -276,13 +276,16 @@
     "brace-expansion": "2.1.3",
     "esbuild": "0.28.2",
     "prosemirror-model": "1.25.9",
+    "prosemirror-view": "1.42.3",
+    "source-map-js": "1.2.2",
+    "vite": "8.2.4",
     "cookie": "1.1.1",
     "@tiptap/core": "3.30.5",
     "@xmldom/xmldom": "0.8.15",
     "@types/node": "25.9.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "bullmq": "^6.3.2",
     "commander": "^15.0.0",
     "ioredis": "^6.0.0",

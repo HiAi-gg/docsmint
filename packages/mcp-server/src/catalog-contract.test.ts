@@ -124,8 +124,8 @@ describe('DocsMint MCP catalog contract', () => {
       )
     );
 
-    expect(packageJson.dependencies['@modelcontextprotocol/server']).toBe('2.0.0');
-    expect(packageJson.devDependencies['@modelcontextprotocol/client']).toBe('2.0.0');
+    expect(packageJson.dependencies['@modelcontextprotocol/server']).toBe('2.3.0');
+    expect(packageJson.devDependencies['@modelcontextprotocol/client']).toBe('2.3.0');
     expect(sources.join('\n')).not.toContain('@modelcontextprotocol/sdk');
   });
 

@@ -17,6 +17,11 @@ concurrency:
 permissions:
   contents: read
 
+# Compose 5.6 Bake cannot forward network.host grants (docker/compose#14345).
+# Keep BuildKit builds through Compose until the upstream fix is released.
+env:
+  COMPOSE_BAKE: 'false'
+
 jobs:
   # ---------------------------------------------------------------------------
   # 1. Lint — Biome 2.4.15 (configured in root biome.json)
@@ -696,7 +701,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-1.0.2
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-1.0.3
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

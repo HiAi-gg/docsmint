@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -380,7 +380,7 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "bullmq": "^6.3.2",
     "commander": "^15.0.0",
     "ioredis": "^6.0.0",
