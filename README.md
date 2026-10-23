@@ -49,8 +49,11 @@ The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capabl
 clients discover the hosted resource and authorization-server metadata; current
 authorization and client-connection methods are described in the
 [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=github_mcp).
-Browser consent binds the one-hour opaque access token to the selected workspace,
-optional category, and requested scopes. Refresh tokens are not issued. API-key clients can instead send
+Browser consent binds access to the selected workspaces, optional categories, and requested scopes.
+DocsMint Cloud 1.1.9 and later supports hourly access tokens and rotating refresh tokens for up to
+30 days from authorization when the client supports renewal. Existing connections need one reconnect
+to enable refresh; clients without refresh support still reconnect after access expires.
+API-key clients can instead send
 `Authorization: Bearer <key>` with an MCP/API credential created in the authenticated
 browser UI. Credentials cannot create or elevate other credentials; lifecycle
 management belongs to the signed-in browser session.
