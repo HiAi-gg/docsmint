@@ -3,6 +3,7 @@ import { isDocsApiError } from '@hiai-docs/sdk';
 import { z } from 'zod';
 import { HiaiDocsError, type HiaiDocsClient } from './client.js';
 import { toolOutputSchemas } from './output-schemas.js';
+import { withClientRoutingSchema } from './client-routing-schema.js';
 
 type Wrapper = <Args>(name: string, handler: (args: Args) => Promise<unknown>, outputSchema?: z.ZodType) => (args: Args) => Promise<unknown>;
 
@@ -74,7 +75,7 @@ export function registerBatchAndWorkspaceCapabilities(server: McpServer, client:
 
   server.registerTool('batch_documents', {
     description: 'Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.',
-    inputSchema: batchInput,
+    inputSchema: withClientRoutingSchema(batchInput),
     outputSchema: toolOutputSchemas.batch_documents,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   }, wrap('batch_documents', batch, toolOutputSchemas.batch_documents) as never);
