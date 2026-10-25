@@ -75,7 +75,7 @@ documented database subpath exports use the same transaction boundary.
 
 | Layer | Technology |
 |-------|-----------|
-| Runtime | Bun 1.3.14+ |
+| Runtime | Bun 1.4.0+ |
 | Backend | Elysia 1.4.28+ |
 | ORM | Drizzle 0.45.2+ |
 | Database | PostgreSQL 18 + pgvector |

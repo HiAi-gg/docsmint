@@ -60,7 +60,7 @@ management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.3.14 or
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.4.0 or
 later to execute the published binary. The npm package is a stdio bridge to
 your own API; it does not install the DocsMint application or Cloud OAuth server.
 See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
