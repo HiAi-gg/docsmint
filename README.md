@@ -60,7 +60,7 @@ management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.3.14 or
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.4.0 or
 later to execute the published binary. The npm package is a stdio bridge to
 your own API; it does not install the DocsMint application or Cloud OAuth server.
 See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
@@ -83,7 +83,19 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 1.0.3?
+## What's new in 2.0.0?
+
+Hosted MCP integrations can discover granted workspaces, including empty spaces, with
+`list_workspace_structure(kind="workspaces")` and select one with the optional
+`workspaceId` argument. The catalog remains 22 tools. Host authorization hooks preserve
+the connection's existing workspace/category boundaries. Multi-scope reads carry labeled
+results and independent pagination. Existing single-scope calls remain compatible.
+
+The OSS frontend adopts SvelteKit 3; dependency updates resolve the current security
+audit findings. No database migration is required. See the
+[2.0.0 release notes](docs/release/v2.0.0-notes.md).
+
+## Previous release: 1.0.3
 
 - Make MCP tool selection clearer: use a single-document tool for one document
   and `batch_documents` when multiple explicit IDs need the same action.

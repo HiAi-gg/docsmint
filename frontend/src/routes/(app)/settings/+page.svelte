@@ -1,13 +1,13 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import { deleteAccount, getProfile, updateProfile } from "#lib/api/settings.js";
+import { signOut } from "#lib/auth-client.js";
+import ApiAccessSettings from "#lib/components/settings/ApiAccessSettings.svelte";
+import { cleanupOfflineData } from "#lib/offline/cleanup.js";
+import * as m from "#lib/paraglide/messages.js";
+import { searchPreferences } from "#lib/stores/search-preferences.svelte.js";
+import { themeStore } from "#lib/stores/theme.svelte.js";
 import { goto } from "$app/navigation";
-import { deleteAccount, getProfile, updateProfile } from "$lib/api/settings";
-import { signOut } from "$lib/auth-client";
-import ApiAccessSettings from "$lib/components/settings/ApiAccessSettings.svelte";
-import { cleanupOfflineData } from "$lib/offline/cleanup";
-import * as m from "$lib/paraglide/messages.js";
-import { searchPreferences } from "$lib/stores/search-preferences.svelte";
-import { themeStore } from "$lib/stores/theme.svelte";
 
 let loggingOut = $state(false);
 

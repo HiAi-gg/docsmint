@@ -84,7 +84,7 @@ services:
 
   # Backend API (Bun + Elysia). Runs migrations, then watches src/.
   api:
-    image: oven/bun:1.3.14-alpine
+    image: oven/bun:1.4.0-alpine
     working_dir: /mnt/ai_data/projects/hiai-docs
     restart: unless-stopped
     ports:
@@ -176,7 +176,7 @@ services:
 
   # SvelteKit frontend (Vite dev server).
   web:
-    image: oven/bun:1.3.14-alpine
+    image: oven/bun:1.4.0-alpine
     working_dir: /mnt/ai_data/projects/hiai-docs
     restart: unless-stopped
     ports:

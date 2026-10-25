@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { CollaborationSession } from "$lib/collaboration";
+import type { CollaborationSession } from "#lib/collaboration.js";
 import HiAiEditor, { type EditorOutput } from "./HiAiEditor.svelte";
 
 let {

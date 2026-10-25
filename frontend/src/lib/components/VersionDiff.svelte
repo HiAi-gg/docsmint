@@ -13,9 +13,9 @@
          (or stands alone when one side has no match). -->
 <script lang="ts">
 import { ArrowLeftRight, Loader2 } from "lucide-svelte";
-import { ApiError, apiFetch } from "$lib/api/client";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+import { ApiError, apiFetch } from "#lib/api/client.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 
 // Background colors specified by the API consumer (light theme).
 const ADDED_BG = "#dcfce7";

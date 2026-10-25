@@ -10,15 +10,15 @@ import {
 } from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import { Loader2 } from "lucide-svelte";
-import { type Category, listCategories } from "$lib/api/categories";
-import { listFolders } from "$lib/api/folders";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+import { type Category, listCategories } from "#lib/api/categories.js";
+import { listFolders } from "#lib/api/folders.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,
 	refreshFolders,
-} from "$lib/stores/subfolders-refresh-store.svelte.js";
-import type { Folder } from "$lib/types.js";
+} from "#lib/stores/subfolders-refresh-store.svelte.js";
+import type { Folder } from "#lib/types.js";
 import FolderTreeSelector from "./FolderTreeSelector.svelte";
 
 const request = getDocsmintRequestAdapter();

@@ -10,7 +10,7 @@ import {
 } from "@hiai-gg/hiai-ui/components/ui/dialog/index";
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
 import type { Editor } from "@tiptap/core";
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 
 let {
 	open = $bindable(false),

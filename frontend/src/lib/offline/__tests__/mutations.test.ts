@@ -1,22 +1,22 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { Document } from "$lib/api/documents";
-import { cacheDocument } from "$lib/db/documents";
-import { getOfflineDB } from "$lib/db/index";
-import type { OfflineIdentity } from "$lib/offline/identity";
+import type { Document } from "#lib/api/documents.js";
+import { cacheDocument } from "#lib/db/documents.js";
+import { getOfflineDB } from "#lib/db/index.js";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
 import { asBunMock } from "./mock-utils";
 import { prepareOfflineIdentity } from "./test-identity";
 
 // `mutations.ts` imports the Svelte rune module `network-status.svelte` and
 // the API client, so both are mocked and the target is imported dynamically.
 let online = true;
-mock.module("$lib/offline/network-status.svelte", () => ({
+mock.module("#lib/offline/network-status.svelte.js", () => ({
 	networkStatus: {
 		get isOnline() {
 			return online;
 		},
 	},
 }));
-mock.module("$lib/api/documents", () => ({
+mock.module("#lib/api/documents.js", () => ({
 	getDocument: mock(() => Promise.resolve({} as unknown)),
 	listDocuments: mock(() => Promise.resolve({} as unknown)),
 	updateDocument: mock(() => Promise.resolve({} as unknown)),
@@ -25,18 +25,18 @@ mock.module("$lib/api/documents", () => ({
 }));
 
 describe("updateDocumentOffline (offline/mutations.ts)", () => {
-	let mutations: typeof import("$lib/offline/mutations");
-	let apiDocs: typeof import("$lib/api/documents");
-	let draftsDb: typeof import("$lib/db/drafts");
-	let mqDb: typeof import("$lib/db/mutation-queue");
+	let mutations: typeof import("#lib/offline/mutations.js");
+	let apiDocs: typeof import("#lib/api/documents.js");
+	let draftsDb: typeof import("#lib/db/drafts.js");
+	let mqDb: typeof import("#lib/db/mutation-queue.js");
 	let identity: OfflineIdentity;
 
 	beforeEach(async () => {
 		online = true;
-		mutations = await import("$lib/offline/mutations");
-		apiDocs = await import("$lib/api/documents");
-		draftsDb = await import("$lib/db/drafts");
-		mqDb = await import("$lib/db/mutation-queue");
+		mutations = await import("#lib/offline/mutations.js");
+		apiDocs = await import("#lib/api/documents.js");
+		draftsDb = await import("#lib/db/drafts.js");
+		mqDb = await import("#lib/db/mutation-queue.js");
 		identity = prepareOfflineIdentity();
 		const db = getOfflineDB(identity);
 		await Promise.all([db.drafts.clear(), db.documents.clear()]);

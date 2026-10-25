@@ -21,29 +21,33 @@ import {
 	Tag,
 	X,
 } from "lucide-svelte";
-import { type Category, listCategories } from "$lib/api/categories";
-import { type Document, listDocuments } from "$lib/api/documents";
-import { listFolders } from "$lib/api/folders";
-import { getFilterOptions, type SearchResponse, search } from "$lib/api/search";
-import DatePicker from "$lib/components/DatePicker.svelte";
-import SearchResult from "$lib/components/SearchResult.svelte";
-import { getFrontendExtensions } from "$lib/extensions/context";
-import { resolveExtensions } from "$lib/extensions/resolve";
-import type { ExtensionVisibilityContext } from "$lib/extensions/types";
+import { type Category, listCategories } from "#lib/api/categories.js";
+import { type Document, listDocuments } from "#lib/api/documents.js";
+import { listFolders } from "#lib/api/folders.js";
+import {
+	getFilterOptions,
+	type SearchResponse,
+	search,
+} from "#lib/api/search.js";
+import DatePicker from "#lib/components/DatePicker.svelte";
+import SearchResult from "#lib/components/SearchResult.svelte";
+import { getFrontendExtensions } from "#lib/extensions/context.js";
+import { resolveExtensions } from "#lib/extensions/resolve.js";
+import type { ExtensionVisibilityContext } from "#lib/extensions/types.js";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import { folderNamesForSearchCategory } from "$lib/hosts/search-folder-options";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import { folderNamesForSearchCategory } from "#lib/hosts/search-folder-options.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	normalizeSearchQuery,
 	shouldForceSearchResubmit,
-} from "$lib/search/resubmit";
-import { getSelectedTagName } from "$lib/stores/tag-store.svelte";
-import type { Folder as FolderType } from "$lib/types.js";
+} from "#lib/search/resubmit.js";
+import { getSelectedTagName } from "#lib/stores/tag-store.svelte.js";
+import type { Folder as FolderType } from "#lib/types.js";
 
 const Select = {
 	Root: SelectRoot,

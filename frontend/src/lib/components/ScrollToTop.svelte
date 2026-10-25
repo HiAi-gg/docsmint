@@ -1,7 +1,7 @@
 <script lang="ts">
 import { ArrowUp } from "lucide-svelte";
 import { onDestroy } from "svelte";
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 
 const SCROLL_THRESHOLD = 300;
 

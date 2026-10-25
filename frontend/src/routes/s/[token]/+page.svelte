@@ -25,23 +25,23 @@ import {
 	createDocxImageFetcher,
 	createPlainTextDocxBlob,
 	normalizeDocxDocumentJson,
-} from "$lib/components/editor/docx-export";
-import { customSerializerAsync } from "$lib/components/editor/docx-serializer";
-import { sanitizeEditorContent } from "$lib/components/editor/editor-content-sanitizer";
-import { editorExtensions } from "$lib/components/editor/editorExtensions";
-import { markdownToJson } from "$lib/components/editor/markdown";
-import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
-import { createPrintableDocumentHtml } from "$lib/components/editor/printable-document";
+} from "#lib/components/editor/docx-export.js";
+import { customSerializerAsync } from "#lib/components/editor/docx-serializer.js";
+import { sanitizeEditorContent } from "#lib/components/editor/editor-content-sanitizer.js";
+import { editorExtensions } from "#lib/components/editor/editorExtensions.js";
+import { markdownToJson } from "#lib/components/editor/markdown.js";
+import { serializeMarkdownExport } from "#lib/components/editor/markdown-export.js";
+import { createPrintableDocumentHtml } from "#lib/components/editor/printable-document.js";
 import {
 	hydrateSharedAttachmentImages,
 	type ProseMirrorDoc,
 	renderSharedDocument,
 	sharedAttachmentHeaders,
 	waitForSharedDocumentImages,
-} from "$lib/components/editor/shared-document";
-import ScrollToTop from "$lib/components/ScrollToTop.svelte";
-import * as m from "$lib/paraglide/messages.js";
-import { copyToClipboard } from "$lib/utils/clipboard";
+} from "#lib/components/editor/shared-document.js";
+import ScrollToTop from "#lib/components/ScrollToTop.svelte";
+import * as m from "#lib/paraglide/messages.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
 
 // Initial state comes from the `load` function in `+page.ts` (runs on both
 // the server during SSR and the client during hydration). This keeps

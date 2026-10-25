@@ -82,7 +82,7 @@ export function registerBatchAndWorkspaceCapabilities(server: McpServer, client:
 
   server.registerTool('get_workspace_item', {
     description: 'Read one visible folder, category, or tag by UUID. Folder uses its direct API getter; category and tag lookup uses the complete permission-filtered lists. An absent or out-of-scope ID is reported as not found. Use list_workspace_structure to discover IDs first.',
-    inputSchema: z.strictObject({ kind: z.enum(['folder', 'category', 'tag']).describe('The workspace resource type to read by ID.'), id: uuid }),
+    inputSchema: withClientRoutingSchema(z.strictObject({ kind: z.enum(['folder', 'category', 'tag']).describe('The workspace resource type to read by ID.'), id: uuid })),
     outputSchema: toolOutputSchemas.get_workspace_item,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, wrap('get_workspace_item', async ({ kind, id }: { kind: 'folder' | 'category' | 'tag'; id: string }) => {

@@ -1,4 +1,5 @@
 import { paraglideVitePlugin } from "@inlang/paraglide-js";
+import kitConfig from "./kit.config.js";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, loadEnv } from "vite";
@@ -8,7 +9,7 @@ export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const appId = env.PUBLIC_APP_ID ?? env.VITE_APP_ID ?? "hiai-docs";
 	const deploymentId =
-		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-1.0.3";
+		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-2.0.0";
 
 	return {
   plugins: [
@@ -18,7 +19,7 @@ export default defineConfig(({ mode }) => {
       outdir: "./src/lib/paraglide",
       strategy: ["url", "cookie", "baseLocale"],
     }),
-    sveltekit(),
+    sveltekit(kitConfig),
     // VitePWA owns both compilation and injection of the custom worker. Using
     // the framework-neutral plugin avoids @vite-pwa/sveltekit's dependency on
     // SvelteKit's reserved `service-worker.js` intermediate artifact.

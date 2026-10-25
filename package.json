@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -239,7 +239,7 @@
     "LICENSE"
   ],
   "engines": {
-    "bun": ">= 1.4.0"
+    "bun": ">=1.4.0"
   },
   "scripts": {
     "dev": "docker compose up -d",
@@ -273,7 +273,6 @@
   },
   "overrides": {
     "fast-uri": "3.1.5",
-    "brace-expansion": "2.1.3",
     "esbuild": "0.28.2",
     "prosemirror-model": "1.25.9",
     "prosemirror-view": "1.42.3",
@@ -282,22 +281,31 @@
     "cookie": "1.1.1",
     "@tiptap/core": "3.30.5",
     "@xmldom/xmldom": "0.8.15",
-    "@types/node": "25.9.3"
+    "@types/node": "25.9.3",
+    "happy-dom": "21.0.4",
+    "@sveltejs/kit": "3.1.0",
+    "@tiptap/html": {
+      "happy-dom": "21.0.4"
+    },
+    "svelte": "5.57.1",
+    "@scalar/themes": "0.19.3",
+    "@scalar/types": "0.25.0"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.0",
     "bullmq": "^6.3.2",
     "commander": "^15.0.0",
     "ioredis": "^6.0.0",
-    "zod": "4.4.3"
+    "zod": "4.6.7",
+    "happy-dom": "21.0.4"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "@aws-sdk/client-s3": "^3.1121.0",
     "pino": "^10.0.0",
-    "@sveltejs/kit": "^2.70.3",
-    "svelte": "^5.57.0"
+    "@sveltejs/kit": "^3.1.0",
+    "svelte": "^5.57.1"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {

@@ -1,4 +1,4 @@
-import type { Folder } from "$lib/types.js";
+import type { Folder } from "#lib/types.js";
 
 export interface DocumentPlacement {
 	folderId: string | null;

@@ -2,6 +2,10 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { isDocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
+import type { McpWorkspaceRouting } from './workspace-routing.js';
+export type { McpWorkspaceDescriptor, McpWorkspaceRouting } from './workspace-routing.js';
+export { createMcpScopedResult } from './output-schemas.js';
+
 import { registerCompactCapabilities } from './compact.js';
 import { registerPromptsAndResources } from './prompts-resources.js';
 import {
@@ -22,11 +26,24 @@ interface McpToolResult {
 function wrapHandler<Args>(
   name: string,
   handler: (args: Args) => Promise<unknown>,
-  outputSchema?: z.ZodType
+  outputSchema?: z.ZodType,
+  workspaceRouting?: McpWorkspaceRouting
 ): (args: Args) => Promise<McpToolResult> {
   return async (args) => {
     try {
-      const output = await handler(args);
+      const { workspaceId, ...data } = args as Record<string, unknown>;
+      if (workspaceId !== undefined) {
+        if (!workspaceRouting) throw new Error('Workspace routing is not configured');
+        await workspaceRouting.assertSelection(workspaceId as string);
+      }
+      let output: unknown;
+      if (name === 'list_workspace_structure' && data.kind === 'workspaces') {
+        if (!workspaceRouting) throw new Error('Workspace routing is not configured');
+        const workspaces = await workspaceRouting.listWorkspaces();
+        output = { operation: 'workspaces', result: workspaceId ? workspaces.filter(item => item.id === workspaceId) : workspaces };
+      } else {
+        output = await handler(data as Args);
+      }
       const parsedOutput = outputSchema ? await outputSchema.safeParseAsync(output) : undefined;
       if (parsedOutput && !parsedOutput.success) {
         throw new Error(`Tool '${name}' returned a result outside its published output schema`);
@@ -61,23 +78,25 @@ function wrapHandler<Args>(
   };
 }
 
-export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiDocsClient): void {
-  registerCompactCapabilities(server, client, wrapHandler);
+export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiDocsClient, workspaceRouting?: McpWorkspaceRouting): void {
+  const wrap: typeof wrapHandler = (name, handler, outputSchema) => wrapHandler(name, handler, outputSchema, workspaceRouting);
+  registerCompactCapabilities(server, client, wrap);
   registerPromptsAndResources(server, client);
 }
 
 export interface CreateDocsmintMcpServerOptions {
   docsClient?: DocsClient;
   requestContext?: DocsRequestContext;
+  workspaceRouting?: McpWorkspaceRouting;
   /** @deprecated Inject a legacy capability client only for compatibility. */
   client?: HiaiDocsClient;
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'docsmint', version: '1.0.3' });
+  const server = new McpServer({ name: 'docsmint', version: '2.0.0' });
   const client = options.docsClient
     ? createMcpDocsClient(options.docsClient, options.requestContext)
     : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);
-  registerDocsmintMcpCapabilities(server, client);
+  registerDocsmintMcpCapabilities(server, client, options.workspaceRouting);
   return server;
 }

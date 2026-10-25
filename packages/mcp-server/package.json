@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/mcp-server",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -17,7 +17,7 @@
   "dependencies": {
     "@hiai-docs/sdk": "workspace:*",
     "@modelcontextprotocol/server": "2.3.0",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.3.0",

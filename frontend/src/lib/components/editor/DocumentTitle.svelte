@@ -1,6 +1,6 @@
 <!-- DocumentTitle.svelte — Editable title input with auto-save on blur -->
 <script lang="ts">
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 
 const {
 	title = "",

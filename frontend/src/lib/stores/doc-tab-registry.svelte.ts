@@ -9,7 +9,7 @@
  * editor without modifying any hiai-docs core files.
  *
  * Usage in an external project's layout:
- *   import { registerDocTab } from "$lib/stores/doc-tab-registry.svelte";
+ *   import { registerDocTab } from "#lib/stores/doc-tab-registry.svelte.js";
  *   import HtmlRenditionPanel from "./HtmlRenditionPanel.svelte";
  *   registerDocTab({ id: "html-rendition", label: "HTML Preview", component: HtmlRenditionPanel });
  *

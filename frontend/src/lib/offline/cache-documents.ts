@@ -3,16 +3,16 @@ import {
 	type DocumentListResponse,
 	getDocument,
 	listDocuments,
-} from "$lib/api/documents";
-import { listFolders } from "$lib/api/folders";
+} from "#lib/api/documents.js";
+import { listFolders } from "#lib/api/folders.js";
 import {
 	cacheDocument,
 	cacheDocuments,
 	getCachedDocument as dbGetCachedDocument,
 	getCachedDocuments as dbGetCachedDocuments,
-} from "$lib/db/documents";
-import { cacheFolders, getCachedFolders } from "$lib/db/folders";
-import type { Folder } from "$lib/types";
+} from "#lib/db/documents.js";
+import { cacheFolders, getCachedFolders } from "#lib/db/folders.js";
+import type { Folder } from "#lib/types.js";
 import { offlineAccessEnabled, resolveOfflineIdentity } from "./identity";
 
 /**

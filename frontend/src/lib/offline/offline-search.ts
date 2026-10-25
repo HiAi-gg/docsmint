@@ -1,4 +1,4 @@
-import { getOfflineDB } from "$lib/db";
+import { getOfflineDB } from "#lib/db/index.js";
 import type { OfflineIdentity } from "./identity";
 
 export interface SearchResult {

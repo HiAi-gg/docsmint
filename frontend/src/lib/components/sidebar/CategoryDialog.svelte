@@ -39,9 +39,9 @@ import {
 	listApiKeys,
 	revealCategoryApiKey,
 	revokeApiKey,
-} from "$lib/api/api-keys";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/api/api-keys.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import { issueCategoryKeyAfterSavingAccess } from "./category-api-key-flow.js";
 import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 

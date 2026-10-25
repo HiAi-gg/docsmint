@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ChevronRight, Folder, FolderOpen } from "lucide-svelte";
-import type { Folder as FolderType } from "$lib/types.js";
+import type { Folder as FolderType } from "#lib/types.js";
 
 let {
 	folders,

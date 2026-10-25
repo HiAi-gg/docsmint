@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import { z } from "zod";
 
 type JsonObject = Record<string, unknown>;
 
@@ -65,13 +65,26 @@ export function withClientRoutingSchema<Schema extends z.ZodType>(
 	schema: Schema,
 ) {
 	const standard = schema["~standard"];
+  const selector = z.string().uuid().optional().describe('Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.');
 	return {
 		"~standard": {
 			...standard,
+      validate: async (value: unknown, options: Parameters<typeof standard.validate>[1]) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return standard.validate(value, options);
+        const { workspaceId, ...args } = value as Record<string, unknown>;
+        const selected = selector.safeParse(workspaceId);
+        if (!selected.success) return { issues: selected.error.issues };
+        const validated = await standard.validate(args, options);
+        if (validated.issues) return validated;
+        return { value: { ...(validated.value as Record<string, unknown>), ...(selected.data ? { workspaceId: selected.data } : {}) } };
+      },
 			jsonSchema: {
 				...standard.jsonSchema,
 				input: (options: Parameters<typeof standard.jsonSchema.input>[0]) =>
-					hoistObjectUnionClosure(standard.jsonSchema.input(options)),
+					(() => {
+              const published = hoistObjectUnionClosure(standard.jsonSchema.input(options));
+              return { ...published, properties: { ...(published.properties as JsonObject), workspaceId: z.toJSONSchema(selector) } };
+            })(),
 			},
 		},
 	};

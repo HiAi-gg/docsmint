@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import Dexie from "dexie";
-import type { Document } from "$lib/api/documents";
+import type { Document } from "#lib/api/documents.js";
 import {
 	cacheDocument,
 	cacheDocuments,
 	getCachedDocument,
 	getCachedDocuments,
-} from "$lib/db/documents";
-import { clearDraft, getDraft, listDrafts, saveDraft } from "$lib/db/drafts";
-import { cacheFolder, getCachedFolders } from "$lib/db/folders";
-import { getOfflineDB, OfflineDB } from "$lib/db/index";
-import { type OfflineIdentity, offlineDbName } from "$lib/offline/identity";
-import type { Folder } from "$lib/types";
+} from "#lib/db/documents.js";
+import { clearDraft, getDraft, listDrafts, saveDraft } from "#lib/db/drafts.js";
+import { cacheFolder, getCachedFolders } from "#lib/db/folders.js";
+import { getOfflineDB, OfflineDB } from "#lib/db/index.js";
+import { type OfflineIdentity, offlineDbName } from "#lib/offline/identity.js";
+import type { Folder } from "#lib/types.js";
 import { prepareOfflineIdentity } from "./test-identity";
 
 function makeDocument(id: string, overrides: Partial<Document> = {}): Document {
@@ -225,7 +225,7 @@ describe("draft helpers (db/drafts.ts)", () => {
 
 describe("mutation queue removal (db/mutation-queue.ts)", () => {
 	it("rejects legacy enqueue and never reports pending work", async () => {
-		const mq = await import("$lib/db/mutation-queue");
+		const mq = await import("#lib/db/mutation-queue.js");
 		await expect(
 			mq.enqueueMutation("d1", "PATCH", {}, "2026-01-01T00:00:00.000Z"),
 		).rejects.toThrow("Automatic mutation replay is disabled");

@@ -28,47 +28,47 @@ import {
 	X,
 } from "lucide-svelte";
 import { onDestroy, onMount } from "svelte";
-import { beforeNavigate, goto } from "$app/navigation";
-import { ApiError, apiFetch } from "$lib/api/client";
-import { deleteDocument, updateDocument } from "$lib/api/documents";
-import { createFolder, listFolders } from "$lib/api/folders";
+import { ApiError, apiFetch } from "#lib/api/client.js";
+import { deleteDocument, updateDocument } from "#lib/api/documents.js";
+import { createFolder, listFolders } from "#lib/api/folders.js";
 import {
 	addTagToDocument,
 	listTags,
 	removeTagFromDocument,
 	type Tag,
-} from "$lib/api/tags";
-import DocumentTitle from "$lib/components/editor/DocumentTitle.svelte";
-import { createDocumentAutosave } from "$lib/components/editor/document-autosave";
+} from "#lib/api/tags.js";
+import DocumentTitle from "#lib/components/editor/DocumentTitle.svelte";
+import { createDocumentAutosave } from "#lib/components/editor/document-autosave.js";
 import {
 	newFolderPlacement,
 	placementForFolder,
-} from "$lib/components/editor/document-placement";
-import type { EditorOutput } from "$lib/components/editor/HiAiEditor.svelte";
-import { serializeMarkdownExport } from "$lib/components/editor/markdown-export";
-import { createPlacementMutationQueue } from "$lib/components/editor/placement-mutation-queue";
-import { createPrintableDocumentHtml } from "$lib/components/editor/printable-document";
+} from "#lib/components/editor/document-placement.js";
+import type { EditorOutput } from "#lib/components/editor/HiAiEditor.svelte";
+import { serializeMarkdownExport } from "#lib/components/editor/markdown-export.js";
+import { createPlacementMutationQueue } from "#lib/components/editor/placement-mutation-queue.js";
+import { createPrintableDocumentHtml } from "#lib/components/editor/printable-document.js";
 import {
 	hydrateSharedAttachmentImages,
 	waitForSharedDocumentImages,
-} from "$lib/components/editor/shared-document";
-import FolderDialog from "$lib/components/FolderDialog.svelte";
-import SaveAsDialog from "$lib/components/SaveAsDialog.svelte";
-import ShareDialog from "$lib/components/ShareDialog.svelte";
-import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
-import { getFrontendExtensions } from "$lib/extensions/context";
-import { resolveExtensions } from "$lib/extensions/resolve";
-import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
-import * as m from "$lib/paraglide/messages.js";
-import { docTabRegistry } from "$lib/stores/doc-tab-registry.svelte";
-import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
-import { pwaDirtyState } from "$lib/stores/pwa-dirty-state.svelte";
+} from "#lib/components/editor/shared-document.js";
+import FolderDialog from "#lib/components/FolderDialog.svelte";
+import SaveAsDialog from "#lib/components/SaveAsDialog.svelte";
+import ShareDialog from "#lib/components/ShareDialog.svelte";
+import TagCreateDialog from "#lib/components/TagCreateDialog.svelte";
+import { getFrontendExtensions } from "#lib/extensions/context.js";
+import { resolveExtensions } from "#lib/extensions/resolve.js";
+import { getDocsmintShareAdapter } from "#lib/hosts/share-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { docTabRegistry } from "#lib/stores/doc-tab-registry.svelte.js";
+import { editorPreferences } from "#lib/stores/editor-preferences.svelte.js";
+import { pwaDirtyState } from "#lib/stores/pwa-dirty-state.svelte.js";
 import {
 	acknowledgeDocumentPlacement,
 	publishDocumentPlacement,
 	refreshFolders,
-} from "$lib/stores/subfolders-refresh-store.svelte.js";
-import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
+} from "#lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs, refreshTags } from "#lib/stores/tag-store.svelte.js";
+import { beforeNavigate, goto } from "$app/navigation";
 
 const { data } = $props();
 const share = getDocsmintShareAdapter();
@@ -112,11 +112,11 @@ let showDeleteDialog = $state(false);
 let showSaveAsDialog = $state(false);
 let showVersionPanel = $state(false);
 type EditorComponentType =
-	typeof import("$lib/components/editor/HiAiEditor.svelte").default;
+	typeof import("#lib/components/editor/HiAiEditor.svelte").default;
 type MarkdownComponentType =
-	typeof import("$lib/components/editor/MarkdownToggle.svelte").default;
+	typeof import("#lib/components/editor/MarkdownToggle.svelte").default;
 type VersionHistoryComponentType =
-	typeof import("$lib/components/VersionHistory.svelte").default;
+	typeof import("#lib/components/VersionHistory.svelte").default;
 
 let EditorComponent = $state<EditorComponentType | null>(null);
 let MarkdownComponent = $state<MarkdownComponentType | null>(null);
@@ -127,7 +127,7 @@ async function activateEditor() {
 	if (EditorComponent || editorLoading) return;
 	editorLoading = true;
 	try {
-		EditorComponent = (await import("$lib/components/editor/HiAiEditor.svelte"))
+		EditorComponent = (await import("#lib/components/editor/HiAiEditor.svelte"))
 			.default;
 	} catch (cause) {
 		setError(cause instanceof Error ? cause.message : "Unable to load editor");
@@ -139,7 +139,7 @@ async function activateEditor() {
 async function activateMarkdownEditor() {
 	if (MarkdownComponent) return;
 	MarkdownComponent = (
-		await import("$lib/components/editor/MarkdownToggle.svelte")
+		await import("#lib/components/editor/MarkdownToggle.svelte")
 	).default;
 }
 
@@ -166,7 +166,7 @@ async function openVersionHistory() {
 	showVersionPanel = true;
 	if (!VersionHistoryComponent) {
 		VersionHistoryComponent = (
-			await import("$lib/components/VersionHistory.svelte")
+			await import("#lib/components/VersionHistory.svelte")
 		).default;
 	}
 }
@@ -180,7 +180,7 @@ let tagsLoading = $state(false);
 let tagBusy = $state(false);
 
 // Folder management
-import type { Folder as FolderType } from "$lib/types.js";
+import type { Folder as FolderType } from "#lib/types.js";
 
 let folders = $state<FolderType[]>([]);
 let foldersLoading = $state(false);
@@ -195,7 +195,7 @@ let showCreateFolderDialog = $state(false);
 let pendingCreatedFolderId = $state<string | null>(null);
 
 // Category management
-import { type Category, listCategories } from "$lib/api/categories";
+import { type Category, listCategories } from "#lib/api/categories.js";
 
 let categories = $state<Category[]>([]);
 let categoriesLoading = $state(false);
@@ -515,10 +515,10 @@ async function handleExportDocx() {
 			import("@tiptap/core"),
 			import("@tiptap/pm/model"),
 			import("docx"),
-			import("$lib/components/editor/docx-export"),
-			import("$lib/components/editor/docx-serializer"),
-			import("$lib/components/editor/editorExtensions"),
-			import("$lib/components/editor/markdown"),
+			import("#lib/components/editor/docx-export.js"),
+			import("#lib/components/editor/docx-serializer.js"),
+			import("#lib/components/editor/editorExtensions.js"),
+			import("#lib/components/editor/markdown.js"),
 		]);
 		let json = contentJson;
 		if (!json) {

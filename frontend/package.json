@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/frontend",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -89,16 +89,17 @@
     "y-prosemirror": "^1.3.7",
     "y-websocket": "^3.1.0",
     "yjs": "^13.6.32",
-    "zod": "4.4.3",
-    "@tiptap/extension-collaboration-caret": "^3.30.5"
+    "zod": "4.6.7",
+    "@tiptap/extension-collaboration-caret": "^3.30.5",
+    "svelte": "^5.57.1"
   },
   "devDependencies": {
     "@better-auth/core": "^1.7.2",
     "@biomejs/biome": "^2.5.1",
     "@inlang/plugin-m-function-matcher": "^2.2.9",
     "@inlang/plugin-message-format": "^4.4.0",
-    "@sveltejs/adapter-node": "^5.5.7",
-    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/adapter-node": "^6.0.0",
+    "@sveltejs/kit": "^3.1.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/bun": "^1.4.1",
@@ -107,11 +108,15 @@
     "esm-env": "^1.2.2",
     "fake-indexeddb": "^6.2.5",
     "nanostores": "^1.4.0",
-    "svelte": "^5.57.0",
+    "svelte": "^5.57.1",
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3",
     "vite": "^8.2.2",
     "vite-plugin-pwa": "^1.3.0"
+  },
+  "imports": {
+    "#lib": "./src/lib/index.ts",
+    "#lib/*": "./src/lib/*"
   }
 }

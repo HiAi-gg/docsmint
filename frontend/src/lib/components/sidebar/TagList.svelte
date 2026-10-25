@@ -9,17 +9,17 @@ import {
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { Loader2, MoreVertical, Plus } from "lucide-svelte";
 import { onMount } from "svelte";
-import { deleteTag, listTags, type Tag } from "$lib/api/tags";
-import TagCreateDialog from "$lib/components/TagCreateDialog.svelte";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+import { deleteTag, listTags, type Tag } from "#lib/api/tags.js";
+import TagCreateDialog from "#lib/components/TagCreateDialog.svelte";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	getSelectedTag,
 	getTagRefreshNonce,
 	refreshTags,
 	setSelectedTag,
-} from "$lib/stores/tag-store.svelte";
-import { cn } from "$lib/utils";
+} from "#lib/stores/tag-store.svelte.js";
+import { cn } from "#lib/utils.js";
 
 const request = getDocsmintRequestAdapter();
 let tags = $state<Tag[]>([]);

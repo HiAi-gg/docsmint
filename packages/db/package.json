@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/db",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -28,7 +28,7 @@
   "dependencies": {
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
-    "zod": "4.4.3"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "25.9.3",
