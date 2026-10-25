@@ -83,7 +83,19 @@ export function withClientRoutingSchema<Schema extends z.ZodType>(
 				input: (options: Parameters<typeof standard.jsonSchema.input>[0]) =>
 					(() => {
               const published = hoistObjectUnionClosure(standard.jsonSchema.input(options));
-              return { ...published, properties: { ...(published.properties as JsonObject), workspaceId: z.toJSONSchema(selector) } };
+              const routingProperty = z.toJSONSchema(selector);
+              return {
+                ...published,
+                properties: { ...(published.properties as JsonObject), workspaceId: routingProperty },
+                ...(Array.isArray(published.oneOf) ? {
+                  oneOf: published.oneOf.map((branch: JsonObject) => ({
+                    ...branch,
+                    // Some MCP clients normalize each operation independently.
+                    // Keep routing visible there as well as at the object root.
+                    properties: { ...(branch.properties as JsonObject), workspaceId: routingProperty },
+                  })),
+                } : {}),
+              };
             })(),
 			},
 		},

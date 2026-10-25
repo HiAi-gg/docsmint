@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.3
+
+- Declare optional MCP workspaceId in every operation branch as well as at the schema root, so operation-based client normalization preserves explicit workspace selection. Runtime authorization, the 22-tool catalog and existing OAuth grants are unchanged.
+
+
 All notable changes to DocsMint are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
