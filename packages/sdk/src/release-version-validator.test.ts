@@ -6,7 +6,7 @@ test("release version validator accepts the synchronized release tag", async () 
   await expect(
     validateReleaseVersion({
       root: new URL("../../../", import.meta.url),
-      tag: "v2.0.1",
+      tag: "v2.0.2",
     }),
   ).resolves.toBeUndefined();
 });

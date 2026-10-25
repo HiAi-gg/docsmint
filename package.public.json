@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -363,7 +363,8 @@
     "backend/src/lib/lifecycle-service.ts",
     "server.json",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "packages/cli/src/index.ts"
   ],
   "engines": {
     "bun": ">= 1.4.0"
@@ -411,8 +412,8 @@
   },
   "overrides": {
     "happy-dom": "21.0.4",
-    "@sveltejs/kit": "3.1.0",
-    "svelte": "5.57.1",
+    "@sveltejs/kit": "^3.1.0",
+    "svelte": "^5.57.1",
     "@scalar/themes": "0.19.3",
     "@scalar/types": "0.25.0"
   }
