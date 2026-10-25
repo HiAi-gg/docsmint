@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
-    "version": "2.0.0",
+    "version": "2.0.1",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -77,9 +77,15 @@
         "operationId": "postApiAuthUpdateUser",
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
-        "security": [{ "SessionAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
       }
     },
     "/api/auth/change-email": {
@@ -87,9 +93,15 @@
         "operationId": "postApiAuthChangeEmail",
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
-        "security": [{ "SessionAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          }
+        ]
       }
     },
     "/api/tags": {
@@ -103,7 +115,9 @@
         "operationId": "postApiTags",
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -122,7 +136,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       },
       "delete": {
@@ -139,7 +155,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -158,7 +176,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -185,7 +205,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -208,7 +230,9 @@
         "operationId": "postApiCategories",
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -235,7 +259,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -260,7 +286,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -289,7 +317,9 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AttachmentPresignRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentPresignRequest"
+              }
             }
           }
         },
@@ -298,11 +328,15 @@
             "description": "Durable upload admission and exact signed PUT URL.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AttachmentPresignResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentPresignResponse"
+                }
               }
             }
           },
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -331,13 +365,17 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/AttachmentConfirmRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/AttachmentConfirmRequest"
+              }
             }
           }
         },
         "responses": {
           "201": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -364,7 +402,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -415,7 +455,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -650,7 +692,9 @@
         "operationId": "postApiDocuments",
         "responses": {
           "200": {},
-          "409": { "description": "Account purge fence is active" }
+          "409": {
+            "description": "Account purge fence is active"
+          }
         }
       }
     },
@@ -661,31 +705,53 @@
           {
             "in": "query",
             "name": "categoryId",
-            "schema": { "format": "uuid", "type": "string" }
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
           },
           {
             "in": "query",
             "name": "cursor",
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "in": "query",
             "name": "limit",
-            "schema": { "default": 50, "maximum": 100, "minimum": 1, "type": "integer" }
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
           },
           {
             "in": "query",
             "name": "sortBy",
             "schema": {
               "default": "updated",
-              "enum": ["title", "category", "folder", "updated"],
+              "enum": [
+                "title",
+                "category",
+                "folder",
+                "updated"
+              ],
               "type": "string"
             }
           },
           {
             "in": "query",
             "name": "sortOrder",
-            "schema": { "default": "desc", "enum": ["asc", "desc"], "type": "string" }
+            "schema": {
+              "default": "desc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -726,7 +792,10 @@
         "description": "Retries only retryable graph and summarization warning stages on the active embedding generation. Ready embeddings, chunks, and optional stages are preserved.",
         "parameters": [
           {
-            "schema": { "type": "string", "format": "uuid" },
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "in": "path",
             "name": "id",
             "required": true
@@ -737,17 +806,36 @@
             "description": "Warning-stage retry accepted.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/DocsPipelineWarningRetry" }
+                "schema": {
+                  "$ref": "#/components/schemas/DocsPipelineWarningRetry"
+                }
               }
             }
           },
-          "400": { "description": "Invalid document identifier." },
-          "401": { "description": "Authentication is required." },
-          "403": { "description": "The caller lacks write permission." },
-          "409": { "description": "No retryable warning stages exist." },
-          "429": { "description": "Too many requests." }
+          "400": {
+            "description": "Invalid document identifier."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller lacks write permission."
+          },
+          "409": {
+            "description": "No retryable warning stages exist."
+          },
+          "429": {
+            "description": "Too many requests."
+          }
         },
-        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/documents/{id}/knowledge-summary": {
@@ -755,7 +843,10 @@
         "operationId": "getApiDocumentsByIdKnowledgeSummary",
         "parameters": [
           {
-            "schema": { "type": "string", "format": "uuid" },
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "in": "path",
             "name": "id",
             "required": true
@@ -769,7 +860,14 @@
           "404": {},
           "429": {}
         },
-        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/documents/{id}/index-status": {
@@ -779,7 +877,10 @@
         "description": "Returns indexing and knowledge-pipeline status for a document when the caller has read access. A category-scoped workspace assertion is authorized against the document's direct category or its effective category inherited from folder ancestry.",
         "parameters": [
           {
-            "schema": { "type": "string", "format": "uuid" },
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "in": "path",
             "name": "id",
             "required": true
@@ -790,17 +891,36 @@
             "description": "Document index status.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/DocsDocumentIndexStatus" }
+                "schema": {
+                  "$ref": "#/components/schemas/DocsDocumentIndexStatus"
+                }
               }
             }
           },
-          "400": { "description": "Invalid document identifier." },
-          "401": { "description": "Authentication is required." },
-          "403": { "description": "The caller lacks the required permission." },
-          "404": { "description": "Document not found in the accessible scope." },
-          "429": { "description": "Too many requests." }
+          "400": {
+            "description": "Invalid document identifier."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "description": "Document not found in the accessible scope."
+          },
+          "429": {
+            "description": "Too many requests."
+          }
         },
-        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/documents/{id}/index/refresh": {
@@ -810,7 +930,10 @@
         "description": "Requests an idempotent document index refresh when the caller has write access. A category-scoped workspace assertion is authorized against the document's direct category or its effective category inherited from folder ancestry.",
         "parameters": [
           {
-            "schema": { "type": "string", "format": "uuid" },
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "in": "path",
             "name": "id",
             "required": true
@@ -821,17 +944,36 @@
             "description": "Document index refresh accepted.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/DocsDocumentIndexRefresh" }
+                "schema": {
+                  "$ref": "#/components/schemas/DocsDocumentIndexRefresh"
+                }
               }
             }
           },
-          "400": { "description": "Invalid document identifier." },
-          "401": { "description": "Authentication is required." },
-          "403": { "description": "The caller lacks the required permission." },
-          "404": { "description": "Document not found in the accessible scope." },
-          "429": { "description": "Too many requests." }
+          "400": {
+            "description": "Invalid document identifier."
+          },
+          "401": {
+            "description": "Authentication is required."
+          },
+          "403": {
+            "description": "The caller lacks the required permission."
+          },
+          "404": {
+            "description": "Document not found in the accessible scope."
+          },
+          "429": {
+            "description": "Too many requests."
+          }
         },
-        "security": [{ "SessionAuth": [] }, { "BearerAuth": [] }]
+        "security": [
+          {
+            "SessionAuth": []
+          },
+          {
+            "BearerAuth": []
+          }
+        ]
       }
     },
     "/api/documents/{id}": {
@@ -865,7 +1007,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       },
       "delete": {
@@ -882,7 +1026,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -901,7 +1047,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "description": "Account purge fence is active" }
+          "409": {
+            "description": "Account purge fence is active"
+          }
         }
       }
     },
@@ -928,7 +1076,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "description": "Account purge fence is active" }
+          "409": {
+            "description": "Account purge fence is active"
+          }
         }
       }
     },
@@ -947,7 +1097,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -974,7 +1126,9 @@
         "operationId": "postApiDocumentsImport",
         "responses": {
           "200": {},
-          "409": { "description": "Account purge fence is active" }
+          "409": {
+            "description": "Account purge fence is active"
+          }
         }
       }
     },
@@ -1009,7 +1163,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       },
       "delete": {
@@ -1026,7 +1182,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -1041,7 +1199,9 @@
         "operationId": "postApiFolders",
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -1076,7 +1236,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         }
       }
     },
@@ -1129,7 +1291,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "description": "Account purge fence is active" }
+          "409": {
+            "description": "Account purge fence is active"
+          }
         }
       }
     },
@@ -1564,7 +1728,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -1614,7 +1780,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -1641,7 +1809,9 @@
         ],
         "responses": {
           "200": {},
-          "409": { "$ref": "#/components/responses/AccountPurgeFenced" }
+          "409": {
+            "$ref": "#/components/responses/AccountPurgeFenced"
+          }
         },
         "security": [
           {
@@ -1832,7 +2002,9 @@
     "/api/admin/metrics": {
       "get": {
         "operationId": "getApiAdminMetrics",
-        "tags": ["Admin"],
+        "tags": [
+          "Admin"
+        ],
         "summary": "Process-local embedding metrics snapshot",
         "description": "Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
         "responses": {
@@ -1847,7 +2019,9 @@
         "description": "The account deletion fence is active; no mutation was admitted.",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/AccountPurgeFencedError" }
+            "schema": {
+              "$ref": "#/components/schemas/AccountPurgeFencedError"
+            }
           }
         }
       }
@@ -1855,164 +2029,433 @@
     "schemas": {
       "AccountPurgeFencedError": {
         "type": "object",
-        "required": ["error", "code"],
+        "required": [
+          "error",
+          "code"
+        ],
         "additionalProperties": false,
         "properties": {
-          "error": { "type": "string", "enum": ["Account deletion is in progress"] },
-          "code": { "type": "string", "enum": ["ACCOUNT_PURGE_FENCED"] }
+          "error": {
+            "type": "string",
+            "enum": [
+              "Account deletion is in progress"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "ACCOUNT_PURGE_FENCED"
+            ]
+          }
         }
       },
       "AttachmentPresignRequest": {
         "type": "object",
-        "required": ["filename", "contentType", "size"],
+        "required": [
+          "filename",
+          "contentType",
+          "size"
+        ],
         "additionalProperties": false,
         "properties": {
-          "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
-          "contentType": { "type": "string", "pattern": "^image/" },
-          "size": { "type": "integer", "minimum": 1 }
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "contentType": {
+            "type": "string",
+            "pattern": "^image/"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "AttachmentPresignResponse": {
         "type": "object",
-        "required": ["url", "key", "uploadToken", "maxSize", "expiresIn"],
+        "required": [
+          "url",
+          "key",
+          "uploadToken",
+          "maxSize",
+          "expiresIn"
+        ],
         "properties": {
-          "url": { "type": "string", "format": "uri" },
-          "key": { "type": "string", "minLength": 1 },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
           "uploadToken": {
             "type": "string",
             "minLength": 1,
             "description": "Opaque signed admission identity. Return it verbatim to confirm."
           },
-          "quotaReservationId": { "type": "string" },
-          "maxSize": { "type": "integer", "minimum": 1 },
-          "expiresIn": { "type": "integer", "minimum": 60, "maximum": 3600 }
+          "quotaReservationId": {
+            "type": "string"
+          },
+          "maxSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": 60,
+            "maximum": 3600
+          }
         }
       },
       "AttachmentConfirmRequest": {
         "type": "object",
-        "required": ["key", "uploadToken", "filename", "contentType", "size"],
+        "required": [
+          "key",
+          "uploadToken",
+          "filename",
+          "contentType",
+          "size"
+        ],
         "additionalProperties": false,
         "properties": {
-          "key": { "type": "string", "minLength": 1 },
-          "uploadToken": { "type": "string", "minLength": 1 },
-          "filename": { "type": "string", "minLength": 1, "maxLength": 255 },
-          "contentType": { "type": "string", "pattern": "^image/" },
-          "size": { "type": "integer", "minimum": 1 },
-          "quotaReservationId": { "type": "string" }
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uploadToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "contentType": {
+            "type": "string",
+            "pattern": "^image/"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "quotaReservationId": {
+            "type": "string"
+          }
         }
       },
       "WorkspaceResourceScope": {
         "type": "object",
         "description": "Optional category restriction carried only in a trusted server-to-server signed workspace assertion; it is never a browser secret.",
-        "required": ["kind", "categoryId", "permissions"],
+        "required": [
+          "kind",
+          "categoryId",
+          "permissions"
+        ],
         "additionalProperties": false,
         "properties": {
-          "kind": { "type": "string", "enum": ["category"] },
-          "categoryId": { "type": "string", "format": "uuid" },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "category"
+            ]
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "permissions": {
             "type": "array",
-            "items": { "type": "string", "enum": ["read", "edit", "write"] }
+            "items": {
+              "type": "string",
+              "enum": [
+                "read",
+                "edit",
+                "write"
+              ]
+            }
           }
         }
       },
       "WorkspaceAssertionPayload": {
         "type": "object",
         "description": "Trusted server-to-server signed workspace assertion payload. Clients must not create, alter, or expose this payload in browser code.",
-        "required": ["actorUserId", "workspaceId", "actorRole", "issuedAt", "expiresAt", "issuer"],
+        "required": [
+          "actorUserId",
+          "workspaceId",
+          "actorRole",
+          "issuedAt",
+          "expiresAt",
+          "issuer"
+        ],
         "additionalProperties": false,
         "properties": {
-          "actorUserId": { "type": "string", "format": "uuid" },
-          "workspaceId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^\\S(?:.*\\S)?$" },
-          "actorRole": { "type": "string", "enum": ["owner", "admin", "editor", "viewer"] },
-          "resourceScope": { "$ref": "#/components/schemas/WorkspaceResourceScope" },
-          "issuedAt": { "type": "number" },
-          "expiresAt": { "type": "number" },
-          "issuer": { "type": "string", "minLength": 1 }
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workspaceId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^\\S(?:.*\\S)?$"
+          },
+          "actorRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "editor",
+              "viewer"
+            ]
+          },
+          "resourceScope": {
+            "$ref": "#/components/schemas/WorkspaceResourceScope"
+          },
+          "issuedAt": {
+            "type": "number"
+          },
+          "expiresAt": {
+            "type": "number"
+          },
+          "issuer": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       },
       "DocsPipelineStatus": {
         "type": "string",
-        "enum": ["pending", "processing", "ready", "retrying", "failed", "ready_with_warnings", "skipped", "cancelled"]
+        "enum": [
+          "pending",
+          "processing",
+          "ready",
+          "retrying",
+          "failed",
+          "ready_with_warnings",
+          "skipped",
+          "cancelled"
+        ]
       },
       "DocsDocumentPipeline": {
         "type": "object",
         "nullable": true,
-        "required": ["documentId", "generationId", "status", "revision", "stages", "batches", "warnings", "updatedAt"],
+        "required": [
+          "documentId",
+          "generationId",
+          "status",
+          "revision",
+          "stages",
+          "batches",
+          "warnings",
+          "updatedAt"
+        ],
         "properties": {
-          "documentId": { "type": "string", "format": "uuid" },
-          "generationId": { "type": "string", "format": "uuid" },
-          "status": { "$ref": "#/components/schemas/DocsPipelineStatus" },
-          "revision": { "type": "string" },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocsPipelineStatus"
+          },
+          "revision": {
+            "type": "string"
+          },
           "stages": {
             "type": "object",
-            "required": ["prepare", "embed", "graph", "summarize", "finalize"],
+            "required": [
+              "prepare",
+              "embed",
+              "graph",
+              "summarize",
+              "finalize"
+            ],
             "properties": {
-              "prepare": { "$ref": "#/components/schemas/DocsPipelineStatus" },
-              "embed": { "$ref": "#/components/schemas/DocsPipelineStatus" },
-              "graph": { "$ref": "#/components/schemas/DocsPipelineStatus" },
-              "summarize": { "$ref": "#/components/schemas/DocsPipelineStatus" },
-              "finalize": { "$ref": "#/components/schemas/DocsPipelineStatus" }
+              "prepare": {
+                "$ref": "#/components/schemas/DocsPipelineStatus"
+              },
+              "embed": {
+                "$ref": "#/components/schemas/DocsPipelineStatus"
+              },
+              "graph": {
+                "$ref": "#/components/schemas/DocsPipelineStatus"
+              },
+              "summarize": {
+                "$ref": "#/components/schemas/DocsPipelineStatus"
+              },
+              "finalize": {
+                "$ref": "#/components/schemas/DocsPipelineStatus"
+              }
             }
           },
           "batches": {
             "type": "object",
-            "required": ["total", "completed", "failed"],
+            "required": [
+              "total",
+              "completed",
+              "failed"
+            ],
             "properties": {
-              "total": { "type": "integer" },
-              "completed": { "type": "integer" },
-              "failed": { "type": "integer" }
+              "total": {
+                "type": "integer"
+              },
+              "completed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              }
             }
           },
           "warnings": {
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["stage", "code", "retryable"],
+              "required": [
+                "stage",
+                "code",
+                "retryable"
+              ],
               "properties": {
-                "stage": { "type": "string", "enum": ["graph", "summarize"] },
-                "code": { "type": "string" },
-                "retryable": { "type": "boolean" }
+                "stage": {
+                  "type": "string",
+                  "enum": [
+                    "graph",
+                    "summarize"
+                  ]
+                },
+                "code": {
+                  "type": "string"
+                },
+                "retryable": {
+                  "type": "boolean"
+                }
               }
             }
           },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "DocsPipelineWarningRetry": {
         "type": "object",
-        "required": ["documentId", "generationId", "retriedStages", "deduplicated"],
+        "required": [
+          "documentId",
+          "generationId",
+          "retriedStages",
+          "deduplicated"
+        ],
         "properties": {
-          "documentId": { "type": "string", "format": "uuid" },
-          "generationId": { "type": "string", "format": "uuid" },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generationId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "retriedStages": {
             "type": "array",
-            "items": { "type": "string", "enum": ["graph", "summarize"] }
+            "items": {
+              "type": "string",
+              "enum": [
+                "graph",
+                "summarize"
+              ]
+            }
           },
-          "deduplicated": { "type": "boolean" }
+          "deduplicated": {
+            "type": "boolean"
+          }
         }
       },
       "DocsDocumentIndexStatus": {
         "type": "object",
-        "required": ["documentId", "embeddingStatus", "activeGenerationId", "pendingGenerationId", "embeddingProfile", "embeddingErrorCode", "embeddingUpdatedAt", "searchable", "pipeline"],
+        "required": [
+          "documentId",
+          "embeddingStatus",
+          "activeGenerationId",
+          "pendingGenerationId",
+          "embeddingProfile",
+          "embeddingErrorCode",
+          "embeddingUpdatedAt",
+          "searchable",
+          "pipeline"
+        ],
         "properties": {
-          "documentId": { "type": "string", "format": "uuid" },
-          "embeddingStatus": { "type": "string", "enum": ["pending", "processing", "ready", "failed", "stale"] },
-          "activeGenerationId": { "type": "string", "format": "uuid", "nullable": true },
-          "pendingGenerationId": { "type": "string", "format": "uuid", "nullable": true },
-          "embeddingProfile": { "type": "string", "nullable": true },
-          "embeddingErrorCode": { "type": "string", "nullable": true },
-          "embeddingUpdatedAt": { "type": "string", "format": "date-time", "nullable": true },
-          "searchable": { "type": "boolean" },
-          "pipeline": { "$ref": "#/components/schemas/DocsDocumentPipeline" }
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "embeddingStatus": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "ready",
+              "failed",
+              "stale"
+            ]
+          },
+          "activeGenerationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "pendingGenerationId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "embeddingProfile": {
+            "type": "string",
+            "nullable": true
+          },
+          "embeddingErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "embeddingUpdatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "searchable": {
+            "type": "boolean"
+          },
+          "pipeline": {
+            "$ref": "#/components/schemas/DocsDocumentPipeline"
+          }
         }
       },
       "DocsDocumentIndexRefresh": {
         "type": "object",
-        "required": ["documentId", "generationId", "deduplicated"],
+        "required": [
+          "documentId",
+          "generationId",
+          "deduplicated"
+        ],
         "properties": {
-          "documentId": { "type": "string", "format": "uuid" },
-          "generationId": { "type": "string", "format": "uuid" },
-          "deduplicated": { "type": "boolean" }
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deduplicated": {
+            "type": "boolean"
+          }
         }
       }
     },

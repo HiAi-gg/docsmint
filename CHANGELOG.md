@@ -5,6 +5,10 @@ All notable changes to DocsMint are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-10-25
+
+Fix the SvelteKit 3 PWA worker output directory so adapter-node serves `/sw.js` and its precache contains the actual immutable client assets. Includes the MCP workspace routing and security changes prepared for 2.0.0. The 2.0.0 tag failed the browser artifact gate and was not published. No release gate is bypassed.
+
 ## [2.0.0] - 2026-10-25
 
 - Add host-authorized MCP workspace discovery and per-call workspaceId selectors, including empty workspaces.

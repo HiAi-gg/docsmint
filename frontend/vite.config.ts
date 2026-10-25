@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
 	const env = loadEnv(mode, process.cwd(), "");
 	const appId = env.PUBLIC_APP_ID ?? env.VITE_APP_ID ?? "hiai-docs";
 	const deploymentId =
-		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-2.0.0";
+		env.PUBLIC_DEPLOYMENT_ID ?? env.VITE_DEPLOYMENT_ID ?? "docsmint-oss-2.0.1";
 
 	return {
   plugins: [
@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
     // the framework-neutral plugin avoids @vite-pwa/sveltekit's dependency on
     // SvelteKit's reserved `service-worker.js` intermediate artifact.
     VitePWA({
+      // SvelteKit 3 has independent build environments; the generic plugin
+      // must target the client output consumed by adapter-node explicitly.
+      outDir: ".svelte-kit/output/client",
       registerType: "prompt", // A4: user controls updates (no mid-edit SW takeover)
       // Registration is performed in hooks.client.ts. Keeping it explicit
       // avoids SvelteKit and vite-plugin-pwa registering different filenames.
@@ -54,6 +57,7 @@ export default defineConfig(({ mode }) => {
       // For the `injectManifest` strategy the precache glob is read from
       // `injectManifest` (not `workbox`).
       injectManifest: {
+        globDirectory: ".svelte-kit/output/client",
         globPatterns: ["**/*.{html,js,css,ico,png,svg,webp,woff2}"],
         // SvelteKit does not emit a prerendered directory for this
         // authenticated app. Ignore the adapter default explicitly so the
@@ -62,7 +66,7 @@ export default defineConfig(({ mode }) => {
 		// from the Workbox glob prevents two entries with different revisions,
 		// which makes the worker throw during script evaluation and disables PWA.
         globIgnores: [
-          "client/manifest.webmanifest",
+          "manifest.webmanifest",
         ],
       },
       devOptions: { enabled: false },
