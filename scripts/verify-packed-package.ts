@@ -50,6 +50,10 @@ async function run(
   return { stdout, stderr, exitCode };
 }
 
+// Validate with the actual publisher before Bun packaging/consumer checks.
+// npm rejects conflicting direct/peer override specs even when Bun accepts them.
+await run(['npm', 'publish', '--dry-run', '--ignore-scripts', '--access', 'public', '--json'], stage);
+
 const packed = await run(
   ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', tarballs, '--quiet'],
   stage
@@ -136,6 +140,7 @@ const ssrComponentSubpaths = [
 
 const requiredTarEntries = [
   'package/server.json',
+  'package/packages/cli/src/index.ts',
   'package/skills/docsmint-document-manager/SKILL.md',
   'package/dist/index.js',
   'package/dist/index.d.ts',
@@ -638,6 +643,7 @@ await writeFile(
       sha256,
       entries: listing,
       checks: {
+        npmPublishDryRun: 'passed',
         serverImports: 'passed',
         mcpPublicErrorIdentity: 'passed',
         declarations: 'passed',
