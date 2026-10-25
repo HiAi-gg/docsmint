@@ -76,3 +76,28 @@ test('rejects invalid selectors before reaching any operation and filters worksp
   expect(selected.structuredContent).toEqual({ operation: 'workspaces', result: [emptyWorkspace] });
  } finally { await s.close(); }
 });
+
+
+test('workspace selectors remain visible in each operation branch used by client schema normalizers', async () => {
+  const s = await connected(routing, { listCategories: async () => [] });
+  try {
+    const tools = (await s.client.listTools()).tools;
+    let branchesChecked = 0;
+    for (const tool of tools) {
+      const schema = tool.inputSchema as { properties: Record<string, unknown>; oneOf?: Array<{ properties: Record<string, unknown>; required?: string[] }> };
+      for (const branch of schema.oneOf ?? []) {
+        expect(branch.properties.workspaceId, `${tool.name}: operation branch selector`).toEqual(schema.properties.workspaceId);
+        expect(branch.required ?? []).not.toContain('workspaceId');
+        branchesChecked++;
+      }
+    }
+    expect(branchesChecked).toBeGreaterThan(0);
+    const schema = tools.find(tool => tool.name === 'list_workspace_structure')!.inputSchema as unknown as { oneOf: Array<{ properties: Record<string, { const?: string }> }> };
+    const branch = schema.oneOf.find(item => item.properties.kind?.const === 'categories')!;
+    // Clients render and normalize the selected operation's declared fields.
+    const input = { kind: 'categories', workspaceId: emptyWorkspace.id };
+    const visibleArguments = Object.fromEntries(Object.entries(input).filter(([key]) => key in branch.properties));
+    const result = await s.client.callTool({ name: 'list_workspace_structure', arguments: visibleArguments });
+    expect(result.structuredContent).toEqual({ operation: 'categories', result: [] });
+  } finally { await s.close(); }
+});
