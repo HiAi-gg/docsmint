@@ -1,15 +1,15 @@
 <script lang="ts">
-import { page } from "$app/state";
-import MobileSidebarToggle from "$lib/components/MobileSidebarToggle.svelte";
-import ScrollToTop from "$lib/components/ScrollToTop.svelte";
-import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
-import HiaiDocsExtensionProvider from "$lib/hosts/HiaiDocsExtensionProvider.svelte";
-import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
+import MobileSidebarToggle from "#lib/components/MobileSidebarToggle.svelte";
+import ScrollToTop from "#lib/components/ScrollToTop.svelte";
+import Sidebar from "#lib/components/sidebar/Sidebar.svelte";
+import HiaiDocsExtensionProvider from "#lib/hosts/HiaiDocsExtensionProvider.svelte";
+import { editorPreferences } from "#lib/stores/editor-preferences.svelte.js";
 import {
 	closeMobileSidebar,
 	mobileSidebar,
-} from "$lib/stores/mobile-sidebar.svelte";
-import { searchPreferences } from "$lib/stores/search-preferences.svelte";
+} from "#lib/stores/mobile-sidebar.svelte.js";
+import { searchPreferences } from "#lib/stores/search-preferences.svelte.js";
+import { page } from "$app/state";
 
 const { children } = $props();
 

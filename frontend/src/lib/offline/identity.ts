@@ -1,4 +1,4 @@
-import { getSession } from "$lib/auth-client";
+import { getSession } from "#lib/auth-client.js";
 
 /**
  * Identity that scopes the offline database. The DB name is derived from

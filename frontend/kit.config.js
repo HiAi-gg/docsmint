@@ -1,10 +1,9 @@
 import adapter from "@sveltejs/adapter-node";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 
-/** @type {import('@sveltejs/kit').Config} */
+/** @type {NonNullable<Parameters<typeof import('@sveltejs/kit/vite').sveltekit>[0]>} */
 const config = {
   preprocess: [vitePreprocess()],
-  kit: {
     adapter: adapter(),
     // SvelteKit 2 defaults `paths.relative` to true, which emits
     // `./_app/immutable/...` from nested routes (`/login`, `/docs/:id`).
@@ -19,7 +18,6 @@ const config = {
     serviceWorker: {
       register: false,
     },
-  },
 };
 
 export default config;

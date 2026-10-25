@@ -60,11 +60,13 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     return { id, deleted: true };
   });
 
-  register('list_workspace_structure', 'List visible folders, categories, or tags in the active workspace or category scope. Set kind=folders to inspect root folders or children of parentId.', z.discriminatedUnion('kind', [
+  register('list_workspace_structure', 'Discover permitted spaces with kind=workspaces, including empty spaces; use returned workspaceId for scoped operations. List folders, categories, or tags; set kind=folders for root folders or children of parentId. Unselected reads cover all granted scopes when supported by the host.', z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('workspaces').describe('Discover every workspace granted to this connection, including empty ones.') }),
     z.strictObject({ kind: z.literal('folders').describe('Select the folders operation explicitly.'), parentId: uuid.optional() }),
     z.strictObject({ kind: z.literal('categories').describe('Select the categories operation explicitly.') }),
     z.strictObject({ kind: z.literal('tags').describe('Select the tags operation explicitly.') }),
   ]), read, async input => {
+    if (input.kind === 'workspaces') throw new Error('Workspace routing is not configured');
     if (input.kind === 'folders') return { operation: 'folders', result: await client.listFolders({ parentId: input.parentId }) };
     if (input.kind === 'categories') return { operation: 'categories', result: await client.listCategories() };
     return { operation: 'tags', result: await client.listTags() };

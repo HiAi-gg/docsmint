@@ -49,35 +49,39 @@ const Select = {
 };
 
 import { ConfirmDialog } from "@hiai-gg/hiai-ui";
-import { invalidateAll } from "$app/navigation";
-import { page } from "$app/state";
-import type { Category } from "$lib/api/categories";
-import { apiFetch } from "$lib/api/client";
-import { createDocument, listDocuments } from "$lib/api/documents";
-import { createFolder, duplicateDocument, listFolders } from "$lib/api/folders";
-import type { Tag as ApiTag } from "$lib/api/tags";
-import DatePicker from "$lib/components/DatePicker.svelte";
-import DocumentCard from "$lib/components/DocumentCard.svelte";
-import FolderCard from "$lib/components/FolderCard.svelte";
-import FolderDialog from "$lib/components/FolderDialog.svelte";
+import type { Category } from "#lib/api/categories.js";
+import { apiFetch } from "#lib/api/client.js";
+import { createDocument, listDocuments } from "#lib/api/documents.js";
+import {
+	createFolder,
+	duplicateDocument,
+	listFolders,
+} from "#lib/api/folders.js";
+import type { Tag as ApiTag } from "#lib/api/tags.js";
+import DatePicker from "#lib/components/DatePicker.svelte";
+import DocumentCard from "#lib/components/DocumentCard.svelte";
+import FolderCard from "#lib/components/FolderCard.svelte";
+import FolderDialog from "#lib/components/FolderDialog.svelte";
 import ImportProgress, {
 	type ImportItem,
-} from "$lib/components/ImportProgress.svelte";
-import ShareDialog from "$lib/components/ShareDialog.svelte";
-import { getFrontendExtensions } from "$lib/extensions/context";
-import { resolveExtensions } from "$lib/extensions/resolve";
-import type { ExtensionVisibilityContext } from "$lib/extensions/types";
+} from "#lib/components/ImportProgress.svelte";
+import ShareDialog from "#lib/components/ShareDialog.svelte";
+import { getFrontendExtensions } from "#lib/extensions/context.js";
+import { resolveExtensions } from "#lib/extensions/resolve.js";
+import type { ExtensionVisibilityContext } from "#lib/extensions/types.js";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
-import * as m from "$lib/paraglide/messages.js";
-import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
-import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
-import type { Document, Folder as FolderType } from "$lib/types.js";
+} from "#lib/hosts/route-context.js";
+import { getDocsmintShareAdapter } from "#lib/hosts/share-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { refreshFolders } from "#lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs } from "#lib/stores/tag-store.svelte.js";
+import type { Document, Folder as FolderType } from "#lib/types.js";
+import { invalidateAll } from "$app/navigation";
+import { page } from "$app/state";
 
 export interface HiaiDocsDashboardData {
 	categories: Category[];
@@ -390,7 +394,7 @@ async function handleImportFile(e: Event) {
 }
 
 // Helper since we import importDocuments locally in load but import is in documents API
-import { importDocuments } from "$lib/api/documents";
+import { importDocuments } from "#lib/api/documents.js";
 
 function closeImport() {
 	importOpen = false;
@@ -406,7 +410,7 @@ function clearFilters() {
 	dateFrom = "";
 	dateTo = "";
 
-	const params = new URLSearchParams(page.url.searchParams);
+	const params = new URLSearchParams(page.url.searchParams.toString());
 	params.delete("q");
 	params.delete("tag");
 	params.delete("dateFrom");
@@ -415,7 +419,7 @@ function clearFilters() {
 }
 
 function updateFilters() {
-	const params = new URLSearchParams(page.url.searchParams);
+	const params = new URLSearchParams(page.url.searchParams.toString());
 	if (searchQuery.trim()) params.set("q", searchQuery);
 	else params.delete("q");
 
@@ -749,7 +753,7 @@ const isFolderEmpty = $derived(
           type="single"
           value={activeCategoryId ?? "all"}
           onValueChange={(val: string) => {
-            const params = new URLSearchParams(page.url.searchParams);
+            const params = new URLSearchParams(page.url.searchParams.toString());
             if (val && val !== "all") params.set("category", val);
             else params.delete("category");
 			return navigateDocsmintRoute(route, `/?${params.toString()}`);

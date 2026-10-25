@@ -1,12 +1,12 @@
 <script lang="ts">
 import { Calendar, Check, Folder, Tag } from "lucide-svelte";
-import type { SearchExplanation } from "$lib/api/search";
+import type { SearchExplanation } from "#lib/api/search.js";
 import {
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 
 interface Props {
 	id: string;

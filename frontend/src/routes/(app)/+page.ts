@@ -1,13 +1,13 @@
 import { redirect } from "@sveltejs/kit";
-import { listCategories } from "$lib/api/categories.js";
-import { ApiError } from "$lib/api/client.js";
-import { getFolder, getFolderPath } from "$lib/api/folders.js";
-import { listTags } from "$lib/api/tags.js";
+import { listCategories } from "#lib/api/categories.js";
+import { ApiError } from "#lib/api/client.js";
+import { getFolder, getFolderPath } from "#lib/api/folders.js";
+import { listTags } from "#lib/api/tags.js";
 import {
 	listDocumentsCached,
 	listFoldersCached,
-} from "$lib/offline/cache-documents";
-import type { Document, Folder } from "$lib/types.js";
+} from "#lib/offline/cache-documents.js";
+import type { Document, Folder } from "#lib/types.js";
 import type { PageLoad } from "./$types.js";
 
 export const load: PageLoad = async ({ url, fetch, depends }) => {

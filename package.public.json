@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -384,15 +384,16 @@
     "bullmq": "^6.3.2",
     "commander": "^15.0.0",
     "ioredis": "^6.0.0",
-    "zod": "4.4.3"
+    "zod": "4.6.7",
+    "happy-dom": "21.0.4"
   },
   "peerDependencies": {
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
     "@aws-sdk/client-s3": "^3.1121.0",
     "pino": "^10.0.0",
-    "@sveltejs/kit": "^2.70.3",
-    "svelte": "^5.57.0"
+    "@sveltejs/kit": "^3.1.0",
+    "svelte": "^5.57.1"
   },
   "peerDependenciesMeta": {
     "drizzle-orm": {
@@ -407,5 +408,11 @@
     "pino": {
       "optional": true
     }
+  },
+  "overrides": {
+    "zod": "4.6.7",
+    "happy-dom": "21.0.4",
+    "@sveltejs/kit": "3.1.0",
+    "svelte": "5.57.1"
   }
 }

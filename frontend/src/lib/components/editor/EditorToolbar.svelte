@@ -40,14 +40,14 @@ import {
 	isFileSizeAllowed,
 	isImageFile,
 	uploadAttachment,
-} from "$lib/api/attachments";
+} from "#lib/api/attachments.js";
 import type {
 	EditorActionContext,
 	EditorActionExtension,
-} from "$lib/extensions/types";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import { copyToClipboard } from "$lib/utils/clipboard";
+} from "#lib/extensions/types.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
 import CreateSnapshotDialog from "../CreateSnapshotDialog.svelte";
 import LinkDialog from "./LinkDialog.svelte";
 

@@ -30,22 +30,22 @@ import {
 import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
 import type { Snippet } from "svelte";
 import { flip } from "svelte/animate";
-import { page } from "$app/state";
-import type { Document } from "$lib/api/documents";
-import { listFolders } from "$lib/api/folders";
+import type { Document } from "#lib/api/documents.js";
+import { listFolders } from "#lib/api/folders.js";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	bumpSubfoldersRefresh,
 	getSubfoldersRefresh,
 	registerFolder,
-} from "$lib/stores/subfolders-refresh-store.svelte.js";
-import { cn } from "$lib/utils";
-import { type DndEvent, dndzone } from "$lib/utils/dndzone";
+} from "#lib/stores/subfolders-refresh-store.svelte.js";
+import { type DndEvent, dndzone } from "#lib/utils/dndzone.js";
+import { cn } from "#lib/utils.js";
+import { page } from "$app/state";
 
 export interface FolderNodeItem {
 	id: string;

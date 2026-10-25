@@ -1,8 +1,8 @@
 <script lang="ts">
-import { apiFetch } from "$lib/api/client";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import { copyToClipboard } from "$lib/utils/clipboard";
+import { apiFetch } from "#lib/api/client.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
 
 const {
 	token = "",

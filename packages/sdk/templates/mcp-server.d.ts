@@ -34,9 +34,23 @@ export interface HiaiDocsClient {
 	exportDocument(id: string): Promise<{ markdown: string; filename?: string }>;
 }
 
+export interface McpWorkspaceDescriptor {
+  id: string;
+  name: string;
+  slug: string;
+  entireWorkspace: boolean;
+  categoryIds: string[];
+}
+export interface McpWorkspaceRouting {
+  listWorkspaces(): Promise<McpWorkspaceDescriptor[]>;
+  assertSelection(workspaceId: string): Promise<void>;
+}
+export declare function createMcpScopedResult(toolName: 'find_documents' | 'list_workspace_structure' | 'list_trash', input: unknown): unknown;
+
 export interface CreateDocsmintMcpServerOptions {
 	docsClient?: DocsClient;
 	requestContext?: DocsRequestContext;
+  workspaceRouting?: McpWorkspaceRouting;
 	/** @deprecated Inject a legacy capability client only for compatibility. */
 	client?: HiaiDocsClient;
 }
@@ -44,6 +58,7 @@ export interface CreateDocsmintMcpServerOptions {
 export declare function registerDocsmintMcpCapabilities(
 	server: McpServer,
 	client: HiaiDocsClient,
+  workspaceRouting?: McpWorkspaceRouting,
 ): void;
 
 export declare function createDocsmintMcpServer(

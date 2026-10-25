@@ -9,23 +9,23 @@ import {
 	Tag,
 } from "lucide-svelte";
 import { onMount } from "svelte";
-import { page } from "$app/state";
-import SearchBar from "$lib/components/SearchBar.svelte";
-import SettingsDialog from "$lib/components/SettingsDialog.svelte";
-import FolderTree from "$lib/components/sidebar/FolderTree.svelte";
-import RecentDocs from "$lib/components/sidebar/RecentDocs.svelte";
-import TagList from "$lib/components/sidebar/TagList.svelte";
-import { getFrontendExtensions } from "$lib/extensions/context";
-import { resolveExtensions } from "$lib/extensions/resolve";
+import SearchBar from "#lib/components/SearchBar.svelte";
+import SettingsDialog from "#lib/components/SettingsDialog.svelte";
+import FolderTree from "#lib/components/sidebar/FolderTree.svelte";
+import RecentDocs from "#lib/components/sidebar/RecentDocs.svelte";
+import TagList from "#lib/components/sidebar/TagList.svelte";
+import { getFrontendExtensions } from "#lib/extensions/context.js";
+import { resolveExtensions } from "#lib/extensions/resolve.js";
 import {
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte.js";
-import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
-import { cn } from "$lib/utils";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { refreshFolders } from "#lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs } from "#lib/stores/tag-store.svelte.js";
+import { cn } from "#lib/utils.js";
+import { page } from "$app/state";
 
 let {
 	mobile = false,

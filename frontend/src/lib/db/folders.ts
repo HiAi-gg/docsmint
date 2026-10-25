@@ -1,5 +1,5 @@
-import type { OfflineIdentity } from "$lib/offline/identity";
-import type { Folder } from "$lib/types";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
+import type { Folder } from "#lib/types.js";
 import { type FolderRecord, getOfflineDB } from "./index";
 
 /** Write a single folder into the offline cache. */

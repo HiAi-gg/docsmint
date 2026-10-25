@@ -1,4 +1,4 @@
-import { authClient } from "$lib/auth-client";
+import { authClient } from "#lib/auth-client.js";
 import { apiFetch } from "./client.js";
 
 export interface UserProfile {

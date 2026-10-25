@@ -5,16 +5,16 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import type { Snippet } from "svelte";
 import { onDestroy, onMount, untrack } from "svelte";
 import { createEditor, type Editor, EditorContent } from "svelte-tiptap";
-import type { CollaborationSession } from "$lib/collaboration";
+import type { CollaborationSession } from "#lib/collaboration.js";
 import type {
 	EditorActionContext,
 	EditorActionExtension,
-} from "$lib/extensions/types";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/extensions/types.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	registerShortcut,
 	unregisterShortcut,
-} from "$lib/stores/keyboard.svelte";
+} from "#lib/stores/keyboard.svelte.js";
 import EditorToolbar from "./EditorToolbar.svelte";
 import {
 	removeUnavailableAttachmentImages,

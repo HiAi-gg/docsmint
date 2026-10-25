@@ -2,9 +2,9 @@ import {
 	type Document,
 	type UpdateDocumentInput,
 	updateDocument,
-} from "$lib/api/documents";
-import { getCachedDocument } from "$lib/db/documents";
-import { saveDraft } from "$lib/db/drafts";
+} from "#lib/api/documents.js";
+import { getCachedDocument } from "#lib/db/documents.js";
+import { saveDraft } from "#lib/db/drafts.js";
 import { resolveOfflineIdentity } from "./identity";
 import { networkStatus } from "./network-status.svelte";
 

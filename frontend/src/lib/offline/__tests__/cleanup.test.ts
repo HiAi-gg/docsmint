@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import { getOfflineDB } from "$lib/db/index";
-import { cleanupOfflineData } from "$lib/offline/cleanup";
-import type { OfflineIdentity } from "$lib/offline/identity";
+import { getOfflineDB } from "#lib/db/index.js";
+import { cleanupOfflineData } from "#lib/offline/cleanup.js";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
 import { prepareOfflineIdentity } from "./test-identity";
 
 describe("cleanupOfflineData (offline/cleanup.ts)", () => {

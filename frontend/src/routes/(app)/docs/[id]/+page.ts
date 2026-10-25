@@ -1,8 +1,8 @@
 import { redirect } from "@sveltejs/kit";
-import { browser } from "$app/environment";
-import { createDocument, getDocument } from "$lib/api/documents";
-import { getDocumentCached } from "$lib/offline/cache-documents";
-import { refreshDocs } from "$lib/stores/tag-store.svelte.js";
+import { createDocument, getDocument } from "#lib/api/documents.js";
+import { getDocumentCached } from "#lib/offline/cache-documents.js";
+import { refreshDocs } from "#lib/stores/tag-store.svelte.js";
+import { browser } from "$app/env";
 import type { PageLoad } from "./$types";
 
 export const load: PageLoad = async ({ params, fetch, url }) => {

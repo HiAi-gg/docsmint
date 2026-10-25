@@ -26,7 +26,7 @@
 // than it would otherwise, which is imperceptible.
 //
 // Importers (currently `FolderTree.svelte` and `FolderNode.svelte`)
-// switch from `svelte-dnd-action` to `$lib/utils/dndzone` so they get the
+// switch from `svelte-dnd-action` to `#lib/utils/dndzone` so they get the
 // deferred behaviour. No `vite.config.ts` alias is involved, which means
 // this file is free to import the original library without risk of an
 // import cycle.

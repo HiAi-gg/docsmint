@@ -16,17 +16,17 @@ import {
 	Share2,
 	Trash2,
 } from "lucide-svelte";
-import { invalidateAll } from "$app/navigation";
-import { updateFolder } from "$lib/api/folders";
-import MoveDialog from "$lib/components/MoveDialog.svelte";
+import { updateFolder } from "#lib/api/folders.js";
+import MoveDialog from "#lib/components/MoveDialog.svelte";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import type { Folder as FolderType } from "$lib/types.js";
-import { formatRelativeTime } from "$lib/utils.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import type { Folder as FolderType } from "#lib/types.js";
+import { formatRelativeTime } from "#lib/utils.js";
+import { invalidateAll } from "$app/navigation";
 import {
 	handleCardNavigationKeydown,
 	stopCardMenuKeydown,

@@ -4,19 +4,19 @@ import SelectContent from "@hiai-gg/hiai-ui/components/ui/select/select-content.
 import SelectItem from "@hiai-gg/hiai-ui/components/ui/select/select-item.svelte";
 import SelectTrigger from "@hiai-gg/hiai-ui/components/ui/select/select-trigger.svelte";
 import SelectValue from "@hiai-gg/hiai-ui/components/ui/select/select-value.svelte";
-import { createShareLink } from "$lib/api/share";
+import { createShareLink } from "#lib/api/share.js";
 import {
 	buildShareLinkRequest,
 	type ShareDisplayMode,
 	shareAccessModesForDisplay,
-} from "$lib/components/share-configuration";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/components/share-configuration.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	registerShortcut,
 	unregisterShortcut,
-} from "$lib/stores/keyboard.svelte";
-import { copyToClipboard } from "$lib/utils/clipboard";
+} from "#lib/stores/keyboard.svelte.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
 
 export type ShareCreatedResult = {
 	token: string;

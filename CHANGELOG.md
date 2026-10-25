@@ -2,8 +2,14 @@
 
 All notable changes to DocsMint are documented in this file.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.0] - 2026-10-25
+
+- Add host-authorized MCP workspace discovery and per-call workspaceId selectors, including empty workspaces.
+- Publish validated multi-scope result envelopes while retaining the 22-tool catalog and existing single-scope responses.
+- Update SvelteKit, Zod and Happy DOM to resolve production dependency audit findings.
 
 ## [1.0.3] - 2026-10-23
 

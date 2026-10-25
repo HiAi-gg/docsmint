@@ -1,18 +1,18 @@
 <script lang="ts">
 import { type Snippet, untrack } from "svelte";
-import MobileSidebarToggle from "$lib/components/MobileSidebarToggle.svelte";
-import ScrollToTop from "$lib/components/ScrollToTop.svelte";
-import Sidebar from "$lib/components/sidebar/Sidebar.svelte";
-import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
+import MobileSidebarToggle from "#lib/components/MobileSidebarToggle.svelte";
+import ScrollToTop from "#lib/components/ScrollToTop.svelte";
+import Sidebar from "#lib/components/sidebar/Sidebar.svelte";
+import { editorPreferences } from "#lib/stores/editor-preferences.svelte.js";
 import {
 	closeMobileSidebar,
 	mobileSidebar,
 	openMobileSidebar,
-} from "$lib/stores/mobile-sidebar.svelte";
-import { createEdgeSwipeTracker } from "$lib/stores/mobile-sidebar-gesture";
-import { searchPreferences } from "$lib/stores/search-preferences.svelte";
-import { refreshFolders } from "$lib/stores/subfolders-refresh-store.svelte";
-import { refreshDocs, refreshTags } from "$lib/stores/tag-store.svelte";
+} from "#lib/stores/mobile-sidebar.svelte.js";
+import { createEdgeSwipeTracker } from "#lib/stores/mobile-sidebar-gesture.js";
+import { searchPreferences } from "#lib/stores/search-preferences.svelte.js";
+import { refreshFolders } from "#lib/stores/subfolders-refresh-store.svelte.js";
+import { refreshDocs, refreshTags } from "#lib/stores/tag-store.svelte.js";
 import type { DocsmintFrontendExtensions } from "../extensions/types";
 import HiaiDocsExtensionProvider from "./HiaiDocsExtensionProvider.svelte";
 import {
