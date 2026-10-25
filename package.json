@@ -282,13 +282,14 @@
     "@tiptap/core": "3.30.5",
     "@xmldom/xmldom": "0.8.15",
     "@types/node": "25.9.3",
-    "zod": "4.6.7",
     "happy-dom": "21.0.4",
     "@sveltejs/kit": "3.1.0",
     "@tiptap/html": {
       "happy-dom": "21.0.4"
     },
-    "svelte": "5.57.1"
+    "svelte": "5.57.1",
+    "@scalar/themes": "0.19.3",
+    "@scalar/types": "0.25.0"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.0",
