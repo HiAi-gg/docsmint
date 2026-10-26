@@ -83,7 +83,7 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 2.0.3?
+## What's new in 2.0.4?
 
 Hosted MCP integrations can discover granted workspaces, including empty spaces, with
 `list_workspace_structure(kind="workspaces")` and select one with the optional
@@ -93,7 +93,7 @@ results and independent pagination. Existing single-scope calls remain compatibl
 
 The OSS frontend adopts SvelteKit 3; dependency updates resolve the current security
 audit findings. No database migration is required. See the
-[2.0.3 release notes](docs/release/v2.0.3-notes.md).
+[2.0.4 release notes](docs/release/v2.0.4-notes.md).
 
 ## Previous release: 1.0.3
 
