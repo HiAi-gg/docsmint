@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.4 - 2026-10-26
+
+- Restore focus to the replacement mobile navigation trigger after the drawer closes.
+- Defer focus until the closing render completes and skip restoration if navigation reopens.
+- Preserve previous connected focus targets and avoid focusing detached controls.
+
+
 ## 2.0.3
 
 - Declare optional MCP workspaceId in every operation branch as well as at the schema root, so operation-based client normalization preserves explicit workspace selection. Runtime authorization, the 22-tool catalog and existing OAuth grants are unchanged.

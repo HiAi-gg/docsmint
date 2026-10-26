@@ -9,6 +9,7 @@ import {
 	mobileSidebar,
 	openMobileSidebar,
 } from "#lib/stores/mobile-sidebar.svelte.js";
+import { restoreMobileSidebarFocus } from "#lib/stores/mobile-sidebar-focus.js";
 import { createEdgeSwipeTracker } from "#lib/stores/mobile-sidebar-gesture.js";
 import { searchPreferences } from "#lib/stores/search-preferences.svelte.js";
 import { refreshFolders } from "#lib/stores/subfolders-refresh-store.svelte.js";
@@ -174,7 +175,11 @@ $effect(() => {
 		cancelAnimationFrame(focusFrame);
 		document.removeEventListener("keydown", handleKeydown);
 		document.body.style.overflow = previousBodyOverflow;
-		if (previouslyFocused?.isConnected) previouslyFocused.focus();
+		restoreMobileSidebarFocus(
+			previouslyFocused,
+			() => toggleButton,
+			() => mobileSidebar.open,
+		);
 	};
 });
 </script>
