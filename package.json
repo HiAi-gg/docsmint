@@ -289,7 +289,8 @@
     },
     "svelte": "5.57.1",
     "@scalar/themes": "0.19.3",
-    "@scalar/types": "0.25.0"
+    "@scalar/types": "0.25.0",
+    "deepmerge": "file:vendor/deepmerge"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.0",
