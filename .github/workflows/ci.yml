@@ -206,6 +206,7 @@ jobs:
             "lifecycle operation persistence integration" \
             "re-embed delete parent-row lock integration" \
             "embedding context migration integration" \
+            "Better Auth account compatibility integration" \
             "recursive folder category resolution executes on PostgreSQL" \
             "occupied replay keys distinguish authorized replay from a non-disclosing conflict" \
             "authorizes grandparent-inherited category documents and excludes foreign graph IDs" \
@@ -229,7 +230,7 @@ jobs:
             echo "Required integration suite reported skipped coverage"
             exit 1
           fi
-          echo "Required integration behavior cases: 27; skipped: 0"
+          echo "Required integration behavior cases: 28; skipped: 0"
 
       - name: Stop Postgres
         if: always()

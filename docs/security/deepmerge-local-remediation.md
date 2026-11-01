@@ -38,3 +38,18 @@ References:
 
 Remove the local fork after an upstream fixed release is available, retaining the
 security tests and repeating every required gate before switching resolution.
+
+## Better Auth account compatibility
+
+Better Auth 1.7.7 validates its account schema at startup. Migration 0049 adds
+nullable `id_token` and relaxes the retained `issuer` column, following the
+[official 1.7 upgrade guide](https://www.better-auth.com/docs/guides/1-7-upgrade-guide).
+The 0047 trigger still derives omitted issuer values, explicit legacy issuers
+and both identity indexes remain intact. No accounts are rewritten or deleted.
+Apply migrations through the existing owner-only migration workflow before
+starting the upgraded host. Do not reverse 0049 by deleting token data. This PR
+does not apply migrations to DocsMint Cloud or any production database.
+
+The required PostgreSQL integration verifies credential writes, two providers
+with the same subject, explicit legacy issuer preservation, ID-token round trips
+and rejection of duplicate provider/subject identities inside a rolled-back transaction.
