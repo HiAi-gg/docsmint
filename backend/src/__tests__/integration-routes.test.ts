@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { DocsClient } from "@hiai-docs/sdk";
 import { createDocsmintMcpServer } from "@hiai-docs/sdk/mcp";
 import { Elysia } from "elysia";
 import {
@@ -361,4 +362,69 @@ test("REST aliases and MCP's SDK calls re-enter the complete root middleware cha
 	});
 	expect(canonicalGuardCalls).toBe(6);
 	expect(legacyHandlerCalls).toBe(2);
+});
+
+test("default SDK discovery uses protected explicit legacy aliases", async () => {
+	const { routes, forwarded } = harness();
+	let guards = 0;
+	const app = new Elysia()
+		.onBeforeHandle(() => {
+			guards++;
+		})
+		.use(routes);
+	const client = new DocsClient({
+		baseUrl: "http://localhost",
+		apiKey: "scoped",
+		retries: 1,
+		fetch: ((input: string | URL | Request, init?: RequestInit) =>
+			app.handle(new Request(input, init))) as typeof fetch,
+	});
+	expect(await client.whoami()).toEqual(identity);
+	expect(await client.listWorkspaces()).toEqual([
+		{
+			id: null,
+			name: "Personal",
+			slug: null,
+			entireWorkspace: false,
+			categoryIds: ["synthetic"],
+		},
+	]);
+	expect(guards).toBe(2);
+	for (const prefix of ["/api", "/api/v1"]) {
+		for (const resource of ["whoami", "workspaces"]) {
+			expect(
+				(
+					await app.handle(
+						request(`${prefix}/${resource}`, { cookie: "session=owner" }),
+					)
+				).status,
+			).toBe(401);
+			const denied = await app.handle(
+				request(`${prefix}/${resource}`, {
+					authorization: "Bearer scoped",
+					origin: "https://foreign.invalid",
+				}),
+			);
+			expect(denied.status).toBe(403);
+			expect(denied.headers.get("access-control-allow-origin")).toBeNull();
+			const allowed = await app.handle(
+				request(`${prefix}/${resource}`, {
+					authorization: "Bearer scoped",
+					origin: "https://allowed.invalid",
+				}),
+			);
+			expect(allowed.status).toBe(200);
+			expect(allowed.headers.get("access-control-allow-origin")).toBe(
+				"https://allowed.invalid",
+			);
+		}
+	}
+	expect(
+		(
+			await app.handle(
+				request("/api/whoami", { authorization: "Bearer scoped" }, "POST"),
+			)
+		).status,
+	).toBe(404);
+	expect(forwarded).toHaveLength(0);
 });

@@ -575,6 +575,28 @@ describe("live category-scoped public surfaces", () => {
 			apiKey: ids.personalApiKey,
 			retries: 1,
 		});
+		const personalIdentity = await personal.whoami();
+		expect(personalIdentity.principalType).toBe("workspace");
+		expect(personalIdentity.categoryId).toBeNull();
+		expect(personalIdentity.permissions).toContain("read");
+		const personalWorkspaces = await personal.listWorkspaces();
+		expect(personalWorkspaces).toEqual([
+			{
+				id: null,
+				name: "Personal",
+				slug: null,
+				entireWorkspace: true,
+				categoryIds: [],
+			},
+		]);
+		const versioned = new DocsClient({
+			baseUrl,
+			apiPrefix: "/api/v1",
+			apiKey: ids.personalApiKey,
+			retries: 1,
+		});
+		expect(await versioned.whoami()).toEqual(personalIdentity);
+		expect(await versioned.listWorkspaces()).toEqual(personalWorkspaces);
 		const personalVisible = await personal.suggest(personalVisibleTitle);
 		const personalDeleted = await personal.suggest(personalDeletedTitle);
 		expect(personalVisible.map(({ id }) => id)).toContain(ids.docPersonalVisible);

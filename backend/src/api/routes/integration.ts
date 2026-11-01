@@ -119,9 +119,15 @@ export function createIntegrationRoutes(options: IntegrationRouteOptions) {
 				),
 			);
 		const url = new URL(request.url);
-		if (url.pathname === "/api/v1/whoami" && request.method === "GET")
+		if (
+			["/api/v1/whoami", "/api/whoami"].includes(url.pathname) &&
+			request.method === "GET"
+		)
 			return finish(Response.json(identity));
-		if (url.pathname === "/api/v1/workspaces" && request.method === "GET")
+		if (
+			["/api/v1/workspaces", "/api/workspaces"].includes(url.pathname) &&
+			request.method === "GET"
+		)
 			return finish(
 				Response.json([
 					{
@@ -159,6 +165,10 @@ export function createIntegrationRoutes(options: IntegrationRouteOptions) {
 		.onStop(async () => mcp.close())
 		.all("/mcp", ({ request }) => mcp.fetch(request))
 		.all("/mcp/", ({ request }) => mcp.fetch(request))
+		.get("/api/whoami", ({ request }) => rest(request))
+		.options("/api/whoami", ({ request }) => rest(request))
+		.get("/api/workspaces", ({ request }) => rest(request))
+		.options("/api/workspaces", ({ request }) => rest(request))
 		.all("/api/v1/*", ({ request }) => rest(request));
 }
 function unauthorized(): Response {
