@@ -1,0 +1,10 @@
+{
+  "upstreamPackage": "deepmerge",
+  "upstreamVersion": "4.3.1",
+  "npmIntegrity": "sha512-3sUqbMEc77XqpdNO7FRyRog+eW3ph+GYCbj+rK+uYyRMuwsVy0rMiVtPn+QJlKFvWP/1PYpapqYn0Me2knFn+A==",
+  "upstreamGitHead": "5b87756a5671635679001cbac72aa42f23472c81",
+  "entrypoint": "dist/cjs.js",
+  "advisory": "GHSA-gcqx-w48m-w2h4",
+  "localVersion": "4.3.2-docsmint.1",
+  "patch": "All three mergeObject output writes define own enumerable, writable, configurable data properties. Existing cloning and merge guards are retained."
+}

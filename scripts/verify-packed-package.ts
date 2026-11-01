@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { cp, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
@@ -52,7 +53,19 @@ async function run(
 
 // Validate with the actual publisher before Bun packaging/consumer checks.
 // npm rejects conflicting direct/peer override specs even when Bun accepts them.
-await run(['npm', 'publish', '--dry-run', '--ignore-scripts', '--access', 'public', '--json'], stage);
+// npm also checks version availability during a dry run. Use a throwaway
+// prerelease identity for that check, then restore the exact release manifest
+// before packing. No package is published and all other metadata stays intact.
+const stageManifest = join(stage, 'package.json');
+await writeFile(stageManifest, `${JSON.stringify({
+  ...manifest,
+  version: `${manifest.version}-packcheck.r${randomUUID().replaceAll('-', '')}`,
+}, null, 2)}\n`);
+try {
+  await run(['npm', 'publish', '--dry-run', '--ignore-scripts', '--access', 'public', '--tag', 'packcheck', '--json'], stage);
+} finally {
+  await writeFile(stageManifest, `${JSON.stringify(manifest, null, 2)}\n`);
+}
 
 const packed = await run(
   ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', tarballs, '--quiet'],
@@ -64,6 +77,10 @@ const tarball = isAbsolute(tarballName) ? tarballName : join(tarballs, tarballNa
 const listing = (await run(['tar', '-tzf', tarball], root)).stdout.split('\n').filter(Boolean);
 await run(['tar', '-xzf', tarball, '-C', extracted], root);
 const packageRoot = join(extracted, 'package');
+const packedManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as { name: string; version: string };
+if (packedManifest.name !== manifest.name || packedManifest.version !== manifest.version) {
+  throw new Error('Packed package identity differs from the exact public release manifest');
+}
 
 const frontendSubpaths = [
   'app-shell',
