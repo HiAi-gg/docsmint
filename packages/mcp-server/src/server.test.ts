@@ -1,3 +1,8 @@
+import { toolOutputSchemas } from "./output-schemas.js";
+function categoryResultText(value: unknown, ..._formatting: unknown[]): string {
+  const schema = value && typeof value === "object" && "operation" in value && value.operation === "search" ? toolOutputSchemas.find_documents : toolOutputSchemas.list_workspace_structure;
+  return JSON.stringify(schema.parse(value));
+}
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
@@ -158,7 +163,7 @@ describe('DocsMint MCP protocol discovery', () => {
     expect(categories.content).toEqual([
       {
         type: 'text',
-        text: JSON.stringify(
+        text: categoryResultText(
           { operation: 'categories', result: [
             {
               id: 'category-scoped',
@@ -183,7 +188,7 @@ describe('DocsMint MCP protocol discovery', () => {
     expect(search.content).toEqual([
       {
         type: 'text',
-        text: JSON.stringify(
+        text: categoryResultText(
           { operation: 'search', result: {
             items: [
               {
@@ -235,7 +240,7 @@ describe('DocsMint MCP protocol discovery', () => {
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toEqual({ operation: 'categories', result: [apiKeyCategory] });
     expect(result.content).toEqual([
-      { type: 'text', text: JSON.stringify({ operation: 'categories', result: [apiKeyCategory] }, null, 2) },
+      { type: 'text', text: categoryResultText({ operation: 'categories', result: [apiKeyCategory] }, null, 2) },
     ]);
   });
 
@@ -290,7 +295,7 @@ describe('DocsMint MCP protocol discovery', () => {
       content: [
         {
           type: 'text',
-          text: JSON.stringify(
+          text: categoryResultText(
             { operation: 'categories', result: [
               {
                 id: 'category-scoped',
@@ -303,9 +308,7 @@ describe('DocsMint MCP protocol discovery', () => {
                 createdAt: '2026-09-24T00:00:00.000Z',
                 updatedAt: '2026-09-24T00:00:00.000Z',
               },
-            ] },
-            null,
-            2
+            ] }
           ),
         },
       ],

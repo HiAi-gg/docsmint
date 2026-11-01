@@ -2,6 +2,7 @@ export type { DocsClientConfig } from "./client.js";
 export {
 	DocsApiError,
 	DocsClient,
+	normalizeDocsSearchResult,
 	DocsNetworkError,
 	DocsTimeoutError,
 	isDocsApiError,

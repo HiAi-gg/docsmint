@@ -39,7 +39,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		].join(" "),
 	);
 	expect(root["test:unit"]).toBe(
-		"bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --filter '*' test:unit",
+		"bun run build:sdk && bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --sequential --filter '*' test:unit",
 	);
 	expect(root["test:contract"]).toBe("bun run --filter '*' test:contract");
 	expect(root.typecheck).toBe(
@@ -57,6 +57,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		[
 			"bun run --filter '@hiai-docs/db' test:integration &&",
 			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
+			"backend/src/__tests__/document-list-query-postgres.integration.test.ts",
 			"backend/src/__tests__/better-auth-account-postgres.integration.test.ts",
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
 			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",

@@ -21,6 +21,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     "lifecycle operation persistence integration",
     "re-embed delete parent-row lock integration",
     "embedding context migration integration",
+    "document list filters execute with inherited categories and scoped totals on PostgreSQL" ,
     "Better Auth account compatibility integration",
     "Better Auth registers and signs in the same PostgreSQL account",
     "recursive folder category resolution executes on PostgreSQL",
@@ -44,7 +45,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     expect(workflow).toContain(suite);
   }
   expect(workflow).toContain(
-    "Required integration behavior cases: 29; skipped: 0",
+    "Required integration behavior cases: 30; skipped: 0",
   );
 });
 
@@ -97,7 +98,7 @@ test("tagged web publication receives the validated canonical PWA identity", asy
   const validator = await Bun.file(
     new URL("../../../scripts/release-version-validator.ts", import.meta.url),
   ).text();
-  const canonicalDeploymentId = "docsmint-oss-2.0.4";
+  const canonicalDeploymentId = "docsmint-oss-2.1.0";
 
   expect(vite).toContain(canonicalDeploymentId);
   expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);

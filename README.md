@@ -84,7 +84,17 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 2.0.4?
+## What's new in 2.1.0?
+
+- Add stateless Bearer HTTP MCP for self-hosted installations, including the public web-origin proxy and configurable Origin/CORS policy.
+- Keep the 22-tool catalog and generate schemas, annotations and branch examples from real MCP discovery.
+- Return redacted argument diagnostics as JSON-RPC errors without replacing upstream dispatch; keep compatible compact text and structured results.
+- Add server-side document filters, stable cursor pagination, scoped totals, previews, metadata-rich export and normalized search fields.
+- Add credential/workspace discovery and an explicit SDK API prefix while retaining existing routes, fields and methods.
+
+[2.1.0 release notes](docs/release/v2.1.0-notes.md).
+
+## Previous release: 2.0.4
 
 Hosted MCP integrations can discover granted workspaces, including empty spaces, with
 `list_workspace_structure(kind="workspaces")` and select one with the optional
@@ -282,6 +292,60 @@ Use a global key only for trusted owner-wide automation. See the
 [complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md) for Bun, npm, local
 checkout, all tools, prompts, resources, permissions, and REST mappings.
 
+### Self-hosted HTTP
+
+The same 22-tool contract is also available at `/mcp` on your installation's
+**public web origin**. With the default Compose ports, that is
+`http://localhost:50701/mcp`; with Caddy, use your normal application domain,
+such as `https://docs.example.com/mcp`. The web server streams requests to the
+backend using its trusted `API_URL` setting (`http://api:50700` in Compose).
+Do not point `API_URL` back at the public web server.
+
+Create a global or category-scoped key in **Settings → API**, then supply it
+as an environment variable to your MCP client:
+
+```bash
+codex mcp add docsmint-selfhost \
+  --url https://docs.example.com/mcp \
+  --bearer-token-env-var HIAI_DOCS_API_KEY
+```
+
+Self-hosted HTTP uses `Authorization: Bearer <key>`; it does not implement
+DocsMint Cloud OAuth or accept a browser session as an API credential. Category
+keys keep their existing category and independent read/edit/write restrictions.
+An ordinary OSS installation has a personal space rather than Cloud workspace
+slugs: omit `X-Docsmint-Workspace` on these requests.
+
+Configure the public application URL and the exact browser origins you trust:
+
+```dotenv
+PUBLIC_APP_URL=https://docs.example.com
+CORS_ORIGINS=https://docs.example.com,https://trusted-client.example.com
+MCP_HTTP_ENABLED=true
+```
+
+`PUBLIC_APP_URL` is used for trusted absolute document links; leaving it unset
+keeps OSS document links relative. `CORS_ORIGINS` applies to the HTTP integration
+endpoints. An allowed browser origin receives CORS headers, an unknown Origin
+is rejected, and authenticated server clients may omit Origin. Do not use a
+wildcard for credentialed browser access. Compose passes these settings to the
+API container; restart the application through your normal deployment workflow
+after changing them.
+
+The HTTP transport is stateless and does not issue `Mcp-Session-Id`. Send MCP
+JSON-RPC through POST; accepted notifications return 202. GET and DELETE return
+405 because this endpoint provides neither a standalone SSE listener nor
+server-side sessions. Clients must accept JSON and SSE responses: the installed
+MCP SDK can use SSE for legacy protocol requests even when modern JSON mode is
+configured. `/mcp/` is normalized internally without redirecting the POST or
+dropping its Bearer header. The proxy preserves response status, authentication
+challenges, CORS headers and streaming bodies, and does not forward browser
+cookies or server workspace assertions as authority.
+
+Set `MCP_HTTP_ENABLED=false` to disable this HTTP endpoint independently. The
+existing REST API and stdio bridge remain available; existing stdio client
+configuration does not need to change.
+
 ## TypeScript SDK
 
 ```bash
@@ -343,7 +407,7 @@ backend/           Elysia REST API, search, workers, and authentication
 packages/db/       Drizzle schema and migrations
 packages/sdk/      Typed API client
 packages/cli/      Terminal client
-packages/mcp-server/  MCP stdio server
+packages/mcp-server/  MCP stdio and HTTP contract
 postgres/          PostgreSQL image with vector and graph extensions
 ```
 

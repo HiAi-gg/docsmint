@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 - 2026-11-01
+
+- Add scoped, stateless HTTP MCP and public web-origin proxy alongside stdio.
+- Generate the MCP documentation catalog from actual discovery and compact equivalent schemas.
+- Add redacted JSON-RPC argument diagnostics while retaining upstream authorization and protocol checks.
+- Add server-side document filtering, stable cursors, accurate totals, previews and effective-category metadata.
+- Add canonical search aliases, metadata-rich markdown export, credential discovery and explicit SDK API prefixes.
+- Keep legacy routes, result envelopes and OAuth boundaries; detailed diagnostics are opt-in.
+
 ## 2.0.4 - 2026-10-26
 
 - Restore focus to the replacement mobile navigation trigger after the drawer closes.

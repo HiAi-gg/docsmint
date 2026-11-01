@@ -142,6 +142,8 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:${API_PORT:-50700}}
       # Custom host WEB_PORT mappings require an explicit CORS_ORIGINS value.
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
+      MCP_HTTP_ENABLED: ${MCP_HTTP_ENABLED:-true}
       TRUSTED_ORIGINS: ${TRUSTED_ORIGINS:-}
       # OpenRouter is the public default; override these three values for
       # Ollama or another OpenAI-compatible embedding service.
@@ -270,7 +272,7 @@ services:
       network: host
       args:
         PUBLIC_APP_ID: ${PUBLIC_APP_ID:-docsmint}
-        PUBLIC_DEPLOYMENT_ID: ${PUBLIC_DEPLOYMENT_ID:-docsmint-oss-2.0.4}
+        PUBLIC_DEPLOYMENT_ID: ${PUBLIC_DEPLOYMENT_ID:-docsmint-oss-2.1.0}
     restart: unless-stopped
     ports:
       # WEB_PORT selects only the published host port. The container contract

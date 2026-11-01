@@ -51,6 +51,7 @@ import { config } from "../../lib/config";
 import {
 	canAccessContent,
 	effectiveDocumentCategoryCondition,
+	effectiveDocumentCategoryValue,
 	isAuthorizedCategory,
 	resolveContentAccess,
 	resolveFolderEffectiveCategory,
@@ -69,7 +70,19 @@ import {
 	documentCreateIdempotencyKey,
 	documentCreateWorkspaceIdentity,
 } from "../../lib/document-create-idempotency";
+import {
+	documentListConditions,
+	documentListFingerprint,
+	documentListOrder,
+	documentListQueryFields,
+	documentListQuerySchema,
+	validateDocumentListQuery,
+} from "../../lib/document-list-query";
 import { acquireDocumentPipelineLock } from "../../lib/document-pipeline-serialization";
+import {
+	documentLocation,
+	withDocumentPreview,
+} from "../../lib/document-presentation";
 import { DocxParseError, docxToMarkdown } from "../../lib/docx-parser";
 import {
 	encodeS3CopySource,
@@ -149,26 +162,37 @@ const updateDocumentSchema = z.object({
 	expectedUpdatedAt: z.string().datetime({ offset: true }).optional(),
 });
 
-const listQuerySchema = z.object({
-	folderId: z.string().uuid().optional(),
-	tag: z.string().uuid().optional(),
-	page: z.coerce.number().int().min(1).default(1),
-	limit: z.coerce.number().int().min(1).max(1000).default(20),
-});
+const listQuerySchema = documentListQuerySchema;
 
-const cursorListQuerySchema = z.object({
-	categoryId: z.string().uuid().optional(),
-	cursor: z.string().min(1).optional(),
-	limit: z.coerce.number().int().min(1).max(100).default(50),
-	sortBy: z.enum(["title", "category", "folder", "updated"]).default("updated"),
-	sortOrder: z.enum(["asc", "desc"]).default("desc"),
-});
+const cursorListQuerySchema = z
+	.object({
+		...documentListQueryFields,
+		cursor: z.string().min(1).optional(),
+		limit: z.coerce.number().int().min(1).max(100).default(50),
+		sortBy: z
+			.enum([
+				"title",
+				"category",
+				"folder",
+				"updated",
+				"updatedAt",
+				"createdAt",
+			])
+			.default("updated"),
+	})
+	.superRefine(validateDocumentListQuery);
 
 const documentIdParamsSchema = z.object({ id: z.string().uuid() });
 
 type DocumentCursorV2 = Readonly<{
 	v: 2;
-	sortBy: "title" | "category" | "folder" | "updated";
+	sortBy:
+		| "title"
+		| "category"
+		| "folder"
+		| "updated"
+		| "updatedAt"
+		| "createdAt";
 	sortOrder: "asc" | "desc";
 	value: string | null;
 	id: string;
@@ -197,9 +221,14 @@ function decodeDocumentCursor(
 	const candidate = cursor as Record<string, unknown>;
 	if (
 		candidate.v !== 2 ||
-		!["title", "category", "folder", "updated"].includes(
-			String(candidate.sortBy),
-		) ||
+		![
+			"title",
+			"category",
+			"folder",
+			"updated",
+			"updatedAt",
+			"createdAt",
+		].includes(String(candidate.sortBy)) ||
 		!["asc", "desc"].includes(String(candidate.sortOrder)) ||
 		(candidate.value !== null && typeof candidate.value !== "string") ||
 		typeof candidate.id !== "string" ||
@@ -386,19 +415,36 @@ async function withTags<T extends { id: string }>(
  * bounded queries instead of issuing one lookup per result.
  */
 async function withDocumentLocationNames<
-	T extends { folderId: string | null; categoryId: string | null },
+	T extends {
+		folderId: string | null;
+		categoryId: string | null;
+		effectiveCategoryId?: string | null;
+	},
 >(
 	ctx: import("../../api/middleware/tenant").TenantContext,
 	rows: T[],
 ): Promise<
-	Array<T & { folderName: string | null; categoryName: string | null }>
+	Array<
+		T & {
+			folderName: string | null;
+			categoryName: string | null;
+			effectiveCategoryId: string | null;
+			effectiveCategoryName: string | null;
+		}
+	>
 > {
 	if (rows.length === 0) return [];
 	const folderIds = [
 		...new Set(rows.flatMap((row) => (row.folderId ? [row.folderId] : []))),
 	];
 	const categoryIds = [
-		...new Set(rows.flatMap((row) => (row.categoryId ? [row.categoryId] : []))),
+		...new Set(
+			rows.flatMap((row) =>
+				[row.categoryId, row.effectiveCategoryId].filter((id): id is string =>
+					Boolean(id),
+				),
+			),
+		),
 	];
 	const [folderRows, categoryRows] = await withTenant(ctx, async (tx) =>
 		Promise.all([
@@ -425,6 +471,10 @@ async function withDocumentLocationNames<
 	return rows.map((row) => ({
 		...row,
 		folderName: row.folderId ? (folderNames.get(row.folderId) ?? null) : null,
+		effectiveCategoryId: row.effectiveCategoryId ?? row.categoryId,
+		effectiveCategoryName:
+			categoryNames.get(row.effectiveCategoryId ?? row.categoryId ?? "") ??
+			null,
 		categoryName: row.categoryId
 			? (categoryNames.get(row.categoryId) ?? null)
 			: null,
@@ -464,14 +514,14 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 		const { folderId, tag, page, limit } = parsed.data;
 		const offset = (page - 1) * limit;
-		const cacheKey = `${docListKey(userId, folderId, tag, page, limit, ctx.workspaceId)}:scope:${access.categoryId ?? "all"}:response:v2`;
+		const cacheKey = `${docListKey(userId, folderId, tag, page, limit, ctx.workspaceId)}:scope:${access.categoryId ?? "all"}:response:v3:${documentListFingerprint(parsed.data, { principal: access.principal, categoryId: access.categoryId, permissions: [...access.permissions].sort(), restricted: access.restricted, externalRole: access.externalRole, role: ctx.role, source: ctx.source })}`;
 		try {
-			return await cacheGetOrSet(cacheKey, 30, async () => {
+			const result = await cacheGetOrSet(cacheKey, 30, async () => {
 				const conditions = [
 					tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 					isNull(documents.deletedAt),
 				];
-				if (access.restricted) {
+				if (access.restricted)
 					conditions.push(
 						access.categoryId
 							? effectiveDocumentCategoryCondition(
@@ -482,57 +532,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								)
 							: sql`false`,
 					);
-				}
-				if (folderId) conditions.push(eq(documents.folderId, folderId));
-
-				if (tag) {
-					const [countResult, rows] = await withTenant(ctx, async (tx) => {
-						return Promise.all([
-							tx
-								.select({ total: count() })
-								.from(documents)
-								.innerJoin(
-									documentTags,
-									eq(documents.id, documentTags.documentId),
-								)
-								.where(and(eq(documentTags.tagId, tag), ...conditions)),
-							tx
-								.select({
-									id: documents.id,
-									title: documents.title,
-									content: sql<string>`LEFT(${documents.content}, 200)`.as(
-										"content",
-									),
-									folderId: documents.folderId,
-									categoryId: documents.categoryId,
-									visibility: documents.visibility,
-									createdAt: documents.createdAt,
-									updatedAt: documents.updatedAt,
-								})
-								.from(documents)
-								.innerJoin(
-									documentTags,
-									eq(documents.id, documentTags.documentId),
-								)
-								.where(and(eq(documentTags.tagId, tag), ...conditions))
-								.orderBy(desc(documents.updatedAt))
-								.limit(limit)
-								.offset(offset),
-						]);
-					});
-					return {
-						items: await withDocumentLocationNames(
-							ctx,
-							await withTags(ctx, rows),
-						),
-						total: countResult[0]?.total ?? 0,
-						page,
-						limit,
-					};
-				}
-
-				const [countResult, rows] = await withTenant(ctx, async (tx) => {
-					return Promise.all([
+				conditions.push(...documentListConditions(ctx, parsed.data));
+				const [countResult, rows] = await withTenant(ctx, (tx) =>
+					Promise.all([
 						tx
 							.select({ total: count() })
 							.from(documents)
@@ -546,17 +548,22 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 								),
 								folderId: documents.folderId,
 								categoryId: documents.categoryId,
+								effectiveCategoryId: effectiveDocumentCategoryValue(
+									documents.categoryId,
+									documents.folderId,
+									ctx,
+								).as("effective_category_id"),
 								visibility: documents.visibility,
 								createdAt: documents.createdAt,
 								updatedAt: documents.updatedAt,
 							})
 							.from(documents)
 							.where(and(...conditions))
-							.orderBy(desc(documents.updatedAt))
+							.orderBy(...documentListOrder(parsed.data))
 							.limit(limit)
 							.offset(offset),
-					]);
-				});
+					]),
+				);
 				return {
 					items: await withDocumentLocationNames(
 						ctx,
@@ -567,6 +574,12 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					limit,
 				};
 			});
+			return {
+				...result,
+				items: result.items.map((row) =>
+					withDocumentPreview(row, ctx.workspaceId, config.PUBLIC_APP_URL),
+				),
+			};
 		} catch (err) {
 			logger.error({ err }, "Failed to list documents");
 			set.status = 500;
@@ -600,6 +613,34 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		const effectiveCategoryId = access.restricted
 			? (access.categoryId ?? categoryId)
 			: categoryId;
+		const filters = documentListQuerySchema.parse({
+			...parsed.data,
+			sortBy:
+				sortBy === "title" || sortBy === "createdAt" ? sortBy : "updatedAt",
+		});
+		const filterScope =
+			filters.folderId ||
+			filters.rootOnly ||
+			filters.tag ||
+			filters.tagIds ||
+			filters.q ||
+			filters.updatedFrom ||
+			filters.updatedTo ||
+			filters.visibility
+				? {
+						filters: {
+							folderId: filters.folderId,
+							rootOnly: filters.rootOnly,
+							tag: filters.tag,
+							tagIds: filters.tagIds,
+							tagMatch: filters.tagMatch,
+							q: filters.q,
+							updatedFrom: filters.updatedFrom,
+							updatedTo: filters.updatedTo,
+							visibility: filters.visibility,
+						},
+					}
+				: {};
 		const scopeHash = cursorScopeHash(
 			JSON.stringify({
 				workspaceId: ctx.workspaceId ?? null,
@@ -607,6 +648,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				categoryId: effectiveCategoryId ?? null,
 				sortBy,
 				sortOrder,
+				...filterScope,
 			}),
 		);
 		let cursor: DocumentCursorV2 | undefined;
@@ -627,7 +669,9 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					? sql<string | null>`lower(${categories.name})`
 					: sortBy === "folder"
 						? sql<string | null>`lower(${folders.name})`
-						: sql<Date>`${documents.updatedAt}`;
+						: sortBy === "createdAt"
+							? sql<Date>`${documents.createdAt}`
+							: sql<Date>`${documents.updatedAt}`;
 		const conditions = [
 			tenantOwnerCondition(documents.ownerId, documents.workspaceId, ctx),
 			isNull(documents.deletedAt),
@@ -642,20 +686,29 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					]
 				: []),
 		];
+		conditions.push(...documentListConditions(ctx, filters));
+		const filteredConditions = [...conditions];
 		if (cursor) {
 			const idAfter =
 				sortOrder === "asc"
 					? gt(documents.id, cursor.id)
 					: lt(documents.id, cursor.id);
-			if (sortBy === "updated" && cursor.value) {
+			if (
+				(sortBy === "updated" ||
+					sortBy === "updatedAt" ||
+					sortBy === "createdAt") &&
+				cursor.value
+			) {
+				const dateColumn =
+					sortBy === "createdAt" ? documents.createdAt : documents.updatedAt;
 				const cursorDate = new Date(cursor.value);
 				const valueAfter =
 					sortOrder === "asc"
-						? gt(documents.updatedAt, cursorDate)
-						: lt(documents.updatedAt, cursorDate);
+						? gt(dateColumn, cursorDate)
+						: lt(dateColumn, cursorDate);
 				const cursorCondition = or(
 					valueAfter,
-					and(eq(documents.updatedAt, cursorDate), idAfter),
+					and(eq(dateColumn, cursorDate), idAfter),
 				);
 				if (cursorCondition) conditions.push(cursorCondition);
 			} else if (cursor.value === null) {
@@ -675,30 +728,43 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 		}
 		try {
-			const rows = await withTenant(ctx, (tx) =>
-				tx
-					.select({
-						id: documents.id,
-						title: documents.title,
-						content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
-						folderId: documents.folderId,
-						folderName: folders.name,
-						categoryId: documents.categoryId,
-						categoryName: categories.name,
-						createdAt: documents.createdAt,
-						updatedAt: documents.updatedAt,
-					})
-					.from(documents)
-					.leftJoin(folders, eq(folders.id, documents.folderId))
-					.leftJoin(categories, eq(categories.id, documents.categoryId))
-					.where(and(...conditions))
-					.orderBy(
-						sortOrder === "asc"
-							? sql`${sortValue} asc nulls last`
-							: sql`${sortValue} desc nulls last`,
-						sortOrder === "asc" ? asc(documents.id) : desc(documents.id),
-					)
-					.limit(limit + 1),
+			const [countResult, rows] = await withTenant(ctx, (tx) =>
+				Promise.all([
+					tx
+						.select({ total: count() })
+						.from(documents)
+						.where(and(...filteredConditions)),
+					tx
+						.select({
+							id: documents.id,
+							title: documents.title,
+							content: sql<string>`LEFT(${documents.content}, 200)`.as(
+								"content",
+							),
+							folderId: documents.folderId,
+							folderName: folders.name,
+							categoryId: documents.categoryId,
+							effectiveCategoryId: effectiveDocumentCategoryValue(
+								documents.categoryId,
+								documents.folderId,
+								ctx,
+							).as("effective_category_id"),
+							categoryName: categories.name,
+							createdAt: documents.createdAt,
+							updatedAt: documents.updatedAt,
+						})
+						.from(documents)
+						.leftJoin(folders, eq(folders.id, documents.folderId))
+						.leftJoin(categories, eq(categories.id, documents.categoryId))
+						.where(and(...conditions))
+						.orderBy(
+							sortOrder === "asc"
+								? sql`${sortValue} asc nulls last`
+								: sql`${sortValue} desc nulls last`,
+							sortOrder === "asc" ? asc(documents.id) : desc(documents.id),
+						)
+						.limit(limit + 1),
+				]),
 			);
 			const hasMore = rows.length > limit;
 			const page = rows.slice(0, limit);
@@ -710,10 +776,17 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						? (last.categoryName?.toLocaleLowerCase() ?? null)
 						: sortBy === "folder"
 							? (last.folderName?.toLocaleLowerCase() ?? null)
-							: new Date(last.updatedAt).toISOString()
+							: new Date(
+									sortBy === "createdAt" ? last.createdAt : last.updatedAt,
+								).toISOString()
 				: null;
 			return {
-				items: await withTags(ctx, page),
+				total: countResult[0]?.total ?? 0,
+				items: (
+					await withDocumentLocationNames(ctx, await withTags(ctx, page))
+				).map((row) =>
+					withDocumentPreview(row, ctx.workspaceId, config.PUBLIC_APP_URL),
+				),
 				nextCursor:
 					hasMore && last
 						? encodeDocumentCursor({
@@ -1853,7 +1926,16 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				},
 			);
 			set.status = response.status as 200 | 404;
-			return response.body;
+			return response.status === 200
+				? {
+						...response.body,
+						...documentLocation(
+							params.id,
+							ctx.workspaceId,
+							config.PUBLIC_APP_URL,
+						),
+					}
+				: response.body;
 		} catch (err) {
 			logger.error({ err }, "Failed to get document");
 			set.status = 500;
@@ -3022,7 +3104,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 		}
 	})
 
-	.get("/documents/:id/export", async ({ params, set, request }) => {
+	.get("/documents/:id/export", async ({ params, query, set, request }) => {
 		const access = await resolveContentAccess(request);
 		const ctx = access.ctx;
 		if (ctx.role === "none") {
@@ -3033,6 +3115,13 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			set.status = 403;
 			return { error: "Forbidden" };
 		}
+		const format = z
+			.object({ format: z.literal("json").optional() })
+			.safeParse(query);
+		if (!format.success) {
+			set.status = 400;
+			return { error: "Invalid export format" };
+		}
 		const _userId = ctx.userId;
 		try {
 			const doc = await withTenant(ctx, async (tx) => {
@@ -3041,6 +3130,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						id: documents.id,
 						title: documents.title,
 						content: documents.content,
+						updatedAt: documents.updatedAt,
 					})
 					.from(documents)
 					.where(
@@ -3074,6 +3164,15 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				return { error: "Document not found" };
 			}
 			const filename = `${doc.title.replace(/[^a-zA-Z0-9-_]/g, "_")}.md`;
+			if (format.data.format === "json")
+				return {
+					id: doc.id,
+					title: doc.title,
+					updatedAt: doc.updatedAt,
+					markdown: doc.content ?? "",
+					filename,
+					...documentLocation(doc.id, ctx.workspaceId, config.PUBLIC_APP_URL),
+				};
 			set.headers = {
 				"Content-Type": "text/markdown; charset=utf-8",
 				"Content-Disposition": `attachment; filename="${filename}"`,

@@ -56,6 +56,8 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface DocsClientConfig {
+	/** Explicit API prefix. Existing clients keep /api; no endpoint probing is performed. */
+	apiPrefix?: "/api" | "/api/v1";
 	/** Base URL of the DocsMint API, e.g. `http://localhost:50700`. */
 	baseUrl: string;
 	/** Bearer token used as `Authorization: Bearer <apiKey>`. */
@@ -73,6 +75,7 @@ export interface DocsClientConfig {
 }
 
 type ResolvedConfig = {
+	apiPrefix: "/api" | "/api/v1";
 	baseUrl: string;
 	apiKey?: string;
 	requestContext?: DocsRequestContext;
@@ -176,11 +179,15 @@ export class DocsClient {
 	private readonly config: ResolvedConfig;
 
 	constructor(config: DocsClientConfig) {
-		if (!config.baseUrl) {
+		if (config.apiPrefix !== undefined && config.apiPrefix !== "/api" && config.apiPrefix !== "/api/v1") {
+      throw new Error("DocsClient: apiPrefix must be /api or /api/v1");
+    }
+    if (!config.baseUrl) {
 			throw new Error("DocsClient: `baseUrl` is required");
 		}
 		this.config = {
 			baseUrl: config.baseUrl.replace(/\/+$/, ""),
+			apiPrefix: config.apiPrefix ?? "/api",
 			apiKey: config.apiKey,
 			requestContext: this.snapshotContext(config.requestContext),
 			fetch: config.fetch ?? fetch,
@@ -269,12 +276,7 @@ export class DocsClient {
 	}
 
 	async listDocs(
-		options?: {
-			folderId?: string;
-			tag?: string;
-			page?: number;
-			limit?: number;
-		},
+		options?: import("./types.js").DocsListOptions,
 		context?: DocsRequestContext,
 	): Promise<DocsDocumentListResponse> {
 		return this.request<DocsDocumentListResponse>(
@@ -283,6 +285,16 @@ export class DocsClient {
 			{
 				query: this.cleanQuery({
 					folderId: options?.folderId,
+                    categoryId: options?.categoryId,
+                    visibility: options?.visibility,
+                    rootOnly: options?.rootOnly,
+                    tagIds: options?.tagIds?.join(","),
+                    tagMatch: options?.tagMatch,
+                    q: options?.q,
+                    updatedFrom: options?.updatedFrom,
+                    updatedTo: options?.updatedTo,
+                    sortBy: options?.sortBy,
+                    sortOrder: options?.sortOrder,
 					tag: options?.tag,
 					page: options?.page,
 					limit: options?.limit,
@@ -297,7 +309,7 @@ export class DocsClient {
 	 * bound by the server to the authenticated workspace and category scope.
 	 */
 	async listDocuments(
-		options: {
+		options: Omit<import("./types.js").DocsListOptions, "page" | "sortBy"> & {
 			categoryId?: string;
 			cursor?: string;
 			limit?: number;
@@ -312,6 +324,15 @@ export class DocsClient {
 			{
 				query: this.cleanQuery({
 					categoryId: options.categoryId,
+                    folderId: options.folderId,
+                    rootOnly: options.rootOnly,
+                    tag: options.tag,
+                    tagIds: options.tagIds?.join(","),
+                    tagMatch: options.tagMatch,
+                    visibility: options.visibility,
+                    q: options.q,
+                    updatedFrom: options.updatedFrom,
+                    updatedTo: options.updatedTo,
 					cursor: options.cursor,
 					limit: options.limit,
 					sortBy: options.sortBy,
@@ -422,6 +443,15 @@ export class DocsClient {
 	 * Convenience alias for `getDocMarkdown` — both go through the same
 	 * `/api/documents/:id/export` endpoint on the backend.
 	 */
+  /** Read portable markdown and authorized document metadata in one request. */
+  async exportDocWithMetadata(id: string, context?: DocsRequestContext): Promise<import("./types.js").DocsDocumentExport> {
+    const response = await this.fetchRaw("GET", `/api/documents/${encodeURIComponent(id)}/export`, {query:{format:"json"}}, context);
+    if (!response.ok) throw await this.toApiError(response);
+    if (response.headers.get("content-type")?.includes("json")) return response.json();
+    // Older servers return portable markdown even when an unknown format is supplied.
+    return { markdown: await response.text() };
+  }
+
 	async exportDoc(id: string, context?: DocsRequestContext): Promise<string> {
 		return this.getDocMarkdown(id, context);
 	}
@@ -697,6 +727,15 @@ export class DocsClient {
 		);
 	}
 
+  /** Inspect credentials without reading a document or selecting a workspace. */
+  async whoami(context?: DocsRequestContext): Promise<import("./types.js").DocsIdentity> {
+    return this.request("GET", "/api/whoami", undefined, context);
+  }
+
+  async listWorkspaces(context?: DocsRequestContext): Promise<import("./types.js").DocsWorkspaceDescriptor[]> {
+    return this.request("GET", "/api/workspaces", undefined, context);
+  }
+
 	// ── Search ───────────────────────────────────────────────────────────
 
 	async search(
@@ -722,6 +761,7 @@ export class DocsClient {
 					graphHops: options?.graphHops,
 					graphBoost: options?.graphBoost,
 					includeChunks: options?.includeChunks,
+					includeDiagnostics: options?.includeDiagnostics,
 				}),
 			},
 			context,
@@ -1224,7 +1264,8 @@ export class DocsClient {
 		path: string,
 		query?: Record<string, string | number | boolean | undefined>,
 	): string {
-		let url = `${this.config.baseUrl}${path}`;
+		const resolvedPath = path.startsWith("/api/") ? `${this.config.apiPrefix}${path.slice(4)}` : path;
+		let url = `${this.config.baseUrl}${resolvedPath}`;
 		if (query && Object.keys(query).length > 0) {
 			const params = new URLSearchParams();
 			for (const [key, value] of Object.entries(query)) {
@@ -1403,4 +1444,17 @@ export class DocsClient {
 		// Unreachable — covered by the union — but TS strict requires it.
 		throw new Error("DocsClient.uploadAttachment: unsupported file type");
 	}
+}
+
+/** Canonical camelCase view without removing legacy wire aliases. */
+export function normalizeDocsSearchResult(result: import("./types.js").DocsSearchResult) {
+  return {
+    ...result,
+    folderId: result.folderId === undefined ? result.folder_id : result.folderId,
+    folderName: result.folderName === undefined ? result.folder_name : result.folderName,
+    categoryId: result.effectiveCategoryId ?? result.categoryId ?? null,
+    categoryName: result.effectiveCategoryName ?? result.categoryName ?? null,
+    createdAt: result.createdAt ?? result.created_at,
+    updatedAt: result.updatedAt ?? result.updated_at,
+  };
 }

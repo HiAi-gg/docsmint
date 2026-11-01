@@ -18,6 +18,12 @@ export type Category = DocsCategory;
 
 /** Stable MCP wrapper around the SDK's raw-Markdown export response. */
 export interface ExportResponse {
+  id?: string;
+  title?: string;
+  updatedAt?: string;
+  workspaceId?: string | null;
+  workspaceSlug?: string | null;
+  url?: string | null;
   markdown: string;
   filename?: string;
 }

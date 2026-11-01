@@ -40,7 +40,6 @@ beforeAll(async () => {
 	app = built.app;
 });
 
-
 beforeEach(() => {
 	resetState();
 });
@@ -242,6 +241,48 @@ describe("GET /api/documents", () => {
 	});
 });
 
+describe("document integration metadata and filter validation", () => {
+	it("returns preview and navigable links without changing raw export", async () => {
+		const doc = seedDocument({ content: "x".repeat(201) });
+		const listed = await authedGet("/api/documents");
+		expect(listed.status).toBe(200);
+		const item = (listed.body as any).items[0];
+		expect(item.preview).toBe("x".repeat(200));
+		expect(item.content).toBe(item.preview);
+		expect(item.url).toEndWith(`/docs/${doc.id}`);
+		expect(item.workspaceId).toBeNull();
+		const detail = await authedGet(`/api/documents/${doc.id}`);
+		expect((detail.body as any).url).toBe(item.url);
+		expect((detail.body as any).content).toBe(doc.content);
+		const exported = await authedGet(
+			`/api/documents/${doc.id}/export?format=json`,
+		);
+		expect(exported.status).toBe(200);
+		expect(exported.body).toMatchObject({
+			id: doc.id,
+			title: doc.title,
+			markdown: doc.content,
+			url: item.url,
+		});
+		expect((exported.body as any).updatedAt).toBeDefined();
+		const raw = await authedGet(`/api/documents/${doc.id}/export`);
+		expect(raw.status).toBe(200);
+		expect(raw.body).toBe(doc.content);
+	});
+	it("rejects conflicting or malformed list filters before returning data", async () => {
+		for (const query of [
+			"rootOnly=true&folderId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			"tag=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&tagIds=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+			"updatedFrom=2026-01-01",
+			"tagMatch=invalid",
+			"rootOnly=invalid",
+		]) {
+			const response = await authedGet(`/api/documents?${query}`);
+			expect(response.status).toBe(400);
+		}
+	});
+});
+
 describe("GET /api/documents/cursor", () => {
 	it("enforces the bounded limit contract and rejects malformed cursors", async () => {
 		const invalidLimit = await authedGet("/api/documents/cursor?limit=101");
@@ -331,6 +372,21 @@ describe("GET /api/documents/cursor", () => {
 			"Cursor does not match this listing scope",
 		);
 	});
+});
+
+describe("extended cursor filters", () => {
+  it("reports a global total and refuses to reuse a cursor with changed filters", async () => {
+    for (const id of ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"]) seedDocument({ id });
+    const first = await authedGet("/api/documents/cursor?limit=1&rootOnly=true");
+    expect(first.status).toBe(200);
+    expect((first.body as any).total).toBe(2);
+    const cursor = (first.body as any).nextCursor;
+    expect(cursor).toBeString();
+    const changed = await authedGet(`/api/documents/cursor?limit=1&rootOnly=false&cursor=${encodeURIComponent(cursor)}`);
+    expect(changed.status).toBe(400);
+    const conflicting = await authedGet("/api/documents/cursor?rootOnly=true&folderId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(conflicting.status).toBe(400);
+  });
 });
 
 describe("GET /api/documents/:id", () => {

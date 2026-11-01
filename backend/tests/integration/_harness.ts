@@ -487,6 +487,15 @@ function executeSelect(ctx: SelectCtx): any[] {
 	state.calls.push({ kind: "select", table: tableName });
 	let rows = getRows(ctx.from);
 	if (ctx.where) rows = rows.filter((r) => evaluateCondition(r, ctx.where));
+  // COUNT(*) without GROUP BY is one aggregate row over the filtered set,
+  // including the empty set; it is not a per-document tag count.
+  const fields = ctx.fields && typeof ctx.fields === "object" ? Object.entries(ctx.fields) : [];
+  if (!ctx.groupBy?.length && fields.length > 0 && fields.every(([, value]) => (value as any)?.[TAG_COUNT])) {
+    return [Object.fromEntries(fields.map(([key, value]) => {
+      const column = (value as any).col;
+      return [key, column ? rows.filter(row => row[getColumnName(column)] != null).length : rows.length];
+    }))];
+  }
 	if (ctx.orderBy.length > 0) {
 		rows = [...rows].sort((a, b) => {
 			for (const ordering of ctx.orderBy) {

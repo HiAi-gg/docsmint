@@ -1,4 +1,5 @@
-import { McpServer } from '@modelcontextprotocol/server';
+import type { McpServer } from '@modelcontextprotocol/server';
+import { DocsMintMcpServer } from './argument-diagnostics.js';
 import { z } from 'zod';
 import { isDocsApiError, type DocsClient, type DocsRequestContext } from '@hiai-docs/sdk';
 
@@ -27,7 +28,8 @@ function wrapHandler<Args>(
   name: string,
   handler: (args: Args) => Promise<unknown>,
   outputSchema?: z.ZodType,
-  workspaceRouting?: McpWorkspaceRouting
+  workspaceRouting?: McpWorkspaceRouting,
+  decorateResult?: (tool: string, output: unknown) => unknown | Promise<unknown>
 ): (args: Args) => Promise<McpToolResult> {
   return async (args) => {
     try {
@@ -44,12 +46,14 @@ function wrapHandler<Args>(
       } else {
         output = await handler(data as Args);
       }
+      if (decorateResult) output = await decorateResult(name, output);
       const parsedOutput = outputSchema ? await outputSchema.safeParseAsync(output) : undefined;
       if (parsedOutput && !parsedOutput.success) {
         throw new Error(`Tool '${name}' returned a result outside its published output schema`);
       }
+      const result = parsedOutput?.success ? parsedOutput.data : output;
       return {
-        content: [{ type: 'text', text: JSON.stringify(output, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify(result) }],
         ...(parsedOutput?.success ? { structuredContent: parsedOutput.data } : {}),
       };
     } catch (error) {
@@ -78,14 +82,16 @@ function wrapHandler<Args>(
   };
 }
 
-export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiDocsClient, workspaceRouting?: McpWorkspaceRouting): void {
-  const wrap: typeof wrapHandler = (name, handler, outputSchema) => wrapHandler(name, handler, outputSchema, workspaceRouting);
+export function registerDocsmintMcpCapabilities(server: McpServer, client: HiaiDocsClient, workspaceRouting?: McpWorkspaceRouting, decorateResult?: (tool: string, output: unknown) => unknown | Promise<unknown>): void {
+  const wrap: typeof wrapHandler = (name, handler, outputSchema) => wrapHandler(name, handler, outputSchema, workspaceRouting, decorateResult);
   registerCompactCapabilities(server, client, wrap);
   registerPromptsAndResources(server, client);
 }
 
 export interface CreateDocsmintMcpServerOptions {
-  docsClient?: DocsClient;
+  docsClient?: Omit<DocsClient, "withRequestContext">;
+  /** Trusted host-only presentation hook, applied before output schema validation. */
+  decorateResult?: (tool: string, output: unknown) => unknown | Promise<unknown>;
   requestContext?: DocsRequestContext;
   workspaceRouting?: McpWorkspaceRouting;
   /** @deprecated Inject a legacy capability client only for compatibility. */
@@ -93,10 +99,13 @@ export interface CreateDocsmintMcpServerOptions {
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new McpServer({ name: 'docsmint', version: '2.0.4' });
+  const server = new DocsMintMcpServer({ name: 'docsmint', version: '2.1.0' });
   const client = options.docsClient
     ? createMcpDocsClient(options.docsClient, options.requestContext)
     : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);
-  registerDocsmintMcpCapabilities(server, client, options.workspaceRouting);
+  registerDocsmintMcpCapabilities(server, client, options.workspaceRouting, options.decorateResult);
   return server;
 }
+
+export { generateDocsmintMcpCatalog, type DocsMintMcpDocumentationCatalog } from './catalog.js';
+export { createDocsmintMcpHttpHandler, type DocsmintMcpHttpOptions } from './http.js';

@@ -1,3 +1,2 @@
-// Typecheck-only neighbor for mcp-server.d.ts. The package build copies only
-// mcp-server.d.ts into dist, where this relative import resolves to dist/index.d.ts.
+// Workspace-only type bridge. Published mcp-server.d.ts resolves the generated dist/index.d.ts instead.
 export * from "../src/index.js";

@@ -5,7 +5,10 @@ import { Elysia } from "elysia";
 import { authMiddleware } from "./api/middleware/auth";
 import { csrfMiddleware } from "./api/middleware/csrf";
 import { healthRateLimiter } from "./api/middleware/rate-limit";
-import { selfHostedApiRoutes } from "./api/register-routes";
+import {
+	createSelfHostedIntegrationRoutes,
+	selfHostedApiRoutes,
+} from "./api/register-routes";
 import { createHealthRoutes } from "./api/routes/health";
 import { translateAccountPurgeFencedError } from "./lib/account-purge-fence";
 import { ensureApiKeyOwner } from "./lib/api-key-owner";
@@ -14,6 +17,10 @@ import { config } from "./lib/config";
 import { client } from "./lib/db";
 import { drainLegacyEmbeddingQueue } from "./lib/embedding-queue";
 import { DocsmintWorkspaceContextError } from "./lib/external-tenant-context";
+import {
+	integrationAllowedOrigins,
+	rejectIntegrationOrigin,
+} from "./lib/integration-origin";
 import { logger } from "./lib/logger";
 import { redis } from "./lib/redis";
 import { startMetadataReembedOutboxRecovery } from "./lib/reembed";
@@ -157,7 +164,7 @@ const swaggerConfig = {
 		},
 		info: {
 			title: "DocsMint API",
-			version: "2.0.4",
+			version: "2.1.0",
 			description:
 				"Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
 			contact: { name: "HiAi-gg", url: "https://github.com/HiAi-gg/docsmint" },
@@ -191,8 +198,13 @@ const swaggerConfig = {
 	},
 };
 
+const integrationOrigins = integrationAllowedOrigins(config);
+
 const app = new Elysia()
 	.use(bodySizeLimit)
+	.onRequest(({ request }) =>
+		rejectIntegrationOrigin(request, integrationOrigins),
+	)
 	.onError(({ error, set }) => {
 		const purgeFence = translateAccountPurgeFencedError(error, set);
 		if (purgeFence) return purgeFence;
@@ -259,6 +271,13 @@ const app = new Elysia()
 	.use(csrfMiddleware)
 	.use(authMiddleware)
 	.use(selfHostedApiRoutes);
+
+// Mount integration transports only after the canonical application exists.
+// Both REST aliases and MCP's SDK requests re-enter this full middleware chain.
+async function dispatchIntegrationApi(request: Request): Promise<Response> {
+	return app.handle(request);
+}
+app.use(createSelfHostedIntegrationRoutes(dispatchIntegrationApi));
 
 app.listen({
 	port: config.API_PORT,
