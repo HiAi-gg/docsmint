@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { createDocsmintMcpHttpHandler } from "../../../../packages/mcp-server/src/http";
 import { createDocsmintMcpServer } from "../../../../packages/mcp-server/src/server";
 import { OPTIONS, POST, trailingSlash } from "../../routes/mcp/+server";
@@ -197,7 +197,12 @@ test("SvelteKit public route exports pass POST and OPTIONS through without a red
 			},
 		});
 	}) as unknown as typeof globalThis.fetch;
-	const rawFetch = spyOn(globalThis, "fetch").mockImplementation(fetch);
+	const originalFetch = Object.getOwnPropertyDescriptor(globalThis, "fetch");
+	Object.defineProperty(globalThis, "fetch", {
+		configurable: true,
+		writable: true,
+		value: fetch,
+	});
 	try {
 		for (const [method, handler, status] of [
 			["POST", POST, 401],
@@ -220,7 +225,8 @@ test("SvelteKit public route exports pass POST and OPTIONS through without a red
 		expect(calls).toBe(2);
 		expect(eventFetchCalls).toBe(0);
 	} finally {
-		rawFetch.mockRestore();
+		if (originalFetch)
+			Object.defineProperty(globalThis, "fetch", originalFetch);
 	}
 });
 
