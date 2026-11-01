@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { createDocsmintMcpHttpHandler } from "../../../../packages/mcp-server/src/http";
 import { createDocsmintMcpServer } from "../../../../packages/mcp-server/src/server";
 import { OPTIONS, POST, trailingSlash } from "../../routes/mcp/+server";
@@ -182,6 +182,7 @@ test("public web ingress reaches the real HTTP MCP transport with unchanged auth
 test("SvelteKit public route exports pass POST and OPTIONS through without a redirect", async () => {
 	expect(trailingSlash).toBe("ignore");
 	let calls = 0;
+	let eventFetchCalls = 0;
 	const fetch = (async (_url: unknown, init?: RequestInit) => {
 		calls++;
 		expect(
@@ -196,22 +197,31 @@ test("SvelteKit public route exports pass POST and OPTIONS through without a red
 			},
 		});
 	}) as unknown as typeof globalThis.fetch;
-	for (const [method, handler, status] of [
-		["POST", POST, 401],
-		["OPTIONS", OPTIONS, 204],
-	] as const) {
-		const response = await handler({
-			request: new Request("https://docs.example.invalid/mcp/", {
-				method,
-				headers: { authorization: "Bearer synthetic" },
-			}),
-			fetch,
-		} as never);
-		expect(response.status).toBe(status);
-		expect(response.headers.get("location")).toBeNull();
-		expect(response.headers.get("WWW-Authenticate")).toBe("Bearer");
+	const rawFetch = spyOn(globalThis, "fetch").mockImplementation(fetch);
+	try {
+		for (const [method, handler, status] of [
+			["POST", POST, 401],
+			["OPTIONS", OPTIONS, 204],
+		] as const) {
+			const response = await handler({
+				request: new Request("https://docs.example.invalid/mcp/", {
+					method,
+					headers: { authorization: "Bearer synthetic" },
+				}),
+				fetch: async () => {
+					eventFetchCalls++;
+					throw new Error("event.fetch must not inject MCP Origin");
+				},
+			} as never);
+			expect(response.status).toBe(status);
+			expect(response.headers.get("location")).toBeNull();
+			expect(response.headers.get("WWW-Authenticate")).toBe("Bearer");
+		}
+		expect(calls).toBe(2);
+		expect(eventFetchCalls).toBe(0);
+	} finally {
+		rawFetch.mockRestore();
 	}
-	expect(calls).toBe(2);
 });
 
 test("public MCP proxy propagates abort signals and sanitizes upstream failures", async () => {

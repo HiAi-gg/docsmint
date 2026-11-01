@@ -977,7 +977,18 @@ describe("live category-scoped public surfaces", () => {
 			]),
 		);
 
-		const search = await docs.search(lexicalNeedle, { graph: true, limit: 20 });
+		const defaultSearch = await docs.search(lexicalNeedle, { graph: true, limit: 20 });
+		expect(defaultSearch.diagnostics).toBeUndefined();
+		const search = await docs.search(lexicalNeedle, {
+			graph: true,
+			limit: 20,
+			includeDiagnostics: true,
+		});
+		expect(defaultSearch.items.map(({ id }) => id)).toEqual(
+			search.items.map(({ id }) => id),
+		);
+		expect(defaultSearch.total).toBe(search.total);
+		expect(JSON.stringify(defaultSearch).length).toBeLessThan(JSON.stringify(search).length);
 		expect(search.items.map(({ id }) => id)).toContain(ids.docDirectA);
 		expect(search.items.map(({ id }) => id)).not.toContain(ids.docOther);
 		expect(search.items.map(({ id }) => id)).not.toContain(ids.docForeign);
