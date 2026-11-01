@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -15,7 +15,7 @@
     "./dist/backend-account-runtime-cleanup.js": false
   },
   "license": "Apache-2.0",
-  "description": "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge that uses your API key. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.",
+  "description": "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge and scoped HTTP transport. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"

@@ -82,7 +82,7 @@ describe('MCP management operations', () => {
         : legacyName === 'add_tag_to_document' || legacyName === 'remove_tag_from_document'
           ? { documentId: '../escape', tagId }
           : { ...args, id: '../escape' };
-      expect((await client.callTool({ name, arguments: invalid })).isError).toBe(true);
+      await expect(client.callTool({ name, arguments: invalid })).rejects.toMatchObject({ code: -32602, data: { tool: name } });
       expect(calls).toBe(0);
     });
   }

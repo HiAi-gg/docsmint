@@ -101,14 +101,12 @@ describe('bounded MCP batch and workspace inspection', () => {
     let called = false;
     const session = await connected({ deleteDocument: async () => { called = true; } } as unknown as HiaiDocsClient);
     try {
-      const duplicate = await session.client.callTool({ name: 'batch_documents', arguments: {
+      await expect(session.client.callTool({ name: 'batch_documents', arguments: {
         action: 'trash', documentIds: [first, first],
-      } });
-      const oversized = await session.client.callTool({ name: 'batch_documents', arguments: {
+      } })).rejects.toMatchObject({ code: -32602, data: { tool: 'batch_documents' } });
+      await expect(session.client.callTool({ name: 'batch_documents', arguments: {
         action: 'trash', documentIds: Array.from({ length: 26 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`),
-      } });
-      expect(duplicate.isError).toBe(true);
-      expect(oversized.isError).toBe(true);
+      } })).rejects.toMatchObject({ code: -32602, data: { tool: 'batch_documents' } });
       expect(called).toBe(false);
     } finally { await session.close(); }
   });

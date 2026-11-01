@@ -191,6 +191,10 @@ export function releaseGateSteps(tag: string): ReleaseGateStep[] {
 			name: "commit-bound Docker lifecycle evidence",
 			command: ["bun", "run", "release:check:docker-smoke"],
 		},
+        {
+            name: "public HTTP MCP ingress",
+            command: ["bun", "run", "scripts/verify-http-mcp-ingress.ts"],
+        },
 		{
 			name: "Host adoption rehearsal",
 			command: ["bun", "run", "scripts/rehearse-host-0.7-adoption.ts"],

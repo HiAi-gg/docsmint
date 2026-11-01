@@ -206,6 +206,7 @@ jobs:
             "lifecycle operation persistence integration" \
             "re-embed delete parent-row lock integration" \
             "embedding context migration integration" \
+            "document list filters execute with inherited categories and scoped totals on PostgreSQL" \
             "Better Auth account compatibility integration" \
             "Better Auth registers and signs in the same PostgreSQL account" \
             "recursive folder category resolution executes on PostgreSQL" \
@@ -231,7 +232,7 @@ jobs:
             echo "Required integration suite reported skipped coverage"
             exit 1
           fi
-          echo "Required integration behavior cases: 29; skipped: 0"
+          echo "Required integration behavior cases: 30; skipped: 0"
 
       - name: Stop Postgres
         if: always()
@@ -376,6 +377,7 @@ jobs:
           bun run release:check:docker-smoke
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
           curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
+          bun run scripts/verify-http-mcp-ingress.ts
 
       - name: Upload commit-bound Docker smoke evidence
         if: always()
@@ -561,7 +563,7 @@ jobs:
 
   browser-e2e:
     name: Agent Browser Lightpanda Desktop and Mobile
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.head_ref, 'release/')
     runs-on: ubuntu-latest
     env:
       DB_PASSWORD: ci-browser-database-password
@@ -607,6 +609,7 @@ jobs:
           bun run release:check:docker-smoke
           curl --fail --silent --show-error http://127.0.0.1:50700/api/health
           curl --fail --silent --show-error http://127.0.0.1:50701/login >/dev/null
+          bun run scripts/verify-http-mcp-ingress.ts
       - run: bun run release:check:browser
       - name: Upload commit-bound Docker smoke evidence
         if: always()
@@ -706,7 +709,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-2.0.4
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-2.1.0
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "2.0.4",
+  "version": "2.1.0",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
     "packages/*"
   ],
   "license": "Apache-2.0",
-  "description": "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge that uses your API key. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.",
+  "description": "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge and scoped HTTP transport. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.",
   "repository": {
     "type": "git",
     "url": "https://github.com/HiAi-gg/docsmint"
@@ -246,12 +246,12 @@
     "build": "docker compose build",
     "lint": "bun run --filter '*' lint",
     "typecheck": "bun run typecheck:scripts && bun run --filter '*' typecheck",
-    "typecheck:scripts": "bunx tsc --ignoreConfig --noEmit --strict --skipLibCheck --allowImportingTsExtensions --typeRoots packages/mcp-server/node_modules/@types --types bun --target ESNext --module ESNext --moduleResolution Bundler scripts/assert-public-export-artifacts.ts scripts/release-browser-e2e.ts scripts/release-clean-state.ts scripts/release-docker-smoke.ts scripts/release-gate.ts scripts/release-workflow-contract.ts scripts/secret-scan.ts scripts/sync-dockerhub-description.ts scripts/validate-mcp-catalog.ts scripts/verify-published-package.ts scripts/write-release-gate-result.ts scripts/deepmerge-security.test.ts",
+    "typecheck:scripts": "bunx tsc --ignoreConfig --noEmit --strict --skipLibCheck --allowImportingTsExtensions --typeRoots packages/mcp-server/node_modules/@types --types bun --target ESNext --module ESNext --moduleResolution Bundler scripts/assert-public-export-artifacts.ts scripts/release-browser-e2e.ts scripts/release-clean-state.ts scripts/release-docker-smoke.ts scripts/release-gate.ts scripts/release-workflow-contract.ts scripts/secret-scan.ts scripts/sync-dockerhub-description.ts scripts/validate-mcp-catalog.ts scripts/verify-published-package.ts scripts/write-release-gate-result.ts scripts/deepmerge-security.test.ts scripts/verify-http-mcp-ingress.ts",
     "test": "bun run test:unit && bun run test:contract",
-    "test:unit": "bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --filter '*' test:unit",
+    "test:unit": "bun run build:sdk && bun test --path-ignore-patterns='*node_modules*' scripts/*.test.ts && bun run --sequential --filter '*' test:unit",
     "test:contract": "bun run --filter '*' test:contract",
     "test:contract:scoped-live": "bun run --filter '@hiai-docs/mcp-server' test:contract:scoped-live",
-    "test:integration": "bun run --filter '@hiai-docs/db' test:integration && bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/better-auth-account-postgres.integration.test.ts backend/src/__tests__/content-access-postgres.integration.test.ts backend/src/__tests__/metadata-impact-postgres.integration.test.ts backend/src/__tests__/graph-routes.test.ts backend/src/__tests__/graph-search-query.test.ts packages/db/scripts/query-observer.integration.test.ts && DATABASE_URL=\"${DATABASE_URL:-${CONTENT_ACCESS_TEST_DATABASE_URL:-}}\" bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/storage-lifecycle-concurrency-postgres.integration.test.ts",
+    "test:integration": "bun run --filter '@hiai-docs/db' test:integration && bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/document-list-query-postgres.integration.test.ts backend/src/__tests__/better-auth-account-postgres.integration.test.ts backend/src/__tests__/content-access-postgres.integration.test.ts backend/src/__tests__/metadata-impact-postgres.integration.test.ts backend/src/__tests__/graph-routes.test.ts backend/src/__tests__/graph-search-query.test.ts packages/db/scripts/query-observer.integration.test.ts && DATABASE_URL=\"${DATABASE_URL:-${CONTENT_ACCESS_TEST_DATABASE_URL:-}}\" bun --no-env-file test --path-ignore-patterns='*node_modules*' backend/src/__tests__/storage-lifecycle-concurrency-postgres.integration.test.ts",
     "start": "docker compose up -d",
     "stop": "docker compose down",
     "build:sdk": "cd packages/sdk && bun run build",
@@ -321,5 +321,8 @@
     "pino": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.3.0"
   }
 }

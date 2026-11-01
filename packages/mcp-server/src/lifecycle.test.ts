@@ -69,8 +69,7 @@ describe('MCP lifecycle contract', () => {
     test(`${name} rejects malformed IDs before any REST mutation`, async () => {
       let calls = 0;
       const client = await connect((async () => { calls++; return Response.json({}); }) as unknown as typeof fetch);
-      const result = await client.callTool({ name, arguments: name === 'restore_document_version' ? {documentId:id,versionId:'../escape'} : {id:'../escape'} });
-      expect(result.isError).toBe(true);
+      await expect(client.callTool({ name, arguments: name === 'restore_document_version' ? {documentId:id,versionId:'../escape'} : {id:'../escape'} })).rejects.toMatchObject({ code: -32602, data: { tool: name } });
       expect(calls).toBe(0);
     });
   }

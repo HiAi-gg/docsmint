@@ -19,6 +19,9 @@
  * `metadata` fields.
  */
 export interface DocsDocument {
+	workspaceId?: string | null;
+	workspaceSlug?: string | null;
+	url?: string | null;
 	id: string;
 	ownerId: string;
 	folderId: string | null;
@@ -60,6 +63,12 @@ export interface DocsDocumentUpdateInput {
  * `metadata` are not included.
  */
 export interface DocsDocumentListItem {
+	effectiveCategoryId?: string | null;
+	effectiveCategoryName?: string | null;
+	preview?: string;
+	workspaceId?: string | null;
+	workspaceSlug?: string | null;
+	url?: string | null;
 	id: string;
 	title: string;
 	content: string;
@@ -81,11 +90,12 @@ export interface DocsDocumentListResponse {
 
 /** Opaque, scope-bound cursor returned by the bounded document listing API. */
 export interface DocsDocumentCursorPage {
+	total?: number;
 	items: DocsDocumentListItem[];
 	nextCursor: string | null;
 }
 
-export type DocsDocumentSortField = "title" | "category" | "folder" | "updated";
+export type DocsDocumentSortField = "title" | "category" | "folder" | "updated" | "updatedAt" | "createdAt";
 export type DocsSortOrder = "asc" | "desc";
 
 // ---------------------------------------------------------------------------
@@ -195,6 +205,17 @@ export interface DocsTrashResponse {
  * consumers don't need to remap.
  */
 export interface DocsSearchResult {
+	effectiveCategoryId?: string | null;
+	effectiveCategoryName?: string | null;
+	folderId?: string | null;
+	folderName?: string | null;
+	categoryId?: string | null;
+	categoryName?: string | null;
+	createdAt?: string;
+	updatedAt?: string;
+	workspaceId?: string | null;
+	workspaceSlug?: string | null;
+	url?: string | null;
 	id: string;
 	title: string;
 	snippet: string;
@@ -241,6 +262,7 @@ export interface DocsSearchOptions {
 	graphHops?: number;
 	graphBoost?: number;
 	includeChunks?: boolean;
+	includeDiagnostics?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -566,4 +588,50 @@ export interface DocsRequestContext {
 	timeoutMs?: number;
 	/** Idempotency key forwarded as the standard Idempotency-Key header. */
 	idempotencyKey?: string;
+}
+
+/** Additive page-based list filters. All filters are applied server-side. */
+export interface DocsListOptions {
+  visibility?: "private" | "shared" | "public";
+  folderId?: string;
+  categoryId?: string;
+  rootOnly?: boolean;
+  tag?: string;
+  tagIds?: string[];
+  tagMatch?: "all" | "any";
+  q?: string;
+  updatedFrom?: string;
+  updatedTo?: string;
+  sortBy?: "updatedAt" | "createdAt" | "title";
+  sortOrder?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+export interface DocsWorkspaceDescriptor {
+  id: string | null;
+  name: string;
+  slug: string | null;
+  entireWorkspace: boolean;
+  categoryIds: string[];
+}
+
+export interface DocsIdentity {
+  principalType: "account" | "workspace" | "category";
+  scopes: string[];
+  permissions: Array<"read" | "edit" | "write">;
+  workspace: { id: string | null; slug: string | null } | null;
+  categoryId: string | null;
+  plan: string | null;
+}
+
+export interface DocsDocumentExport {
+ id?: string;
+ title?: string;
+ updatedAt?: string;
+ markdown: string;
+ filename?: string;
+ workspaceId?: string | null;
+ workspaceSlug?: string | null;
+ url?: string | null;
 }

@@ -46,11 +46,11 @@ export interface HiaiDocsClient {
 	deleteFolder?(id: string): Promise<void>;
 	deleteCategory?(id: string): Promise<void>;
 	restoreDocumentVersion?(documentId: string, versionId: string): Promise<unknown>;
-	search(params: { query: string; folder?: string; tags?: string[]; limit?: number }): Promise<unknown>;
+	search(params: { query: string; folder?: string; tags?: string[]; limit?: number; includeChunks?: boolean; includeDiagnostics?: boolean }): Promise<unknown>;
 	getDocument(id: string): Promise<unknown>;
 	createDocument(input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	updateDocument(id: string, input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
-	listDocuments(params: { folderId?: string; tag?: string; page?: number; limit?: number }): Promise<unknown>;
+	listDocuments(params: import("@hiai-docs/sdk").DocsListOptions): Promise<unknown>;
 	listFolders(params: { parentId?: string }): Promise<unknown>;
 	createFolder(input: { name: string; parentId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	listCategories(): Promise<unknown>;
@@ -85,7 +85,7 @@ export function sanitizeMcpRequestContext(
 
 /** Bind a single public client and request context to every MCP capability. */
 export function createMcpDocsClient(
-	docsClient: DocsClient,
+	docsClient: Omit<DocsClient, "withRequestContext">,
 	requestContext?: DocsRequestContext,
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
@@ -110,6 +110,8 @@ export function createMcpDocsClient(
 				folder: params.folder,
 				tags: params.tags?.join(","),
 				limit: params.limit,
+                includeChunks: params.includeChunks,
+                includeDiagnostics: params.includeDiagnostics,
 			}, context),
 		getDocument: (id) => docsClient.getDoc(id, context),
 		createDocument: (input) =>
@@ -143,7 +145,7 @@ export function createMcpDocsClient(
 			docsClient.createSnapshot(documentId, input, context),
 		getVersionHistory: (documentId, onlySnapshots) =>
 			docsClient.listVersions(documentId, { onlySnapshots }, context),
-		exportDocument: async (id) => ({ markdown: await docsClient.exportDoc(id, context) }),
+		exportDocument: (id) => docsClient.exportDocWithMetadata(id, context),
 	};
 }
 

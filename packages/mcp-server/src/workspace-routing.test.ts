@@ -70,8 +70,7 @@ test('scoped results validate nested data and keep empty workspaces and per-scop
 test('rejects invalid selectors before reaching any operation and filters workspace discovery', async () => {
  const s = await connected(routing);
  try {
-  const invalid = await s.client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'workspaces', workspaceId: 'not-a-uuid' } });
-  expect(invalid.isError).toBe(true);
+  await expect(s.client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'workspaces', workspaceId: 'not-a-uuid' } })).rejects.toMatchObject({ code: -32602, data: { tool: 'list_workspace_structure' } });
   const selected = await s.client.callTool({ name: 'list_workspace_structure', arguments: { kind: 'workspaces', workspaceId: emptyWorkspace.id } });
   expect(selected.structuredContent).toEqual({ operation: 'workspaces', result: [emptyWorkspace] });
  } finally { await s.close(); }

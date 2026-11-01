@@ -76,6 +76,7 @@ test("canonical release gate coordinates static, live, package, Docker, and brow
 		"container port contract",
 		"fresh Docker rebuild",
 		"commit-bound Docker lifecycle evidence",
+		"public HTTP MCP ingress",
 		"Host adoption rehearsal",
 		"required PostgreSQL integrations",
 		"required live public surfaces",

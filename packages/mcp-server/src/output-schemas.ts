@@ -180,6 +180,12 @@ const folderSchema: z.ZodType<DocsFolder> = z.looseObject({
 });
 
 const exportedDocumentSchema = z.looseObject({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  updatedAt: z.string().optional(),
+  workspaceId: z.string().nullable().optional(),
+  workspaceSlug: z.string().nullable().optional(),
+  url: z.string().nullable().optional(),
   markdown: z.string(),
   filename: z.string().optional(),
 });

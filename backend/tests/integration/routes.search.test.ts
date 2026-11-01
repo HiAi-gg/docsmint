@@ -462,13 +462,36 @@ describe("GET /api/search — automatic GraphRAG contract", () => {
 		);
 		const res = await request(
 			injected,
-			"/api/search?q=English&page=2&limit=1&sort=name_asc&folder=folder-1&tags=alpha,beta",
+			"/api/search?q=English&page=2&limit=1&sort=name_asc&folder=folder-1&tags=alpha,beta&includeDiagnostics=true",
 			{
 				method: "GET",
 				headers: ownerHeaders(),
 			},
 		);
 		expect(res.status).toBe(200);
+		const receivedDiagnosticRequest = received;
+		const compact = await request(
+			injected,
+			"/api/search?q=English&includeDiagnostics=false",
+			{ method: "GET", headers: ownerHeaders() },
+		);
+		expect(compact.status).toBe(200);
+		expect((compact.body as any).diagnostics).toBeUndefined();
+		expect((compact.body as any).items[0].explanations).toBeUndefined();
+		expect((compact.body as any).items[0].folderId).toBe(
+			(compact.body as any).items[0].folder_id,
+		);
+		expect((compact.body as any).items[0].updatedAt).toBe(
+			(compact.body as any).items[0].updated_at,
+		);
+		expect((compact.body as any).items[0].url).toEndWith("/docs/explained-doc");
+		const malformed = await request(
+			injected,
+			"/api/search?q=English&includeDiagnostics=invalid",
+			{ method: "GET", headers: ownerHeaders() },
+		);
+		expect(malformed.status).toBe(400);
+		received = receivedDiagnosticRequest;
 		expect((res.body as any).items[0].explanations).toEqual([
 			{ channel: "vector", label: "Semantic match" },
 			{ channel: "graph", label: "Related concept" },

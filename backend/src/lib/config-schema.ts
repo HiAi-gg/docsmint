@@ -206,6 +206,21 @@ export const envSchema = z
 		EMBEDDING_FALLBACK_2_BASE_URL: z.string().optional(),
 		EMBEDDING_FALLBACK_2_API_KEY: z.string().optional(),
 		EMBEDDING_FALLBACK_2_MODEL: z.string().optional(),
+		MCP_HTTP_ENABLED: z
+			.enum(["true", "false"])
+			.default("true")
+			.transform((value) => value === "true"),
+		PUBLIC_APP_URL: z.preprocess(
+			(value) => (value === "" ? undefined : value),
+			z
+				.string()
+				.url()
+				.refine(
+					(value) => ["http:", "https:"].includes(new URL(value).protocol),
+					"PUBLIC_APP_URL must use HTTP or HTTPS",
+				)
+				.optional(),
+		),
 		API_PORT: z.coerce.number().default(50700),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])

@@ -1,19 +1,27 @@
 import { documentTags, tags as tagsTable } from "@hiai-docs/db/schema";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import { getEmbedding } from "../../embedding";
 import type { EmbeddingResult } from "../../embedding/result";
 import { EMBEDDING_NORM_EPSILON } from "../../embedding/validation";
+import { config } from "../../lib/config";
 import {
 	type ContentAccess,
 	canAccessContent,
 	effectiveDocumentCategoryCondition,
+	effectiveDocumentCategoryValue,
 	resolveContentAccess,
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import {
+	documentLocation,
+	documentPreview,
+} from "../../lib/document-presentation";
 import { logger } from "../../lib/logger";
+import { publicSearchDiagnostics } from "../../lib/search-presentation";
 import { resolveShareDocumentScope } from "../../lib/share-access";
 import { withTenant } from "../../lib/with-tenant";
 import {
@@ -82,7 +90,18 @@ const searchQuerySchema = z.object({
 	 * document in the result items. Each chunk carries its character
 	 * offsets and a cosine-distance score against the query embedding.
 	 */
-	includeChunks: z.coerce.boolean().optional().default(false),
+	includeChunks: z
+		.preprocess(
+			(value) => (value === "true" ? true : value === "false" ? false : value),
+			z.boolean(),
+		)
+		.default(false),
+	includeDiagnostics: z
+		.preprocess(
+			(value) => (value === "true" ? true : value === "false" ? false : value),
+			z.boolean(),
+		)
+		.default(false),
 });
 
 const suggestQuerySchema = z.object({
@@ -94,11 +113,16 @@ type SearchResult = {
 	title: string;
 	snippet: string;
 	score: number;
+	preview?: string;
+	categoryId?: string | null;
+	categoryName?: string | null;
+	effectiveCategoryId?: string | null;
+	effectiveCategoryName?: string | null;
 	folder_id: string | null;
 	folder_name: string | null;
 	created_at: string;
 	updated_at: string;
-	explanations: SearchExplanation[];
+	explanations?: SearchExplanation[];
 	tags?: Array<{ id: string; name: string; color: string | null }>;
 	chunks?: Array<{
 		chunkIndex: number;
@@ -234,6 +258,7 @@ export function createSearchRoutes(
 					dateFrom,
 					dateTo,
 					includeChunks,
+					includeDiagnostics,
 				} = parsed.data;
 				const q = rawQ ?? "";
 				if (!q.trim()) return { items: [], total: 0, page, limit };
@@ -293,11 +318,39 @@ export function createSearchRoutes(
 						? (authorizedDomain.visibleTotal ?? authorizedDomain.total)
 						: rows.length);
 				return {
-					items: rows,
+					items: rows.map((row) => {
+						const { explanations, ...data } = row;
+						return {
+							...data,
+							folderId: row.folder_id,
+							folderName: row.folder_name,
+							categoryId: row.categoryId ?? null,
+							categoryName: row.categoryName ?? null,
+							effectiveCategoryId:
+								row.effectiveCategoryId ?? row.categoryId ?? null,
+							effectiveCategoryName:
+								row.effectiveCategoryName ?? row.categoryName ?? null,
+							preview: row.preview ?? documentPreview(row.snippet),
+							createdAt: row.created_at,
+							updatedAt: row.updated_at,
+							...documentLocation(
+								row.id,
+								searchCtx.workspaceId,
+								config.PUBLIC_APP_URL,
+							),
+							...(includeDiagnostics ? { explanations } : {}),
+						};
+					}),
 					total: visibleTotal,
 					page,
 					limit,
-					diagnostics: authorizedDomain.diagnostics,
+					...(includeDiagnostics
+						? {
+								diagnostics: publicSearchDiagnostics(
+									authorizedDomain.diagnostics,
+								),
+							}
+						: {}),
 				};
 			} catch (err) {
 				logger.error({ err }, "Search failed");
@@ -441,7 +494,10 @@ async function hydrateResults(
 		return [];
 	const ids = items.map((item) => item.documentId);
 	const visibleIds = [...new Set(candidateIds ?? ids)];
-	const { documents, folders } = await import("@hiai-docs/db/schema");
+	const { documents, folders, categories } = await import(
+		"@hiai-docs/db/schema"
+	);
+	const effectiveCategories = alias(categories, "search_effective_categories");
 	const rows = await withTenant(ctx, async (tx) =>
 		tx
 			.select({
@@ -450,6 +506,14 @@ async function hydrateResults(
 				content: documents.content,
 				folderId: documents.folderId,
 				folderName: folders.name,
+				categoryId: documents.categoryId,
+				effectiveCategoryId: effectiveDocumentCategoryValue(
+					documents.categoryId,
+					documents.folderId,
+					ctx,
+				).as("effective_category_id"),
+				effectiveCategoryName: effectiveCategories.name,
+				categoryName: categories.name,
 				createdAt: documents.createdAt,
 				updatedAt: documents.updatedAt,
 			})
@@ -459,6 +523,31 @@ async function hydrateResults(
 				and(
 					eq(folders.id, documents.folderId),
 					tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+				),
+			)
+			.leftJoin(
+				categories,
+				and(
+					eq(categories.id, documents.categoryId),
+					tenantOwnerCondition(categories.ownerId, categories.workspaceId, ctx),
+				),
+			)
+			.leftJoin(
+				effectiveCategories,
+				and(
+					eq(
+						effectiveCategories.id,
+						effectiveDocumentCategoryValue(
+							documents.categoryId,
+							documents.folderId,
+							ctx,
+						),
+					),
+					tenantOwnerCondition(
+						effectiveCategories.ownerId,
+						effectiveCategories.workspaceId,
+						ctx,
+					),
 				),
 			)
 			.where(
@@ -483,7 +572,12 @@ async function hydrateResults(
 			{
 				id: row.id,
 				title: row.title,
-				snippet: (row.content ?? "").slice(0, 200),
+				snippet: documentPreview(row.content),
+				preview: documentPreview(row.content),
+				categoryId: row.categoryId,
+				categoryName: row.categoryName,
+				effectiveCategoryId: row.effectiveCategoryId,
+				effectiveCategoryName: row.effectiveCategoryName,
 				score: item.score,
 				folder_id: row.folderId,
 				folder_name: row.folderName,

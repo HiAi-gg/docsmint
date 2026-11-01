@@ -98,6 +98,15 @@ export function effectiveFolderCategorySql(
 	return sql`${inheritedFolderCategorySql(sql.raw(`${folderAlias}.id`), ctx)} = ${categoryId}`;
 }
 
+/** Resolve the same tenant-scoped effective category used for authorization. */
+export function effectiveDocumentCategoryValue(
+	documentCategory: AnyColumn,
+	documentFolderId: AnyColumn,
+	ctx: TenantContext,
+): SQL<string | null> {
+	return sql`coalesce(${documentCategory}, ${inheritedFolderCategorySql(documentFolderId, ctx)})`;
+}
+
 /** Effective direct-or-inherited category predicate for Drizzle document queries. */
 export function effectiveDocumentCategoryCondition(
 	documentCategory: AnyColumn,

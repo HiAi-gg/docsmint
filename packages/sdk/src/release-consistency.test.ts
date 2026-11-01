@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const repositoryRoot = new URL("../../../", import.meta.url);
-const releaseVersion = "2.0.4";
+const releaseVersion = "2.1.0";
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), "utf8"));
 }
 
-test("all published and workspace release metadata reports 2.0.4", async () => {
+test("all published and workspace release metadata reports 2.1.0", async () => {
   for (const path of [
     "package.json",
     "package.public.json",
@@ -132,17 +132,17 @@ test("all published and workspace release metadata reports 2.0.4", async () => {
 
   expect(
     await readFile(new URL("frontend/vite.config.ts", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-2.0.4");
+  ).toContain("docsmint-oss-2.1.0");
   expect(
     await readFile(new URL("docker-compose.yml", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-2.0.4");
+  ).toContain("docsmint-oss-2.1.0");
 });
 
-test("workspace and public package metadata share the 2.0.4 product identity", async () => {
+test("workspace and public package metadata share the 2.1.0 product identity", async () => {
   const workspaceManifest = await json("package.json");
   const publicManifest = await json("package.public.json");
   const description =
-    "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge that uses your API key. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.";
+    "DocsMint SDK and CLI plus a self-hosted MCP stdio bridge and scoped HTTP transport. For DocsMint Cloud MCP, connect to https://docsmint.com/mcp.";
   const repository = {
     type: "git",
     url: "https://github.com/HiAi-gg/docsmint",

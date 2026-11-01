@@ -1,3 +1,4 @@
+import { captureMcpInputSchema } from './argument-diagnostics.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { isDocsApiError } from '@hiai-docs/sdk';
 import { z } from 'zod';
@@ -75,14 +76,14 @@ export function registerBatchAndWorkspaceCapabilities(server: McpServer, client:
 
   server.registerTool('batch_documents', {
     description: 'Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.',
-    inputSchema: withClientRoutingSchema(batchInput),
+    inputSchema: captureMcpInputSchema(server, 'batch_documents', withClientRoutingSchema(batchInput)),
     outputSchema: toolOutputSchemas.batch_documents,
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
   }, wrap('batch_documents', batch, toolOutputSchemas.batch_documents) as never);
 
   server.registerTool('get_workspace_item', {
     description: 'Read one visible folder, category, or tag by UUID. Folder uses its direct API getter; category and tag lookup uses the complete permission-filtered lists. An absent or out-of-scope ID is reported as not found. Use list_workspace_structure to discover IDs first.',
-    inputSchema: withClientRoutingSchema(z.strictObject({ kind: z.enum(['folder', 'category', 'tag']).describe('The workspace resource type to read by ID.'), id: uuid })),
+    inputSchema: captureMcpInputSchema(server, 'get_workspace_item', withClientRoutingSchema(z.strictObject({ kind: z.enum(['folder', 'category', 'tag']).describe('The workspace resource type to read by ID.'), id: uuid }))),
     outputSchema: toolOutputSchemas.get_workspace_item,
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   }, wrap('get_workspace_item', async ({ kind, id }: { kind: 'folder' | 'category' | 'tag'; id: string }) => {
