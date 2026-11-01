@@ -3,6 +3,7 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json bun.lock* ./
+COPY vendor/deepmerge ./vendor/deepmerge
 COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
 COPY packages/db/package.json ./packages/db/
@@ -17,6 +18,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lock
 # build toolchain (vite, svelte, @sveltejs/kit, svelte-check, …).
 FROM base AS prod-deps
 COPY package.json bun.lock ./
+COPY vendor/deepmerge ./vendor/deepmerge
 COPY frontend/package.json ./frontend/
 COPY backend/package.json ./backend/
 COPY packages/db/package.json ./packages/db/
@@ -30,6 +32,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install --production 
 FROM base AS build
 COPY package.json tsconfig.json ./
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/vendor ./vendor
 COPY --from=deps /app/frontend/node_modules ./frontend/node_modules
 COPY frontend/ ./frontend/
 COPY packages/db/ ./packages/db/
@@ -50,6 +53,7 @@ RUN addgroup -S app && adduser -S app -G app
 
 # Runtime deps only (no devDependencies) → smaller image, smaller attack surface.
 COPY --chown=app:app --from=prod-deps /app/node_modules /app/node_modules
+COPY --chown=app:app --from=prod-deps /app/vendor /app/vendor
 COPY --chown=app:app --from=prod-deps /app/frontend/node_modules /app/frontend/node_modules
 COPY --chown=app:app --from=build /app/frontend/build /app/frontend/build
 COPY --chown=app:app frontend/package.json /app/frontend/

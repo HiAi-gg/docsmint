@@ -1,0 +1,16 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.2-docsmint.1",
+  "description": "DocsMint MIT-preserving security fork of deepmerge 4.3.1; not an upstream release",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "license": "MIT",
+  "files": [
+    "index.cjs",
+    "index.d.ts",
+    "license.txt",
+    "README.md",
+    "PROVENANCE.json",
+    "source.patch"
+  ]
+}

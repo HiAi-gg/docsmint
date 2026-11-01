@@ -33,7 +33,7 @@
     "@tiptap/extension-link": "^3.30.5",
     "@tiptap/html": "^3.30.5",
     "@tiptap/starter-kit": "^3.30.5",
-    "better-auth": "1.7.2",
+    "better-auth": "1.7.7",
     "bullmq": "^6.3.2",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.30",

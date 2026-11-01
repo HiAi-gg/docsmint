@@ -225,146 +225,153 @@
       "when": 1785000000017,
       "tag": "0031_pipeline_tenant_rls",
       "breakpoints": true
-		},
-		{
-			"idx": 32,
-			"version": "7",
-			"when": 1785000000018,
-			"tag": "0032_unique_sibling_folder_names",
-			"breakpoints": true
-		},
-		{
-			"idx": 33,
-			"version": "7",
-			"when": 1785000000019,
-			"tag": "0033_bound_document_search_vectors",
-			"breakpoints": true
-		},
-		{
-			"idx": 34,
-			"version": "7",
-			"when": 1785000000020,
-			"tag": "0034_share_categories",
-			"breakpoints": true
-		},
-		{
-			"idx": 35,
-			"version": "7",
-			"when": 1785000000021,
-			"tag": "0035_external_workspace_context",
-			"breakpoints": true
-		},
-		{
-			"idx": 36,
-			"version": "7",
-			"when": 1785000000022,
-			"tag": "0036_lifecycle_operations",
-			"breakpoints": true
-		},
-		{
-			"idx": 37,
-			"version": "7",
-			"when": 1785000000023,
-			"tag": "0037_document_create_idempotency",
-			"breakpoints": true
-		},
-		{
-			"idx": 38,
-			"version": "7",
-			"when": 1785000000024,
-			"tag": "0038_lifecycle_account_deletion_retention",
-			"breakpoints": true
-		},
-		{
-			"idx": 39,
-			"version": "7",
-			"when": 1785000000025,
-			"tag": "0039_document_trash",
-			"breakpoints": true
-		},
-		{
-			"idx": 40,
-			"version": "7",
-			"when": 1785000000026,
-			"tag": "0040_attachment_confirm_idempotency",
-			"breakpoints": true
-		},
-		{
-			"idx": 41,
-			"version": "7",
-			"when": 1785102000000,
-			"tag": "0041_restricted_sharing",
-			"breakpoints": true
-		},
-		{
-			"idx": 42,
-			"version": "7",
-			"when": 1786884259605,
-			"tag": "20260816124419_document_knowledge_summaries/migration",
-			"breakpoints": true
-		},
-		{
-			"idx": 43,
-			"version": "7",
-			"when": 1787486400000,
-			"tag": "20260823120000_embedding_context/migration",
-			"breakpoints": true
-		},
-		{
-			"idx": 44,
-			"version": "7",
-			"when": 1787594400000,
-			"tag": "20260824180000_workspace_child_rls_outbox/migration",
-			"breakpoints": true
-		},
-		{
-			"idx": 45,
-			"version": "7",
-			"when": 1787618000000,
-			"tag": "0042_account_purge_fence",
-			"breakpoints": true
-		},
-		{
-			"idx": 46,
-			"version": "7",
-			"when": 1787621600000,
-			"tag": "0043_attachment_upload_admission",
-			"breakpoints": true
-		},
-		{
-			"idx": 47,
-			"version": "7",
-			"when": 1787625200000,
-			"tag": "0044_attachment_storage_cleanup_outbox",
-			"breakpoints": true
-		},
-		{
-			"idx": 48,
-			"version": "7",
-			"when": 1787630400000,
-			"tag": "0045_attachment_cleanup_lock_order",
-			"breakpoints": true
-		},
-		{
-			"idx": 49,
-			"version": "7",
-			"when": 1787640000000,
-			"tag": "0046_legacy_attachment_actor",
-			"breakpoints": true
-		},
-		{
-			"idx": 50,
-			"version": "7",
-			"when": 1788076800000,
-			"tag": "0047_better_auth_17_account_identity",
-			"breakpoints": true
-		},
-		{
-			"idx": 51,
-			"version": "7",
-			"when": 1788163200000,
-			"tag": "0048_pipeline_stage_error_codes",
-			"breakpoints": true
-		}
-	]
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1785000000018,
+      "tag": "0032_unique_sibling_folder_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785000000019,
+      "tag": "0033_bound_document_search_vectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785000000020,
+      "tag": "0034_share_categories",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1785000000021,
+      "tag": "0035_external_workspace_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1785000000022,
+      "tag": "0036_lifecycle_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785000000023,
+      "tag": "0037_document_create_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1785000000024,
+      "tag": "0038_lifecycle_account_deletion_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1785000000025,
+      "tag": "0039_document_trash",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1785000000026,
+      "tag": "0040_attachment_confirm_idempotency",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785102000000,
+      "tag": "0041_restricted_sharing",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1786884259605,
+      "tag": "20260816124419_document_knowledge_summaries/migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1787486400000,
+      "tag": "20260823120000_embedding_context/migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1787594400000,
+      "tag": "20260824180000_workspace_child_rls_outbox/migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1787618000000,
+      "tag": "0042_account_purge_fence",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1787621600000,
+      "tag": "0043_attachment_upload_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1787625200000,
+      "tag": "0044_attachment_storage_cleanup_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1787630400000,
+      "tag": "0045_attachment_cleanup_lock_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1787640000000,
+      "tag": "0046_legacy_attachment_actor",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788076800000,
+      "tag": "0047_better_auth_17_account_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1788163200000,
+      "tag": "0048_pipeline_stage_error_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1788249600000,
+      "tag": "0049_better_auth_173_account_compatibility",
+      "breakpoints": true
+    }
+  ]
 }
