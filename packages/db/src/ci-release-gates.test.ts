@@ -24,6 +24,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     "document list filters execute with inherited categories and scoped totals on PostgreSQL" ,
     "Better Auth account compatibility integration",
     "Better Auth registers and signs in the same PostgreSQL account",
+    "published SDK 2.0.4 performs legacy REST CRUD and folder/tag filtering on the real backend",
     "recursive folder category resolution executes on PostgreSQL",
     "occupied replay keys distinguish authorized replay from a non-disclosing conflict",
     "authorizes grandparent-inherited category documents and excludes foreign graph IDs",
@@ -45,7 +46,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     expect(workflow).toContain(suite);
   }
   expect(workflow).toContain(
-    "Required integration behavior cases: 30; skipped: 0",
+    "Required integration behavior cases: 31; skipped: 0",
   );
 });
 
