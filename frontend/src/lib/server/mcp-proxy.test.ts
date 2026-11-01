@@ -185,9 +185,9 @@ test("SvelteKit public route exports pass POST and OPTIONS through without a red
 	let eventFetchCalls = 0;
 	const fetch = (async (_url: unknown, init?: RequestInit) => {
 		calls++;
-		expect(
-			init?.headers instanceof Headers && init.headers.get("authorization"),
-		).toBe("Bearer synthetic");
+		expect(new Headers(init?.headers).get("authorization")).toBe(
+			"Bearer synthetic",
+		);
 		expect(init?.redirect).toBe("manual");
 		return new Response(null, {
 			status: init?.method === "OPTIONS" ? 204 : 401,
