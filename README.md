@@ -15,6 +15,7 @@ Apache-2.0 application on your own infrastructure.
 [![npm](https://img.shields.io/npm/v/@hiai-gg/docsmint?logo=npm)](https://www.npmjs.com/package/@hiai-gg/docsmint)
 [![Docker Pulls](https://img.shields.io/docker/pulls/vgalibov/docsmint?logo=docker)](https://hub.docker.com/r/vgalibov/docsmint)
 [![CI](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml/badge.svg)](https://github.com/hiai-gg/docsmint/actions/workflows/ci.yml)
+[![HOL Registry trust](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fplugin%3Fslug%3Dhiai-gg%252Fdocsmint)](https://hol.org/registry/plugins/hiai-gg%2Fdocsmint)
 
 [![DocsMint MCP server](https://glama.ai/mcp/servers/HiAi-gg/docsmint/badges/score.svg)](https://glama.ai/mcp/servers/HiAi-gg/docsmint)
 [![MCP Badge](https://lobehub.com/badge/mcp/hiai-gg-docsmint)](https://lobehub.com/mcp/hiai-gg-docsmint)
