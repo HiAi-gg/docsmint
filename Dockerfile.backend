@@ -9,6 +9,7 @@ WORKDIR /app
 # evaluates `workspace:*` dependencies from a package directory.
 FROM base AS deps
 COPY package.json bun.lock* ./
+COPY vendor/deepmerge ./vendor/deepmerge
 COPY backend/package.json ./backend/
 COPY frontend/package.json ./frontend/
 COPY packages/db/package.json ./packages/db/
@@ -26,6 +27,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache bun install --frozen-lock
 FROM base AS build
 COPY package.json tsconfig.json ./
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/vendor ./vendor
 COPY --from=deps /app/backend/node_modules ./backend/node_modules
 COPY packages/db/ ./packages/db/
 COPY backend/src ./backend/src
@@ -40,6 +42,7 @@ RUN cd backend && bun run build
 FROM base AS migration
 COPY package.json tsconfig.json ./
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/vendor ./vendor
 COPY packages/db/ ./packages/db/
 ENV NODE_ENV=production
 WORKDIR /app/packages/db
@@ -55,6 +58,7 @@ FROM base AS runtime
 RUN addgroup -S app && adduser -S app -G app
 
 COPY --chown=app:app --from=deps /app/node_modules ./node_modules
+COPY --chown=app:app --from=deps /app/vendor ./vendor
 COPY --chown=app:app --from=deps /app/backend/node_modules ./backend/node_modules
 COPY --chown=app:app --from=build /app/backend/dist ./backend/dist
 COPY --chown=app:app backend/package.json ./backend/

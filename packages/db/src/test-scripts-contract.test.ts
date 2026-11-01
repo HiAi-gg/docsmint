@@ -35,6 +35,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 			"scripts/lifecycle-operations.integration.test.ts",
 			"scripts/reembed-delete-lock.integration.test.ts",
 			"scripts/embedding-context-migration.integration.test.ts",
+			"scripts/better-auth-account.integration.test.ts",
 		].join(" "),
 	);
 	expect(root["test:unit"]).toBe(
@@ -56,6 +57,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 		[
 			"bun run --filter '@hiai-docs/db' test:integration &&",
 			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
+			"backend/src/__tests__/better-auth-account-postgres.integration.test.ts",
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
 			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",
 			"backend/src/__tests__/graph-routes.test.ts",

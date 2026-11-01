@@ -21,6 +21,8 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     "lifecycle operation persistence integration",
     "re-embed delete parent-row lock integration",
     "embedding context migration integration",
+    "Better Auth account compatibility integration",
+    "Better Auth registers and signs in the same PostgreSQL account",
     "recursive folder category resolution executes on PostgreSQL",
     "occupied replay keys distinguish authorized replay from a non-disclosing conflict",
     "authorizes grandparent-inherited category documents and excludes foreign graph IDs",
@@ -42,7 +44,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     expect(workflow).toContain(suite);
   }
   expect(workflow).toContain(
-    "Required integration behavior cases: 27; skipped: 0",
+    "Required integration behavior cases: 29; skipped: 0",
   );
 });
 

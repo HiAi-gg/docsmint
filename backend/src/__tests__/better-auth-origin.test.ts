@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 describe("Better Auth origin protection", () => {
 	test("rejects a cross-origin sign-in before authentication storage is accessed", async () => {
 		const script = `
-			import { auth } from "./src/lib/auth.ts";
-			const response = await auth.handler(new Request(
+			import { authRoutes } from "./src/api/routes/auth.ts";
+			const response = await authRoutes.handle(new Request(
 				"http://localhost:50700/api/auth/sign-in/email",
 				{
 					method: "POST",
@@ -24,7 +24,7 @@ describe("Better Auth origin protection", () => {
 			stdout: "pipe",
 			stderr: "pipe",
 		});
-		expect(result.exitCode).toBe(0);
+		expect(result.exitCode, result.stderr.toString()).toBe(0);
 		const resultLine = result.stdout
 			.toString()
 			.split("\n")
