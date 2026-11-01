@@ -16,6 +16,7 @@ test.skipIf(!databaseUrl)(
 		const key = crypto.randomUUID();
 		const sql = postgres(databaseUrl, { max: 1 });
 		let backend: ReturnType<typeof Bun.spawn> | undefined;
+		let startupError: Promise<string> = Promise.resolve("");
 		try {
 			await writeFile(
 				join(directory, "package.json"),
@@ -67,13 +68,31 @@ test.skipIf(!databaseUrl)(
 					SEARCH_RERANK_ENABLED: "false",
 				},
 				stdout: "ignore",
-				stderr: "ignore",
+				stderr: "pipe",
 			});
+			if (!backend.stderr || typeof backend.stderr === "number")
+				throw new Error("Expected backend stderr pipe");
+			const stderr = backend.stderr;
+			startupError = (async () => {
+				const reader = stderr.getReader();
+				const decoder = new TextDecoder();
+				let tail = "";
+				while (true) {
+					const chunk = await reader.read();
+					if (chunk.done) break;
+					tail = (tail + decoder.decode(chunk.value, { stream: true })).slice(
+						-4096,
+					);
+				}
+				return tail
+					.replaceAll(key, "[redacted]")
+					.replaceAll(databaseUrl, "[redacted]");
+			})();
 			let ready = false;
 			for (let attempt = 0; attempt < 200; attempt++) {
 				if (backend.exitCode !== null)
 					throw new Error(
-						`Backend exited before readiness: ${backend.exitCode}`,
+						`Backend exited before readiness: ${backend.exitCode}: ${await startupError}`,
 					);
 				const response = await fetch(`${baseUrl}/api/documents?limit=1`, {
 					headers: { authorization: `Bearer ${key}` },

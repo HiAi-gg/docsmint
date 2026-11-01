@@ -16,6 +16,9 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
   );
   expect(workflow).toContain("REDIS_URL: redis://127.0.0.1:6384/0");
   expect(workflow).toContain("docker run -d --name redis");
+  const runtimeBuild = workflow.indexOf("name: Build SDK runtime artifacts for the real backend fixture");
+  expect(runtimeBuild).toBeGreaterThan(0);
+  expect(runtimeBuild).toBeLessThan(workflow.indexOf("name: Run required integrations with zero skips"));
   for (const suite of [
     "pipeline tenant RLS integration",
     "lifecycle operation persistence integration",

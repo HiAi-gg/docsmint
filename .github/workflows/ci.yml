@@ -196,6 +196,9 @@ jobs:
         env:
           MIGRATION_DATABASE_URL: postgresql://aiuser:testpassword@localhost:5432/hiai_docs_test
 
+      - name: Build SDK runtime artifacts for the real backend fixture
+        run: bun run build:sdk
+
       - name: Run required integrations with zero skips
         shell: bash
         run: |
