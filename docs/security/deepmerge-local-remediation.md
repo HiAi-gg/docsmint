@@ -25,9 +25,9 @@ migration and runtime stages carry its local dependency target. Full CI, Docker
 smoke, clean packed-consumer checks and independent review remain merge gates.
 No audit command or vulnerability severity threshold has been weakened.
 
-The Better Auth family is also aligned on the minimum patched 1.7.7. No database
-migration, account grant change, SDK publication or Cloud deployment is performed
-by this source change. package.public.json has no local file override, and this
+The Better Auth family is also aligned on the minimum patched 1.7.7. Migration
+0049 is required before upgraded hosts start. No production migration, account
+grant change, SDK publication or Cloud deployment has been performed. package.public.json has no local file override, and this
 patch does not secure independent consumer build toolchains or certify A+ safety.
 
 References:
