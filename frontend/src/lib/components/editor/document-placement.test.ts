@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Folder } from "$lib/types.js";
+import type { Folder } from "#lib/types.js";
 import { newFolderPlacement, placementForFolder } from "./document-placement";
 
 function folder(id: string, categoryId: string | null): Folder {

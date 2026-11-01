@@ -16,8 +16,8 @@ import {
 import {
 	getDocsmintRouteAdapter,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 
 export type ImportItemStatus =
 	| "queued"

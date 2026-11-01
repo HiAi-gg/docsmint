@@ -18,10 +18,10 @@ import {
 	type Tag,
 	updateTag,
 	updateTagInputSchema,
-} from "$lib/api/tags";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import { cn } from "$lib/utils";
+} from "#lib/api/tags.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { cn } from "#lib/utils.js";
 
 const request = getDocsmintRequestAdapter();
 // Curated palette — common tag colors that read well on light & dark surfaces.

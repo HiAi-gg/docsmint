@@ -1,5 +1,5 @@
 import { redirect } from "@sveltejs/kit";
-import { hasSessionCookie } from "$lib/server/session-cookie";
+import { hasSessionCookie } from "#lib/server/session-cookie.js";
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ cookies }) => {

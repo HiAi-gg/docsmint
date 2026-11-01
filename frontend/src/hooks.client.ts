@@ -1,4 +1,4 @@
-import { initWebVitals } from "$lib/vitals";
+import { initWebVitals } from "#lib/vitals.js";
 
 // Initialize web vitals tracking on client
 if (typeof window !== "undefined") {

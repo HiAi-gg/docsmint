@@ -1,5 +1,5 @@
 import Dexie, { type Table } from "dexie";
-import { type OfflineIdentity, offlineDbName } from "$lib/offline/identity";
+import { type OfflineIdentity, offlineDbName } from "#lib/offline/identity.js";
 
 /** A document cached from the server for offline reading. */
 export interface DocumentRecord {

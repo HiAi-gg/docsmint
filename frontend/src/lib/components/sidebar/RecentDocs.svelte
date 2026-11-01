@@ -25,18 +25,18 @@ import {
 	getDocument,
 	listDocuments,
 	updateDocument,
-} from "$lib/api/documents";
-import ShareDialog from "$lib/components/ShareDialog.svelte";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/api/documents.js";
+import ShareDialog from "#lib/components/ShareDialog.svelte";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import { getDocsmintShareAdapter } from "#lib/hosts/share-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	getDocRefreshNonce,
 	getSelectedTag,
 	refreshDocs,
-} from "$lib/stores/tag-store.svelte";
-import { copyToClipboard } from "$lib/utils/clipboard.js";
-import { cn } from "$lib/utils.js";
+} from "#lib/stores/tag-store.svelte.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
+import { cn } from "#lib/utils.js";
 
 const request = getDocsmintRequestAdapter();
 const share = getDocsmintShareAdapter();

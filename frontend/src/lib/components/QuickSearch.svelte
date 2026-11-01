@@ -14,18 +14,18 @@
      closes on selection or explicit click on the backdrop. -->
 <script lang="ts">
 import { FileText, Keyboard, Plus, Search, Settings } from "lucide-svelte";
-import { type SearchSuggestion, searchSuggest } from "$lib/api/search";
+import { type SearchSuggestion, searchSuggest } from "#lib/api/search.js";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	getIsQuickSearchOpen,
 	setQuickSearchOpen,
 	toggleShortcutHelp,
-} from "$lib/stores/keyboard.svelte";
+} from "#lib/stores/keyboard.svelte.js";
 
 interface CommandItem {
 	id: string;

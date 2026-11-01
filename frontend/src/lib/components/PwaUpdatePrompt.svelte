@@ -2,7 +2,7 @@
 import { Button } from "@hiai-gg/hiai-ui/components/ui/button/index";
 import { RefreshCw } from "lucide-svelte";
 import { onMount } from "svelte";
-import { pwaDirtyState } from "$lib/stores/pwa-dirty-state.svelte";
+import { pwaDirtyState } from "#lib/stores/pwa-dirty-state.svelte.js";
 
 let showUpdate = $state(false);
 let waitingWorker: ServiceWorker | null = $state(null);

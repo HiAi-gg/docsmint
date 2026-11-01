@@ -1,5 +1,5 @@
-import { apiFetch } from "$lib/api/client";
-import { readSearchPreferences } from "$lib/stores/search-preferences";
+import { apiFetch } from "#lib/api/client.js";
+import { readSearchPreferences } from "#lib/stores/search-preferences.js";
 
 // --- Types -------------------------------------------------------------------
 

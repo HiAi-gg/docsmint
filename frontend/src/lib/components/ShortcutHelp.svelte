@@ -6,14 +6,14 @@
      click. Lazy loaded by the root layout. -->
 <script lang="ts">
 import { Keyboard, X } from "lucide-svelte";
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	getIsShortcutHelpOpen,
 	getShortcutsByScope,
 	type Shortcut,
 	type ShortcutScope,
 	setShortcutHelpOpen,
-} from "$lib/stores/keyboard.svelte";
+} from "#lib/stores/keyboard.svelte.js";
 
 const SCOPE_LABELS: Record<ShortcutScope, () => string> = {
 	global: m.shortcut_help_section_global,

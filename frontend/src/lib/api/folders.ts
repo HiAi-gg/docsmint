@@ -3,7 +3,7 @@ import type {
 	Document,
 	Folder,
 	UpdateFolderData,
-} from "$lib/types.js";
+} from "#lib/types.js";
 import { apiFetch } from "./client";
 
 interface FolderWire {

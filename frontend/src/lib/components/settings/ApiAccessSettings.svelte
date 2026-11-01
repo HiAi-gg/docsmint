@@ -10,9 +10,9 @@ import {
 	listApiKeys,
 	revealCategoryApiKey,
 	revokeApiKey,
-} from "$lib/api/api-keys";
-import { type Category, listCategories } from "$lib/api/categories";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
+} from "#lib/api/api-keys.js";
+import { type Category, listCategories } from "#lib/api/categories.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
 
 let keys = $state<ApiKeySummary[]>([]);
 let categories = $state<Category[]>([]);

@@ -1,6 +1,6 @@
 import type { ServerLoadEvent } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
-import { hasSessionCookie } from "$lib/server/session-cookie";
+import { hasSessionCookie } from "#lib/server/session-cookie.js";
 
 export async function load({ params, cookies }: ServerLoadEvent) {
 	if (!hasSessionCookie(cookies)) {

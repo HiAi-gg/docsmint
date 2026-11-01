@@ -16,7 +16,7 @@ if (typeof globalThis.localStorage === "undefined") {
 import {
 	enableOfflineAccess,
 	type OfflineIdentity,
-} from "$lib/offline/identity";
+} from "#lib/offline/identity.js";
 
 export const testIdentity: OfflineIdentity = {
 	appId: "hiai-docs",

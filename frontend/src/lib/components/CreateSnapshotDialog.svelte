@@ -16,9 +16,9 @@ import {
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
 import Textarea from "@hiai-gg/hiai-ui/components/ui/textarea/textarea.svelte";
 import { Loader2 } from "lucide-svelte";
-import { ApiError, apiFetch } from "$lib/api/client";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+import { ApiError, apiFetch } from "#lib/api/client.js";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 
 interface SnapshotResponse {
 	id: string;

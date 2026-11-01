@@ -1,9 +1,46 @@
 # Changelog
 
+## 2.0.4 - 2026-10-26
+
+- Restore focus to the replacement mobile navigation trigger after the drawer closes.
+- Defer focus until the closing render completes and skip restoration if navigation reopens.
+- Preserve previous connected focus targets and avoid focusing detached controls.
+
+
+## 2.0.3
+
+- Declare optional MCP workspaceId in every operation branch as well as at the schema root, so operation-based client normalization preserves explicit workspace selection. Runtime authorization, the 22-tool catalog and existing OAuth grants are unchanged.
+
+
 All notable changes to DocsMint are documented in this file.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+The format follows [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.2] - 2026-10-25
+
+Align public framework overrides with their declared peer ranges so npm accepts publication. The packed-package gate now performs an actual npm publish dry-run, and the CLI entry is explicitly included in the file list. Node24 is used for npm verification/publication. The immutable 2.0.1 tag passed all verification gates but npm rejected its public manifest; no npm package was published.
+
+## [2.0.1] - 2026-10-25
+
+Fix the SvelteKit 3 PWA worker output directory so adapter-node serves `/sw.js` and its precache contains the actual immutable client assets. Includes the MCP workspace routing and security changes prepared for 2.0.0. The 2.0.0 tag failed the browser artifact gate and was not published. No release gate is bypassed.
+
+## [2.0.0] - 2026-10-25
+
+- Add host-authorized MCP workspace discovery and per-call workspaceId selectors, including empty workspaces.
+- Publish validated multi-scope result envelopes while retaining the 22-tool catalog and existing single-scope responses.
+- Update SvelteKit, Zod and Happy DOM to resolve production dependency audit findings.
+
+## [1.0.3] - 2026-10-23
+
+### Fixed
+
+- Export closed MCP operation unions with a shared root property closure so clients can add account-routing fields without invalidating every operation branch.
+- Preserve provider-side validation and reject unknown or operation-incompatible arguments. No account-routing field becomes a business API parameter.
+
+### Security
+
+- Update the MCP server/client SDK to 2.3.0 and patch Vite, ProseMirror view and source-map-js audit findings without disabling release gates.
 
 ## [Unreleased]
 

@@ -1,7 +1,7 @@
 {
   "identifier": "hiai-gg-docsmint",
   "name": "DocsMint",
-  "version": "1.0.2",
+  "version": "2.0.4",
   "author": "HiAi-gg",
   "authorUrl": "https://github.com/HiAi-gg",
   "category": "developer",
@@ -25,6 +25,79 @@
       "description": "Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "list",
+                "description": "Select the list operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              }
+            ]
+          },
+          "folderId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "tag": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "page": {
+            "description": "One-based page number; defaults to the API first page.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum documents per page, up to 1000.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Text to search in the original language."
+          },
+          "folder": {
+            "description": "Optional folder UUID filter for search.",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Optional tag names; all supplied names must match.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -58,12 +131,41 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 1000
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "mode"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "query"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "folder"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tags"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -94,15 +196,45 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "mode",
               "query"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tag"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "page"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -133,43 +265,27 @@
                           "type": "string"
                         },
                         "folderId": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "folderName": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "categoryId": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "categoryName": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "createdAt": {
@@ -190,13 +306,9 @@
                                 "type": "string"
                               },
                               "color": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
+                                "type": [
+                                  "string",
+                                  "null"
                                 ]
                               },
                               "createdAt": {
@@ -283,23 +395,15 @@
                           "type": "number"
                         },
                         "folder_id": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "folder_name": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "created_at": {
@@ -320,13 +424,9 @@
                                 "type": "string"
                               },
                               "color": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
+                                "type": [
+                                  "string",
+                                  "null"
                                 ]
                               },
                               "createdAt": {
@@ -433,6 +533,365 @@
               "result"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "scopedResults": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "list"
+                            },
+                            "result": {
+                              "type": "object",
+                              "properties": {
+                                "items": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "content": {
+                                        "type": "string"
+                                      },
+                                      "folderId": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "folderName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "categoryId": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "categoryName": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "createdAt": {
+                                        "type": "string"
+                                      },
+                                      "updatedAt": {
+                                        "type": "string"
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            },
+                                            "color": {
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ]
+                                            },
+                                            "createdAt": {
+                                              "type": "string"
+                                            },
+                                            "documentCount": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name",
+                                            "color"
+                                          ],
+                                          "additionalProperties": {}
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "title",
+                                      "content",
+                                      "folderId",
+                                      "folderName",
+                                      "categoryId",
+                                      "categoryName",
+                                      "createdAt",
+                                      "updatedAt",
+                                      "tags"
+                                    ],
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "total": {
+                                  "type": "number"
+                                },
+                                "page": {
+                                  "type": "number"
+                                },
+                                "limit": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "items",
+                                "total",
+                                "page",
+                                "limit"
+                              ],
+                              "additionalProperties": {}
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "search"
+                            },
+                            "result": {
+                              "type": "object",
+                              "properties": {
+                                "items": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "title": {
+                                        "type": "string"
+                                      },
+                                      "snippet": {
+                                        "type": "string"
+                                      },
+                                      "score": {
+                                        "type": "number"
+                                      },
+                                      "folder_id": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "folder_name": {
+                                        "type": [
+                                          "string",
+                                          "null"
+                                        ]
+                                      },
+                                      "created_at": {
+                                        "type": "string"
+                                      },
+                                      "updated_at": {
+                                        "type": "string"
+                                      },
+                                      "tags": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "id": {
+                                              "type": "string"
+                                            },
+                                            "name": {
+                                              "type": "string"
+                                            },
+                                            "color": {
+                                              "type": [
+                                                "string",
+                                                "null"
+                                              ]
+                                            },
+                                            "createdAt": {
+                                              "type": "string"
+                                            },
+                                            "documentCount": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "id",
+                                            "name",
+                                            "color"
+                                          ],
+                                          "additionalProperties": {}
+                                        }
+                                      },
+                                      "chunks": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "chunkIndex": {
+                                              "type": "number"
+                                            },
+                                            "chunkText": {
+                                              "type": "string"
+                                            },
+                                            "charStart": {
+                                              "type": "number"
+                                            },
+                                            "charEnd": {
+                                              "type": "number"
+                                            },
+                                            "score": {
+                                              "type": "number"
+                                            }
+                                          },
+                                          "required": [
+                                            "chunkIndex",
+                                            "chunkText",
+                                            "charStart",
+                                            "charEnd",
+                                            "score"
+                                          ],
+                                          "additionalProperties": {}
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "title",
+                                      "snippet",
+                                      "score",
+                                      "folder_id",
+                                      "folder_name",
+                                      "created_at",
+                                      "updated_at"
+                                    ],
+                                    "additionalProperties": {}
+                                  }
+                                },
+                                "total": {
+                                  "type": "number"
+                                },
+                                "page": {
+                                  "type": "number"
+                                },
+                                "limit": {
+                                  "type": "number"
+                                },
+                                "diagnostics": {
+                                  "type": "object",
+                                  "properties": {
+                                    "graphAttempted": {
+                                      "type": "boolean"
+                                    },
+                                    "graphFailed": {
+                                      "type": "boolean"
+                                    },
+                                    "graphContribution": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "graphAttempted",
+                                    "graphFailed",
+                                    "graphContribution"
+                                  ],
+                                  "additionalProperties": {}
+                                }
+                              },
+                              "required": [
+                                "items",
+                                "total",
+                                "page",
+                                "limit"
+                              ],
+                              "additionalProperties": {}
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspace",
+                    "categoryId",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "scopedResults"
+            ],
+            "additionalProperties": false
           }
         ]
       },
@@ -448,6 +907,60 @@
       "description": "Read one document by UUID. Choose detail for content and metadata, markdown for portable export, or versions for saved revisions and snapshots. All views are read-only.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "view": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "detail",
+                "description": "Select the detail operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "markdown",
+                "description": "Select the markdown operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "versions",
+                "description": "Select the versions operation explicitly."
+              }
+            ]
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              }
+            ]
+          },
+          "onlySnapshots": {
+            "description": "When true, return only named snapshots.",
+            "type": "boolean"
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -463,13 +976,32 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "description": "UUID returned by the corresponding list or read operation."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "view",
               "id"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "onlySnapshots"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -484,13 +1016,32 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "description": "UUID returned by the corresponding list or read operation."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "view",
               "id"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "onlySnapshots"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -509,15 +1060,22 @@
               "onlySnapshots": {
                 "description": "When true, return only named snapshots.",
                 "type": "boolean"
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "view",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -540,23 +1098,15 @@
                     "type": "string"
                   },
                   "folderId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "categoryId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "title": {
@@ -593,13 +1143,9 @@
                           "type": "string"
                         },
                         "color": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "createdAt": {
@@ -618,13 +1164,9 @@
                     }
                   },
                   "folderName": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   }
                 },
@@ -706,36 +1248,24 @@
                       "type": "string"
                     },
                     "label": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "description": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "isSnapshot": {
                       "type": "boolean"
                     },
                     "restoredFrom": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     }
                   },
@@ -770,6 +1300,119 @@
       "description": "Create or update one document. Use action=create for a new document or action=update for an existing one; batch_documents handles the same placement change across multiple existing documents. Creation requires write access; content edits require edit access, and placement changes may require write access. Content or placement changes queue normal indexing.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "Document title, from 1 to 500 characters."
+              }
+            ]
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              },
+              {
+                "type": "string",
+                "description": "Markdown document content; an empty string clears the content on update."
+              }
+            ]
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "description": "Optional folder UUID; null clears the placement on update.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -809,12 +1452,31 @@
                     "type": "null"
                   }
                 ]
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -867,15 +1529,22 @@
                     "type": "null"
                   }
                 ]
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -898,23 +1567,15 @@
                     "type": "string"
                   },
                   "folderId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "categoryId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "title": {
@@ -951,13 +1612,9 @@
                           "type": "string"
                         },
                         "color": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "createdAt": {
@@ -976,13 +1633,9 @@
                     }
                   },
                   "folderName": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   }
                 },
@@ -1023,23 +1676,15 @@
                     "type": "string"
                   },
                   "folderId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "categoryId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "title": {
@@ -1076,13 +1721,9 @@
                           "type": "string"
                         },
                         "color": {
-                          "anyOf": [
-                            {
-                              "type": "string"
-                            },
-                            {
-                              "type": "null"
-                            }
+                          "type": [
+                            "string",
+                            "null"
                           ]
                         },
                         "createdAt": {
@@ -1101,13 +1742,9 @@
                     }
                   },
                   "folderName": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   }
                 },
@@ -1151,6 +1788,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -1188,11 +1832,83 @@
     },
     {
       "name": "list_workspace_structure",
-      "description": "List visible folders, categories, or tags in the active workspace or category scope. Set kind=folders to inspect root folders or children of parentId.",
+      "description": "Discover permitted spaces with kind=workspaces, including empty spaces; use returned workspaceId for scoped operations. List folders, categories, or tags; set kind=folders for root folders or children of parentId. Unselected reads cover all granted scopes when supported by the host.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "workspaces",
+                "description": "Discover every workspace granted to this connection, including empty ones."
+              },
+              {
+                "type": "string",
+                "const": "folders",
+                "description": "Select the folders operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "categories",
+                "description": "Select the categories operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "tags",
+                "description": "Select the tags operation explicitly."
+              }
+            ]
+          },
+          "parentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "workspaces",
+                "description": "Discover every workspace granted to this connection, including empty ones."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "parentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
+          },
           {
             "type": "object",
             "properties": {
@@ -1206,12 +1922,18 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "description": "UUID returned by the corresponding list or read operation."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "kind"
-            ],
-            "additionalProperties": false
+            ]
           },
           {
             "type": "object",
@@ -1220,12 +1942,31 @@
                 "type": "string",
                 "const": "categories",
                 "description": "Select the categories operation explicitly."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "kind"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "parentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -1234,19 +1975,91 @@
                 "type": "string",
                 "const": "tags",
                 "description": "Select the tags operation explicitly."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "kind"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "parentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string",
+                "const": "workspaces"
+              },
+              "result": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "slug": {
+                      "type": "string"
+                    },
+                    "entireWorkspace": {
+                      "type": "boolean"
+                    },
+                    "categoryIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "slug",
+                    "entireWorkspace",
+                    "categoryIds"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "result"
+            ],
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "properties": {
@@ -1396,13 +2209,9 @@
                       "type": "string"
                     },
                     "color": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "createdAt": {
@@ -1426,6 +2235,299 @@
               "result"
             ],
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "scopedResults": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "workspaces"
+                            },
+                            "result": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid",
+                                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "slug": {
+                                    "type": "string"
+                                  },
+                                  "entireWorkspace": {
+                                    "type": "boolean"
+                                  },
+                                  "categoryIds": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    }
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "slug",
+                                  "entireWorkspace",
+                                  "categoryIds"
+                                ],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "folders"
+                            },
+                            "result": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/$defs/__schema0"
+                              }
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "categories"
+                            },
+                            "result": {
+                              "type": "array",
+                              "items": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "order": {
+                                        "type": "number"
+                                      },
+                                      "createdAt": {
+                                        "type": "string"
+                                      },
+                                      "updatedAt": {
+                                        "type": "string"
+                                      },
+                                      "documentCount": {
+                                        "type": "number"
+                                      },
+                                      "folderCount": {
+                                        "type": "number"
+                                      },
+                                      "apiMode": {
+                                        "type": "string",
+                                        "enum": [
+                                          "unavailable",
+                                          "global",
+                                          "category"
+                                        ]
+                                      },
+                                      "apiPermissionRead": {
+                                        "type": "boolean"
+                                      },
+                                      "apiPermissionEdit": {
+                                        "type": "boolean"
+                                      },
+                                      "apiPermissionWrite": {
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name",
+                                      "order",
+                                      "createdAt",
+                                      "updatedAt",
+                                      "apiMode",
+                                      "apiPermissionRead",
+                                      "apiPermissionEdit",
+                                      "apiPermissionWrite"
+                                    ],
+                                    "additionalProperties": {}
+                                  },
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "order": {
+                                        "type": "number"
+                                      },
+                                      "createdAt": {
+                                        "type": "string"
+                                      },
+                                      "updatedAt": {
+                                        "type": "string"
+                                      },
+                                      "documentCount": {
+                                        "type": "number"
+                                      },
+                                      "folderCount": {
+                                        "type": "number"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name",
+                                      "order",
+                                      "createdAt",
+                                      "updatedAt"
+                                    ],
+                                    "additionalProperties": {}
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "operation": {
+                              "type": "string",
+                              "const": "tags"
+                            },
+                            "result": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "color": {
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ]
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "documentCount": {
+                                    "type": "number"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "color"
+                                ],
+                                "additionalProperties": {}
+                              }
+                            }
+                          },
+                          "required": [
+                            "operation",
+                            "result"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "workspace",
+                    "categoryId",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "scopedResults"
+            ],
+            "additionalProperties": false
           }
         ],
         "$defs": {
@@ -1439,13 +2541,9 @@
                 "type": "string"
               },
               "parentId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "name": {
@@ -1458,13 +2556,9 @@
                 "type": "string"
               },
               "categoryId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "order": {
@@ -1497,43 +2591,27 @@
                       "type": "string"
                     },
                     "folderId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "folderName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "createdAt": {
@@ -1554,13 +2632,9 @@
                             "type": "string"
                           },
                           "color": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
+                            "type": [
+                              "string",
+                              "null"
                             ]
                           },
                           "createdAt": {
@@ -1619,6 +2693,121 @@
       "description": "Create or update a folder. action=update can rename or move an existing folder; the API enforces category boundaries and queues affected documents for reindexing.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional parent folder UUID; null selects the root.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "description": "Optional category UUID; null clears the explicit category.",
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "description": "UUID returned by the corresponding list or read operation."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "order": {
+            "description": "New non-negative display order.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -1662,13 +2851,37 @@
                     "type": "null"
                   }
                 ]
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "order"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -1723,15 +2936,22 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -1783,13 +3003,9 @@
                 "type": "string"
               },
               "parentId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "name": {
@@ -1802,13 +3018,9 @@
                 "type": "string"
               },
               "categoryId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "order": {
@@ -1841,43 +3053,27 @@
                       "type": "string"
                     },
                     "folderId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "folderName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "createdAt": {
@@ -1898,13 +3094,9 @@
                             "type": "string"
                           },
                           "color": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
+                            "type": [
+                              "string",
+                              "null"
                             ]
                           },
                           "createdAt": {
@@ -1969,6 +3161,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2009,6 +3208,57 @@
       "description": "Create or update a workspace category. Full workspace write access is required; category-scoped credentials cannot manage categories.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "order": {
+            "description": "New non-negative display order.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2024,13 +3274,37 @@
                 "minLength": 1,
                 "maxLength": 255,
                 "description": "Non-empty human-readable name or title."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "order"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2057,15 +3331,22 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 9007199254740991
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2229,6 +3510,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2269,6 +3557,65 @@
       "description": "Create or update a workspace tag. Full workspace write access is required; renaming or recoloring a tag causes affected documents to be reindexed.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "create",
+                "description": "Select the create operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "update",
+                "description": "Select the update operation explicitly."
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "Non-empty human-readable name or title."
+              }
+            ]
+          },
+          "color": {
+            "anyOf": [
+              {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              },
+              {
+                "description": "Optional tag color, at most 20 characters.",
+                "type": "string",
+                "maxLength": 20
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2289,13 +3636,32 @@
                 "description": "Optional tag color, at most 20 characters.",
                 "type": "string",
                 "maxLength": 20
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "name"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "id"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2321,15 +3687,22 @@
                 "description": "Optional tag color, at most 20 characters.",
                 "type": "string",
                 "maxLength": 20
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "action",
               "id"
-            ],
-            "additionalProperties": false
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -2352,13 +3725,9 @@
                     "type": "string"
                   },
                   "color": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "createdAt": {
@@ -2399,13 +3768,9 @@
                     "type": "string"
                   },
                   "color": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "createdAt": {
@@ -2449,6 +3814,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2509,6 +3881,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2632,6 +4011,13 @@
             "description": "Optional snapshot note, at most 1000 characters.",
             "type": "string",
             "maxLength": 1000
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2661,36 +4047,24 @@
             "type": "string"
           },
           "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "isSnapshot": {
             "type": "boolean"
           },
           "restoredFrom": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -2728,6 +4102,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -2747,23 +4128,15 @@
             "type": "string"
           },
           "folderId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "categoryId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "title": {
@@ -2800,13 +4173,9 @@
                   "type": "string"
                 },
                 "color": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "createdAt": {
@@ -2825,13 +4194,9 @@
             }
           },
           "folderName": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           }
         },
@@ -2861,6 +4226,68 @@
       "description": "Explore graph relations from readable seed documents. mode=neighbors traverses one document without a query; mode=search ranks relations from one or more seed IDs with optional query text.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "neighbors",
+                "description": "Select the neighbors operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              }
+            ]
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            ]
+          },
+          "docIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "description": "UUID returned by the corresponding list or read operation."
+            },
+            "description": "One to 50 authorized seed document UUIDs."
+          },
+          "query": {
+            "description": "Optional graph relevance query, at most 2000 characters.",
+            "type": "string",
+            "maxLength": 2000
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -2882,13 +4309,37 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "mode",
               "documentId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "docIds"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "query"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -2920,15 +4371,35 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "mode",
               "docIds"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "documentId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3077,6 +4548,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -3102,53 +4580,33 @@
             ]
           },
           "activeGenerationId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "pendingGenerationId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "embeddingProfile": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "embeddingErrorCode": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "embeddingUpdatedAt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "type": [
+              "string",
+              "null"
             ]
           },
           "searchable": {
@@ -3360,6 +4818,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -3401,60 +4866,176 @@
       "description": "List soft-deleted documents visible to the active workspace or category scope. Requires read access and does not restore or purge anything.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
-        "properties": {
-          "documents": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "title": {
-                  "type": "string"
-                },
-                "deletedAt": {
-                  "type": "string"
-                },
-                "purgeAfter": {
-                  "anyOf": [
-                    {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "documents": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "title": {
                       "type": "string"
                     },
-                    {
-                      "type": "null"
+                    "deletedAt": {
+                      "type": "string"
+                    },
+                    "purgeAfter": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
                     }
-                  ]
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "deletedAt",
+                    "purgeAfter"
+                  ],
+                  "additionalProperties": {}
                 }
               },
-              "required": [
-                "id",
-                "title",
-                "deletedAt",
-                "purgeAfter"
-              ],
-              "additionalProperties": {}
-            }
+              "folders": {
+                "type": "array",
+                "items": {}
+              }
+            },
+            "required": [
+              "documents",
+              "folders"
+            ],
+            "additionalProperties": {}
           },
-          "folders": {
-            "type": "array",
-            "items": {}
+          {
+            "type": "object",
+            "properties": {
+              "operation": {
+                "type": "string"
+              },
+              "scopedResults": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "slug"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "categoryId": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "documents": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "deletedAt": {
+                                "type": "string"
+                              },
+                              "purgeAfter": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "deletedAt",
+                              "purgeAfter"
+                            ],
+                            "additionalProperties": {}
+                          }
+                        },
+                        "folders": {
+                          "type": "array",
+                          "items": {}
+                        }
+                      },
+                      "required": [
+                        "documents",
+                        "folders"
+                      ],
+                      "additionalProperties": {}
+                    }
+                  },
+                  "required": [
+                    "workspace",
+                    "categoryId",
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "operation",
+              "scopedResults"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": [
-          "documents",
-          "folders"
-        ],
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": {}
+        ]
       },
       "annotations": {
         "readOnlyHint": true,
@@ -3474,6 +5055,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -3514,6 +5102,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID returned by the corresponding list or read operation."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -3554,6 +5149,186 @@
       "description": "Use for multiple explicitly selected documents that need the same action; for one document prefer the matching single-document tool. Accepts 1–25 IDs for automation compatibility. Supports move, set_category, add_tag, remove_tag, trash, restore, or refresh_index. Processes sequentially through the existing API with a permission check per document and a per-ID result; partial success is possible. Stops after authentication or rate-limit failure. Never expands a search result or permanently purges documents; version restore is separate.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "documentIds": {
+            "anyOf": [
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              },
+              {
+                "minItems": 1,
+                "maxItems": 25,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID of an item visible to the active API key."
+                },
+                "description": "One to 25 distinct document UUIDs, explicitly selected by the user; no search expansion."
+              }
+            ]
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "move",
+                "description": "Move each document to the same folder."
+              },
+              {
+                "type": "string",
+                "const": "set_category",
+                "description": "Set one explicit category on every document."
+              },
+              {
+                "type": "string",
+                "const": "add_tag",
+                "description": "Assign one existing tag to every document."
+              },
+              {
+                "type": "string",
+                "const": "remove_tag",
+                "description": "Remove one tag assignment from every document."
+              },
+              {
+                "type": "string",
+                "const": "trash",
+                "description": "Move every document to trash without permanent deletion."
+              },
+              {
+                "type": "string",
+                "const": "restore",
+                "description": "Restore every selected document from trash."
+              },
+              {
+                "type": "string",
+                "const": "refresh_index",
+                "description": "Request explicit indexing retry for every document."
+              }
+            ]
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID of an item visible to the active API key."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Destination folder UUID, or null for no folder."
+          },
+          "categoryId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID of an item visible to the active API key."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Category UUID, or null to clear explicit category."
+          },
+          "tagId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "Existing tag UUID to assign to each document."
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "Existing tag UUID to unassign from each document."
+              }
+            ]
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -3589,6 +5364,13 @@
                   }
                 ],
                 "description": "Destination folder UUID, or null for no folder."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
@@ -3596,7 +5378,24 @@
               "action",
               "folderId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3631,6 +5430,13 @@
                   }
                 ],
                 "description": "Category UUID, or null to clear explicit category."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
@@ -3638,7 +5444,24 @@
               "action",
               "categoryId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3665,6 +5488,13 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "description": "Existing tag UUID to assign to each document."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
@@ -3672,7 +5502,24 @@
               "action",
               "tagId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3699,6 +5546,13 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "description": "Existing tag UUID to unassign from each document."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
@@ -3706,7 +5560,24 @@
               "action",
               "tagId"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3727,13 +5598,42 @@
                 "type": "string",
                 "const": "trash",
                 "description": "Move every document to trash without permanent deletion."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3754,13 +5654,42 @@
                 "type": "string",
                 "const": "restore",
                 "description": "Restore every selected document from trash."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           },
           {
             "type": "object",
@@ -3781,15 +5710,45 @@
                 "type": "string",
                 "const": "refresh_index",
                 "description": "Request explicit indexing retry for every document."
+              },
+              "workspaceId": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
               }
             },
             "required": [
               "documentIds",
               "action"
             ],
-            "additionalProperties": false
+            "allOf": [
+              {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "folderId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "categoryId"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "tagId"
+                      ]
+                    }
+                  ]
+                }
+              }
+            ]
           }
-        ]
+        ],
+        "additionalProperties": false
       },
       "outputSchema": {
         "type": "object",
@@ -3950,6 +5909,13 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             "description": "UUID of an item visible to the active API key."
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           }
         },
         "required": [
@@ -4104,13 +6070,9 @@
                     "type": "string"
                   },
                   "color": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
+                    "type": [
+                      "string",
+                      "null"
                     ]
                   },
                   "createdAt": {
@@ -4146,13 +6108,9 @@
                 "type": "string"
               },
               "parentId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "name": {
@@ -4165,13 +6123,9 @@
                 "type": "string"
               },
               "categoryId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
+                "type": [
+                  "string",
+                  "null"
                 ]
               },
               "order": {
@@ -4204,43 +6158,27 @@
                       "type": "string"
                     },
                     "folderId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "folderName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryId": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "categoryName": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "createdAt": {
@@ -4261,13 +6199,9 @@
                             "type": "string"
                           },
                           "color": {
-                            "anyOf": [
-                              {
-                                "type": "string"
-                              },
-                              {
-                                "type": "null"
-                              }
+                            "type": [
+                              "string",
+                              "null"
                             ]
                           },
                           "createdAt": {

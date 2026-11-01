@@ -22,10 +22,10 @@ import {
 	RotateCcw,
 	Star,
 } from "lucide-svelte";
-import { ApiError, apiFetch } from "$lib/api/client";
-import CreateSnapshotDialog from "$lib/components/CreateSnapshotDialog.svelte";
-import { getDocsmintRequestAdapter } from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
+import { ApiError, apiFetch } from "#lib/api/client.js";
+import CreateSnapshotDialog from "#lib/components/CreateSnapshotDialog.svelte";
+import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
 
 interface Version {
 	id: string;

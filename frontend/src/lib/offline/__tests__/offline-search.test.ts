@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import type { Document } from "$lib/api/documents";
-import { cacheDocument } from "$lib/db/documents";
-import { getOfflineDB } from "$lib/db/index";
-import type { OfflineIdentity } from "$lib/offline/identity";
-import { offlineSearch } from "$lib/offline/offline-search";
+import type { Document } from "#lib/api/documents.js";
+import { cacheDocument } from "#lib/db/documents.js";
+import { getOfflineDB } from "#lib/db/index.js";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
+import { offlineSearch } from "#lib/offline/offline-search.js";
 import { prepareOfflineIdentity } from "./test-identity";
 
 function makeDocument(id: string, title: string, content: string): Document {

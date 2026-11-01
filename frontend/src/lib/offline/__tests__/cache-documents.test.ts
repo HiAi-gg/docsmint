@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { Document } from "$lib/api/documents";
+import type { Document } from "#lib/api/documents.js";
 import { asBunMock } from "./mock-utils";
 import { prepareOfflineIdentity } from "./test-identity";
 
 // API modules are mocked; targets are imported dynamically after the mocks
 // are registered (mock.module is not hoisted).
-mock.module("$lib/api/documents", () => ({
+mock.module("#lib/api/documents.js", () => ({
 	getDocument: mock(() => Promise.resolve({} as unknown)),
 	listDocuments: mock(() => Promise.resolve({} as unknown)),
 	updateDocument: mock(() => Promise.resolve({} as unknown)),
 	createDocument: mock(() => Promise.resolve({} as unknown)),
 	deleteDocument: mock(() => Promise.resolve(undefined)),
 }));
-mock.module("$lib/api/folders", () => ({
+mock.module("#lib/api/folders.js", () => ({
 	listFolders: mock(() => Promise.resolve([] as unknown)),
 }));
 
@@ -43,20 +43,20 @@ async function waitFor(
 }
 
 describe("cache-documents (offline/cache-documents.ts)", () => {
-	let cache: typeof import("$lib/offline/cache-documents");
-	let docsDb: typeof import("$lib/db/documents");
-	let foldersDb: typeof import("$lib/db/folders");
-	let apiDocs: typeof import("$lib/api/documents");
-	let apiFolders: typeof import("$lib/api/folders");
-	let identity: import("$lib/offline/identity").OfflineIdentity;
+	let cache: typeof import("#lib/offline/cache-documents.js");
+	let docsDb: typeof import("#lib/db/documents.js");
+	let foldersDb: typeof import("#lib/db/folders.js");
+	let apiDocs: typeof import("#lib/api/documents.js");
+	let apiFolders: typeof import("#lib/api/folders.js");
+	let identity: import("#lib/offline/identity.js").OfflineIdentity;
 
 	beforeEach(async () => {
-		cache = await import("$lib/offline/cache-documents");
-		docsDb = await import("$lib/db/documents");
-		foldersDb = await import("$lib/db/folders");
-		apiDocs = await import("$lib/api/documents");
-		apiFolders = await import("$lib/api/folders");
-		const { getOfflineDB } = await import("$lib/db/index");
+		cache = await import("#lib/offline/cache-documents.js");
+		docsDb = await import("#lib/db/documents.js");
+		foldersDb = await import("#lib/db/folders.js");
+		apiDocs = await import("#lib/api/documents.js");
+		apiFolders = await import("#lib/api/folders.js");
+		const { getOfflineDB } = await import("#lib/db/index.js");
 		identity = prepareOfflineIdentity();
 		const db = getOfflineDB(identity);
 		await Promise.all([db.documents.clear(), db.folders.clear()]);
@@ -83,7 +83,7 @@ describe("cache-documents (offline/cache-documents.ts)", () => {
 		});
 
 		it("returns an online response when offline access is disabled", async () => {
-			const { disableOfflineAccess } = await import("$lib/offline/identity");
+			const { disableOfflineAccess } = await import("#lib/offline/identity.js");
 			disableOfflineAccess();
 			const doc = makeDocument("online");
 			asBunMock(apiDocs.getDocument).mockResolvedValue(doc);

@@ -4,7 +4,7 @@
 // reload. We expose a simple monotonically-increasing nonce that callers
 // can read inside a $effect to trigger refreshes.
 
-import { clearDocumentsCache } from "$lib/api/documents";
+import { clearDocumentsCache } from "#lib/api/documents.js";
 
 let tagRefreshNonce = $state(0);
 

@@ -1,8 +1,8 @@
-import { deleteOfflineDB, getOfflineDB } from "$lib/db";
+import { deleteOfflineDB, getOfflineDB } from "#lib/db/index.js";
 import {
 	disableOfflineAccess,
 	resolveOfflineIdentity,
-} from "$lib/offline/identity";
+} from "#lib/offline/identity.js";
 
 /**
  * Wipe all offline data for the current identity. Called on logout so a

@@ -32,7 +32,7 @@ describe("hiai-ui package import contract", () => {
 		expect(runtime).toContain("runThemeSpread");
 
 		const svelteConfig = await Bun.file(
-			resolve(import.meta.dir, "../../svelte.config.js"),
+			resolve(import.meta.dir, "../../kit.config.js"),
 		).text();
 		expect(svelteConfig).not.toContain("hiaiUiDist");
 		expect(svelteConfig).not.toContain('"@hiai-gg/hiai-ui"');

@@ -26,7 +26,7 @@ describe("login failure feedback", () => {
 
 	test("maps API proxy failures through authFailureMessage instead of credential copy", () => {
 		expect(loginPageSource).toContain(
-			'import { authFailureMessage } from "$lib/auth/auth-failure-message"',
+			'import { authFailureMessage } from "#lib/auth/auth-failure-message.js"',
 		);
 		expect(loginPageSource).toContain("authFailureMessage(result.error, {");
 		expect(loginPageSource).toContain("credentialError: m.auth_login_error()");

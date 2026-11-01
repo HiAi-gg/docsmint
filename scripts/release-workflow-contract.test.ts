@@ -781,3 +781,8 @@ test("GitHub releases use reviewed versioned notes on create and rerun", async (
 	expect(run.match(/--notes-file "\$notes"/g)).toHaveLength(2);
 	expect(run).not.toContain("--generate-notes");
 });
+
+ test("Compose builds avoid the unresolved Bake host-network grant regression", async () => {
+ const workflow = Bun.YAML.parse(await Bun.file(new URL("../.github/workflows/ci.yml", import.meta.url)).text()) as { env: Record<string, unknown> };
+ expect(workflow.env.COMPOSE_BAKE).toBe("false");
+ });

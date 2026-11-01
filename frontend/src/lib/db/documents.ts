@@ -1,5 +1,5 @@
-import type { Document } from "$lib/api/documents";
-import type { OfflineIdentity } from "$lib/offline/identity";
+import type { Document } from "#lib/api/documents.js";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
 import { type DocumentRecord, getOfflineDB } from "./index";
 
 /** Write a single document into the offline cache. */

@@ -1,4 +1,4 @@
-import type { OfflineIdentity } from "$lib/offline/identity";
+import type { OfflineIdentity } from "#lib/offline/identity.js";
 import { type DraftRecord, getOfflineDB } from "./index";
 
 /** Persist (or replace) a local draft for a document. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { ApiError } from "$lib/api/client.js";
+import { ApiError } from "#lib/api/client.js";
 import { categoryDialogErrorMessage } from "./category-dialog-feedback.js";
 
 describe("categoryDialogErrorMessage", () => {

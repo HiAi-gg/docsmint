@@ -271,7 +271,7 @@ const operationOutputSchemas = {
 const variant = <Name extends string, Schema extends z.ZodType>(operation: Name, result: Schema) =>
   z.object({ operation: z.literal(operation), result });
 
-const toolOutputSchemas = {
+const singleToolOutputSchemas = {
   delete_document: operationOutputSchemas.delete_document,
   delete_folder: operationOutputSchemas.delete_folder,
   delete_category: operationOutputSchemas.delete_category,
@@ -297,6 +297,7 @@ const toolOutputSchemas = {
     variant('update', operationOutputSchemas.update_document),
   ]),
   list_workspace_structure: z.union([
+    variant('workspaces', z.array(z.object({ id: z.string().uuid(), name: z.string(), slug: z.string(), entireWorkspace: z.boolean(), categoryIds: z.array(z.string().uuid()) }))),
     variant('folders', operationOutputSchemas.list_folders),
     variant('categories', operationOutputSchemas.list_categories),
     variant('tags', operationOutputSchemas.list_tags),
@@ -339,5 +340,27 @@ const toolOutputSchemas = {
     variant('tag', tagSchema),
   ]),
 } as const;
+
+const workspaceSchema = z.object({ id: z.string().uuid(), name: z.string(), slug: z.string() });
+const scoped = (data: z.ZodType) => z.object({
+  operation: z.string(),
+  scopedResults: z.array(z.object({ workspace: workspaceSchema, categoryId: z.string().uuid().nullable(), data })),
+});
+const scopedSchemas = {
+  find_documents: scoped(singleToolOutputSchemas.find_documents),
+  list_workspace_structure: scoped(singleToolOutputSchemas.list_workspace_structure),
+  list_trash: scoped(singleToolOutputSchemas.list_trash),
+};
+const toolOutputSchemas = {
+  ...singleToolOutputSchemas,
+  find_documents: z.union([...singleToolOutputSchemas.find_documents.options, scopedSchemas.find_documents]),
+  list_workspace_structure: z.union([...singleToolOutputSchemas.list_workspace_structure.options, scopedSchemas.list_workspace_structure]),
+  list_trash: z.union([singleToolOutputSchemas.list_trash, scopedSchemas.list_trash]),
+};
+
+/** Validate hosted multi-scope output against the same contract advertised to MCP clients. */
+export function createMcpScopedResult(toolName: keyof typeof scopedSchemas, input: unknown): unknown {
+  return scopedSchemas[toolName].parse(input);
+}
 
 export { toolOutputSchemas };

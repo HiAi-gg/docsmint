@@ -50,6 +50,10 @@ async function run(
   return { stdout, stderr, exitCode };
 }
 
+// Validate with the actual publisher before Bun packaging/consumer checks.
+// npm rejects conflicting direct/peer override specs even when Bun accepts them.
+await run(['npm', 'publish', '--dry-run', '--ignore-scripts', '--access', 'public', '--json'], stage);
+
 const packed = await run(
   ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', tarballs, '--quiet'],
   stage
@@ -136,6 +140,7 @@ const ssrComponentSubpaths = [
 
 const requiredTarEntries = [
   'package/server.json',
+  'package/packages/cli/src/index.ts',
   'package/skills/docsmint-document-manager/SKILL.md',
   'package/dist/index.js',
   'package/dist/index.d.ts',
@@ -230,6 +235,7 @@ for (const file of await walk(join(packageRoot, 'dist'))) {
   );
   for (const specifier of importSpecifiers) {
     if (
+      specifier === '#lib' || specifier.startsWith('#lib/') ||
       specifier === '$lib' ||
       specifier.startsWith('$lib/') ||
       specifier === '@hiai-docs/sdk' ||
@@ -332,10 +338,10 @@ console.log("packed MCP public error identity: pass");
 await run(['bun', 'mcp-public-error-smoke.ts'], packageRoot);
 
 await writeFile(
-  join(packageRoot, 'svelte.config.js'),
+  join(packageRoot, 'kit.config.js'),
   `import adapter from "@sveltejs/adapter-node";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
-export default { preprocess: vitePreprocess(), kit: { adapter: adapter() } };
+export default { preprocess: vitePreprocess(), adapter: adapter(), alias: { "$lib": "src/lib" } };
 `
 );
 for (const dependency of [
@@ -485,9 +491,10 @@ await run(
 );
 await writeFile(
   join(packageRoot, 'vite.config.ts'),
-  `import { sveltekit } from "@sveltejs/kit/vite";
+  `import kitConfig from "./kit.config.js";
+import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
-export default defineConfig({ plugins: [sveltekit()] });
+export default defineConfig({ plugins: [sveltekit(kitConfig)] });
 `
 );
 await mkdir(join(packageRoot, 'src/routes'), { recursive: true });
@@ -636,6 +643,7 @@ await writeFile(
       sha256,
       entries: listing,
       checks: {
+        npmPublishDryRun: 'passed',
         serverImports: 'passed',
         mcpPublicErrorIdentity: 'passed',
         declarations: 'passed',

@@ -1,6 +1,6 @@
 import type { JSONContent } from "@tiptap/core";
-import { getOfflineDB } from "$lib/db";
-import { resolveOfflineIdentity } from "$lib/offline/identity";
+import { getOfflineDB } from "#lib/db/index.js";
+import { resolveOfflineIdentity } from "#lib/offline/identity.js";
 
 const CACHE_PREFIX = "parsed-editor-content";
 

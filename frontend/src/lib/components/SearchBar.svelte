@@ -3,9 +3,9 @@ import { Search, X } from "lucide-svelte";
 import {
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import { cn } from "$lib/utils.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import { cn } from "#lib/utils.js";
 
 const { class: className }: { class?: string } = $props();
 let query = $state("");

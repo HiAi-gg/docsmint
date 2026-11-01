@@ -12,7 +12,7 @@ import {
 import { Input } from "@hiai-gg/hiai-ui/components/ui/input/index";
 import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import { CheckCircle2, Loader2 } from "lucide-svelte";
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 
 let {
 	open = $bindable(false),

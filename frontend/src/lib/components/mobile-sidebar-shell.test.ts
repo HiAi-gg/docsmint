@@ -37,7 +37,8 @@ describe("responsive app shell", () => {
 		expect(sidebar).toContain('tabindex="-1"');
 		expect(layout).toContain('event.key === "Escape"');
 		expect(layout).toContain('event.key !== "Tab"');
-		expect(layout).toContain("previouslyFocused.focus()");
+		expect(layout).toMatch(/restoreMobileSidebarFocus\(\s*previouslyFocused/);
+		expect(host).toMatch(/restoreMobileSidebarFocus\(\s*previouslyFocused/);
 		expect(layout).toContain('document.body.style.overflow = "hidden"');
 		expect(layout).toContain("inert={isMobile && mobileSidebar.open}");
 		expect(toggle).toContain("aria-expanded={mobileSidebar.open}");

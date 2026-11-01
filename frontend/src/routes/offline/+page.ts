@@ -1,4 +1,4 @@
-import { getCachedDocuments } from "$lib/offline/cache-documents";
+import { getCachedDocuments } from "#lib/offline/cache-documents.js";
 import type { PageLoad } from "./$types";
 
 export const ssr = false;

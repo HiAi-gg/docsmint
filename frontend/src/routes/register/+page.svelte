@@ -1,9 +1,9 @@
 <script lang="ts">
-import { browser } from "$app/environment";
+import { submitRegistration } from "#lib/auth/register-submission.js";
+import { signUp } from "#lib/auth-client.js";
+import * as m from "#lib/paraglide/messages.js";
+import { browser } from "$app/env";
 import { goto } from "$app/navigation";
-import { submitRegistration } from "$lib/auth/register-submission";
-import { signUp } from "$lib/auth-client";
-import * as m from "$lib/paraglide/messages.js";
 
 let name = $state("");
 let email = $state("");

@@ -57,7 +57,7 @@ async function packageFixture(mutation: FixtureMutation = {}) {
 			"hiai-docs": "./packages/cli/src/index.ts",
 			"hiai-docs-mcp": "./packages/mcp-server/src/index.ts",
 		},
-		engines: { bun: ">= 1.3.14" },
+		engines: { bun: ">= 1.4.0" },
 	};
 	files["package.json"] = `${JSON.stringify(manifest)}\n`;
 	for (const [relativePath, contents] of Object.entries(files)) {

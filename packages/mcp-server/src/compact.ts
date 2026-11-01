@@ -4,6 +4,7 @@ import type { HiaiDocsClient } from './client.js';
 import { toolOutputSchemas } from './output-schemas.js';
 import type { capabilityCatalog } from './capabilities.js';
 import { registerBatchAndWorkspaceCapabilities } from './batch-workspace.js';
+import { withClientRoutingSchema } from './client-routing-schema.js';
 
 type ToolName = (typeof capabilityCatalog.tools)[number];
 type Wrapper = <Args>(name: string, handler: (args: Args) => Promise<unknown>, outputSchema?: z.ZodType) => (args: Args) => Promise<unknown>;
@@ -22,7 +23,7 @@ function required<T>(value: T | undefined, name: string): T {
 
 export function registerCompactCapabilities(server: McpServer, client: HiaiDocsClient, wrap: Wrapper): void {
   function register<Schema extends z.ZodType>(name: ToolName, description: string, inputSchema: Schema, annotations: typeof read | typeof write | typeof destructive, handler: (input: z.infer<Schema>) => Promise<unknown>): void {
-    server.registerTool(name, { description, inputSchema, outputSchema: toolOutputSchemas[name], annotations }, wrap(name, handler, toolOutputSchemas[name]) as never);
+    server.registerTool(name, { description, inputSchema: withClientRoutingSchema(inputSchema), outputSchema: toolOutputSchemas[name], annotations }, wrap(name, handler, toolOutputSchemas[name]) as never);
   }
 
   register('find_documents', 'Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.', z.discriminatedUnion('mode', [
@@ -59,11 +60,13 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     return { id, deleted: true };
   });
 
-  register('list_workspace_structure', 'List visible folders, categories, or tags in the active workspace or category scope. Set kind=folders to inspect root folders or children of parentId.', z.discriminatedUnion('kind', [
+  register('list_workspace_structure', 'Discover permitted spaces with kind=workspaces, including empty spaces; use returned workspaceId for scoped operations. List folders, categories, or tags; set kind=folders for root folders or children of parentId. Unselected reads cover all granted scopes when supported by the host.', z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('workspaces').describe('Discover every workspace granted to this connection, including empty ones.') }),
     z.strictObject({ kind: z.literal('folders').describe('Select the folders operation explicitly.'), parentId: uuid.optional() }),
     z.strictObject({ kind: z.literal('categories').describe('Select the categories operation explicitly.') }),
     z.strictObject({ kind: z.literal('tags').describe('Select the tags operation explicitly.') }),
   ]), read, async input => {
+    if (input.kind === 'workspaces') throw new Error('Workspace routing is not configured');
     if (input.kind === 'folders') return { operation: 'folders', result: await client.listFolders({ parentId: input.parentId }) };
     if (input.kind === 'categories') return { operation: 'categories', result: await client.listCategories() };
     return { operation: 'tags', result: await client.listTags() };

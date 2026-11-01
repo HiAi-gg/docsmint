@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import svelteConfig from "../frontend/svelte.config.js";
+import svelteConfig from "../frontend/kit.config.js";
 
 async function caddyfileSource(): Promise<string> {
 	return Bun.file(
@@ -38,7 +38,7 @@ describe("supported reverse-proxy deployment", () => {
 	});
 
 	test("keeps SvelteKit origin validation enabled", () => {
-		const csrf = svelteConfig.kit?.csrf as
+		const csrf = svelteConfig.csrf as
 			| { checkOrigin?: boolean; trustedOrigins?: string[] }
 			| undefined;
 		expect(csrf?.checkOrigin).not.toBe(false);
@@ -46,6 +46,6 @@ describe("supported reverse-proxy deployment", () => {
 	});
 
 	test("emits origin-root asset URLs so nested routes can load CSS", () => {
-		expect(svelteConfig.kit?.paths?.relative).toBe(false);
+		expect(svelteConfig.paths?.relative).toBe(false);
 	});
 });

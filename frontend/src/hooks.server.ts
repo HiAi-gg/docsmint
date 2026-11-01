@@ -1,5 +1,5 @@
-import type { Handle, HandleServerError } from "@sveltejs/kit";
-import { getLocale } from "$lib/paraglide/runtime";
+import type { Handle, HandleServerError } from "@sveltejs/kit/hooks";
+import { getLocale } from "#lib/paraglide/runtime.js";
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const locale = getLocale();

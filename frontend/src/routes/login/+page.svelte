@@ -1,9 +1,9 @@
 <script lang="ts">
-import { browser } from "$app/environment";
+import { authFailureMessage } from "#lib/auth/auth-failure-message.js";
+import { signIn } from "#lib/auth-client.js";
+import * as m from "#lib/paraglide/messages.js";
+import { browser } from "$app/env";
 import { goto } from "$app/navigation";
-import { authFailureMessage } from "$lib/auth/auth-failure-message";
-import { signIn } from "$lib/auth-client";
-import * as m from "$lib/paraglide/messages.js";
 
 let email = $state("");
 let password = $state("");

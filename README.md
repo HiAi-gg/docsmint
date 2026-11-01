@@ -50,15 +50,18 @@ The Cloud endpoint is `https://docsmint.com/mcp` (Streamable HTTP). OAuth-capabl
 clients discover the hosted resource and authorization-server metadata; current
 authorization and client-connection methods are described in the
 [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=github_mcp).
-Browser consent binds the one-hour opaque access token to the selected workspace,
-optional category, and requested scopes. Refresh tokens are not issued. API-key clients can instead send
+Browser consent binds access to the selected workspaces, optional categories, and requested scopes.
+DocsMint Cloud 1.1.9 and later supports hourly access tokens and rotating refresh tokens for up to
+30 days from authorization when the client supports renewal. Existing connections need one reconnect
+to enable refresh; clients without refresh support still reconnect after access expires.
+API-key clients can instead send
 `Authorization: Bearer <key>` with an MCP/API credential created in the authenticated
 browser UI. Credentials cannot create or elevate other credentials; lifecycle
 management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.3.14 or
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.4.0 or
 later to execute the published binary. The npm package is a stdio bridge to
 your own API; it does not install the DocsMint application or Cloud OAuth server.
 See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
@@ -81,7 +84,19 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## What's new in 1.0.2?
+## What's new in 2.0.4?
+
+Hosted MCP integrations can discover granted workspaces, including empty spaces, with
+`list_workspace_structure(kind="workspaces")` and select one with the optional
+`workspaceId` argument. The catalog remains 22 tools. Host authorization hooks preserve
+the connection's existing workspace/category boundaries. Multi-scope reads carry labeled
+results and independent pagination. Existing single-scope calls remain compatible.
+
+The OSS frontend adopts SvelteKit 3; dependency updates resolve the current security
+audit findings. No database migration is required. See the
+[2.0.4 release notes](docs/release/v2.0.4-notes.md).
+
+## Previous release: 1.0.3
 
 - Make MCP tool selection clearer: use a single-document tool for one document
   and `batch_documents` when multiple explicit IDs need the same action.
@@ -91,7 +106,7 @@ is a separate listing.
 - DocsMint Cloud remains a separate hosted Connector. Cloud descriptions
   change only when the hosted service adopts this package version.
 
-No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.2)
+No database migration is required. See the [release notes](https://github.com/HiAi-gg/docsmint/releases/tag/v1.0.3)
 and [changelog](https://github.com/HiAi-gg/docsmint/blob/main/CHANGELOG.md).
 
 ## Install with an AI agent
@@ -144,7 +159,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v1.0.2`, `web-v1.0.2`, and `caddy-v1.0.2` for
+Use versioned tags `api-v1.0.3`, `web-v1.0.3`, and `caddy-v1.0.3` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.

@@ -6,7 +6,7 @@
      ("YYYY-MM-DD") or "" when unset. -->
 <script lang="ts">
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-svelte";
-import * as m from "$lib/paraglide/messages.js";
+import * as m from "#lib/paraglide/messages.js";
 
 let {
 	value = $bindable(""),

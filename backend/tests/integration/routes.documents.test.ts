@@ -11,7 +11,6 @@
  */
 
 import {
-	afterAll,
 	afterEach,
 	beforeAll,
 	beforeEach,
@@ -32,15 +31,7 @@ import {
 	setupHarness,
 } from "./_harness";
 
-// The harness's `sql` mock returns plain `{ [Symbol(sql)]: true }` objects
-// without an `.as()` method. The document list query does
-// `sql\`LEFT(${documents.content}, 200)\`.as("content")` — calling `.as()`
-// on a plain object throws. Install a no-op `.as()` on Object.prototype
-// for the lifetime of this test file and remove it in afterAll so it
-// doesn't leak into other test files.
-(Object.prototype as any).as = function (this: any) {
-	return this;
-};
+// SQL aliases are implemented by the harness SQL objects, never Object.prototype.
 
 let app: any;
 
@@ -49,9 +40,6 @@ beforeAll(async () => {
 	app = built.app;
 });
 
-afterAll(() => {
-	delete (Object.prototype as any).as;
-});
 
 beforeEach(() => {
 	resetState();

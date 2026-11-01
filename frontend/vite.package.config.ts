@@ -91,7 +91,7 @@ export default defineConfig(() => {
 	plugins: [svelte()],
 	resolve: {
 		alias: {
-			$lib: `${root}/frontend/src/lib`,
+			"#lib": `${root}/frontend/src/lib`,
 		},
 	},
 	build: {
@@ -103,7 +103,7 @@ export default defineConfig(() => {
 			: "../packages/sdk/dist/frontend",
 		emptyOutDir: !isSsrBuild,
 		ssr: isSsrBuild,
-		lib: isSsrBuild ? undefined : { entry: entries, formats: ["es"] },
+		lib: isSsrBuild ? undefined : { entry: entries, formats: ["es" as const] },
 		rollupOptions: {
 			input: isSsrBuild ? entries : undefined,
 			external: isConsumerRuntimeImport,

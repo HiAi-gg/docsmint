@@ -1,18 +1,18 @@
 <script lang="ts">
 import "../app.css";
 import { onMount } from "svelte";
-import PwaInstallPrompt from "$lib/components/PwaInstallPrompt.svelte";
-import PwaUpdatePrompt from "$lib/components/PwaUpdatePrompt.svelte";
-import QuickSearch from "$lib/components/QuickSearch.svelte";
-import ShortcutHelp from "$lib/components/ShortcutHelp.svelte";
-import { networkStatus } from "$lib/offline/network-status.svelte";
-import OfflineIndicator from "$lib/offline/offline-indicator.svelte";
-import { getLocale } from "$lib/paraglide/runtime";
+import PwaInstallPrompt from "#lib/components/PwaInstallPrompt.svelte";
+import PwaUpdatePrompt from "#lib/components/PwaUpdatePrompt.svelte";
+import QuickSearch from "#lib/components/QuickSearch.svelte";
+import ShortcutHelp from "#lib/components/ShortcutHelp.svelte";
+import { networkStatus } from "#lib/offline/network-status.svelte.js";
+import OfflineIndicator from "#lib/offline/offline-indicator.svelte";
+import { getLocale } from "#lib/paraglide/runtime.js";
 import {
 	handleKeyEvent,
 	registerDefaultShortcuts,
-} from "$lib/stores/keyboard.svelte";
-import { initTheme } from "$lib/stores/theme.svelte";
+} from "#lib/stores/keyboard.svelte.js";
+import { initTheme } from "#lib/stores/theme.svelte.js";
 
 const { children } = $props();
 

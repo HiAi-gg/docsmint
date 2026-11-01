@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Menu } from "lucide-svelte";
-import { mobileSidebar } from "$lib/stores/mobile-sidebar.svelte";
+import { mobileSidebar } from "#lib/stores/mobile-sidebar.svelte.js";
 
 let {
 	buttonRef = $bindable(null),

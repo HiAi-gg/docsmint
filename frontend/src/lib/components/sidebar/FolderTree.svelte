@@ -49,14 +49,13 @@ import {
 import { onDestroy, onMount, untrack } from "svelte";
 import { flip } from "svelte/animate";
 import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
-import { page } from "$app/state";
 import {
 	type Category,
 	deleteCategory,
 	listCategories,
 	updateCategory,
-} from "$lib/api/categories";
-import { apiFetch } from "$lib/api/client";
+} from "#lib/api/categories.js";
+import { apiFetch } from "#lib/api/client.js";
 import {
 	clearDocumentsCache,
 	type Document,
@@ -64,31 +63,31 @@ import {
 	getDocument,
 	listDocuments,
 	updateDocument,
-} from "$lib/api/documents";
+} from "#lib/api/documents.js";
 import {
 	createFolder,
 	deleteFolder,
 	listFolders,
 	updateFolder,
-} from "$lib/api/folders";
-import DeleteDialog from "$lib/components/DeleteDialog.svelte";
-import FolderDialog from "$lib/components/FolderDialog.svelte";
-import ShareDialog from "$lib/components/ShareDialog.svelte";
-import CategoryDialog from "$lib/components/sidebar/CategoryDialog.svelte";
+} from "#lib/api/folders.js";
+import DeleteDialog from "#lib/components/DeleteDialog.svelte";
+import FolderDialog from "#lib/components/FolderDialog.svelte";
+import ShareDialog from "#lib/components/ShareDialog.svelte";
+import CategoryDialog from "#lib/components/sidebar/CategoryDialog.svelte";
 import {
 	createDocumentDropCoordinator,
 	createDocumentPlacementWriter,
 	type SidebarDocumentPlacement,
-} from "$lib/components/sidebar/document-drop-coordinator";
-import FolderNode from "$lib/components/sidebar/FolderNode.svelte";
+} from "#lib/components/sidebar/document-drop-coordinator.js";
+import FolderNode from "#lib/components/sidebar/FolderNode.svelte";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
 	resolveDocsmintRoute,
-} from "$lib/hosts/route-context";
-import { getDocsmintShareAdapter } from "$lib/hosts/share-context";
-import * as m from "$lib/paraglide/messages.js";
+} from "#lib/hosts/route-context.js";
+import { getDocsmintShareAdapter } from "#lib/hosts/share-context.js";
+import * as m from "#lib/paraglide/messages.js";
 import {
 	acknowledgeDocumentPlacement,
 	bumpSubfoldersRefresh,
@@ -101,15 +100,16 @@ import {
 	publishDocumentPlacement,
 	registerDocument,
 	registerFolder,
-} from "$lib/stores/subfolders-refresh-store.svelte.js";
+} from "#lib/stores/subfolders-refresh-store.svelte.js";
 import {
 	getDocRefreshNonce,
 	getSelectedTag,
 	refreshDocs,
-} from "$lib/stores/tag-store.svelte";
-import { cn } from "$lib/utils";
-import { copyToClipboard } from "$lib/utils/clipboard.js";
-import { type DndEvent, dndzone } from "$lib/utils/dndzone";
+} from "#lib/stores/tag-store.svelte.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
+import { type DndEvent, dndzone } from "#lib/utils/dndzone.js";
+import { cn } from "#lib/utils.js";
+import { page } from "$app/state";
 
 const route = getDocsmintRouteAdapter();
 const request = getDocsmintRequestAdapter();

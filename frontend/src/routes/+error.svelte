@@ -1,6 +1,6 @@
 <script lang="ts">
+import * as m from "#lib/paraglide/messages.js";
 import { page } from "$app/state";
-import * as m from "$lib/paraglide/messages.js";
 </script>
 
 <div class="flex min-h-screen items-center justify-center">

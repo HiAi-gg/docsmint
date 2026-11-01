@@ -22,19 +22,19 @@ import {
 	Share2,
 	Trash2,
 } from "lucide-svelte";
-import { invalidateAll } from "$app/navigation";
-import { getDocument, updateDocument } from "$lib/api/documents";
-import MoveDialog from "$lib/components/MoveDialog.svelte";
+import { getDocument, updateDocument } from "#lib/api/documents.js";
+import MoveDialog from "#lib/components/MoveDialog.svelte";
 import {
 	getDocsmintRequestAdapter,
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import * as m from "$lib/paraglide/messages.js";
-import type { Document } from "$lib/types.js";
-import { copyToClipboard } from "$lib/utils/clipboard.js";
-import { stripMarkdown } from "$lib/utils/strip-markdown";
-import { cn, formatRelativeTime } from "$lib/utils.js";
+} from "#lib/hosts/route-context.js";
+import * as m from "#lib/paraglide/messages.js";
+import type { Document } from "#lib/types.js";
+import { copyToClipboard } from "#lib/utils/clipboard.js";
+import { stripMarkdown } from "#lib/utils/strip-markdown.js";
+import { cn, formatRelativeTime } from "#lib/utils.js";
+import { invalidateAll } from "$app/navigation";
 import {
 	handleCardNavigationKeydown,
 	stopCardMenuKeydown,

@@ -6,21 +6,21 @@ import Label from "@hiai-gg/hiai-ui/components/ui/label/label.svelte";
 import * as Tabs from "@hiai-gg/hiai-ui/components/ui/tabs/index";
 import { Loader2, LogOut, Save } from "lucide-svelte";
 import { onMount } from "svelte";
-import { page } from "$app/state";
-import { getProfile, updateProfile } from "$lib/api/settings";
-import { authClient, signOut } from "$lib/auth-client";
-import ApiAccessSettings from "$lib/components/settings/ApiAccessSettings.svelte";
-import { getFrontendExtensions } from "$lib/extensions/context";
-import { resolveExtensions } from "$lib/extensions/resolve";
+import { getProfile, updateProfile } from "#lib/api/settings.js";
+import { authClient, signOut } from "#lib/auth-client.js";
+import ApiAccessSettings from "#lib/components/settings/ApiAccessSettings.svelte";
+import { getFrontendExtensions } from "#lib/extensions/context.js";
+import { resolveExtensions } from "#lib/extensions/resolve.js";
 import {
 	getDocsmintRouteAdapter,
 	navigateDocsmintRoute,
-} from "$lib/hosts/route-context";
-import { cleanupOfflineData } from "$lib/offline/cleanup";
-import * as m from "$lib/paraglide/messages.js";
-import { editorPreferences } from "$lib/stores/editor-preferences.svelte";
-import { searchPreferences } from "$lib/stores/search-preferences.svelte";
-import { type Theme, themeStore } from "$lib/stores/theme.svelte";
+} from "#lib/hosts/route-context.js";
+import { cleanupOfflineData } from "#lib/offline/cleanup.js";
+import * as m from "#lib/paraglide/messages.js";
+import { editorPreferences } from "#lib/stores/editor-preferences.svelte.js";
+import { searchPreferences } from "#lib/stores/search-preferences.svelte.js";
+import { type Theme, themeStore } from "#lib/stores/theme.svelte.js";
+import { page } from "$app/state";
 
 let {
 	open = $bindable(false),

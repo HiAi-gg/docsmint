@@ -84,14 +84,14 @@ describe('DocsMint MCP tool definitions', () => {
     const tools = await listTools();
     const variants = new Map([
       ['find_documents', 2], ['read_document', 3], ['save_document', 2],
-      ['list_workspace_structure', 3], ['save_folder', 2], ['save_category', 2],
+      ['list_workspace_structure', 4], ['save_folder', 2], ['save_category', 2],
       ['save_tag', 2], ['explore_graph', 2],
     ]);
     for (const [name, count] of variants) {
       const tool = tools.find(entry => entry.name === name);
       expect(tool, name).toBeDefined();
       expect((tool?.inputSchema as { oneOf?: unknown[] })?.oneOf, `${name} input variants`).toHaveLength(count);
-      expect((tool?.outputSchema as { anyOf?: unknown[] })?.anyOf, `${name} output variants`).toHaveLength(count);
+      expect((tool?.outputSchema as { anyOf?: unknown[] })?.anyOf, `${name} output variants`).toHaveLength(count + (name === 'find_documents' || name === 'list_workspace_structure' ? 1 : 0));
     }
   });
 });
