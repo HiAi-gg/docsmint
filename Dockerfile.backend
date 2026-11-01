@@ -29,6 +29,12 @@ COPY package.json tsconfig.json ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/vendor ./vendor
 COPY --from=deps /app/backend/node_modules ./backend/node_modules
+# Backend imports the public SDK/MCP exports. Materialize their workspace links
+# and source so its build:server prerequisite works in a clean image too.
+COPY --from=deps /app/packages/sdk/node_modules ./packages/sdk/node_modules
+COPY --from=deps /app/packages/mcp-server/node_modules ./packages/mcp-server/node_modules
+COPY packages/sdk/ ./packages/sdk/
+COPY packages/mcp-server/ ./packages/mcp-server/
 COPY packages/db/ ./packages/db/
 COPY backend/src ./backend/src
 COPY backend/tsconfig.json ./backend/
