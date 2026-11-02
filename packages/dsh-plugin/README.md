@@ -12,9 +12,8 @@ DocsMint MCP server.
   with that instance's API key.
 
 > **Release status: `1.0.0-rc.1`.** The candidate is prepared for the `next`
-> dist-tag. `1.0.0` follows the same gate once the live matrix — Cloud OAuth,
-> self-hosted key, isolation, restart, light/dark panels — is accepted on the
-> installed registry artifact.
+> dist-tag. Publication uses normal package tests and a release tag. The owner already uses
+> the plugin; another live acceptance cycle is not required.
 
 ## Install
 
@@ -124,8 +123,7 @@ node test/client.mjs # registered-panel filter/sort and creation requests
 npm pack --dry-run  # what the published tarball contains
 ```
 
-`ci/dsh-plugin.yml` is the GitHub Actions gate (PR matrix on Node 22/24, pack
-inspection, install of the packed artifact, then OIDC trusted publishing on a
+`ci/dsh-plugin.yml` is the GitHub Actions gate (normal tests on Node 22/24, a package dry run, then OIDC trusted publishing on a
 `dsh-plugin-v*` tag). Copy it to `.github/workflows/` in the OSS repository.
 
 ## License
