@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/workspace",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "mcpName": "io.github.HiAi-gg/docsmint",
   "private": true,
   "type": "module",
@@ -239,7 +239,7 @@
     "LICENSE"
   ],
   "engines": {
-    "bun": ">=1.4.0"
+    "bun": ">=1.4.4"
   },
   "scripts": {
     "dev": "docker compose up -d",
@@ -272,25 +272,28 @@
     "prepublishOnly": "cd packages/sdk && bun run build"
   },
   "overrides": {
-    "fast-uri": "3.1.5",
+    "fast-uri": "3.1.9",
     "esbuild": "0.28.2",
     "prosemirror-model": "1.25.9",
     "prosemirror-view": "1.42.3",
     "source-map-js": "1.2.2",
-    "vite": "8.2.4",
+    "vite": "8.3.5",
     "cookie": "1.1.1",
     "@tiptap/core": "3.30.5",
     "@xmldom/xmldom": "0.8.15",
     "@types/node": "25.9.3",
     "happy-dom": "21.0.4",
-    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/kit": "3.1.1",
     "@tiptap/html": {
       "happy-dom": "21.0.4"
     },
     "svelte": "5.57.1",
     "@scalar/themes": "0.19.3",
     "@scalar/types": "0.25.0",
-    "deepmerge": "file:vendor/deepmerge"
+    "deepmerge": "file:vendor/deepmerge",
+    "baseline-browser-mapping": "2.11.34",
+    "browserslist": "4.29.5",
+    "serialize-javascript": "7.1.4"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.3.0",
@@ -305,7 +308,7 @@
     "postgres": "^3.4.9",
     "@aws-sdk/client-s3": "^3.1121.0",
     "pino": "^10.0.0",
-    "@sveltejs/kit": "^3.1.0",
+    "@sveltejs/kit": "3.1.1",
     "svelte": "^5.57.1"
   },
   "peerDependenciesMeta": {

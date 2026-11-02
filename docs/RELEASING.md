@@ -185,7 +185,7 @@ version in the Glama admin form:
 
 ```json
 [
-  "npm install -g bun@1.4.0",
+  "npm install -g bun@1.4.4",
   "bun add --global @hiai-gg/docsmint@$(node -p \"require('./package.public.json').version\")"
 ]
 ```

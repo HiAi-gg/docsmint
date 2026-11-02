@@ -1,7 +1,7 @@
 {
   "name": "@hiai-gg/docsmint",
   "mcpName": "io.github.HiAi-gg/docsmint",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "type": "module",
   "browser": {
     "./dist/backend-launcher.js": false,
@@ -367,7 +367,7 @@
     "packages/cli/src/index.ts"
   ],
   "engines": {
-    "bun": ">= 1.4.0"
+    "bun": ">=1.4.4"
   },
   "publishConfig": {
     "access": "public"
@@ -393,7 +393,7 @@
     "postgres": "^3.4.9",
     "@aws-sdk/client-s3": "^3.1121.0",
     "pino": "^10.0.0",
-    "@sveltejs/kit": "^3.1.0",
+    "@sveltejs/kit": "3.1.1",
     "svelte": "^5.57.1"
   },
   "peerDependenciesMeta": {
@@ -412,7 +412,7 @@
   },
   "overrides": {
     "happy-dom": "21.0.4",
-    "@sveltejs/kit": "^3.1.0",
+    "@sveltejs/kit": "3.1.1",
     "svelte": "^5.57.1",
     "@scalar/themes": "0.19.3",
     "@scalar/types": "0.25.0"
