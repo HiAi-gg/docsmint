@@ -47,7 +47,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node test/mcp.mjs && node test/plugin.mjs && node test/client.mjs && node test/release.mjs"
+    "test": "node test/mcp.mjs && node test/plugin.mjs && node test/client.mjs"
   },
   "publishConfig": {
     "access": "public",

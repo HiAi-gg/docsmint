@@ -51,16 +51,16 @@ Uninstalling a bundle does not delete DocsMint documents or revoke unrelated
 ChatGPT/owner connections. Disconnect only the plugin's own authorization when
 needed. Restore the previous package version if a candidate fails acceptance.
 
-## Release gates
+## Publication
 
-1. Verify imported archive checksums and source review.
-2. Run simulated tests and install the exact packed artifact into a clean consumer.
-3. Bootstrap the unpublished package using owner npm login and 2FA after review.
-4. Bind npm trusted publishing to HiAi-gg/docsmint, workflow dsh-plugin.yml,
-   environment dsh-plugin-release; no permanent npm token.
-5. Publish an OIDC candidate, verify provenance/integrity and actual registry install.
-6. Complete Cloud/self-hosted, scope isolation, restart and light/dark width checks.
-7. Obtain owner approval before stable 1.0.0 or any community-directory submission.
+Normal package tests run on Node 22 and 24. A dsh-plugin-v* tag publishes this
+independent package to npm through OIDC after those tests pass. No GitHub
+environment, required reviewer, separate certification or live acceptance gate
+is used. Prereleases use next; stable versions use latest.
 
-Public candidates are immutable. Never publish the original handoff tarball after
-source corrections; use the new reviewed artifact and its recorded SHA-256.
+For first publication the package owner completes npm login and 2FA. Once the
+package exists, configure npm trusted publishing for HiAi-gg/docsmint and
+dsh-plugin.yml with the environment field left empty. No permanent token is needed.
+Existing user Harness use is accepted; another live acceptance cycle is not required.
+
+Published versions stay immutable. Use a new version to correct a release.

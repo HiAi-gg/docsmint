@@ -6,13 +6,12 @@
   "importedFiles": 17,
   "reportedChecks": 49,
   "repeatedInitialChecks": 49,
-  "releaseStatus": "Source checks pass; source security findings fixed and retested; hosted CI, registry and live acceptance gates pending",
+  "releaseStatus": "Owner requested simple npm release: normal tests then tag-based publication, no environment or manual approval gate.",
   "sourceValidation": {
     "mcpChecks": 44,
     "hostChecks": 55,
     "registeredPanelTests": 3,
-    "total": 113,
-    "originalChecksPreserved": true,
-    "releaseWorkflowCases": 11
+    "total": 102,
+    "originalChecksPreserved": true
   }
 }
