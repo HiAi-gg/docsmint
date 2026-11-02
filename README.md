@@ -61,7 +61,7 @@ management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.4.0 or
+`npx --yes --package @hiai-gg/docsmint docsmint-mcp`. Install Bun 1.4.4 or
 later to execute the published binary. The npm package is a stdio bridge to
 your own API; it does not install the DocsMint application or Cloud OAuth server.
 See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
@@ -83,6 +83,10 @@ is a separate listing.
   the search index automatically in the background.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
+
+## Security patch 2.1.1
+
+Bun 1.4.4, SvelteKit/Vite and Better Auth patch refreshes preserve the existing MCP/REST contract. See [2.1.1 release notes](docs/release/v2.1.1-notes.md) and the [security report](docs/security/2026-11-02-security-refresh.md).
 
 ## What's new in 2.1.0?
 
@@ -446,7 +450,7 @@ For pipeline internals and tuning, see [Architecture](https://github.com/HiAi-gg
 
 ## Stack
 
-- Bun 1.4.0+, TypeScript, Elysia, Zod, and Pino
+- Bun 1.4.4+, TypeScript, Elysia, Zod, and Pino
 - Svelte 5, SvelteKit, Tailwind CSS, and TipTap
 - Better Auth and Drizzle ORM
 - PostgreSQL 18, pgvector, pgvectorscale, and Apache AGE
@@ -469,7 +473,7 @@ For pipeline internals and tuning, see [Architecture](https://github.com/HiAi-gg
 
 ## Development
 
-Use Bun 1.4.0 or later for local development.
+Use Bun 1.4.4 or later for local development.
 
 ```bash
 bun install

@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/backend",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -33,7 +33,7 @@
     "@tiptap/extension-link": "^3.30.5",
     "@tiptap/html": "^3.30.5",
     "@tiptap/starter-kit": "^3.30.5",
-    "better-auth": "1.7.7",
+    "better-auth": "1.7.15",
     "bullmq": "^6.3.2",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.30",

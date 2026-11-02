@@ -232,10 +232,10 @@ export async function verifyPublishedPackage(
 		const engines = manifest.engines as Record<string, unknown> | undefined;
 		if (
 			typeof engines?.bun !== "string" ||
-			!engines.bun.includes("1.4.0") ||
+			!engines.bun.includes("1.4.4") ||
 			Object.hasOwn(engines, "node")
 		) {
-			throw new Error("published package must declare the Bun 1.4.0+ runtime");
+			throw new Error("published package must declare the Bun 1.4.4+ runtime");
 		}
 		const advertisedTargets = new Set<string>();
 		collectAdvertisedTargets(manifest.main, advertisedTargets);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.1 - 2026-11-02
+
+- Refresh Bun 1.4.4, SvelteKit/Vite adapters and Better Auth/core security patch versions.
+- Fix compatible transitive security advisories; retain explicit evidence for two build-tool advisories requiring upstream major migrations.
+- Keep MCP/REST contracts and permissions unchanged.
+
 ## 2.1.0 - 2026-11-01
 
 - Add scoped, stateless HTTP MCP and public web-origin proxy alongside stdio.
