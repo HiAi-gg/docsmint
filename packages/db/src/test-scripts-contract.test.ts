@@ -59,6 +59,7 @@ test("unit, contract, and required integration discovery stay explicit", async (
 			"bun --no-env-file test --path-ignore-patterns='*node_modules*'",
 			"backend/src/__tests__/document-list-query-postgres.integration.test.ts",
 			"backend/src/__tests__/better-auth-account-postgres.integration.test.ts",
+			"backend/src/__tests__/legacy-sdk-http-postgres.integration.test.ts",
 			"backend/src/__tests__/content-access-postgres.integration.test.ts",
 			"backend/src/__tests__/metadata-impact-postgres.integration.test.ts",
 			"backend/src/__tests__/graph-routes.test.ts",
