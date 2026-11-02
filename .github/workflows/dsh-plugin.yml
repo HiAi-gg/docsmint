@@ -89,6 +89,7 @@ jobs:
           node test/mcp.mjs
           node test/plugin.mjs
           node test/client.mjs
+          DSH_WORKFLOW_PATH="$GITHUB_WORKSPACE/.github/workflows/dsh-plugin.yml" node test/release.mjs
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           const manifest=JSON.parse(fs.readFileSync('package.json','utf8'));
@@ -124,6 +125,10 @@ jobs:
           if(!semver.test(version)||tag!=='dsh-plugin-v'+version)throw Error('Invalid SemVer or tag/package mismatch');
           if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==sha)throw Error('Checkout SHA mismatch');
           if(api('repos/'+repo+'/git/ref/heads/main').object.sha!==sha)throw Error('Tag must identify exact current main');
+          // Missing/unprotected environments must fail here, before GitHub could
+          // implicitly create an unprotected environment for the publish job.
+          const environment=api('repos/'+repo+'/environments/dsh-plugin-release');
+          if(!environment.protection_rules?.some(rule=>rule.type==='required_reviewers'&&rule.reviewers?.length))throw Error('Owner-configured release reviewers are required');
           const prs=api('repos/'+repo+'/commits/'+sha+'/pulls').filter(p=>p.merged_at&&p.base.ref==='main'&&p.merge_commit_sha===sha);
           if(!prs.length)throw Error('No merged PR for release SHA');
           for(const workflow of ['ci.yml','dsh-plugin.yml']) {

@@ -11,7 +11,8 @@
     "mcpChecks": 44,
     "hostChecks": 55,
     "registeredPanelTests": 3,
-    "total": 102,
-    "originalChecksPreserved": true
+    "total": 113,
+    "originalChecksPreserved": true,
+    "releaseWorkflowCases": 11
   }
 }
