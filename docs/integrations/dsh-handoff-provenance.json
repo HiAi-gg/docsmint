@@ -1,0 +1,17 @@
+{
+  "source": "Owner-supplied archive; no source Git commit supplied",
+  "sourceArchiveSha256": "8d28202fea87ca9a8c7903b9e41408d2b659254660eaf9637a7c09e8cc06f413",
+  "originalTarballSha256": "ab88deec919b911b01a87b2ace3c9c8c1845a83b885da685559708436e067ab3",
+  "originalTarball": "NOT approved for publication after security findings",
+  "importedFiles": 17,
+  "reportedChecks": 49,
+  "repeatedInitialChecks": 49,
+  "releaseStatus": "Source checks pass; source security findings fixed and retested; hosted CI, registry and live acceptance gates pending",
+  "sourceValidation": {
+    "mcpChecks": 44,
+    "hostChecks": 55,
+    "registeredPanelTests": 3,
+    "total": 102,
+    "originalChecksPreserved": true
+  }
+}

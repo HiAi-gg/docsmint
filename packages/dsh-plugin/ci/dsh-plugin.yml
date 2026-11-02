@@ -1,0 +1,170 @@
+# Publish only a certified immutable tarball. Configure npm OIDC trusted publishing
+# for this workflow and protected environment dsh-plugin-release (required reviewers).
+# No npm token, SDK release tag, or production rollout is used here.
+name: dsh-plugin
+
+on:
+  pull_request:
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+  push:
+    branches: [main]
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+    tags: ['dsh-plugin-v*']
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Pack once and attest contents
+        working-directory: packages/dsh-plugin
+        run: |
+          set -euo pipefail
+          for file in index.js mcp.js client.js test/*.mjs; do node --check "$file"; done
+          mkdir -p "$RUNNER_TEMP/dsh-certified"
+          npm pack --ignore-scripts --json --pack-destination "$RUNNER_TEMP/dsh-certified" > "$RUNNER_TEMP/pack.json"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import crypto from 'node:crypto';
+          const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (Object.keys(p.dependencies ?? {}).length) throw Error('Unexpected runtime dependencies');
+          const [pack] = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/pack.json', 'utf8'));
+          const files = pack.files.map(f => f.path);
+          for (const required of ['index.js','mcp.js','client.js','cordis.patch.yml','icon.png','locale/en.json','locale/ru.json','assets/docsmint-mark.svg','README.md','LICENSE']) {
+            if (!files.includes(required)) throw Error('Missing packed asset: ' + required);
+          }
+          if (files.some(f => /^(test|ci)\//.test(f))) throw Error('Development files leaked');
+          const dir = process.env.RUNNER_TEMP + '/dsh-certified';
+          fs.renameSync(path.join(dir, pack.filename), path.join(dir, 'plugin.tgz'));
+          const sha256 = crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'plugin.tgz'))).digest('hex');
+          fs.writeFileSync(path.join(dir,'certificate.json'),JSON.stringify({name:p.name,version:p.version,sha:process.env.GITHUB_SHA,sha256}));
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dsh-certified
+          path: ${{ runner.temp }}/dsh-certified/
+          if-no-files-found: error
+          retention-days: 14
+
+  certify:
+    needs: pack
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dsh-certified
+          path: ${{ runner.temp }}/dsh-certified
+      - name: Certify the exact installed artifact
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import fs from 'node:fs'; import crypto from 'node:crypto';
+          const dir=process.env.RUNNER_TEMP+'/dsh-certified';
+          const c=JSON.parse(fs.readFileSync(dir+'/certificate.json','utf8'));
+          const hash=crypto.createHash('sha256').update(fs.readFileSync(dir+'/plugin.tgz')).digest('hex');
+          if(c.sha!==process.env.GITHUB_SHA || hash!==c.sha256) throw Error('Artifact identity mismatch');
+          JS
+          mkdir "$RUNNER_TEMP/dsh-consumer"
+          cd "$RUNNER_TEMP/dsh-consumer"
+          npm init -y >/dev/null
+          npm install "$RUNNER_TEMP/dsh-certified/plugin.tgz" --ignore-scripts --no-audit --no-fund
+          ROOT="$RUNNER_TEMP/dsh-consumer/node_modules/@hiai-gg/dsh-docsmint"
+          cp -R "$GITHUB_WORKSPACE/packages/dsh-plugin/test" "$ROOT/test"
+          cd "$ROOT"
+          node test/mcp.mjs
+          node test/plugin.mjs
+          node test/client.mjs
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const manifest=JSON.parse(fs.readFileSync('package.json','utf8'));
+          if(manifest.dsh.bundle.patch!=='./cordis.patch.yml')throw Error('Missing bundle declaration');
+          for(const asset of ['index.js','mcp.js','client.js','cordis.patch.yml','icon.png','assets/docsmint-mark.svg'])if(!fs.existsSync(asset))throw Error('Missing asset '+asset);
+          const mod=await import('./index.js'); if(typeof mod.apply!=='function')throw Error('Missing apply export');
+          JS
+
+  release-gate:
+    if: startsWith(github.ref, 'refs/tags/dsh-plugin-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Require valid package tag, exact main SHA and successful PR/main CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';import {execFileSync} from 'node:child_process';
+          const api=p=>JSON.parse(execFileSync('gh',['api',p],{encoding:'utf8'}));
+          const repo=process.env.GITHUB_REPOSITORY, sha=process.env.GITHUB_SHA;
+          const tag=process.env.GITHUB_REF_NAME, version=JSON.parse(fs.readFileSync('packages/dsh-plugin/package.json','utf8')).version;
+          const semver=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+          if(!semver.test(version)||tag!=='dsh-plugin-v'+version)throw Error('Invalid SemVer or tag/package mismatch');
+          if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==sha)throw Error('Checkout SHA mismatch');
+          if(api('repos/'+repo+'/git/ref/heads/main').object.sha!==sha)throw Error('Tag must identify exact current main');
+          const prs=api('repos/'+repo+'/commits/'+sha+'/pulls').filter(p=>p.merged_at&&p.base.ref==='main'&&p.merge_commit_sha===sha);
+          if(!prs.length)throw Error('No merged PR for release SHA');
+          for(const workflow of ['ci.yml','dsh-plugin.yml']) {
+            const runs=(head,event)=>api('repos/'+repo+'/actions/workflows/'+workflow+'/runs?head_sha='+head+'&event='+event+'&per_page=100').workflow_runs;
+            if(runs(sha,'push').filter(run=>run.head_branch==='main')[0]?.conclusion!=='success')throw Error('Successful exact-main gate required: '+workflow);
+            if(!prs.some(pr=>runs(pr.head.sha,'pull_request').find(run=>run.pull_requests.some(p=>p.number===pr.number))?.conclusion==='success'))throw Error('Successful PR gate required: '+workflow);
+          }
+          JS
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/dsh-plugin-v')
+    needs: [certify, release-gate]
+    runs-on: ubuntu-latest
+    environment: dsh-plugin-release
+    concurrency: dsh-plugin-npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: Pin trusted-publishing npm CLI
+        run: |
+          npm install --global npm@11.17.0 --ignore-scripts
+          test "$(npm --version)" = 11.17.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: dsh-certified
+          path: ${{ runner.temp }}/dsh-certified
+      - name: Verify and publish the certified tarball without repacking
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';import crypto from 'node:crypto';import {execFileSync} from 'node:child_process';
+          const dir=process.env.RUNNER_TEMP+'/dsh-certified', c=JSON.parse(fs.readFileSync(dir+'/certificate.json','utf8'));
+          const main=JSON.parse(execFileSync('gh',['api','repos/'+process.env.GITHUB_REPOSITORY+'/git/ref/heads/main'],{encoding:'utf8'}));
+          if(main.object.sha!==process.env.GITHUB_SHA||c.sha!==process.env.GITHUB_SHA||process.env.GITHUB_REF_NAME!=='dsh-plugin-v'+c.version||c.name!=='@hiai-gg/dsh-docsmint')throw Error('Release identity changed');
+          if(crypto.createHash('sha256').update(fs.readFileSync(dir+'/plugin.tgz')).digest('hex')!==c.sha256)throw Error('Certified tarball hash mismatch');
+          const tag=c.version.split('+')[0].includes('-')?'next':'latest';
+          execFileSync('npm',['publish',dir+'/plugin.tgz','--ignore-scripts','--provenance','--access','public','--tag',tag],{stdio:'inherit'});
+          JS
