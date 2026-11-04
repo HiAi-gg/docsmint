@@ -1,13 +1,26 @@
 # Changelog
 
-## Security hardening during OSS import
+## [1.0.0-rc.2] — 2026-11-04
+
+Repository release candidate. The published rc.1 is a pre-refactoring snapshot
+and differs from repository main; rc.2 establishes the repository implementation
+as the release source. No rc.1 version is overwritten.
+
+- Include all three test suites, including registered-client coverage.
+- Restore updating/removing and troubleshooting documentation.
+- Install the packed archive in CI and resolve its public entry points and assets.
+- Publish matching release tags to next through OIDC with provenance.
+- Registry installation, Cloud OAuth and self-hosted key acceptance must be
+  recorded for rc.2 before promotion to 1.0.0.
+
+### Security hardening included in this repository candidate
 
 - Isolate sessions and OAuth state by registering context.
 - Serialize credential mutations and reads; prevent refresh, disconnect and concurrent-save races.
 - Require the host authorization guard for browser bridge requests.
 - Reject redirects, oversized responses and reflected credentials.
 - Apply list filters and sorting on the server and preserve workspace-specific document URLs.
-- These changes replace the original transfer tarball; registry and live Harness acceptance remain pending.
+- These changes replace the original transfer tarball; rc.2 acceptance remains pending.
 
 
 All notable changes to `@hiai-gg/dsh-docsmint` are documented here.

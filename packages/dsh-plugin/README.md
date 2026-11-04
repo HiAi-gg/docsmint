@@ -11,9 +11,9 @@ DocsMint MCP server.
   targets an instance that serves `POST /mcp` (Streamable HTTP) and authenticates
   with that instance's API key.
 
-> **Release status: `1.0.0-rc.1`.** The candidate is prepared for the `next`
-> dist-tag. Publication uses normal package tests and a release tag. The owner already uses
-> the plugin; another live acceptance cycle is not required.
+> **Release status: `1.0.0-rc.2`.** The candidate is prepared for the `next`
+> dist-tag. This repository build supersedes the pre-refactoring rc.1 snapshot.
+> Validate the installed rc.2 artifact before promoting the same implementation to 1.0.0.
 
 ## Install
 
@@ -27,7 +27,7 @@ plugin_manager install_bundle  target: @hiai-gg/dsh-docsmint
 Pin the candidate explicitly while it is on `next`:
 
 ```bash
-dsh plugin --profile docsmint-release-qa add @hiai-gg/dsh-docsmint@1.0.0-rc.1
+dsh plugin --profile docsmint-release-qa add @hiai-gg/dsh-docsmint@1.0.0-rc.2
 dsh --profile docsmint-release-qa --dump-config
 dsh --profile docsmint-release-qa
 ```
@@ -39,6 +39,34 @@ plugin_manager install_bundle  target: <absolute path to this package>
 ```
 
 Then open the **DocsMint** icon in the left sidebar and connect.
+
+## Updating and removing
+
+Install a specific newer version in the same profile with the profile-scoped
+`dsh plugin --profile docsmint-release-qa add` command above. To remove it:
+
+```bash
+dsh plugin --profile docsmint-release-qa remove @hiai-gg/dsh-docsmint
+```
+
+Removing the bundle does not delete DocsMint documents. Disconnect the plugin's
+own authorization before removal when needed; other integrations are unaffected.
+To roll back, install the previous known-working version explicitly.
+
+## Troubleshooting
+
+- No sidebar entry: confirm the bundle is installed in the profile you launched,
+  inspect `--dump-config`, and restart that profile.
+- Cannot save credentials: enable the Harness credential store. The panel does
+  not persist secrets in browser storage.
+- Cloud OAuth fails: check the configured endpoint and authorization callback;
+  reconnect from the panel without sharing tokens or callback URLs.
+- Self-hosted connection fails: check the instance URL and key permissions.
+  MCP requires authenticated Streamable HTTP at `POST /mcp`; use API mode if
+  your instance does not provide it.
+- Unexpected documents: verify workspace, category and folder, then reset filters.
+- Report the package and Harness versions and a redacted error. Never include
+  API keys, OAuth tokens, or credential-store contents.
 
 ## What the panel does
 
@@ -123,9 +151,23 @@ node test/client.mjs # registered-panel filter/sort and creation requests
 npm pack --dry-run  # what the published tarball contains
 ```
 
-`ci/dsh-plugin.yml` is the GitHub Actions gate (normal tests on Node 22/24, a package dry run, then OIDC trusted publishing on a
-`dsh-plugin-v*` tag). Copy it to `.github/workflows/` in the OSS repository.
+`.github/workflows/dsh-plugin.yml` runs the three test suites on Node 22/24,
+installs a real packed archive in an isolated directory and checks exported assets.
+A matching `dsh-plugin-v*` tag publishes through OIDC with provenance;
+prereleases use `next` and stable versions use `latest`.
 
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
+
+## Releasing the plugin
+
+The plugin has independent versions and tags; do not change the SDK or server version.
+Update this package version, its changelog and the matching workspace entry in
+`bun.lock`, then merge the normal PR. Create and push an annotated tag
+`dsh-plugin-v<version>` on that merged commit. The dedicated workflow tests Node
+22/24, verifies the installed tarball, publishes it using the existing npm trusted
+publisher and checks registry integrity and provenance. It then attaches the
+same tarball to a plugin GitHub release. No long-lived npm token is required.
+Prereleases go to `next`; stable versions go to `latest`. Published versions and
+tags are immutable. Install a candidate with `@hiai-gg/dsh-docsmint@next`.

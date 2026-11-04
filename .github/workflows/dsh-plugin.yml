@@ -23,14 +23,42 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
-      - run: npm pack --dry-run
+      - name: Install and verify packed archive
+        run: |
+          PACK_DIR="$(mktemp -d)"
+          npm pack --ignore-scripts --pack-destination "$PACK_DIR"
+          cd "$PACK_DIR"
+          npm init --yes
+          npm install --ignore-scripts --no-audit --no-fund "$PACK_DIR"/*.tgz
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          import { createRequire } from 'node:module'
+          const require = createRequire(import.meta.url)
+          const name = '@hiai-gg/dsh-docsmint'
+          const entry = require.resolve(name)
+          assert.equal(typeof (await import(name)).apply, 'function')
+          for (const subpath of ['client', 'icon',
+            'assets/docsmint-mark.svg', 'assets/docsmint-mark-dark.svg',
+            'assets/docsmint-mark-mono.svg', 'locale/en.json', 'locale/ru.json']) {
+            const file = require.resolve(name + '/' + subpath)
+            assert.ok((await readFile(file)).length > 0, subpath)
+          }
+          const root = new URL('.', 'file://' + entry)
+          const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'))
+          assert.equal(manifest.name, name)
+          assert.ok((await readFile(new URL(manifest.dsh.bundle.patch, root), 'utf8')).includes(name))
+          console.log('Packed installation, host import, client, locales, icon and brand assets verified')
+          NODE
   publish:
     if: startsWith(github.ref, 'refs/tags/dsh-plugin-v')
     needs: test
     runs-on: ubuntu-latest
-    concurrency: dsh-plugin-npm-publish
+    concurrency:
+      group: dsh-plugin-npm-publish
+      cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
       id-token: write
     defaults:
       run:
@@ -42,9 +70,45 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm install --global npm@11.17.0 --ignore-scripts
-      - name: Publish plugin
+      - name: Package and publish plugin
         run: |
+          set -euo pipefail
           VERSION="$(node -p "require('./package.json').version")"
           test "$GITHUB_REF_NAME" = "dsh-plugin-v$VERSION"
           if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
-          npm publish --ignore-scripts --access public --provenance --tag "$DIST_TAG"
+          npm pack --ignore-scripts --json > "$RUNNER_TEMP/dsh-pack.json"
+          TARBALL="$(node -p "require(process.env.RUNNER_TEMP + '/dsh-pack.json')[0].filename")"
+          npm publish "$TARBALL" --ignore-scripts --access public --provenance --tag "$DIST_TAG"
+          printf 'PLUGIN_VERSION=%s\nPLUGIN_TARBALL=%s\nPLUGIN_DIST_TAG=%s\n' "$VERSION" "$TARBALL" "$DIST_TAG" >> "$GITHUB_ENV"
+      - name: Verify registry artifact and provenance
+        run: |
+          set -euo pipefail
+          npm view "@hiai-gg/dsh-docsmint@$PLUGIN_VERSION" --json > "$RUNNER_TEMP/dsh-published.json"
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict'
+          import { readFile } from 'node:fs/promises'
+          const packed = JSON.parse(await readFile(process.env.RUNNER_TEMP + '/dsh-pack.json', 'utf8'))[0]
+          const published = JSON.parse(await readFile(process.env.RUNNER_TEMP + '/dsh-published.json', 'utf8'))
+          assert.equal(published.version, process.env.PLUGIN_VERSION)
+          assert.equal(published.dist.integrity, packed.integrity)
+          assert.ok(published.dist.attestations?.provenance, 'npm provenance is required')
+          console.log('Published version, tarball integrity and npm provenance verified')
+          NODE
+      - name: Create plugin GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { readFile, writeFile } from 'node:fs/promises'
+          const changelog = await readFile('CHANGELOG.md', 'utf8')
+          const section = changelog.split('\n## ').find(part => part.startsWith('[' + process.env.PLUGIN_VERSION + ']'))
+          if (!section) throw new Error('Missing plugin release notes')
+          await writeFile(process.env.RUNNER_TEMP + '/dsh-release-notes.md', '## ' + section)
+          NODE
+          FLAGS=()
+          if [[ "$PLUGIN_VERSION" == *-* ]]; then FLAGS+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "$PLUGIN_TARBALL" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "DSH DocsMint $PLUGIN_VERSION" \
+            --notes-file "$RUNNER_TEMP/dsh-release-notes.md" "${FLAGS[@]}"
