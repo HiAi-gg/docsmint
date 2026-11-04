@@ -78,12 +78,26 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
           npm pack --ignore-scripts --json > "$RUNNER_TEMP/dsh-pack.json"
           TARBALL="$(node -p "require(process.env.RUNNER_TEMP + '/dsh-pack.json')[0].filename")"
-          npm publish "$TARBALL" --ignore-scripts --access public --provenance --tag "$DIST_TAG"
+          EXPECTED_INTEGRITY="$(node -p "require(process.env.RUNNER_TEMP + '/dsh-pack.json')[0].integrity")"
+          EXISTING_INTEGRITY="$(npm view "@hiai-gg/dsh-docsmint@$VERSION" dist.integrity --prefer-online 2>/dev/null || true)"
+          if [[ -n "$EXISTING_INTEGRITY" ]]; then
+            test "$EXISTING_INTEGRITY" = "$EXPECTED_INTEGRITY"
+            echo "Identical immutable version already exists; verifying without republishing"
+          else
+            npm publish "$TARBALL" --ignore-scripts --access public --provenance --tag "$DIST_TAG"
+          fi
           printf 'PLUGIN_VERSION=%s\nPLUGIN_TARBALL=%s\nPLUGIN_DIST_TAG=%s\n' "$VERSION" "$TARBALL" "$DIST_TAG" >> "$GITHUB_ENV"
       - name: Verify registry artifact and provenance
         run: |
           set -euo pipefail
-          npm view "@hiai-gg/dsh-docsmint@$PLUGIN_VERSION" --json > "$RUNNER_TEMP/dsh-published.json"
+          # npm metadata can lag a successful publish. Retry reads, never the write.
+          for ATTEMPT in {1..12}; do
+            if npm view "@hiai-gg/dsh-docsmint@$PLUGIN_VERSION" --prefer-online --json > "$RUNNER_TEMP/dsh-published.json"; then
+              break
+            fi
+            if [[ "$ATTEMPT" == 12 ]]; then exit 1; fi
+            sleep 5
+          done
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict'
           import { readFile } from 'node:fs/promises'
@@ -108,6 +122,10 @@ jobs:
           NODE
           FLAGS=()
           if [[ "$PLUGIN_VERSION" == *-* ]]; then FLAGS+=(--prerelease); fi
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Plugin GitHub release already exists; leaving it unchanged"
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" "$PLUGIN_TARBALL" \
             --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "DSH DocsMint $PLUGIN_VERSION" \
