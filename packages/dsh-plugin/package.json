@@ -1,0 +1,67 @@
+{
+  "name": "@hiai-gg/dsh-docsmint",
+  "version": "1.0.0-rc.1",
+  "description": "DocsMint for DeepSeek Harness: a left-sidebar panel and four agent tools over the DocsMint REST API or the DocsMint MCP server (OAuth for DocsMint Cloud, API key for self-hosted).",
+  "license": "Apache-2.0",
+  "author": "DocsMint (https://docsmint.com)",
+  "homepage": "https://docsmint.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HiAi-gg/docsmint.git",
+    "directory": "packages/dsh-plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/HiAi-gg/docsmint/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "docsmint",
+    "mcp",
+    "model-context-protocol",
+    "knowledge-base"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.5 <0.3.0"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png",
+    "./assets/*": "./assets/*"
+  },
+  "files": [
+    "index.js",
+    "mcp.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.png",
+    "assets/*.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/mcp.mjs && node test/plugin.mjs && node test/client.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": []
+    }
+  }
+}

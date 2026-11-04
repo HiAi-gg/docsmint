@@ -1,0 +1,8 @@
+# DocsMint Cloud is the built-in default; the panel stores a self-hosted
+# endpoint in the credential store (DOCSMINT_ENDPOINT). Set config.baseUrl only
+# to pin every session to one instance, which disables the panel's choice.
+#
+# config.mode: api | mcp pins the transport for every session.
+- insert:
+    - id: docsmint
+      name: '@hiai-gg/dsh-docsmint'

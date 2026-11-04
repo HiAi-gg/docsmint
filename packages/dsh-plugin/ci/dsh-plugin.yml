@@ -1,0 +1,50 @@
+name: dsh-plugin
+on:
+  pull_request:
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+  push:
+    branches: [main]
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+    tags: ['dsh-plugin-v*']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24]
+    defaults:
+      run:
+        working-directory: packages/dsh-plugin
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+      - run: npm pack --dry-run
+  publish:
+    if: startsWith(github.ref, 'refs/tags/dsh-plugin-v')
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency: dsh-plugin-npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/dsh-plugin
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install --global npm@11.17.0 --ignore-scripts
+      - name: Publish plugin
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          test "$GITHUB_REF_NAME" = "dsh-plugin-v$VERSION"
+          if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
+          npm publish --ignore-scripts --access public --provenance --tag "$DIST_TAG"
