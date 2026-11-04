@@ -1,5 +1,7 @@
 # @hiai-gg/dsh-docsmint
 
+English | [简体中文](./README.zh.md)
+
 DocsMint in the DeepSeek Harness: a **left-sidebar panel** for your workspace and
 **four agent tools** the model can call, over either the DocsMint REST API or the
 DocsMint MCP server.
@@ -173,3 +175,7 @@ tags are immutable. Pin an exact version when reproducing a report or rolling ba
 ## Repository mirror
 
 [HiAi-gg/dsh-docsmint](https://github.com/HiAi-gg/dsh-docsmint) is an automatically generated package-root mirror for catalog discovery. Source changes and npm releases remain in this monorepo. Do not edit or merge changes from the mirror.
+
+## Support the project
+
+If the integration is useful, you can star the [plugin mirror](https://github.com/HiAi-gg/dsh-docsmint) or the [DocsMint source](https://github.com/HiAi-gg/docsmint). Stars are optional and do not unlock features.
