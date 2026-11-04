@@ -40,7 +40,7 @@ jobs:
           assert.equal(typeof (await import(name)).apply, 'function')
           for (const subpath of ['client', 'icon',
             'assets/docsmint-mark.svg', 'assets/docsmint-mark-dark.svg',
-            'assets/docsmint-mark-mono.svg', 'locale/en-US.json', 'locale/ru-RU.json']) {
+            'assets/docsmint-mark-mono.svg', 'locale/en.json', 'locale/ru.json']) {
             const file = require.resolve(name + '/' + subpath)
             assert.ok((await readFile(file)).length > 0, subpath)
           }
