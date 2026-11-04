@@ -16,7 +16,7 @@ window.__ModuleLoader__.load({
       const sorting = order === 'title' ? ['title', 'asc']
         : order === 'updated-asc' ? ['updatedAt', 'asc']
         : order === 'created-desc' ? ['createdAt', 'desc'] : ['updatedAt', 'desc']
-      return { limit: 50, workspaceId: selection.workspaceId || undefined,
+      return { limit: PAGE_SIZE, workspaceId: selection.workspaceId || undefined,
         folderId: selection.folderId || undefined, categoryId: selection.categoryId || undefined,
         sortBy: sorting[0], sortOrder: sorting[1] }
     }
@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
     const RPC_PATH = '/docsmint/rpc'
     /** Fallback product link used before the Host reports its settings. */
     const SITE = 'https://docsmint.com'
+    const PAGE_SIZE = 50
 
     const EN = {
       'panel.title': 'DocsMint',
@@ -35,6 +36,8 @@ window.__ModuleLoader__.load({
       'panel.connected': 'Connected',
       'panel.notConnected': 'Not connected',
       'panel.refresh': 'Refresh',
+      'panel.loadMore': 'Show more',
+      'panel.synced': 'Updated',
       'panel.searchPlaceholder': 'Search documents…',
       'panel.search': 'Search',
       'panel.clear': 'Clear',
@@ -131,6 +134,8 @@ window.__ModuleLoader__.load({
       'panel.connected': 'Подключено',
       'panel.notConnected': 'Не подключено',
       'panel.refresh': 'Обновить',
+      'panel.loadMore': 'Показать ещё',
+      'panel.synced': 'Обновлено',
       'panel.searchPlaceholder': 'Поиск по документам…',
       'panel.search': 'Найти',
       'panel.clear': 'Сбросить',
@@ -222,6 +227,7 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = `
+      .dm-more { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0; }
       .dm-panel, .dm-panel * { box-sizing:border-box; }
       .dm-panel { min-width:0; overflow-wrap:anywhere; }
       .dm-head, .dm-head-actions, .dm-form-actions, .dm-create-actions, .dm-foot { flex-wrap:wrap; }
@@ -447,6 +453,67 @@ window.__ModuleLoader__.load({
     function createPanel(t) {
       return function DocsMintPanel() {
         const [connection, setConnection] = React.useState(null)
+        const [syncedAt, setSyncedAt] = React.useState(0)
+        const [loadingMore, setLoadingMore] = React.useState(false)
+        const [hasMore, setHasMore] = React.useState(true)
+        const listRef = React.useRef({ generation: 0, page: 1, pending: false, mounted: true })
+        React.useEffect(() => {
+          listRef.current.mounted = true
+          return () => { listRef.current.mounted = false; listRef.current.generation++ }
+        }, [])
+
+        function resetPaging() {
+          listRef.current.generation++
+          listRef.current.page = 1
+          listRef.current.pending = false
+          setLoadingMore(false)
+          setHasMore(true)
+        }
+
+        async function fetchFirstPage(selection = filters, order = sort) {
+          resetPaging()
+          const generation = listRef.current.generation
+          const list = await rpc('list', { ...documentListParams(selection, order), page: 1 })
+          if (!listRef.current.mounted || generation !== listRef.current.generation) return null
+          setItems(uniqueItems(list.items || []))
+          setTotal(list.total ?? 0)
+          setSyncedAt(Date.now())
+          return list
+        }
+
+        function uniqueItems(rows) {
+          const seen = new Set()
+          return rows.filter(item => !seen.has(item.id) && seen.add(item.id))
+        }
+
+        async function loadMore() {
+          const ref = listRef.current
+          if (ref.pending || busy || submitted || !hasMore) return
+          ref.pending = true
+          const generation = ref.generation
+          const nextPage = ref.page + 1
+          setLoadingMore(true)
+          setNotice('')
+          try {
+            const list = await rpc('list', { ...documentListParams(filters, sort), page: nextPage })
+            if (!ref.mounted || generation !== ref.generation) return
+            const seen = new Set(items.map(item => item.id))
+            const added = uniqueItems(list.items || []).filter(item => !seen.has(item.id))
+            setHasMore(added.length > 0)
+            setItems(current => current.concat(added))
+            setTotal(list.total ?? total)
+            setSyncedAt(Date.now())
+            ref.page = nextPage
+          } catch (error) {
+            if (ref.mounted && generation === ref.generation) setNotice(errorText(error))
+          } finally {
+            if (ref.mounted && generation === ref.generation) {
+              ref.pending = false
+              setLoadingMore(false)
+            }
+          }
+        }
+
         const [items, setItems] = React.useState([])
         const [total, setTotal] = React.useState(0)
         const [query, setQuery] = React.useState('')
@@ -481,10 +548,8 @@ window.__ModuleLoader__.load({
               if (!live) return
               setConnection(state)
               if (state.configured) {
-                const list = await rpc('list', { limit: 50 })
-                if (!live) return
-                setItems(list.items || [])
-                setTotal(list.total || 0)
+                const list = await fetchFirstPage()
+                if (!live || !list) return
                 await loadStructure(live)
               } else {
                 setEditing(true)
@@ -526,14 +591,14 @@ window.__ModuleLoader__.load({
          * @param {{ workspaceId?: string, categoryId?: string, folderId?: string }} next - the filter set.
          */
         async function applyFilters(next, nextSort = sort) {
+          resetPaging()
           setSort(nextSort)
           setFilters(next)
           setBusy(true)
           setNotice('')
           try {
-            const list = await rpc('list', documentListParams(next, nextSort))
-            setItems(list.items || [])
-            setTotal(list.total || 0)
+            const list = await fetchFirstPage(next, nextSort)
+            if (!list) return
             setSubmitted('')
             setDocument(null)
             setEditDraft(null)
@@ -582,9 +647,8 @@ window.__ModuleLoader__.load({
               setSavedHint(t('doc.created'))
               setDocument(created.document)
               try {
-                const list = await rpc('list', documentListParams(filters, sort))
-                setItems(list.items || [])
-                setTotal(list.total || 0)
+                const list = await fetchFirstPage()
+                if (!list) return
               } catch {
                 // The document exists; a stale list is only cosmetic.
               }
@@ -597,15 +661,15 @@ window.__ModuleLoader__.load({
         }
 
         async function reload() {
+          resetPaging()
           setBusy(true)
           setNotice('')
           try {
             const state = await rpc('state')
             setConnection(state)
             if (state.configured) {
-              const list = await rpc('list', documentListParams(filters, sort))
-              setItems(list.items || [])
-              setTotal(list.total || 0)
+              const list = await fetchFirstPage()
+              if (!list) return
               setSubmitted('')
               setDocument(null)
               setEditDraft(null)
@@ -639,6 +703,7 @@ window.__ModuleLoader__.load({
         }
 
         async function submitSearch(event) {
+          resetPaging()
           event.preventDefault()
           const text = query.trim()
           if (!text) {
@@ -661,9 +726,8 @@ window.__ModuleLoader__.load({
         }
 
         async function loadFirstPage() {
-          const list = await rpc('list', documentListParams(filters, sort))
-          setItems(list.items || [])
-          setTotal(list.total || 0)
+          const list = await fetchFirstPage()
+          if (!list) return
           setSubmitted('')
           setDocument(null)
           setEditDraft(null)
@@ -688,9 +752,8 @@ window.__ModuleLoader__.load({
             setEditDraft(null)
             setSavedHint(t('doc.saved'))
             try {
-              const list = await rpc('list', documentListParams(filters, sort))
-              setItems(list.items || [])
-              setTotal(list.total || 0)
+              const list = await fetchFirstPage()
+              if (!list) return
             } catch {
               // The save already succeeded; a stale list is only cosmetic.
             }
@@ -702,6 +765,7 @@ window.__ModuleLoader__.load({
         }
 
         async function saveConnection(event) {
+          resetPaging()
           event.preventDefault()
           setFormError('')
           const cloudMcp = (form.mode || 'api') === 'mcp' && form.deployment !== 'self-hosted'
@@ -743,6 +807,7 @@ window.__ModuleLoader__.load({
         }
 
         async function connectOAuth() {
+          resetPaging()
           setFormError('')
           setBusy(true)
           try {
@@ -788,6 +853,7 @@ window.__ModuleLoader__.load({
         }
 
         async function disconnectOAuth() {
+          resetPaging()
           setBusy(true)
           setFormError('')
           try {
@@ -1299,7 +1365,7 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'dm-listhead' },
               h('span', null, submitted ? t('panel.results') : t('panel.documents')),
-              h('span', { className: 'dm-count' }, String(total)),
+              h('span', { className: 'dm-count' }, submitted ? String(total) : `${items.length} / ${total}`),
             ),
             visibleItems.length === 0
               ? h('p', { className: 'dm-empty' }, busy ? t('panel.loading') : submitted ? t('panel.emptySearch') : t('panel.emptyList'))
@@ -1324,7 +1390,11 @@ window.__ModuleLoader__.load({
                     ),
                   ),
                 ),
-
+            !submitted && hasMore && items.length < total
+              ? h('div', { className: 'dm-more' },
+                  h('button', { type: 'button', className: 'dm-btn', disabled: busy || loadingMore,
+                    onClick: () => void loadMore() }, loadingMore ? t('panel.loading') : t('panel.loadMore')))
+              : null,
           )
         }
 
@@ -1350,6 +1420,7 @@ window.__ModuleLoader__.load({
                 configured
                   ? [instanceLabel, connection?.mode === 'mcp' ? t('panel.mode.mcp') : t('panel.mode.api'), connection?.mode === 'mcp' ? null : connection?.workspace]
                       .filter(Boolean)
+                      .concat(syncedAt ? `${t('panel.synced')} ${new Date(syncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : [])
                       .join(' · ')
                   : t('panel.subtitle'),
               ),

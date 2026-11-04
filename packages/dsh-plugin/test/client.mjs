@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { test } from 'node:test'
 
-async function mountPanel() {
+async function mountPanel(options = {}) {
   const state = [], effects = [], refs = [], calls = []
   let index = 0, dirty = true, tree, Panel, definition, pending = 0
   const dictionaries = new Map()
@@ -30,6 +30,7 @@ async function mountPanel() {
       let payload = { ok: true }
       if (call.method === 'state') payload = { ...payload, configured: true, mode: 'mcp', deployment: 'cloud', webHome: 'https://docsmint.com' }
       else if (call.method === 'structure') payload.items = fixtures[call.params.kind] || []
+      else if (call.method === 'list' && options.list) { try { payload = { ok: true, ...await options.list(call.params) } } catch (error) { pending--; throw error } }
       else if (call.method === 'list') payload = { ...payload, total: 140, items: [
         { id: 'z', title: 'Server first Z', categoryId: 'other-category' },
         { id: 'a', title: 'Server second A', categoryId: 'other-category' },
@@ -62,6 +63,8 @@ async function mountPanel() {
   await settle()
   return {
     calls, settle, nodes, text,
+    unmount() { for (const effect of effects) effect?.cleanup?.() },
+    startClick(label) { const button = nodes().find(node => node.type === "button" && text(node) === label); assert.ok(button); button.props.onClick() },
     async select(label, value) { const field = nodes().find(node => node.type === 'label' && node.props.className === 'dm-select-field' && text(node.children[0]) === label); assert.ok(field, 'select ' + label); const select = nodes(field).find(node => node.type === 'select'); select.props.onChange({ target: { value } }); await settle() },
     async click(label) { const button = nodes().find(node => node.type === 'button' && text(node) === label); assert.ok(button, 'button ' + label); assert.ok(!button.props.disabled, 'button enabled ' + label); button.props.onClick(); await settle() },
     async create(name) { const input = nodes().find(node => node.type === 'input' && node.props.className.includes('dm-create-input')); assert.ok(input); input.props.onChange({ target: { value: name } }); await settle(); const form = nodes().find(node => node.type === 'form' && node.props.className === 'dm-create-form'); form.props.onSubmit({ preventDefault() {} }); await settle() },
@@ -76,9 +79,9 @@ test('registered panel sends category/folder and sort to the server, without fil
   await panel.select('Category', 'c1')
   await panel.select('Folder', 'f1')
   await panel.select('Sort', 'title')
-  assert.deepEqual(last(panel, 'list').params, { limit: 50, workspaceId: 'w1', categoryId: 'c1', folderId: 'f1', sortBy: 'title', sortOrder: 'asc' })
+  assert.deepEqual(last(panel, 'list').params, { limit: 50, page: 1, workspaceId: 'w1', categoryId: 'c1', folderId: 'f1', sortBy: 'title', sortOrder: 'asc' })
   assert.deepEqual(panel.nodes().filter(node => node.props.className === 'dm-item-title').map(panel.text), ['Server first Z', 'Server second A'])
-  assert.equal(panel.nodes().find(node => node.props.className === 'dm-count').children[0], '140')
+  assert.equal(panel.nodes().find(node => node.props.className === 'dm-count').children[0], '2 / 140')
   await panel.select('Sort', 'created-desc')
   assert.equal(last(panel, 'list').params.sortBy, 'createdAt')
   assert.equal(last(panel, 'list').params.sortOrder, 'desc')
@@ -104,4 +107,72 @@ test('create document, category and folder retain the selected workspace and pla
     if (method !== 'createCategory') assert.equal(params.categoryId, 'c1', method + ' category')
     if (method === 'create') { assert.equal(params.folderId, 'f1'); assert.equal(params.title, 'Synthetic title') }
   }
+})
+
+const rows = (start, end) => Array.from({ length: end - start }, (_, n) => ({ id: String(n + start), title: 'Document ' + (n + start) }))
+
+test('pagination preserves placement/sort, appends unique rows and uses explicit pages', async () => {
+  const panel = await mountPanel({ list: async params => ({ total: 130, items: params.page === 1 ? rows(0, 50) : params.page === 2 ? [...rows(40, 90), ...rows(89, 90)] : rows(90, 130) }) })
+  await panel.select('Workspace', 'w1'); await panel.select('Category', 'c1'); await panel.select('Folder', 'f1'); await panel.select('Sort', 'title')
+  await panel.click('Show more')
+  assert.equal(last(panel, 'list').params.page, 2)
+  assert.equal(last(panel, 'list').params.categoryId, 'c1')
+  assert.equal(last(panel, 'list').params.folderId, 'f1')
+  assert.equal(last(panel, 'list').params.workspaceId, 'w1')
+  assert.equal(last(panel, 'list').params.sortBy, 'title')
+  assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 90)
+  await panel.click('Show more')
+  assert.equal(last(panel, 'list').params.page, 3)
+  assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 130)
+  assert.ok(!panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Show more'))
+  await panel.select('Sort', 'created-desc')
+  assert.equal(last(panel, 'list').params.page, 1)
+  assert.match(panel.text(panel.nodes().find(n => n.props.className === 'dm-subtitle')), /Updated /)
+})
+
+test('ignored page stops loading without falsifying server total', async () => {
+  const panel = await mountPanel({ list: async () => ({ total: 200, items: rows(0, 50) }) })
+  await panel.click('Show more')
+  assert.ok(!panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Show more'))
+  assert.equal(panel.text(panel.nodes().find(n => n.props.className === 'dm-count')), '50 / 200')
+})
+
+test('failed next page can retry without losing rows or advancing page', async () => {
+  let failed = false
+  const panel = await mountPanel({ list: async params => {
+    if (params.page === 2 && !failed) { failed = true; throw Error('temporary') }
+    return { total: 70, items: params.page === 1 ? rows(0, 50) : rows(50, 70) }
+  } })
+  await panel.click('Show more')
+  assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 50)
+  await panel.click('Show more')
+  assert.equal(last(panel, 'list').params.page, 2)
+  assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 70)
+})
+
+test('double click is serialized and stale page cannot replace new filters', async () => {
+  let resolvePage
+  const panel = await mountPanel({ list: async params => {
+    if (params.page === 2) return new Promise(resolve => { resolvePage = resolve })
+    return { total: 100, items: rows(params.categoryId ? 200 : 0, params.categoryId ? 250 : 50) }
+  } })
+  panel.startClick('Show more'); panel.startClick('Show more')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(panel.calls.filter(c => c.method === 'list' && c.params.page === 2).length, 1)
+  const changed = panel.select('Category', 'c1')
+  resolvePage({ total: 100, items: rows(50, 100) })
+  await changed
+  assert.ok(panel.nodes().filter(n => n.props.className === 'dm-item-title').every(n => Number(panel.text(n).split(' ').at(-1)) >= 200))
+})
+
+test('unmounted panel ignores a late next-page response', async () => {
+  let resolvePage
+  const panel = await mountPanel({ list: async params => params.page === 2
+    ? new Promise(resolve => { resolvePage = resolve }) : { total: 100, items: rows(0, 50) } })
+  panel.startClick('Show more')
+  await new Promise(resolve => setImmediate(resolve))
+  panel.unmount()
+  resolvePage({ total: 100, items: rows(50, 100) })
+  await panel.settle()
+  assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 50)
 })
