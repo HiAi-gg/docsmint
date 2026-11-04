@@ -1,10 +1,10 @@
 name: dsh-plugin
 on:
   pull_request:
-    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml', '.github/scripts/dsh-mirror.sh']
   push:
     branches: [main]
-    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml']
+    paths: ['packages/dsh-plugin/**', '.github/workflows/dsh-plugin.yml', '.github/scripts/dsh-mirror.sh']
     tags: ['dsh-plugin-v*']
 permissions:
   contents: read
@@ -130,3 +130,29 @@ jobs:
             --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "DSH DocsMint $PLUGIN_VERSION" \
             --notes-file "$RUNNER_TEMP/dsh-release-notes.md" "${FLAGS[@]}"
+
+  mirror:
+    name: Synchronize package-root catalog mirror
+    needs: [test, publish]
+    if: >-
+      always() && needs.test.result == 'success' &&
+      (github.ref == 'refs/heads/main' ||
+       (startsWith(github.ref, 'refs/tags/dsh-plugin-v') && needs.publish.result == 'success'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: dsh-plugin-mirror
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - name: Split, synchronize and verify mirror
+        env:
+          DSH_MIRROR_SSH_KEY: ${{ secrets.DSH_MIRROR_SSH_KEY }}
+        run: bash .github/scripts/dsh-mirror.sh

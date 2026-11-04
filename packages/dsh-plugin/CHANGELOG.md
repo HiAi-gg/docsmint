@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.0] — 2026-11-04
+
+- Load further document pages while preserving filters and sorting, with unique rows and a shown/total counter.
+- Stop pagination when a transport repeats a page; preserve totals and allow retries after errors.
+- Show the last successful list refresh time in English and Russian.
+- Publish the stable package through the existing OIDC workflow and synchronize a package-root catalog mirror.
+- Preserve the rc.2 Host, MCP adapter, authorization and runtime compatibility.
+
 ## [1.0.0-rc.2] — 2026-11-04
 
 Repository release candidate. The published rc.1 is a pre-refactoring snapshot

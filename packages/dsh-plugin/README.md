@@ -11,9 +11,7 @@ DocsMint MCP server.
   targets an instance that serves `POST /mcp` (Streamable HTTP) and authenticates
   with that instance's API key.
 
-> **Release status: `1.0.0-rc.2`.** The candidate is prepared for the `next`
-> dist-tag. This repository build supersedes the pre-refactoring rc.1 snapshot.
-> Validate the installed rc.2 artifact before promoting the same implementation to 1.0.0.
+> **Stable release: `1.0.0`.** Includes incremental document loading and the last successful refresh time.
 
 ## Install
 
@@ -24,12 +22,12 @@ into a profile from the registry:
 plugin_manager install_bundle  target: @hiai-gg/dsh-docsmint
 ```
 
-Pin the candidate explicitly while it is on `next`:
+Install the stable package:
 
 ```bash
-dsh plugin --profile docsmint-release-qa add @hiai-gg/dsh-docsmint@1.0.0-rc.2
-dsh --profile docsmint-release-qa --dump-config
-dsh --profile docsmint-release-qa
+dsh plugin --profile web add @hiai-gg/dsh-docsmint
+dsh --profile web --dump-config
+dsh --profile web
 ```
 
 or from a checkout while developing:
@@ -43,10 +41,10 @@ Then open the **DocsMint** icon in the left sidebar and connect.
 ## Updating and removing
 
 Install a specific newer version in the same profile with the profile-scoped
-`dsh plugin --profile docsmint-release-qa add` command above. To remove it:
+`dsh plugin --profile web add` command above. To remove it:
 
 ```bash
-dsh plugin --profile docsmint-release-qa remove @hiai-gg/dsh-docsmint
+dsh plugin --profile web remove @hiai-gg/dsh-docsmint
 ```
 
 Removing the bundle does not delete DocsMint documents. Disconnect the plugin's
@@ -170,4 +168,8 @@ Update this package version, its changelog and the matching workspace entry in
 publisher and checks registry integrity and provenance. It then attaches the
 same tarball to a plugin GitHub release. No long-lived npm token is required.
 Prereleases go to `next`; stable versions go to `latest`. Published versions and
-tags are immutable. Install a candidate with `@hiai-gg/dsh-docsmint@next`.
+tags are immutable. Pin an exact version when reproducing a report or rolling back.
+
+## Repository mirror
+
+[HiAi-gg/dsh-docsmint](https://github.com/HiAi-gg/dsh-docsmint) is an automatically generated package-root mirror for catalog discovery. Source changes and npm releases remain in this monorepo. Do not edit or merge changes from the mirror.
