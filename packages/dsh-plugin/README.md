@@ -159,3 +159,15 @@ prereleases use `next` and stable versions use `latest`.
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
+
+## Releasing the plugin
+
+The plugin has independent versions and tags; do not change the SDK or server version.
+Update this package version, its changelog and the matching workspace entry in
+`bun.lock`, then merge the normal PR. Create and push an annotated tag
+`dsh-plugin-v<version>` on that merged commit. The dedicated workflow tests Node
+22/24, verifies the installed tarball, publishes it using the existing npm trusted
+publisher and checks registry integrity and provenance. It then attaches the
+same tarball to a plugin GitHub release. No long-lived npm token is required.
+Prereleases go to `next`; stable versions go to `latest`. Published versions and
+tags are immutable. Install a candidate with `@hiai-gg/dsh-docsmint@next`.
