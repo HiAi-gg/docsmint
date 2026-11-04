@@ -22,6 +22,7 @@ async function mountPanel(options = {}) {
   const sandbox = {
     window: { __ModuleLoader__: { load(value) { definition = value } } },
     console, setInterval, clearInterval, URL, URLSearchParams,
+    Date: class extends Date { static now() { return options.now ? options.now() : Date.now() } },
     fetch: async (url, init) => {
       assert.equal(url, '/docsmint/rpc')
       assert.equal(init.credentials, 'same-origin')
@@ -35,6 +36,7 @@ async function mountPanel(options = {}) {
         { id: 'z', title: 'Server first Z', categoryId: 'other-category' },
         { id: 'a', title: 'Server second A', categoryId: 'other-category' },
       ] }
+      else if (call.method === 'search') payload = { ok: true, total: 1, items: [{ id: 'search-result', title: 'Search result' }] }
       else if (call.method === 'create') payload.document = { id: 'created', title: call.params.title, content: call.params.content }
       else if (!['createCategory', 'createFolder'].includes(call.method)) throw Error('Unexpected bridge call: ' + call.method)
       await Promise.resolve(); pending--
@@ -63,6 +65,7 @@ async function mountPanel(options = {}) {
   await settle()
   return {
     calls, settle, nodes, text,
+    async search(query) { const input = nodes().find(n => n.type === "input" && n.props.type === "search"); input.props.onChange({target:{value:query}}); await settle(); const form = nodes().find(n => n.type === "form" && n.props.className === "dm-search"); await form.props.onSubmit({preventDefault(){}}); await settle() },
     unmount() { for (const effect of effects) effect?.cleanup?.() },
     startClick(label) { const button = nodes().find(node => node.type === "button" && text(node) === label); assert.ok(button); button.props.onClick() },
     async select(label, value) { const field = nodes().find(node => node.type === 'label' && node.props.className === 'dm-select-field' && text(node.children[0]) === label); assert.ok(field, 'select ' + label); const select = nodes(field).find(node => node.type === 'select'); select.props.onChange({ target: { value } }); await settle() },
@@ -175,4 +178,28 @@ test('unmounted panel ignores a late next-page response', async () => {
   resolvePage({ total: 100, items: rows(50, 100) })
   await panel.settle()
   assert.equal(panel.nodes().filter(n => n.props.className === 'dm-item-title').length, 50)
+})
+
+test('refresh updates successful timestamp, failure retains it, search has no load-more and clearing resets pages', async () => {
+  let now = 60000, fail = false
+  const panel = await mountPanel({ now: () => now, list: async params => {
+    if (fail) throw Error('unavailable')
+    return { total: 100, items: params.page === 1 ? rows(0, 50) : rows(50, 100) }
+  } })
+  const subtitle = () => panel.text(panel.nodes().find(n => n.props.className === 'dm-subtitle'))
+  const initial = subtitle()
+  now += 60000
+  await panel.click('Refresh')
+  assert.notEqual(subtitle(), initial)
+  const success = subtitle()
+  now += 60000; fail = true
+  await panel.click('Refresh')
+  assert.equal(subtitle(), success)
+  fail = false
+  await panel.search('query')
+  assert.ok(!panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Show more'))
+  await panel.click('Clear')
+  assert.equal(last(panel, 'list').params.page, 1)
+  await panel.click('Show more')
+  assert.equal(last(panel, 'list').params.page, 2)
 })
