@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.1
+
+- Add direct Cloud registration and self-hosted Docker installation links to connection setup.
+- Correct the self-hosted hint for OSS 2.1.0 HTTP MCP support.
+- Keep Host, RPC, credential storage and authorization unchanged.
+
+
 ## [1.0.0] — 2026-11-04
 
 - Load further document pages while preserving filters and sorting, with unique rows and a shown/total counter.
