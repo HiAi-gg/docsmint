@@ -29,7 +29,7 @@ async function mountPanel(options = {}) {
       assert.equal(Object.keys(init.headers).some(key => key.toLowerCase() === 'authorization'), false)
       const call = JSON.parse(init.body); calls.push(call); pending++
       let payload = { ok: true }
-      if (call.method === 'state') payload = { ...payload, configured: true, mode: 'mcp', deployment: 'cloud', webHome: 'https://docsmint.com' }
+      if (call.method === 'state') payload = { ...payload, configured: options.configured !== false, mode: 'mcp', deployment: 'cloud', webHome: 'https://docsmint.com' }
       else if (call.method === 'structure') payload.items = fixtures[call.params.kind] || []
       else if (call.method === 'list' && options.list) { try { payload = { ok: true, ...await options.list(call.params) } } catch (error) { pending--; throw error } }
       else if (call.method === 'list') payload = { ...payload, total: 140, items: [
@@ -202,4 +202,22 @@ test('refresh updates successful timestamp, failure retains it, search has no lo
   assert.equal(last(panel, 'list').params.page, 1)
   await panel.click('Show more')
   assert.equal(last(panel, 'list').params.page, 2)
+})
+
+
+test('setup offers public Cloud signup and self-hosted installation without credentials', async () => {
+  const panel = await mountPanel({ configured: false })
+  const links = panel.nodes().filter(node => node.type === 'a')
+  for (const [label, href] of [
+    ['Create a Cloud account', 'https://docsmint.com/signup'],
+    ['Install self-hosted DocsMint', 'https://github.com/HiAi-gg/docsmint#quickstart'],
+  ]) {
+    const link = links.find(node => panel.text(node) === label)
+    assert.ok(link, label)
+    assert.equal(link.props.href, href)
+    assert.equal(link.props.target, '_blank')
+    assert.equal(link.props.rel, 'noreferrer noopener')
+  }
+  assert.ok(!panel.calls.some(call => call.method === 'save' || call.method === 'oauthStart'))
+  panel.unmount()
 })

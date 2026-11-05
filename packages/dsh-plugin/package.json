@@ -1,6 +1,6 @@
 {
   "name": "@hiai-gg/dsh-docsmint",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DocsMint for DeepSeek Harness: a left-sidebar panel and four agent tools over the DocsMint REST API or the DocsMint MCP server (OAuth for DocsMint Cloud, API key for self-hosted).",
   "license": "Apache-2.0",
   "author": "DocsMint (https://docsmint.com)",
