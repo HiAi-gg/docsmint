@@ -1,5 +1,7 @@
 # @hiai-gg/dsh-docsmint
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/hiai-gg/dsh-docsmint)
+
 English | [简体中文](./README.zh.md)
 
 DocsMint in the DeepSeek Harness: a **left-sidebar panel** for your workspace and

@@ -1,5 +1,7 @@
 # @hiai-gg/dsh-docsmint
 
+[![Listed on dsh-plugin.org](https://dsh-plugin.org/badges/listed.svg)](https://dsh-plugin.org/plugins/hiai-gg/dsh-docsmint)
+
 [English](./README.md) | 简体中文
 
 在 DeepSeek Harness 左侧边栏中浏览 DocsMint 工作区，并让智能体通过四个工具搜索、读取、创建和更新文档。
