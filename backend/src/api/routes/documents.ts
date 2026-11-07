@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { CopyObjectCommand } from "@aws-sdk/client-s3";
 import {
 	attachmentStorageCleanupOutbox,
@@ -66,6 +67,7 @@ import {
 	invalidateDocCache,
 	invalidateDocListCache,
 } from "../../lib/doc-cache";
+import { resolveDocumentBody, sameDocumentBody } from "../../lib/document-body";
 import {
 	documentCreateIdempotencyKey,
 	documentCreateWorkspaceIdentity,
@@ -2010,6 +2012,8 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						contentJson: documents.contentJson,
 						folderId: documents.folderId,
 						categoryId: documents.categoryId,
+						metadata: documents.metadata,
+						visibility: documents.visibility,
 						contentHash: documents.contentHash,
 						updatedAt: documents.updatedAt,
 					})
@@ -2101,23 +2105,36 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					}
 				}
 
-				await tx.insert(versions).values({
-					documentId: params.id,
-					content: existing?.content ?? "",
-					contentJson: existing?.contentJson,
-					createdBy: userId,
-				});
+				const nextBody = resolveDocumentBody(existing, body.data);
+				const bodyChanged = !sameDocumentBody(existing, nextBody);
+				const metadataChanged =
+					(body.data.title !== undefined &&
+						body.data.title !== existing.title) ||
+					(body.data.folderId !== undefined &&
+						body.data.folderId !== existing.folderId) ||
+					(body.data.categoryId !== undefined &&
+						body.data.categoryId !== existing.categoryId) ||
+					(body.data.visibility !== undefined &&
+						body.data.visibility !== existing.visibility) ||
+					(body.data.metadata !== undefined &&
+						!isDeepStrictEqual(body.data.metadata, existing.metadata));
+				if (!bodyChanged && !metadataChanged) {
+					const [unchanged] = await tx
+						.select()
+						.from(documents)
+						.where(eq(documents.id, params.id))
+						.limit(1);
+					return { unchanged };
+				}
+				if (bodyChanged) {
+					await tx.insert(versions).values({
+						documentId: params.id,
+						content: existing.content ?? "",
+						contentJson: existing.contentJson,
+						createdBy: userId,
+					});
+				}
 
-				// `contentJson` is the editor's JSON cache of the markdown
-				// `content`. It is populated by the client (the editor sends
-				// it on every save); the server never generates it. When the
-				// client supplies only `content` (e.g. an import, a script,
-				// the markdown-toggle path that bypasses the editor), the
-				// JSON is left null — the frontend's `markdownToJson`
-				// helper rehydrates it from the authoritative markdown on
-				// the next open. The markdown `content` is the source of
-				// truth.
-				const resolvedDocJson: unknown | undefined = body.data.contentJson;
 				const currentContentRevision =
 					body.data.title !== undefined || body.data.content !== undefined
 						? contentHash(
@@ -2133,9 +2150,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 						...(body.data.content !== undefined && {
 							content: body.data.content,
 						}),
-						...(resolvedDocJson !== undefined && {
-							contentJson: resolvedDocJson,
-						}),
+						...(bodyChanged && { contentJson: nextBody.contentJson }),
 						...(body.data.metadata !== undefined && {
 							metadata: body.data.metadata,
 						}),
@@ -2183,6 +2198,7 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					folderChanged,
 					categoryChanged,
 					operationId: impact?.operationId,
+					bodyChanged,
 				};
 			});
 
@@ -2203,16 +2219,25 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 					serverVersion: result.serverVersion,
 				};
 			}
-			const { updated, existing, folderChanged, categoryChanged, operationId } =
-				result;
+			if ("unchanged" in result) return result.unchanged;
+			const {
+				updated,
+				existing,
+				folderChanged,
+				categoryChanged,
+				operationId,
+				bodyChanged,
+			} = result;
 
 			// Fire-and-forget pruning. We don't await — pruning is a
 			// background GC pass and must not block the user's PATCH
 			// response. `maybePruneVersions` debounces itself via Redis
 			// so rapid PATCHes (auto-save) won't trigger repeated scans.
-			maybePruneVersions(params.id).catch((err: unknown) =>
-				logger.error({ err, docId: params.id }, "Background prune failed"),
-			);
+			if (bodyChanged) {
+				maybePruneVersions(params.id).catch((err: unknown) =>
+					logger.error({ err, docId: params.id }, "Background prune failed"),
+				);
+			}
 
 			// Re-embed if either the content changed OR any metadata-bearing
 			// field changed. The embedding preamble includes folder/category

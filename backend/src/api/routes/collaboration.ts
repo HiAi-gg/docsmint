@@ -23,6 +23,7 @@ import {
 	invalidateDocCache,
 	invalidateDocListCache,
 } from "../../lib/doc-cache";
+import { sameDocumentBody } from "../../lib/document-body";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
@@ -249,22 +250,14 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 			});
 			const persist = async (doc: Y.Doc) => {
 				const materialized = materializeYDoc(doc);
-				await withTenant(access.ctx, async (tx) => {
-					await tx.insert(versions).values({
-						documentId,
-						workspaceId: access.ctx.workspaceId,
-						content: materialized.content,
-						contentJson: materialized.contentJson,
-						createdBy: access.userId,
-					});
-					await tx
-						.update(documents)
-						.set({
-							content: materialized.content,
-							contentJson: materialized.contentJson,
-							contentHash: contentHash(document.title, materialized.content),
-							updatedAt: new Date(),
+				const revision = await withTenant(access.ctx, async (tx) => {
+					const [current] = await tx
+						.select({
+							title: documents.title,
+							content: documents.content,
+							contentJson: documents.contentJson,
 						})
+						.from(documents)
 						.where(
 							and(
 								eq(documents.id, documentId),
@@ -287,8 +280,31 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 										]
 									: []),
 							),
-						);
+						)
+						.for("update")
+						.limit(1);
+					if (!current || sameDocumentBody(current, materialized)) return null;
+
+					const revision = contentHash(current.title, materialized.content);
+					await tx.insert(versions).values({
+						documentId,
+						workspaceId: access.ctx.workspaceId,
+						content: current.content ?? "",
+						contentJson: current.contentJson,
+						createdBy: access.userId,
+					});
+					await tx
+						.update(documents)
+						.set({
+							content: materialized.content,
+							contentJson: materialized.contentJson,
+							contentHash: revision,
+							updatedAt: new Date(),
+						})
+						.where(eq(documents.id, documentId));
+					return revision;
 				});
+				if (revision === null) return;
 				await Promise.all([
 					invalidateDocCache(documentId),
 					invalidateDocListCache(access.userId, access.ctx.workspaceId),
@@ -297,7 +313,7 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 					[
 						{
 							id: documentId,
-							revision: contentHash(document.title, materialized.content),
+							revision,
 						},
 					],
 					access.ctx.workspaceId,

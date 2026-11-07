@@ -75,6 +75,8 @@ const share = getDocsmintShareAdapter();
 
 let title = $state("");
 let content = $state("");
+let restoringVersion = $state(false);
+let versionPreview = $state<{ id: string; content: string; contentJson?: unknown } | null>(null);
 let contentJson = $state<object | undefined>(undefined);
 let mode = $state<"wysiwyg" | "markdown">("wysiwyg");
 let saveStatus = $state<"saved" | "saving" | "unsaved">("saved");
@@ -1223,8 +1225,19 @@ $effect(() => {
       </div>
 
       <!-- Editor -->
-      <div class="editor-container">
-        {#if activeTab === "editor"}
+      <div class="editor-container" inert={restoringVersion}>
+        {#if showVersionPanel && versionPreview}
+          <div class="mb-3 rounded border border-border bg-muted p-3 text-sm">Viewing an earlier version</div>
+          {#if EditorComponent}
+            {#key versionPreview.id}
+              <EditorComponent
+                content={versionPreview.content}
+                contentJson={(versionPreview.contentJson as object | null | undefined) ?? undefined}
+                editable={false}
+              />
+            {/key}
+          {/if}
+        {:else if activeTab === "editor"}
           {#if mode === "wysiwyg"}
             {#if EditorComponent}
               <EditorComponent
@@ -1293,9 +1306,19 @@ $effect(() => {
           {#if VersionHistoryComponent}
             <VersionHistoryComponent
               documentId={data.document.id}
-              onRestored={() => {
+              onPreview={(version) => {
+                versionPreview = version;
+                if (version) void activateEditor();
+              }}
+              beforeRestore={() => contentAutosave.flush()}
+              onRestoringChange={(busy) => (restoringVersion = busy)}
+              onRestored={(_version, restored) => {
+                if (restored.id !== data.document.id) return;
+                content = restored.content ?? "";
+                contentJson = (restored.contentJson as object | null | undefined) ?? undefined;
+                saveStatus = "saved";
                 showVersionPanel = false;
-                window.location.reload();
+                refreshDocs();
               }}
             />
           {:else}

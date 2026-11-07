@@ -1,5 +1,5 @@
 import { documents, folders, versions } from "@hiai-docs/db/schema";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
 import {
@@ -13,6 +13,11 @@ import {
 	tenantOwnerCondition,
 } from "../../lib/content-access";
 import { contentHash } from "../../lib/content-hash";
+import {
+	invalidateDocCache,
+	invalidateDocListCache,
+} from "../../lib/doc-cache";
+import { sameDocumentBody } from "../../lib/document-body";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
@@ -529,13 +534,10 @@ export const versionRoutes = new Elysia({
 		}
 		const userId = ctx.userId;
 		try {
-			const updated = await withTenant(ctx, async (tx) => {
-				const docRows = await tx
-					.select({
-						id: documents.id,
-						content: documents.content,
-						contentJson: documents.contentJson,
-					})
+			const result = await withTenant(ctx, async (tx) => {
+				const access = authorization.access;
+				const [doc] = await tx
+					.select()
 					.from(documents)
 					.where(
 						and(
@@ -545,14 +547,24 @@ export const versionRoutes = new Elysia({
 								documents.workspaceId,
 								ctx,
 							),
+							isNull(documents.deletedAt),
+							...(access.restricted
+								? [
+										access.categoryId
+											? effectiveDocumentCategoryCondition(
+													documents.categoryId,
+													documents.folderId,
+													ctx,
+													access.categoryId,
+												)
+											: sql`false`,
+									]
+								: []),
 						),
 					)
+					.for("update")
 					.limit(1);
-
-				if (docRows.length === 0) {
-					return null;
-				}
-				const doc = docRows[0];
+				if (!doc) return null;
 
 				const versionRows = await tx
 					.select({
@@ -574,26 +586,36 @@ export const versionRoutes = new Elysia({
 					return null;
 				}
 
-				// 1. Auto-backup current content as a fresh version BEFORE
-				//    overwriting. This makes the restore reversible: the
-				//    user can restore the pre-restore state by restoring
-				//    this auto-backup later.
-				const docId = doc?.id as string;
-				await tx.insert(versions).values({
-					documentId: docId,
-					content: doc?.content ?? "",
-					contentJson: doc?.contentJson,
-					createdBy: userId,
-				});
+				if (sameDocumentBody(doc, target))
+					return { updated: doc, changed: false };
 
-				// 2. Overwrite the live document with the target version's
-				//    content + JSON view, then 3. record a marker version
-				//    pointing back at the source of the restore.
+				const docId = doc.id;
+				const [backup] = await tx
+					.select({ id: versions.id })
+					.from(versions)
+					.where(
+						and(
+							eq(versions.documentId, docId),
+							eq(versions.content, doc.content ?? ""),
+							sql`${versions.contentJson} IS NOT DISTINCT FROM ${doc.contentJson == null ? null : JSON.stringify(doc.contentJson)}::jsonb`,
+						),
+					)
+					.limit(1);
+				if (!backup) {
+					await tx.insert(versions).values({
+						documentId: docId,
+						content: doc.content ?? "",
+						contentJson: doc.contentJson,
+						createdBy: userId,
+					});
+				}
+
 				const [row] = await tx
 					.update(documents)
 					.set({
 						content: target.content,
 						contentJson: target.contentJson,
+						contentHash: contentHash(doc.title, target.content),
 						updatedAt: new Date(),
 					})
 					.where(
@@ -616,13 +638,19 @@ export const versionRoutes = new Elysia({
 					restoredFrom: target.id,
 				});
 
-				return row ?? null;
+				return row ? { updated: row, changed: true } : null;
 			});
 
-			if (!updated) {
+			if (!result) {
 				set.status = 404;
 				return { error: "Document not found" };
 			}
+			const { updated, changed } = result;
+			if (!changed) return updated;
+			await Promise.all([
+				invalidateDocCache(params.id),
+				invalidateDocListCache(userId, ctx.workspaceId),
+			]);
 			void enqueueReembed(
 				[
 					{

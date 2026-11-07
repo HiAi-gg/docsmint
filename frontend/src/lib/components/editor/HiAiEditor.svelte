@@ -391,14 +391,16 @@ function handleWrapperClick(event: MouseEvent) {
 
 <div class="editor-wrapper" onclick={handleWrapperClick} role="presentation">
   {#if ready && editor}
-    <EditorToolbar
-      {editor}
-      {documentId}
-      {toolbarExtensions}
-      {editorActions}
-      {editorActionContext}
-      minimal={minimalToolbar}
-    />
+    {#if editable}
+      <EditorToolbar
+        {editor}
+        {documentId}
+        {toolbarExtensions}
+        {editorActions}
+        {editorActionContext}
+        minimal={minimalToolbar}
+      />
+    {/if}
     <div
       class="editor-content"
       class:deferred-loading={deferredContentLoading}
