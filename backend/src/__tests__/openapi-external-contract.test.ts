@@ -89,7 +89,7 @@ describe("OpenAPI external integration contract", () => {
 					.filter((method) => HTTP_METHODS.has(method.toLowerCase()))
 					.map(
 						(method) =>
-							`${method.toUpperCase()} ${operations[method]["x-docsmint-runtime-path"] ?? path}`,
+							`${method.toUpperCase()} ${operations[method]?.["x-docsmint-runtime-path"] ?? path}`,
 					),
 			)
 			.sort();
