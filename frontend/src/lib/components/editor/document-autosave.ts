@@ -3,7 +3,7 @@ export type AutosaveStatus = "saved" | "saving" | "unsaved";
 interface AutosaveOptions<T> {
 	mutate: (documentId: string, update: T) => Promise<unknown>;
 	onStatus?: (documentId: string, status: AutosaveStatus) => void;
-	onError?: (documentId: string) => void;
+	onError?: (documentId: string, error: unknown) => void;
 	onRetry?: (documentId: string) => void;
 	shouldRetry?: (error: unknown) => boolean;
 	sleep?: (milliseconds: number) => Promise<void>;
@@ -52,7 +52,7 @@ export function createDocumentAutosave<T>(options: AutosaveOptions<T>) {
 					}
 					failed.set(edit.documentId, edit);
 					status(edit, "unsaved");
-					if (!disposed) options.onError?.(edit.documentId);
+					if (!disposed) options.onError?.(edit.documentId, error);
 					break;
 				}
 			}

@@ -43,7 +43,12 @@ interface Version {
 
 type FilterMode = "all" | "snapshots";
 
-type RestoredDocument = { id: string; content: string | null; contentJson?: unknown };
+type RestoredDocument = {
+	id: string;
+	content: string | null;
+	contentJson?: unknown;
+	updatedAt: string;
+};
 
 const {
 	documentId,
@@ -55,7 +60,10 @@ const {
 	documentId: string;
 	/** Called after a successful restore so the parent can re-fetch the
 	 *  document body and re-render the editor. Optional. */
-	onRestored?: (restoredVersion: Version, document: RestoredDocument) => void | Promise<void>;
+	onRestored?: (
+		restoredVersion: Version,
+		document: RestoredDocument,
+	) => void | Promise<void>;
 	onPreview?: (version: Version | null) => void;
 	beforeRestore?: () => Promise<boolean>;
 	onRestoringChange?: (busy: boolean) => void;
@@ -217,7 +225,8 @@ async function confirmRestore() {
 	try {
 		const targetDocumentId = documentId;
 		if (beforeRestore && !(await beforeRestore())) {
-			restoreError = "Could not save the current changes. Try again before restoring.";
+			restoreError =
+				"Could not save the current changes. Try again before restoring.";
 			return;
 		}
 		if (targetDocumentId !== documentId) return;
