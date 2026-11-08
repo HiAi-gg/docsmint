@@ -453,6 +453,255 @@ function describeVersions(spec: Spec) {
 	);
 }
 
+function describeOrganization(spec: Spec) {
+	const date = { type: "string", format: "date-time" };
+	const nullableUuid = { ...uuid, nullable: true };
+	const rank = { type: "integer", minimum: 0 };
+	const categorySettings = {
+		apiMode: { type: "string", enum: ["unavailable", "global", "category"] },
+		apiPermissionRead: { type: "boolean" },
+		apiPermissionEdit: { type: "boolean" },
+		apiPermissionWrite: { type: "boolean" },
+	};
+	const resources = [
+		{
+			path: "/api/tags",
+			itemPath: "/api/tags/{id}",
+			name: "tag",
+			createFields: {
+				name: { type: "string", minLength: 1, maxLength: 100 },
+				color: { type: "string", maxLength: 20 },
+			},
+			updateFields: {},
+			properties: {
+				color: { type: "string", nullable: true },
+				createdAt: date,
+				documentCount: rank,
+			},
+			exampleFields: { color: null },
+			createErrors: [400, 401, 403, 409, 429, 500],
+			updateErrors: [400, 401, 403, 404, 429, 500],
+			deleteErrors: [401, 403, 429, 500],
+		},
+		{
+			path: "/api/categories",
+			itemPath: "/api/categories/{id}",
+			name: "category",
+			createFields: {
+				name: { type: "string", minLength: 1, maxLength: 255 },
+				...categorySettings,
+			},
+			updateFields: { order: rank },
+			properties: {
+				order: rank,
+				...categorySettings,
+				createdAt: date,
+				updatedAt: date,
+				documentCount: rank,
+				folderCount: rank,
+			},
+			exampleFields: { order: 0 },
+			createErrors: [400, 401, 403, 409, 429, 500],
+			updateErrors: [400, 401, 403, 404, 409, 429, 500],
+			deleteErrors: [401, 403, 404, 429, 500],
+		},
+		{
+			path: "/api/folders/",
+			itemPath: "/api/folders/{id}",
+			name: "folder",
+			createFields: {
+				name: { type: "string", minLength: 1, maxLength: 255 },
+				parentId: nullableUuid,
+				categoryId: nullableUuid,
+			},
+			updateFields: { order: rank },
+			properties: {
+				ownerId: uuid,
+				parentId: nullableUuid,
+				categoryId: nullableUuid,
+				order: rank,
+				createdAt: date,
+				updatedAt: date,
+				documentCount: rank,
+				subfolderCount: rank,
+			},
+			exampleFields: { parentId: null, categoryId: null },
+			createErrors: [400, 401, 403, 404, 429, 500],
+			updateErrors: [400, 401, 403, 404, 429, 500],
+			deleteErrors: [401, 403, 404, 429, 500],
+		},
+	];
+
+	for (const resource of resources) {
+		const {
+			path,
+			itemPath,
+			name,
+			createFields,
+			updateFields,
+			properties,
+			exampleFields,
+		} = resource;
+		const row = {
+			type: "object",
+			required: ["id", "name"],
+			properties: { id: uuid, name: { type: "string" }, ...properties },
+		};
+		const example = {
+			id: documentExample.id,
+			name: "Example",
+			...exampleFields,
+		};
+		const isFolder = name === "folder";
+		const namePlural = name === "category" ? "categories" : `${name}s`;
+		const listParameters = isFolder
+			? [{ name: "parentId", in: "query", schema: uuid }]
+			: undefined;
+		describeOperation(
+			spec,
+			path,
+			"get",
+			`List ${namePlural}`,
+			"Returns items visible to the current API key or browser session.",
+			{ type: "array", items: row },
+			[example],
+			[401, 403, 500],
+			listParameters,
+		);
+		describeOperation(
+			spec,
+			path,
+			"post",
+			`Create a ${name}`,
+			"Requires write access to the destination.",
+			row,
+			example,
+			resource.createErrors,
+			undefined,
+			201,
+		);
+		describeOperation(
+			spec,
+			itemPath,
+			"patch",
+			`Update a ${name}`,
+			"Requires edit access to the resource. Send the fields to change.",
+			row,
+			example,
+			resource.updateErrors,
+		);
+		describeOperation(
+			spec,
+			itemPath,
+			"delete",
+			`Delete a ${name}`,
+			"Requires write access to the resource.",
+			success,
+			successExample,
+			resource.deleteErrors,
+		);
+
+		const create = spec.paths[path].post;
+		delete (create.responses as Record<string, unknown>)["200"];
+		create.requestBody = {
+			required: true,
+			content: json(
+				{ type: "object", required: ["name"], properties: createFields },
+				{ name: "Example" },
+			),
+		};
+		spec.paths[itemPath].patch.requestBody = {
+			required: true,
+			content: json(
+				{
+					type: "object",
+					minProperties: 1,
+					properties: { ...createFields, ...updateFields },
+				},
+				{ name: "Renamed" },
+			),
+		};
+		if (name !== "folder") {
+			for (const operation of [create, spec.paths[itemPath].patch]) {
+				const responses = operation.responses as Record<string, unknown>;
+				if ("409" in responses)
+					responses["409"] = failure(
+						"Name conflict or account mutation fence.",
+						`${name} name already exists`,
+					);
+			}
+		}
+		for (const operation of [
+			spec.paths[path].get,
+			create,
+			...Object.values(spec.paths[itemPath]),
+		]) {
+			operation.tags = [namePlural[0].toUpperCase() + namePlural.slice(1)];
+		}
+
+		if (isFolder) {
+			const children = { type: "array", items: row };
+			describeOperation(
+				spec,
+				itemPath,
+				"get",
+				"Read a folder",
+				"Includes visible child folders and documents.",
+				{
+					...row,
+					properties: {
+						...row.properties,
+						children,
+						documents: {
+							type: "array",
+							items: {
+								type: "object",
+								required: ["id", "title"],
+								properties: { id: uuid, title: { type: "string" } },
+							},
+						},
+					},
+				},
+				{ ...example, children: [], documents: [] },
+				[401, 403, 404, 500],
+			);
+			spec.paths[itemPath].get.tags = ["Folders"];
+		}
+	}
+
+	describeOperation(
+		spec,
+		"/api/documents/{id}/tags",
+		"post",
+		"Add a tag to a document",
+		"Requires edit permission for the document and visibility of the tag.",
+		success,
+		successExample,
+		[400, 401, 403, 404, 429, 500],
+		undefined,
+		201,
+	);
+	const tagLink = spec.paths["/api/documents/{id}/tags"].post;
+	delete (tagLink.responses as Record<string, unknown>)["200"];
+	tagLink.requestBody = {
+		required: true,
+		content: json(
+			{ type: "object", required: ["tagId"], properties: { tagId: uuid } },
+			{ tagId: "22222222-2222-4222-8222-222222222222" },
+		),
+	};
+	describeOperation(
+		spec,
+		"/api/documents/{id}/tags/{tagId}",
+		"delete",
+		"Remove a tag from a document",
+		"Requires edit permission for the document.",
+		success,
+		successExample,
+		[401, 403, 404, 429, 500],
+	);
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -561,5 +810,6 @@ export function enrichOpenApi(spec: Spec) {
 	});
 	describeDocumentReadsAndTrash(spec);
 	describeVersions(spec);
+	describeOrganization(spec);
 	return spec;
 }
