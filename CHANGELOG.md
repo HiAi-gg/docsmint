@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.2 - 2026-11-08
+
+- Preview and restore historical document versions without reloading the page.
+- Skip unchanged history writes, invalidate restored document caches, and reject stale saves.
+
 ## 2.1.1 - 2026-11-02
 
 - Refresh Bun 1.4.4, SvelteKit/Vite adapters and Better Auth/core security patch versions.
