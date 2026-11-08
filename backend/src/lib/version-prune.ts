@@ -6,6 +6,7 @@ import {
 } from "@hiai-docs/db/with-tenant";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { config } from "./config";
+import { latestDocumentRestore } from "./document-body";
 import { logger } from "./logger";
 import { redis } from "./redis";
 
@@ -15,7 +16,8 @@ const PRUNE_TENANT = adminTenantContext(ZERO_UUID);
 
 /**
  * Garbage-collect auto-saved versions for a single document, keeping the
- * newest `VERSION_RETENTION_COUNT` (default 50) auto-saved rows and
+ * newest `VERSION_RETENTION_COUNT` (default 50) auto-saved rows, preserving the
+ * latest restore marker within that count, and
  * leaving snapshots (`is_snapshot = true`) untouched. Snapshots are
  * user-named, intentionally durable, and excluded from the count.
  *
@@ -65,6 +67,7 @@ export async function maybePruneVersions(documentId: string): Promise<void> {
 					and(
 						eq(versions.documentId, documentId),
 						eq(versions.isSnapshot, false),
+						sql`${versions.id} IS DISTINCT FROM ${latestDocumentRestore(documentId)}`,
 					),
 				)
 				.orderBy(asc(versions.createdAt), asc(versions.id))

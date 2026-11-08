@@ -636,6 +636,7 @@ export const versionRoutes = new Elysia({
 					contentJson: target.contentJson,
 					createdBy: userId,
 					restoredFrom: target.id,
+					createdAt: sql`clock_timestamp()`,
 				});
 
 				return row ? { updated: row, changed: true } : null;

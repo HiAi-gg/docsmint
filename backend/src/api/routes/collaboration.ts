@@ -23,7 +23,10 @@ import {
 	invalidateDocCache,
 	invalidateDocListCache,
 } from "../../lib/doc-cache";
-import { sameDocumentBody } from "../../lib/document-body";
+import {
+	latestDocumentRestore,
+	sameDocumentBody,
+} from "../../lib/document-body";
 import { logger } from "../../lib/logger";
 import { enqueueReembed } from "../../lib/reembed";
 import { withTenant } from "../../lib/with-tenant";
@@ -200,6 +203,7 @@ async function authorizeDocument(ws: RawCollabWs, documentId: string) {
 				content: documents.content,
 				contentJson: documents.contentJson,
 				categoryId: documents.categoryId,
+				restoreVersionId: latestDocumentRestore(documentId),
 			})
 			.from(documents)
 			.where(
@@ -247,6 +251,7 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 				documentId,
 				userId: access.userId,
 				workspaceId: access.ctx.workspaceId,
+				restoreVersionId: document.restoreVersionId,
 			});
 			const persist = async (doc: Y.Doc) => {
 				const materialized = materializeYDoc(doc);
@@ -283,7 +288,16 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 						)
 						.for("update")
 						.limit(1);
-					if (!current || sameDocumentBody(current, materialized)) return null;
+					if (!current) return null;
+					// Read the restore marker in a separate statement after acquiring
+					// the document lock, so a restore that won the lock is visible.
+					const [generation] = await tx
+						.select({ id: latestDocumentRestore(documentId) })
+						.from(documents)
+						.where(eq(documents.id, documentId))
+						.limit(1);
+					if (generation?.id !== document.restoreVersionId) return false;
+					if (sameDocumentBody(current, materialized)) return null;
 
 					const revision = contentHash(current.title, materialized.content);
 					await tx.insert(versions).values({
@@ -304,6 +318,15 @@ collaborationRoutes.ws("/api/ws/collab/:documentId", {
 						.where(eq(documents.id, documentId));
 					return revision;
 				});
+				if (revision === false) {
+					for (const peer of roomSockets.get(roomKey) ?? []) {
+						peer.close(
+							4009,
+							"Document version changed. Keep your draft and reopen the document.",
+						);
+					}
+					return;
+				}
 				if (revision === null) return;
 				await Promise.all([
 					invalidateDocCache(documentId),

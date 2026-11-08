@@ -1,4 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
+import { versions } from "@hiai-docs/db/schema";
+import { sql } from "drizzle-orm";
 
 type DocumentBody = { content: string | null; contentJson: unknown };
 
@@ -24,4 +26,17 @@ export function resolveDocumentBody(
 				? current.contentJson
 				: null;
 	return { content, contentJson };
+}
+
+// The newest restore marker is a durable collaboration generation. Pruning
+// keeps this marker so old room keys cannot become current again.
+export function latestDocumentRestore(documentId: string) {
+	return sql<string | null>`(
+		SELECT ${versions.id}
+		FROM ${versions}
+		WHERE ${versions.documentId} = ${documentId}
+		  AND ${versions.restoredFrom} IS NOT NULL
+		ORDER BY ${versions.createdAt} DESC, ${versions.id} DESC
+		LIMIT 1
+	)`;
 }

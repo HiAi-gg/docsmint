@@ -41,7 +41,11 @@ export function startCollaboration(
 
 	provider.on("status", (_status: { status: string }) => {});
 
-	provider.on("connection-close", () => {});
+	provider.on("connection-close", (event: CloseEvent | null) => {
+		// Retain the local Y.Doc. Reconnecting it to the new generation
+		// would send edits based on the pre-restore document.
+		if (event?.code === 4009) provider.disconnect();
+	});
 
 	const updateHandler = onUpdate;
 	if (updateHandler) {

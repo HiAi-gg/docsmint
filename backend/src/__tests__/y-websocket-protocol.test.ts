@@ -61,3 +61,18 @@ test("room keys isolate personal users and workspaces for the same document", as
 	});
 	expect(new Set([personalA, personalB, workspaceA, workspaceB]).size).toBe(4);
 });
+
+test("a restored document uses a new room without reusing old Redis state", async () => {
+	const { createYjsRoomKey } = await import("../lib/collaboration-room-key");
+	const input = { documentId: "doc", userId: "user", workspaceId: "team" };
+	const original = createYjsRoomKey(input);
+	const restored = createYjsRoomKey({ ...input, restoreVersionId: "restored" });
+	expect(restored).not.toBe(original);
+	expect(restored).toBe(
+		createYjsRoomKey({
+			...input,
+			userId: "peer",
+			restoreVersionId: "restored",
+		}),
+	);
+});
