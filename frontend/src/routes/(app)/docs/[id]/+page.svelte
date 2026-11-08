@@ -75,6 +75,7 @@ const share = getDocsmintShareAdapter();
 
 let title = $state("");
 let content = $state("");
+let editorContentRevision = $state("");
 let restoringVersion = $state(false);
 let versionPreview = $state<{
 	id: string;
@@ -242,6 +243,7 @@ $effect(() => {
 		return;
 	hydratedDocumentId = doc.id;
 	documentRevisions.set(doc.id, doc.updatedAt);
+	editorContentRevision = doc.updatedAt;
 	saveStatus = "saved";
 	title = doc.title;
 	content = doc.content ?? "";
@@ -1259,7 +1261,9 @@ $effect(() => {
       <div class="editor-container" inert={restoringVersion}>
         {#if showVersionPanel && versionPreview}
           <div class="mb-3 rounded border border-border bg-muted p-3 text-sm">Viewing an earlier version</div>
-          {#if EditorComponent}
+          {#if mode === "markdown"}
+            <pre class="whitespace-pre-wrap break-words" aria-label="Historical Markdown">{versionPreview.content}</pre>
+          {:else if EditorComponent}
             {#key versionPreview.id}
               <EditorComponent
                 content={versionPreview.content}
@@ -1277,7 +1281,7 @@ $effect(() => {
                 onUpdate={debounceContentSave}
                 editable={true}
 				 documentId={data.document.id}
-				 documentUpdatedAt={data.document.updatedAt}
+				 documentUpdatedAt={editorContentRevision}
                 {editorActions}
                 minimalToolbar={editorPreferences.minimalToolbar}
                 editorActionContext={{
@@ -1346,6 +1350,7 @@ $effect(() => {
               onRestored={(_version, restored) => {
                 if (restored.id !== data.document.id) return;
                 documentRevisions.set(restored.id, restored.updatedAt);
+                editorContentRevision = restored.updatedAt;
                 content = restored.content ?? "";
                 contentJson = (restored.contentJson as object | null | undefined) ?? undefined;
                 saveStatus = "saved";

@@ -616,7 +616,10 @@ export const versionRoutes = new Elysia({
 						content: target.content,
 						contentJson: target.contentJson,
 						contentHash: contentHash(doc.title, target.content),
-						updatedAt: new Date(),
+						// A restored revision must invalidate the old token even in the same millisecond.
+						updatedAt: new Date(
+							Math.max(Date.now(), doc.updatedAt.getTime() + 1),
+						),
 					})
 					.where(
 						and(

@@ -110,14 +110,18 @@ function scheduleDeferredMarkdownParse(ed: Editor): void {
 				cacheDocumentId && cacheUpdatedAt
 					? await getCachedParsedContent(cacheDocumentId, cacheUpdatedAt)
 					: null;
-			if (generation !== deferredParseGeneration || editor !== ed) return;
+			if (
+				generation !== deferredParseGeneration ||
+				editor !== ed ||
+				content !== source ||
+				contentJson
+			) {
+				return;
+			}
 			const parsed =
 				cached ??
 				(sanitizeEditorContent(markdownToJson(source)) as JSONContent);
 			ed.commands.setContent(parsed, { emitUpdate: false });
-			// Persist the structured form through the normal route callback so
-			// subsequent opens do not need another expensive Markdown parse.
-			onUpdate({ markdown: source, json: parsed });
 			if (!cached && cacheDocumentId && cacheUpdatedAt) {
 				void cacheParsedContent(cacheDocumentId, cacheUpdatedAt, parsed);
 			}

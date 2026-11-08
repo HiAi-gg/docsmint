@@ -84,9 +84,9 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
-## Document version patch 2.1.2
+## Document version patch 2.1.3
 
-Preview and restore historical content without reloading the editor. See [2.1.2 release notes](docs/release/v2.1.2-notes.md).
+Preview and restore historical content without reloading the editor. See [2.1.3 release notes](docs/release/v2.1.3-notes.md).
 
 ## Security patch 2.1.1
 
