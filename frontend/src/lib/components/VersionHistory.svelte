@@ -52,12 +52,14 @@ type RestoredDocument = {
 
 const {
 	documentId,
+	refreshRevision = 0,
 	onRestored,
 	onPreview,
 	beforeRestore,
 	onRestoringChange,
 }: {
 	documentId: string;
+	refreshRevision?: number;
 	/** Called after a successful restore so the parent can re-fetch the
 	 *  document body and re-render the editor. Optional. */
 	onRestored?: (
@@ -90,11 +92,15 @@ let restoreError = $state<string | null>(null);
 const request = getDocsmintRequestAdapter();
 
 let previewRequest: AbortController | undefined;
+let listRequest: AbortController | undefined;
 let previewError = $state<string | null>(null);
 let loadingPreview = $state(false);
 let selectedVersionId = $state<string | null>(null);
 
-onDestroy(() => previewRequest?.abort());
+onDestroy(() => {
+	previewRequest?.abort();
+	listRequest?.abort();
+});
 
 async function selectVersion(version: Version) {
 	previewRequest?.abort();
@@ -130,26 +136,34 @@ function clearPreview() {
 }
 
 async function loadVersions() {
+	listRequest?.abort();
+	const controller = new AbortController();
+	listRequest = controller;
 	loading = true;
 	loadError = null;
 	try {
-		versions = await apiFetch<Version[]>(
+		const next = await apiFetch<Version[]>(
 			`/api/documents/${documentId}/versions`,
-			{},
+			{ signal: controller.signal },
 			request.fetch,
 		);
+		if (!controller.signal.aborted) versions = next;
 	} catch (e) {
+		if (controller.signal.aborted) return;
 		loadError = e instanceof Error ? e.message : String(e);
 		console.error("Failed to load versions", e);
 	} finally {
-		loading = false;
+		if (listRequest === controller) loading = false;
 	}
 }
 
-// Initial load + reload whenever the parent swaps `documentId`.
 $effect(() => {
 	void documentId;
 	clearPreview();
+});
+
+$effect(() => {
+	void refreshRevision;
 	void loadVersions();
 });
 
