@@ -67,6 +67,7 @@ function describeOperation(
 		403: failure("Operation outside the current grant.", "Forbidden"),
 		404: failure("Document not found in this scope.", "Document not found"),
 		409: { $ref: "#/components/responses/AccountPurgeFenced" },
+		410: failure("The share link has expired.", "Share link has expired"),
 		413: failure(
 			"Request exceeds the configured size limit.",
 			"Request too large",
@@ -1489,6 +1490,271 @@ function describeDocumentEditsAndProgress(spec: Spec) {
 	);
 }
 
+function describeSharing(spec: Spec) {
+	const string = { type: "string" };
+	const date = { ...string, format: "date-time" };
+	const nullableUuid = { ...uuid, nullable: true };
+	const obj = (
+		properties: Record<string, object>,
+		required = Object.keys(properties),
+	) => ({ type: "object", properties, required });
+	const list = (items: object) => ({ type: "array", items });
+	const pathParam = (name: string, schema: object) => ({
+		name,
+		in: "path",
+		schema,
+		required: true,
+	});
+	const requestBody = (
+		path: string,
+		method: string,
+		schema: object,
+		example: object,
+	) => {
+		spec.paths[path][method].requestBody = {
+			required: true,
+			content: json(schema, example),
+		};
+	};
+	const role = { ...string, enum: ["viewer", "commenter", "editor"] };
+	const expiresIn = { ...string, enum: ["1h", "1d", "7d", "30d", "never"] };
+	const targets = { documentId: uuid, folderId: uuid, categoryId: uuid };
+	const link = {
+		id: uuid,
+		token: string,
+		documentId: nullableUuid,
+		folderId: nullableUuid,
+		categoryId: nullableUuid,
+		role,
+		expiresAt: { ...date, nullable: true },
+		hasPassword: { type: "boolean" },
+		createdAt: date,
+	};
+	const example = {
+		id: "22222222-2222-4222-8222-222222222222",
+		token: "sample-share",
+		documentId: documentExample.id,
+		folderId: null,
+		categoryId: null,
+		role: "viewer",
+		expiresAt: null,
+		hasPassword: false,
+		createdAt: "2026-11-08T12:00:00Z",
+	};
+	const base = "/api/share/";
+	const member = `${base}{id}`;
+	describeOperation(
+		spec,
+		base,
+		"post",
+		"Create a share link",
+		"Requires permission to share the selected document, folder or category. Supply exactly one target.",
+		obj(link),
+		example,
+		[400, 401, 403, 404, 500],
+	);
+	requestBody(
+		base,
+		"post",
+		{
+			type: "object",
+			properties: {
+				...targets,
+				password: { ...string, minLength: 1 },
+				role: { ...role, default: "viewer" },
+				expiresIn: { ...expiresIn, default: "never" },
+			},
+			oneOf: Object.keys(targets).map((target) => ({ required: [target] })),
+		},
+		{ documentId: documentExample.id, role: "viewer" },
+	);
+	describeOperation(
+		spec,
+		base,
+		"get",
+		"List share links",
+		"Returns share links managed by the current authenticated user.",
+		obj({
+			links: list(
+				obj({
+					...link,
+					title: string,
+					type: { ...string, enum: ["document", "folder", "category"] },
+				}),
+			),
+		}),
+		{ links: [{ ...example, title: "API quickstart", type: "document" }] },
+		[401, 403],
+	);
+	describeOperation(
+		spec,
+		member,
+		"patch",
+		"Update a share link",
+		"Changes the role or expiry of a share link managed by the authenticated user.",
+		obj(link),
+		example,
+		[400, 401, 403, 404, 500],
+	);
+	requestBody(member, "patch", obj({ role, expiresIn }, []), {
+		expiresIn: "7d",
+	});
+	describeOperation(
+		spec,
+		member,
+		"delete",
+		"Revoke a share link",
+		"Revokes access granted by this link.",
+		success,
+		successExample,
+		[401, 403, 404],
+	);
+
+	const guestPath = `${member}/guests`;
+	const guest = obj({
+		id: uuid,
+		email: { ...string, format: "email" },
+		grantedAt: date,
+	});
+	describeOperation(
+		spec,
+		guestPath,
+		"post",
+		"Grant guest access to a share",
+		"Adds the specified email to a share managed by the authenticated user.",
+		obj(
+			{
+				success: { type: "boolean", enum: [true] },
+				guest,
+				message: string,
+			},
+			["success"],
+		),
+		{ success: true, message: "Guest already has access" },
+		[400, 401, 403, 404],
+	);
+	requestBody(
+		guestPath,
+		"post",
+		obj({ email: { ...string, format: "email" } }),
+		{ email: "guest@example.invalid" },
+	);
+	describeOperation(
+		spec,
+		`${guestPath}/{email}`,
+		"delete",
+		"Revoke guest access to a share",
+		"Removes the specified email from the guest list.",
+		success,
+		successExample,
+		[401, 403, 404],
+		[pathParam("id", uuid), pathParam("email", { ...string, format: "email" })],
+	);
+
+	const shareDoc = obj({
+		id: uuid,
+		title: string,
+		content: { ...string, nullable: true },
+		contentJson: {},
+		metadata: {},
+		createdAt: date,
+		updatedAt: date,
+	});
+	const names = { id: uuid, name: string };
+	const dates = { createdAt: date, updatedAt: date };
+	const children = {
+		folders: list(obj({ ...names, ...dates })),
+		documents: list(obj({ id: uuid, title: string, ...dates })),
+	};
+	const shareFolder = obj({ ...names, ...dates, ...children });
+	const shareDocExample = {
+		...documentExample,
+		contentJson: null,
+		metadata: null,
+		createdAt: example.createdAt,
+		updatedAt: example.createdAt,
+	};
+	const tokenPath = `${base}{token}`;
+	const tokenParam = pathParam("token", string);
+	const password = { name: "X-Share-Password", in: "header", schema: string };
+	describeOperation(
+		spec,
+		tokenPath,
+		"get",
+		"Open a shared resource",
+		"A valid link token grants scoped access. Category shares are returned as folder-shaped content.",
+		{
+			oneOf: [
+				obj({ type: { ...string, enum: ["document"] }, data: shareDoc }),
+				obj({ type: { ...string, enum: ["folder"] }, data: shareFolder }),
+			],
+		},
+		{ type: "document", data: shareDocExample },
+		[401, 404, 410, 429, 500],
+		[tokenParam, password],
+	);
+	describeOperation(
+		spec,
+		`${tokenPath}/folders/{folderId}`,
+		"get",
+		"Read a subfolder in a shared resource",
+		"The folder must be within the scope of the active share.",
+		obj({
+			...names,
+			parentId: nullableUuid,
+			...children,
+		}),
+		{
+			id: documentExample.id,
+			name: "Example",
+			parentId: null,
+			folders: [],
+			documents: [],
+		},
+		[401, 403, 404, 410, 429],
+		[tokenParam, pathParam("folderId", uuid), password],
+	);
+	describeOperation(
+		spec,
+		`${tokenPath}/documents/{docId}`,
+		"get",
+		"Read a document in a shared resource",
+		"The document must be within the scope of the active share.",
+		shareDoc,
+		shareDocExample,
+		[401, 403, 404, 410, 429],
+		[tokenParam, pathParam("docId", uuid), password],
+	);
+	for (const path of Object.keys(spec.paths).filter((path) =>
+		path.startsWith(base),
+	)) {
+		for (const operation of Object.values(spec.paths[path]))
+			operation.tags = ["Sharing"];
+		if (path.startsWith(tokenPath)) spec.paths[path].get.security = [];
+	}
+	for (const [action, visibility] of [
+		["publish", "public"],
+		["unpublish", "private"],
+	]) {
+		describeOperation(
+			spec,
+			`/api/documents/{id}/${action}`,
+			"post",
+			action === "publish" ? "Publish a document" : "Unpublish a document",
+			"Requires permission to change document visibility.",
+			{
+				...document,
+				properties: {
+					...document.properties,
+					visibility: { ...string, enum: [visibility] },
+				},
+			},
+			{ ...documentExample, visibility },
+			[401, 403, 404, 409, 429, 500],
+		);
+	}
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -1609,5 +1875,6 @@ export function enrichOpenApi(spec: Spec) {
 	describeFileTransfers(spec);
 	describeCredentialManagement(spec);
 	describeDocumentEditsAndProgress(spec);
+	describeSharing(spec);
 	return spec;
 }
