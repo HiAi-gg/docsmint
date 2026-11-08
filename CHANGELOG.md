@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.4 - 2026-11-08
+
+- Document the self-hosted REST responses, request bodies, permissions, and retry behavior in OpenAPI.
+- Describe the existing API key and workspace discovery routes and API v1 route aliases.
+
 ## 2.1.3 - 2026-11-08
 
 - Preview and restore large legacy Markdown without autosaving the rendered output.

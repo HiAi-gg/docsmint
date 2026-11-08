@@ -124,7 +124,7 @@ describe("OpenAPI external integration contract", () => {
 		});
 	});
 	test("tracks the release version and critical SDK, CLI, and MCP routes", () => {
-		expect(spec.info.version).toBe("2.1.3");
+		expect(spec.info.version).toBe("2.1.4");
 		for (const [method, path] of requiredOperations) {
 			expect(
 				spec.paths[path]?.[method],
