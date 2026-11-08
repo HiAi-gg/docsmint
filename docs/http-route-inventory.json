@@ -47,6 +47,8 @@
   "GET /api/share/{token}/folders/{folderId}",
   "GET /api/tags",
   "GET /api/trash",
+  "GET /api/whoami",
+  "GET /api/workspaces",
   "PATCH /api/categories/{id}",
   "PATCH /api/documents/{id}",
   "PATCH /api/folders/{id}",
