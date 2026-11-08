@@ -1759,6 +1759,482 @@ function describeSharing(spec: Spec) {
 	}
 }
 
+function describeHostEndpoints(spec: Spec) {
+	const string = { type: "string" };
+	const object = (
+		properties: Record<string, object>,
+		required = Object.keys(properties),
+	) => ({
+		type: "object",
+		properties,
+		...(required.length ? { required } : {}),
+	});
+	const state = { ...string, enum: ["ok", "error"] };
+	const healthExample = {
+		status: "ok",
+		service: "docsmint",
+		timestamp: "2026-11-08T12:00:00Z",
+		database: "ok",
+		redis: "ok",
+		storage: "ok",
+		queue: "ok",
+	};
+	const health = object(
+		{
+			status: { ...string, enum: ["ok", "unhealthy"] },
+			service: { ...string, enum: ["docsmint"] },
+			timestamp: { ...string, format: "date-time" },
+			database: state,
+			redis: state,
+			storage: state,
+			queue: state,
+			reasons: { type: "array", items: string },
+		},
+		Object.keys(healthExample),
+	);
+	describeOperation(
+		spec,
+		"/api/health",
+		"get",
+		"Read self-hosted readiness",
+		"Reports database, Redis, storage and worker readiness. A failing dependency can produce HTTP 503.",
+		health,
+		healthExample,
+		[429],
+	);
+	(spec.paths["/api/health"].get.responses as Record<string, unknown>)["503"] =
+		{
+			description: "One or more required services are unavailable.",
+			content: json(health, {
+				...healthExample,
+				status: "unhealthy",
+				redis: "error",
+			}),
+		};
+	describeOperation(
+		spec,
+		"/api/csrf-token",
+		"get",
+		"Issue a browser CSRF token",
+		"Sets the matching browser cookie. Send the returned token in x-csrf-token on protected cookie-authenticated writes.",
+		object({ token: string }),
+		{ token: "example-csrf-token" },
+		[],
+	);
+	const csrfResponse = (
+		spec.paths["/api/csrf-token"].get.responses as Record<
+			string,
+			Record<string, unknown>
+		>
+	)["200"];
+	csrfResponse.headers = {
+		"Set-Cookie": { schema: string, description: "Same-origin CSRF cookie." },
+	};
+	const plugin = object(
+		{
+			name: string,
+			version: string,
+			description: string,
+			configSchema: { type: "object" },
+		},
+		["name", "version", "description"],
+	);
+	const example = {
+		name: "highlight",
+		version: "1.0.0",
+		description: "Text highlight/marker extension",
+	};
+	describeOperation(
+		spec,
+		"/api/plugins/",
+		"get",
+		"List editor plugins",
+		"Returns the built-in editor plugin manifests.",
+		object({ plugins: { type: "array", items: plugin } }),
+		{ plugins: [example] },
+		[],
+	);
+	describeOperation(
+		spec,
+		"/api/plugins/{name}",
+		"get",
+		"Read an editor plugin manifest",
+		"Looks up a built-in plugin by name.",
+		plugin,
+		example,
+		[404],
+		[{ name: "name", in: "path", required: true, schema: string }],
+	);
+	for (const path of [
+		"/api/health",
+		"/api/csrf-token",
+		"/api/plugins/",
+		"/api/plugins/{name}",
+	]) {
+		spec.paths[path].get.security = [];
+		spec.paths[path].get.tags = [
+			path.startsWith("/api/plugins") ? "Plugins" : "Host",
+		];
+	}
+
+	const status = object({ status: { type: "boolean", enum: [true] } });
+	for (const [path, title, description, schema, requestExample] of [
+		[
+			"/api/auth/update-user",
+			"Update the current user profile",
+			"Updates permitted fields on the browser session's user. Use the email change operation to change email.",
+			object({ name: string, image: { ...string, nullable: true } }, []),
+			{ name: "Example user" },
+		],
+		[
+			"/api/auth/change-email",
+			"Request a user email change",
+			"Requires a recent browser session. The configured verification policy determines when the change takes effect.",
+			object(
+				{ newEmail: { ...string, format: "email" }, callbackURL: string },
+				["newEmail"],
+			),
+			{ newEmail: "new@example.invalid" },
+		],
+	] as const) {
+		describeOperation(
+			spec,
+			path,
+			"post",
+			title,
+			description,
+			status,
+			{ status: true },
+			[400, 401, 403, 409],
+		);
+		const op = spec.paths[path].post;
+		op.security = [{ SessionAuth: [] }];
+		op.tags = ["Auth"];
+		op.requestBody = { required: true, content: json(schema, requestExample) };
+	}
+
+	const webhook = "/api/webhooks/storage";
+	describeOperation(
+		spec,
+		webhook,
+		"post",
+		"Receive a signed storage notification",
+		"Verifies the signature on the raw JSON body. Storage removal notifications are accepted for compatibility. The HTTP 200 body can report an invalid signature.",
+		{
+			oneOf: [
+				object({ received: { type: "boolean", enum: [true] } }),
+				object({ error: string }),
+			],
+		},
+		{ received: true },
+		[413],
+	);
+	const op = spec.paths[webhook].post;
+	op.tags = ["Storage"];
+	op.security = [{ StorageWebhookSignature: [] }];
+	op.requestBody = {
+		required: true,
+		content: json(
+			object(
+				{
+					Records: {
+						type: "array",
+						items: object({
+							eventName: string,
+							s3: object({ object: object({ key: string }) }),
+						}),
+					},
+				},
+				[],
+			),
+			{
+				Records: [
+					{
+						eventName: "s3:ObjectRemoved:Delete",
+						s3: { object: { key: "example/object" } },
+					},
+				],
+			},
+		),
+	};
+}
+
+function describeOperatorEndpoints(spec: Spec) {
+	const string = { type: "string" };
+	const number = { type: "number" };
+	const count = { type: "integer", minimum: 0 };
+	const yes = { type: "boolean", enum: [true] };
+	const obj = (
+		properties: Record<string, object>,
+		required = Object.keys(properties),
+	) => ({ type: "object", properties, required });
+	const query = (name: string, schema: object) => ({
+		name,
+		in: "query",
+		schema,
+	});
+	const path = (name: string, schema: object) => ({
+		name,
+		in: "path",
+		schema,
+		required: true,
+	});
+	const operator = (
+		suffix: string,
+		method: string,
+		title: string,
+		description: string,
+		schema: object,
+		example: object,
+		errors: number[] = [],
+		parameters?: object[],
+	) => {
+		const route = `/api/admin/${suffix}`;
+		describeOperation(
+			spec,
+			route,
+			method,
+			title,
+			description,
+			schema,
+			example,
+			[401, 429, ...errors],
+			parameters,
+		);
+		spec.paths[route][method].security = [
+			{ OperatorApiKey: [] },
+			{ OperatorBearer: [] },
+		];
+		spec.paths[route][method].tags = ["Admin"];
+	};
+	const sampleId = documentExample.id;
+	const dryRun = query("dryRun", { type: "boolean", default: false });
+	operator(
+		"reindex/{docId}",
+		"post",
+		"Queue document reindexing",
+		"Queues a new indexing generation for an existing document.",
+		obj({ success: yes, documentId: uuid, enqueued: count, message: string }),
+		{
+			success: true,
+			documentId: sampleId,
+			enqueued: 1,
+			message: "Document reindex queued with a new generation",
+		},
+		[404, 500, 503],
+		[path("docId", uuid)],
+	);
+
+	const stateCounts = {
+		pending: 0,
+		processing: 0,
+		ready: 0,
+		failed: 0,
+		stale: 0,
+	};
+	const statKeys = [
+		"docsWithEmbeddings",
+		"totalChunks",
+		"nullChunks",
+		"zeroChunks",
+		"nearZeroChunks",
+		"emptyChunks",
+		"activeInvalidRows",
+		"inactiveGenerations",
+		"profileMismatches",
+		"pendingAgeSeconds",
+	];
+	const stats = Object.fromEntries(statKeys.map((key) => [key, count]));
+	operator(
+		"embedding-stats",
+		"get",
+		"Read embedding inventory",
+		"Reports embedding and document indexing totals.",
+		obj({
+			stats: obj({
+				...stats,
+				statusCounts: obj(
+					Object.fromEntries(
+						Object.keys(stateCounts).map((key) => [key, count]),
+					),
+				),
+			}),
+		}),
+		{
+			stats: {
+				...Object.fromEntries(statKeys.map((key) => [key, 0])),
+				statusCounts: stateCounts,
+			},
+		},
+		[500],
+	);
+
+	const provider = obj({
+		baseUrl: { ...string, nullable: true },
+		model: { ...string, nullable: true },
+	});
+	operator(
+		"health/embeddings",
+		"get",
+		"Probe the configured embedding provider",
+		"Reports provider availability, including unconfigured and degraded states.",
+		obj(
+			{
+				status: { ...string, enum: ["ok", "degraded", "not-configured"] },
+				provider,
+				details: string,
+				latencyMs: count,
+				dimensions: count,
+			},
+			["status", "provider"],
+		),
+		{
+			status: "ok",
+			provider: { baseUrl: "https://example.invalid", model: "example" },
+			latencyMs: 42,
+			dimensions: 1536,
+		},
+	);
+
+	operator(
+		"graph/stats",
+		"get",
+		"Read graph inventory",
+		"Reports graph counts when available and the reason when unavailable.",
+		{
+			oneOf: [
+				obj({ available: yes, nodes: count, edges: count }),
+				obj({ available: { type: "boolean", enum: [false] }, reason: string }),
+			],
+		},
+		{ available: true, nodes: 0, edges: 0 },
+	);
+
+	operator(
+		"reindex/model",
+		"post",
+		"Reindex stale embedding models",
+		"Queues documents stored against another embedding model. Set dryRun to get a count without queuing.",
+		{
+			oneOf: [
+				obj({ dryRun: yes, currentModel: string, affectedDocs: count }),
+				obj({
+					success: yes,
+					currentModel: string,
+					affectedDocs: count,
+					enqueued: count,
+				}),
+			],
+		},
+		{ dryRun: true, currentModel: "example", affectedDocs: 3 },
+		[500],
+		[dryRun],
+	);
+	for (const resource of ["folder", "tag"]) {
+		const id = `${resource}Id`;
+		operator(
+			`reindex/${resource}/{${id}}`,
+			"post",
+			`Reindex documents by ${resource}`,
+			"Scope the operation with ownerId unless cross-tenant administration is enabled. Set dryRun to count affected documents without queuing.",
+			{
+				oneOf: [
+					obj({ dryRun: yes, [id]: uuid, ownerId: uuid, affectedDocs: count }, [
+						"dryRun",
+						id,
+						"affectedDocs",
+					]),
+					obj({ success: yes, [id]: uuid, ownerId: uuid, affected: count }, [
+						"success",
+						id,
+						"affected",
+					]),
+				],
+			},
+			{ dryRun: true, [id]: sampleId, affectedDocs: 3 },
+			[400, 500],
+			[path(id, uuid), query("ownerId", uuid), dryRun],
+		);
+	}
+
+	const nullable = { ...string, nullable: true };
+	const auditEntry = obj({
+		id: uuid,
+		actorId: uuid,
+		workspaceId: nullable,
+		action: string,
+		resourceType: string,
+		resourceId: { ...uuid, nullable: true },
+		details: {},
+		ipAddress: nullable,
+		userAgent: nullable,
+		createdAt: { ...string, format: "date-time" },
+	});
+	const audit = obj({
+		items: { type: "array", items: auditEntry },
+		total: count,
+		page: count,
+		limit: count,
+	});
+	const pageParameters = [
+		query("page", { type: "integer", minimum: 1, default: 1 }),
+		query("limit", { type: "integer", minimum: 1, maximum: 200, default: 50 }),
+	];
+	const auditExample = { items: [], total: 0, page: 1, limit: 50 };
+	operator(
+		"audit",
+		"get",
+		"List operator audit events",
+		"Returns a page of audit events filtered by the optional resource and actor selectors.",
+		audit,
+		auditExample,
+		[500],
+		[
+			...pageParameters,
+			query("resourceType", string),
+			query("resourceId", uuid),
+			query("actorId", uuid),
+			query("action", string),
+		],
+	);
+	operator(
+		"audit/{resourceType}/{resourceId}",
+		"get",
+		"Read the audit trail of a resource",
+		"Returns a page of events scoped to the specified resource.",
+		audit,
+		auditExample,
+		[500],
+		[path("resourceType", string), path("resourceId", uuid), ...pageParameters],
+	);
+
+	const counters = { type: "object", additionalProperties: number };
+	operator(
+		"metrics",
+		"get",
+		"Read process-local metrics",
+		"Returns process-local counters and histograms, pipeline metrics, embedding state counts and uptime in seconds.",
+		obj({
+			metrics: {
+				type: "object",
+				additionalProperties: {
+					oneOf: [number, { type: "array", items: number }],
+				},
+			},
+			pipelineMetrics: counters,
+			embeddingStateInventory: counters,
+			uptime: number,
+		}),
+		{
+			metrics: {},
+			pipelineMetrics: {},
+			embeddingStateInventory: {},
+			uptime: 120,
+		},
+		[500],
+	);
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -1880,5 +2356,17 @@ export function enrichOpenApi(spec: Spec) {
 	describeCredentialManagement(spec);
 	describeDocumentEditsAndProgress(spec);
 	describeSharing(spec);
+	spec.components.securitySchemes.StorageWebhookSignature = {
+		type: "apiKey",
+		in: "header",
+		name: "X-Storage-Signature",
+	};
+	spec.components.securitySchemes.OperatorBearer = {
+		type: "http",
+		scheme: "bearer",
+		description: "Self-hosted operator key.",
+	};
+	describeHostEndpoints(spec);
+	describeOperatorEndpoints(spec);
 	return spec;
 }

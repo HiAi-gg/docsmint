@@ -61,9 +61,202 @@
         "operationId": "getApiHealth",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "unhealthy"
+                      ]
+                    },
+                    "service": {
+                      "type": "string",
+                      "enum": [
+                        "docsmint"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "database": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "redis": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "storage": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "queue": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "service",
+                    "timestamp",
+                    "database",
+                    "redis",
+                    "storage",
+                    "queue"
+                  ]
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "docsmint",
+                  "timestamp": "2026-11-08T12:00:00Z",
+                  "database": "ok",
+                  "redis": "ok",
+                  "storage": "ok",
+                  "queue": "ok"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "One or more required services are unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "unhealthy"
+                      ]
+                    },
+                    "service": {
+                      "type": "string",
+                      "enum": [
+                        "docsmint"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "database": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "redis": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "storage": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "queue": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "error"
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "service",
+                    "timestamp",
+                    "database",
+                    "redis",
+                    "storage",
+                    "queue"
+                  ]
+                },
+                "example": {
+                  "status": "unhealthy",
+                  "service": "docsmint",
+                  "timestamp": "2026-11-08T12:00:00Z",
+                  "database": "ok",
+                  "redis": "error",
+                  "storage": "ok",
+                  "queue": "ok"
+                }
+              }
+            }
           }
-        }
+        },
+        "summary": "Read self-hosted readiness",
+        "description": "Reports database, Redis, storage and worker readiness. A failing dependency can produce HTTP 503.",
+        "tags": [
+          "Host"
+        ],
+        "security": []
       }
     },
     "/api/csrf-token": {
@@ -71,9 +264,41 @@
         "operationId": "getApiCsrf-token",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "token"
+                  ]
+                },
+                "example": {
+                  "token": "example-csrf-token"
+                }
+              }
+            },
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Same-origin CSRF cookie."
+              }
+            }
           }
-        }
+        },
+        "summary": "Issue a browser CSRF token",
+        "description": "Sets the matching browser cookie. Send the returned token in x-csrf-token on protected cookie-authenticated writes.",
+        "tags": [
+          "Host"
+        ],
+        "security": []
       }
     },
     "/api/auth/update-user": {
@@ -81,7 +306,91 @@
         "operationId": "postApiAuthUpdateUser",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "example": {
+                  "status": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
           },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
@@ -91,7 +400,34 @@
           {
             "SessionAuth": []
           }
-        ]
+        ],
+        "summary": "Update the current user profile",
+        "description": "Updates permitted fields on the browser session's user. Use the email change operation to change email.",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "image": {
+                    "type": "string",
+                    "nullable": true
+                  }
+                }
+              },
+              "example": {
+                "name": "Example user"
+              }
+            }
+          }
+        }
       }
     },
     "/api/auth/change-email": {
@@ -99,7 +435,91 @@
         "operationId": "postApiAuthChangeEmail",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                },
+                "example": {
+                  "status": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
           },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
@@ -109,7 +529,37 @@
           {
             "SessionAuth": []
           }
-        ]
+        ],
+        "summary": "Request a user email change",
+        "description": "Requires a recent browser session. The configured verification policy determines when the change takes effect.",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "newEmail": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "callbackURL": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "newEmail"
+                ]
+              },
+              "example": {
+                "newEmail": "new@example.invalid"
+              }
+            }
+          }
+        }
       }
     },
     "/api/tags": {
@@ -12253,7 +12703,132 @@
         "operationId": "postApiWebhooksStorage",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "received": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        }
+                      },
+                      "required": [
+                        "received"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "error"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "received": true
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds the configured size limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request too large"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Receive a signed storage notification",
+        "description": "Verifies the signature on the raw JSON body. Storage removal notifications are accepted for compatibility. The HTTP 200 body can report an invalid signature.",
+        "tags": [
+          "Storage"
+        ],
+        "security": [
+          {
+            "StorageWebhookSignature": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "Records": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "eventName": {
+                          "type": "string"
+                        },
+                        "s3": {
+                          "type": "object",
+                          "properties": {
+                            "object": {
+                              "type": "object",
+                              "properties": {
+                                "key": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "key"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "object"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "eventName",
+                        "s3"
+                      ]
+                    }
+                  }
+                }
+              },
+              "example": {
+                "Records": [
+                  {
+                    "eventName": "s3:ObjectRemoved:Delete",
+                    "s3": {
+                      "object": {
+                        "key": "example/object"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           }
         }
       }
@@ -13600,9 +14175,61 @@
         "operationId": "getApiPlugins",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "plugins": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "configSchema": {
+                            "type": "object"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "version",
+                          "description"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "plugins"
+                  ]
+                },
+                "example": {
+                  "plugins": [
+                    {
+                      "name": "highlight",
+                      "version": "1.0.0",
+                      "description": "Text highlight/marker extension"
+                    }
+                  ]
+                }
+              }
+            }
           }
-        }
+        },
+        "summary": "List editor plugins",
+        "description": "Returns the built-in editor plugin manifests.",
+        "tags": [
+          "Plugins"
+        ],
+        "security": []
       }
     },
     "/api/plugins/{name}": {
@@ -13610,19 +14237,77 @@
         "operationId": "getApiPluginsByName",
         "parameters": [
           {
+            "name": "name",
+            "in": "path",
+            "required": true,
             "schema": {
               "type": "string"
-            },
-            "in": "path",
-            "name": "name",
-            "required": true
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "configSchema": {
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "version",
+                    "description"
+                  ]
+                },
+                "example": {
+                  "name": "highlight",
+                  "version": "1.0.0",
+                  "description": "Text highlight/marker extension"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
           }
-        }
+        },
+        "summary": "Read an editor plugin manifest",
+        "description": "Looks up a built-in plugin by name.",
+        "tags": [
+          "Plugins"
+        ],
+        "security": []
       }
     },
     "/api/documents/{id}/publish": {
@@ -14002,17 +14687,168 @@
         "operationId": "postApiAdminReindexByDocId",
         "parameters": [
           {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
             "name": "docId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "required": true
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "enqueued": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "documentId",
+                    "enqueued",
+                    "message"
+                  ]
+                },
+                "example": {
+                  "success": true,
+                  "documentId": "11111111-1111-4111-8111-111111111111",
+                  "enqueued": 1,
+                  "message": "Document reindex queued with a new generation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Attachment storage admission is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Attachment storage unavailable"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14020,8 +14856,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Queue document reindexing",
+        "description": "Queues a new indexing generation for an existing document.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14030,7 +14871,200 @@
         "operationId": "getApiAdminEmbedding-stats",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "stats": {
+                      "type": "object",
+                      "properties": {
+                        "docsWithEmbeddings": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "totalChunks": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "nullChunks": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "zeroChunks": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "nearZeroChunks": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "emptyChunks": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "activeInvalidRows": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "inactiveGenerations": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "profileMismatches": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "pendingAgeSeconds": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "statusCounts": {
+                          "type": "object",
+                          "properties": {
+                            "pending": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "processing": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "ready": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "failed": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "stale": {
+                              "type": "integer",
+                              "minimum": 0
+                            }
+                          },
+                          "required": [
+                            "pending",
+                            "processing",
+                            "ready",
+                            "failed",
+                            "stale"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "docsWithEmbeddings",
+                        "totalChunks",
+                        "nullChunks",
+                        "zeroChunks",
+                        "nearZeroChunks",
+                        "emptyChunks",
+                        "activeInvalidRows",
+                        "inactiveGenerations",
+                        "profileMismatches",
+                        "pendingAgeSeconds",
+                        "statusCounts"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "stats"
+                  ]
+                },
+                "example": {
+                  "stats": {
+                    "docsWithEmbeddings": 0,
+                    "totalChunks": 0,
+                    "nullChunks": 0,
+                    "zeroChunks": 0,
+                    "nearZeroChunks": 0,
+                    "emptyChunks": 0,
+                    "activeInvalidRows": 0,
+                    "inactiveGenerations": 0,
+                    "profileMismatches": 0,
+                    "pendingAgeSeconds": 0,
+                    "statusCounts": {
+                      "pending": 0,
+                      "processing": 0,
+                      "ready": 0,
+                      "failed": 0,
+                      "stale": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14038,8 +15072,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Read embedding inventory",
+        "description": "Reports embedding and document indexing totals.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14048,7 +15087,114 @@
         "operationId": "getApiAdminHealthEmbeddings",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded",
+                        "not-configured"
+                      ]
+                    },
+                    "provider": {
+                      "type": "object",
+                      "properties": {
+                        "baseUrl": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "model": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "baseUrl",
+                        "model"
+                      ]
+                    },
+                    "details": {
+                      "type": "string"
+                    },
+                    "latencyMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "dimensions": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "provider"
+                  ]
+                },
+                "example": {
+                  "status": "ok",
+                  "provider": {
+                    "baseUrl": "https://example.invalid",
+                    "model": "example"
+                  },
+                  "latencyMs": 42,
+                  "dimensions": 1536
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14056,8 +15202,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Probe the configured embedding provider",
+        "description": "Reports provider availability, including unconfigured and degraded states.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14066,7 +15217,141 @@
         "operationId": "postApiAdminReindexModel",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dryRun": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "currentModel": {
+                          "type": "string"
+                        },
+                        "affectedDocs": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "dryRun",
+                        "currentModel",
+                        "affectedDocs"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "currentModel": {
+                          "type": "string"
+                        },
+                        "affectedDocs": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "enqueued": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "success",
+                        "currentModel",
+                        "affectedDocs",
+                        "enqueued"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "dryRun": true,
+                  "currentModel": "example",
+                  "affectedDocs": 3
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14074,7 +15359,22 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
+          }
+        ],
+        "summary": "Reindex stale embedding models",
+        "description": "Queues documents stored against another embedding model. Set dryRun to get a count without queuing.",
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ]
       }
@@ -14084,7 +15384,111 @@
         "operationId": "getApiAdminGraphStats",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "nodes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "edges": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "available",
+                        "nodes",
+                        "edges"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "available": {
+                          "type": "boolean",
+                          "enum": [
+                            false
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "available",
+                        "reason"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "available": true,
+                  "nodes": 0,
+                  "edges": 0
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14092,8 +15496,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Read graph inventory",
+        "description": "Reports graph counts when available and the reason when unavailable.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14102,17 +15511,194 @@
         "operationId": "postApiAdminReindexFolderByFolderId",
         "parameters": [
           {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
             "name": "folderId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "required": true
+          },
+          {
+            "name": "ownerId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dryRun": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "folderId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "ownerId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "affectedDocs": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "dryRun",
+                        "folderId",
+                        "affectedDocs"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "folderId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "ownerId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "affected": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "success",
+                        "folderId",
+                        "affected"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "dryRun": true,
+                  "folderId": "11111111-1111-4111-8111-111111111111",
+                  "affectedDocs": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14120,8 +15706,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Reindex documents by folder",
+        "description": "Scope the operation with ownerId unless cross-tenant administration is enabled. Set dryRun to count affected documents without queuing.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14130,17 +15721,194 @@
         "operationId": "postApiAdminReindexTagByTagId",
         "parameters": [
           {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
             "name": "tagId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "required": true
+          },
+          {
+            "name": "ownerId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "dryRun": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "tagId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "ownerId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "affectedDocs": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "dryRun",
+                        "tagId",
+                        "affectedDocs"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "enum": [
+                            true
+                          ]
+                        },
+                        "tagId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "ownerId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "affected": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "success",
+                        "tagId",
+                        "affected"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "dryRun": true,
+                  "tagId": "11111111-1111-4111-8111-111111111111",
+                  "affectedDocs": 3
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -14148,8 +15916,13 @@
             "OperatorApiKey": []
           },
           {
-            "BearerAuth": []
+            "OperatorBearer": []
           }
+        ],
+        "summary": "Reindex documents by tag",
+        "description": "Scope the operation with ownerId unless cross-tenant administration is enabled. Set dryRun to count affected documents without queuing.",
+        "tags": [
+          "Admin"
         ]
       }
     },
@@ -14158,9 +15931,232 @@
         "operationId": "getApiAdminAudit",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "actorId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "resourceType": {
+                            "type": "string"
+                          },
+                          "resourceId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "details": {},
+                          "ipAddress": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "userAgent": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "actorId",
+                          "workspaceId",
+                          "action",
+                          "resourceType",
+                          "resourceId",
+                          "details",
+                          "ipAddress",
+                          "userAgent",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
+                },
+                "example": {
+                  "items": [],
+                  "total": 0,
+                  "page": 1,
+                  "limit": 50
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
-        }
+        },
+        "summary": "List operator audit events",
+        "description": "Returns a page of audit events filtered by the optional resource and actor selectors.",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "OperatorApiKey": []
+          },
+          {
+            "OperatorBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "resourceType",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     },
     "/api/admin/audit/{resourceType}/{resourceId}": {
@@ -14168,27 +16164,219 @@
         "operationId": "getApiAdminAuditByResourceTypeByResourceId",
         "parameters": [
           {
+            "name": "resourceType",
+            "in": "path",
             "schema": {
               "type": "string"
             },
-            "in": "path",
-            "name": "resourceType",
             "required": true
           },
           {
-            "schema": {
-              "type": "string"
-            },
-            "in": "path",
             "name": "resourceId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
             "required": true
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "actorId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "workspaceId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "action": {
+                            "type": "string"
+                          },
+                          "resourceType": {
+                            "type": "string"
+                          },
+                          "resourceId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "details": {},
+                          "ipAddress": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "userAgent": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "actorId",
+                          "workspaceId",
+                          "action",
+                          "resourceType",
+                          "resourceId",
+                          "details",
+                          "ipAddress",
+                          "userAgent",
+                          "createdAt"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
+                },
+                "example": {
+                  "items": [],
+                  "total": 0,
+                  "page": 1,
+                  "limit": 50
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
-        }
+        },
+        "summary": "Read the audit trail of a resource",
+        "description": "Returns a page of events scoped to the specified resource.",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "OperatorApiKey": []
+          },
+          {
+            "OperatorBearer": []
+          }
+        ]
       }
     },
     "/api/admin/metrics": {
@@ -14197,13 +16385,143 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Process-local embedding metrics snapshot",
-        "description": "Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
+        "summary": "Read process-local metrics",
+        "description": "Returns process-local counters and histograms, pipeline metrics, embedding state counts and uptime in seconds.",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "metrics": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "oneOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "pipelineMetrics": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    },
+                    "embeddingStateInventory": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    },
+                    "uptime": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "metrics",
+                    "pipelineMetrics",
+                    "embeddingStateInventory",
+                    "uptime"
+                  ]
+                },
+                "example": {
+                  "metrics": {},
+                  "pipelineMetrics": {},
+                  "embeddingStateInventory": {},
+                  "uptime": 120
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
-        }
+        },
+        "security": [
+          {
+            "OperatorApiKey": []
+          },
+          {
+            "OperatorBearer": []
+          }
+        ]
       }
     }
   },
@@ -14676,6 +16994,16 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Share-Token"
+      },
+      "StorageWebhookSignature": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Storage-Signature"
+      },
+      "OperatorBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Self-hosted operator key."
       }
     }
   }
