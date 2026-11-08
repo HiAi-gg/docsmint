@@ -165,8 +165,8 @@ describe.skipIf(!databaseUrl)(
 					VALUES (${ownerId}::uuid, ${`${ownerId}@version-test.invalid`})`;
 				await setup`INSERT INTO public.api_keys (owner_id, name, key_hash, prefix, scopes)
 					VALUES (${ownerId}::uuid, 'version test', ${hash}, ${key.slice(0, 8)}, '["global"]'::jsonb)`;
-				await setup`INSERT INTO public.documents (id, owner_id, title, content)
-					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'Version test', 'current')`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content, updated_at)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'Version test', 'current', now() + interval '1 minute')`;
 				await setup`INSERT INTO public.versions (id, document_id, content, created_by)
 					VALUES (${versionId}::uuid, ${documentId}::uuid, 'prior', ${ownerId}::uuid)`;
 
@@ -182,10 +182,14 @@ describe.skipIf(!databaseUrl)(
 				const restore = `/versions/${versionId}/restore`;
 				const restored = await request("POST", restore);
 				expect(restored.status).toBe(200);
-				expect(await restored.json()).toMatchObject({
+				const restoredDocument = await restored.json();
+				expect(restoredDocument).toMatchObject({
 					content: "prior",
 					contentHash: contentHash("Version test", "prior"),
 				});
+				expect(Date.parse(restoredDocument.updatedAt)).toBeGreaterThan(
+					Date.parse(current.updatedAt),
+				);
 				expect(await (await request("GET")).json()).toMatchObject({
 					content: "prior",
 				});
