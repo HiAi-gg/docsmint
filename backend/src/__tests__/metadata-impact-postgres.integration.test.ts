@@ -136,6 +136,78 @@ async function storageObjectExists(key: string): Promise<boolean> {
 describe.skipIf(!databaseUrl)(
 	"recursive metadata impact PostgreSQL contract",
 	() => {
+		test("restore invalidates warm reads and rejects a stale editor save", async () => {
+			const setup = postgres(databaseUrl as string, { max: 1 });
+			const ownerId = crypto.randomUUID();
+			const documentId = crypto.randomUUID();
+			const versionId = crypto.randomUUID();
+			const key = crypto.randomUUID();
+			const hash = new Bun.CryptoHasher("sha256").update(key).digest("hex");
+			const app = new Elysia().use(documentRoutes).use(versionRoutes);
+			const headers = {
+				authorization: `Bearer ${key}`,
+				"content-type": "application/json",
+			};
+			const url = `http://localhost/api/documents/${documentId}`;
+			const request = (method: string, path = "", body?: object) =>
+				app.handle(
+					new Request(url + path, {
+						method,
+						headers,
+						body: body ? JSON.stringify(body) : undefined,
+					}),
+				);
+			const history = () => setup<{ count: number }[]>`
+				SELECT count(*)::int AS count FROM public.versions WHERE document_id = ${documentId}::uuid`;
+
+			try {
+				await setup`INSERT INTO public.users (id, email)
+					VALUES (${ownerId}::uuid, ${`${ownerId}@version-test.invalid`})`;
+				await setup`INSERT INTO public.api_keys (owner_id, name, key_hash, prefix, scopes)
+					VALUES (${ownerId}::uuid, 'version test', ${hash}, ${key.slice(0, 8)}, '["global"]'::jsonb)`;
+				await setup`INSERT INTO public.documents (id, owner_id, title, content)
+					VALUES (${documentId}::uuid, ${ownerId}::uuid, 'Version test', 'current')`;
+				await setup`INSERT INTO public.versions (id, document_id, content, created_by)
+					VALUES (${versionId}::uuid, ${documentId}::uuid, 'prior', ${ownerId}::uuid)`;
+
+				const warm = await request("GET");
+				expect(warm.status).toBe(200);
+				const current = await warm.json();
+				expect(current.content).toBe("current");
+				const unchanged = await request("PATCH", "", { content: "current" });
+				expect(unchanged.status).toBe(200);
+				expect((await unchanged.json()).updatedAt).toBe(current.updatedAt);
+				expect((await history())[0]?.count).toBe(1);
+
+				const restore = `/versions/${versionId}/restore`;
+				const restored = await request("POST", restore);
+				expect(restored.status).toBe(200);
+				expect(await restored.json()).toMatchObject({
+					content: "prior",
+					contentHash: contentHash("Version test", "prior"),
+				});
+				expect(await (await request("GET")).json()).toMatchObject({
+					content: "prior",
+				});
+				expect((await history())[0]?.count).toBe(3);
+				expect((await request("POST", restore)).status).toBe(200);
+				expect((await history())[0]?.count).toBe(3);
+
+				const stale = await request("PATCH", "", {
+					content: "stale draft",
+					expectedUpdatedAt: current.updatedAt,
+				});
+				expect(stale.status).toBe(409);
+				expect(await (await request("GET")).json()).toMatchObject({
+					content: "prior",
+				});
+				expect((await history())[0]?.count).toBe(3);
+			} finally {
+				await setup`DELETE FROM public.users WHERE id = ${ownerId}::uuid`;
+				await setup.end();
+			}
+		});
+
 		test("public re-embed helpers keep owner and external-workspace rows in their canonical tenants", async () => {
 			const setup = postgres(databaseUrl as string, { max: 1 });
 			const ownerId = crypto.randomUUID();
