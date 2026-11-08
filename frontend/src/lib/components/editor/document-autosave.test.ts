@@ -217,3 +217,25 @@ test("successful deletion discards pending edits so navigation cannot PATCH the 
 	expect(await queue.flush()).toBe(true);
 	expect(writes).toBe(0);
 });
+
+test("reports a version conflict and retains the unsaved draft", async () => {
+	const conflict = Object.assign(new Error("Document changed"), {
+		status: 409,
+	});
+	const errors: unknown[] = [];
+	let writes = 0;
+	const queue = createDocumentAutosave<string>({
+		mutate: async (_id, content) => {
+			expect(content).toBe("unsaved draft");
+			writes++;
+			throw conflict;
+		},
+		shouldRetry: () => false,
+		onError: (_id, error) => errors.push(error),
+	});
+	queue.schedule("A", "unsaved draft");
+	expect(await queue.flush()).toBe(false);
+	expect(queue.dirty).toBe(true);
+	expect(errors).toEqual([conflict]);
+	expect(writes).toBe(1);
+});

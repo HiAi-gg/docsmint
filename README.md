@@ -84,6 +84,10 @@ is a separate listing.
 - **Choose how you run it.** Use [managed DocsMint](https://docsmint.com) or
   self-host the application, database, search, queues, and files.
 
+## Document version patch 2.1.2
+
+Preview and restore historical content without reloading the editor. See [2.1.2 release notes](docs/release/v2.1.2-notes.md).
+
 ## Security patch 2.1.1
 
 Bun 1.4.4, SvelteKit/Vite and Better Auth patch refreshes preserve the existing MCP/REST contract. See [2.1.1 release notes](docs/release/v2.1.1-notes.md) and the [security report](docs/security/2026-11-02-security-refresh.md).

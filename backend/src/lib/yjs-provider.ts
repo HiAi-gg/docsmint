@@ -24,6 +24,7 @@ export type YjsRoom = Readonly<{
 
 type ManagedRoom = YjsRoom & {
 	clients: number;
+	hasUpdates: boolean;
 	listeners: Set<UpdateListener>;
 	persist?: PersistDocument;
 	saveInterval: ReturnType<typeof setInterval>;
@@ -112,16 +113,18 @@ async function loadRoom(
 		doc = await seed();
 	}
 	const awareness = new Awareness(doc);
-	const room = {
+	const room: ManagedRoom = {
 		key,
 		doc,
 		awareness,
 		clients: 0,
+		hasUpdates: false,
 		listeners: new Set<UpdateListener>(),
 		persist,
 		saveInterval: setInterval(() => void saveRoom(room), SAVE_INTERVAL_MS),
-	} satisfies ManagedRoom;
+	};
 	doc.on("update", (update: Uint8Array, origin: unknown) => {
+		room.hasUpdates = true;
 		for (const listener of room.listeners) listener(update, origin);
 		if (origin !== REMOTE_REDIS_ORIGIN) {
 			void getPubSub()
@@ -190,7 +193,7 @@ export async function releaseYjsRoom(room: YjsRoom): Promise<void> {
 		if (managed.persistTimer) clearTimeout(managed.persistTimer);
 		await Promise.allSettled([
 			saveRoom(managed),
-			managed.persist?.(managed.doc),
+			managed.hasUpdates ? managed.persist?.(managed.doc) : undefined,
 		]);
 		await getSub().unsubscribe(`${CHANNEL_PREFIX}${managed.key}`);
 		managed.awareness.destroy();

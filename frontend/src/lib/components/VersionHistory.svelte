@@ -22,6 +22,7 @@ import {
 	RotateCcw,
 	Star,
 } from "lucide-svelte";
+import { onDestroy } from "svelte";
 import { ApiError, apiFetch } from "#lib/api/client.js";
 import CreateSnapshotDialog from "#lib/components/CreateSnapshotDialog.svelte";
 import { getDocsmintRequestAdapter } from "#lib/hosts/route-context.js";
@@ -42,14 +43,32 @@ interface Version {
 
 type FilterMode = "all" | "snapshots";
 
+type RestoredDocument = {
+	id: string;
+	content: string | null;
+	contentJson?: unknown;
+	updatedAt: string;
+};
+
 const {
 	documentId,
+	refreshRevision = 0,
 	onRestored,
+	onPreview,
+	beforeRestore,
+	onRestoringChange,
 }: {
 	documentId: string;
+	refreshRevision?: number;
 	/** Called after a successful restore so the parent can re-fetch the
 	 *  document body and re-render the editor. Optional. */
-	onRestored?: (restoredVersion: Version) => void;
+	onRestored?: (
+		restoredVersion: Version,
+		document: RestoredDocument,
+	) => void | Promise<void>;
+	onPreview?: (version: Version | null) => void;
+	beforeRestore?: () => Promise<boolean>;
+	onRestoringChange?: (busy: boolean) => void;
 } = $props();
 
 let versions = $state<Version[]>([]);
@@ -72,26 +91,79 @@ let restoring = $state(false);
 let restoreError = $state<string | null>(null);
 const request = getDocsmintRequestAdapter();
 
-async function loadVersions() {
-	loading = true;
-	loadError = null;
+let previewRequest: AbortController | undefined;
+let listRequest: AbortController | undefined;
+let previewError = $state<string | null>(null);
+let loadingPreview = $state(false);
+let selectedVersionId = $state<string | null>(null);
+
+onDestroy(() => {
+	previewRequest?.abort();
+	listRequest?.abort();
+});
+
+async function selectVersion(version: Version) {
+	previewRequest?.abort();
+	const controller = new AbortController();
+	previewRequest = controller;
+	const targetDocumentId = documentId;
+	loadingPreview = true;
+	previewError = null;
 	try {
-		versions = await apiFetch<Version[]>(
-			`/api/documents/${documentId}/versions`,
-			{},
+		const selected = await apiFetch<Version>(
+			`/api/documents/${targetDocumentId}/versions/${version.id}`,
+			{ signal: controller.signal },
 			request.fetch,
 		);
-	} catch (e) {
-		loadError = e instanceof Error ? e.message : String(e);
-		console.error("Failed to load versions", e);
+		if (controller.signal.aborted || targetDocumentId !== documentId) return;
+		selectedVersionId = version.id;
+		onPreview?.(selected);
+	} catch {
+		if (!controller.signal.aborted && targetDocumentId === documentId) {
+			previewError = "Could not open this version. Please try again.";
+		}
 	} finally {
-		loading = false;
+		if (previewRequest === controller) loadingPreview = false;
 	}
 }
 
-// Initial load + reload whenever the parent swaps `documentId`.
+function clearPreview() {
+	previewRequest?.abort();
+	loadingPreview = false;
+	previewError = null;
+	selectedVersionId = null;
+	onPreview?.(null);
+}
+
+async function loadVersions() {
+	listRequest?.abort();
+	const controller = new AbortController();
+	listRequest = controller;
+	loading = true;
+	loadError = null;
+	try {
+		const next = await apiFetch<Version[]>(
+			`/api/documents/${documentId}/versions`,
+			{ signal: controller.signal },
+			request.fetch,
+		);
+		if (!controller.signal.aborted) versions = next;
+	} catch (e) {
+		if (controller.signal.aborted) return;
+		loadError = e instanceof Error ? e.message : String(e);
+		console.error("Failed to load versions", e);
+	} finally {
+		if (listRequest === controller) loading = false;
+	}
+}
+
 $effect(() => {
 	void documentId;
+	clearPreview();
+});
+
+$effect(() => {
+	void refreshRevision;
 	void loadVersions();
 });
 
@@ -162,19 +234,27 @@ async function confirmRestore() {
 	const target = pendingRestore;
 	if (!target || restoring) return;
 	restoring = true;
+	onRestoringChange?.(true);
 	restoreError = null;
 	try {
-		await apiFetch<{ documentId: string; restoredFrom: string }>(
-			`/api/documents/${documentId}/versions/${target.id}/restore`,
-			{ method: "POST" },
+		const targetDocumentId = documentId;
+		if (beforeRestore && !(await beforeRestore())) {
+			restoreError =
+				"Could not save the current changes. Try again before restoring.";
+			return;
+		}
+		if (targetDocumentId !== documentId) return;
+		const restored = await apiFetch<RestoredDocument>(
+			`/api/documents/${targetDocumentId}/versions/${target.id}/restore`,
+			{ method: "POST", body: {} },
 			request.fetch,
 		);
-		// Re-fetch the list so the new "current" version + restoredFrom
-		// bookkeeping appear, then notify the parent.
-		await loadVersions();
+		if (targetDocumentId !== documentId) return;
 		pendingRestore = null;
 		restoreDialogOpen = false;
-		onRestored?.(target);
+		clearPreview();
+		await onRestored?.(target, restored);
+		void loadVersions();
 		// Fire a DOM CustomEvent as a fallback hook for parents that
 		// prefer event-style wiring (mirrors `onRestored`).
 		if (typeof window !== "undefined") {
@@ -196,6 +276,7 @@ async function confirmRestore() {
 		console.error("Failed to restore version", e);
 	} finally {
 		restoring = false;
+		onRestoringChange?.(false);
 	}
 }
 
@@ -262,6 +343,18 @@ function findVersionLabel(id: string | null | undefined): string | null {
 				{m.version_filter_snapshots()} ({snapshotCount})
 			</button>
 		</div>
+	{/if}
+
+	{#if loadingPreview}
+		<p role="status" class="text-sm text-muted-foreground">Opening version…</p>
+	{/if}
+	{#if previewError}
+		<p role="alert" class="text-sm text-destructive">{previewError}</p>
+	{/if}
+	{#if selectedVersionId}
+		<button type="button" onclick={clearPreview} class="self-start rounded-md border border-border px-3 py-2 text-sm">
+			Return to current
+		</button>
 	{/if}
 
 	{#if loading}
@@ -346,12 +439,21 @@ function findVersionLabel(id: string | null | undefined): string | null {
 								</code>
 							</div>
 						{/if}
-						<p
-							class="mt-1 truncate text-xs text-muted-foreground"
-							title={previewFromContent(version.content)}
-						>
-							{previewFromContent(version.content)}
-						</p>
+						{#if onPreview}
+							<button
+								type="button"
+								aria-pressed={selectedVersionId === version.id}
+								disabled={restoring}
+								class="mt-1 block w-full truncate rounded text-left text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+								onclick={() => void selectVersion(version)}
+							>
+								{previewFromContent(version.content) || "View version"}
+							</button>
+						{:else}
+							<p class="mt-1 truncate text-xs text-muted-foreground">
+								{previewFromContent(version.content)}
+							</p>
+						{/if}
 					</div>
 				</div>
 			{/each}
@@ -372,7 +474,7 @@ function findVersionLabel(id: string | null | undefined): string | null {
 />
 
 {#if restoreError}
-	<p class="sr-only" role="alert">{restoreError}</p>
+	<p class="px-4 text-sm text-destructive" role="alert">{restoreError}</p>
 {/if}
 
 <CreateSnapshotDialog

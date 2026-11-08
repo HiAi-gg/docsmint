@@ -1,3 +1,5 @@
+import { createYjsRoomKey } from "./collaboration-room-key";
+
 const YJS_DOCUMENT_PREFIX = "yjs:doc:";
 const DOCUMENT_LIST_CACHE_PREFIX = "hiai-docs:cache:docs:list:";
 const DOCUMENT_SINGLE_CACHE_PREFIX = "hiai-docs:cache:docs:single:";
@@ -237,13 +239,32 @@ export function createAccountRuntimeCleanupWithDependencies(
 					}
 					cacheSnapshot(actorUserId, snapshot);
 				}
-				const deleted = await deleteExactKeys(
+				let deleted = await deleteExactKeys(
 					dependencies.redis,
 					snapshot.map(
 						(document) => `${YJS_DOCUMENT_PREFIX}${document.documentId}`,
 					),
 					signal,
 				);
+				for (const document of snapshot) {
+					const roomKey =
+						YJS_DOCUMENT_PREFIX +
+						createYjsRoomKey({
+							documentId: document.documentId,
+							userId: actorUserId,
+							workspaceId: document.workspaceId ?? undefined,
+						});
+					deleted += await deleteExactKeys(
+						dependencies.redis,
+						[roomKey],
+						signal,
+					);
+					deleted += await deleteNamespacePattern(
+						dependencies.redis,
+						`${escapeRedisGlob(roomKey)}:restore:*`,
+						signal,
+					);
+				}
 				throwIfAborted(signal);
 				return deleted;
 			} finally {

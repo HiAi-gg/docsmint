@@ -113,6 +113,9 @@ describe("account runtime cleanup core", () => {
 		redis.seed(
 			`yjs:doc:${personalDoc}`,
 			`yjs:doc:${sharedDoc}`,
+			`yjs:doc:user:${actor}:document:${personalDoc}:restore:one`,
+			`yjs:doc:workspace:${workspace}:document:${sharedDoc}:restore:two`,
+			`yjs:doc:user:${other}:document:${personalDoc}:restore:one`,
 			`hiai-docs:reembed:dedup:${personalDoc}`,
 			`hiai-docs:reembed:dedup:${personalDoc}:rev-a:incremental:content`,
 			`hiai-docs:reembed:dedup:${sharedDoc}`,
@@ -181,11 +184,18 @@ describe("account runtime cleanup core", () => {
 			},
 		});
 
-		expect(await cleanup.removeCollaborationState(actor)).toBe(2);
-		expect(flatten(redis)).toEqual([
-			`yjs:doc:${personalDoc}`,
-			`yjs:doc:${sharedDoc}`,
-		]);
+		expect(await cleanup.removeCollaborationState(actor)).toBe(4);
+		expect(flatten(redis)).toEqual(
+			expect.arrayContaining([
+				`yjs:doc:${personalDoc}`,
+				`yjs:doc:${sharedDoc}`,
+				`yjs:doc:user:${actor}:document:${personalDoc}:restore:one`,
+				`yjs:doc:workspace:${workspace}:document:${sharedDoc}:restore:two`,
+			]),
+		);
+		expect(flatten(redis)).not.toContain(
+			`yjs:doc:user:${other}:document:${personalDoc}:restore:one`,
+		);
 
 		expect(await cleanup.clearAccountRedisState(actor)).toBe(14);
 		const deleted = flatten(redis);
@@ -216,6 +226,8 @@ describe("account runtime cleanup core", () => {
 		expect(deleted).toContain(`hiai-docs:extract:done:${personalDoc}:0:hash-a`);
 		expect(deleted).toContain(`hiai-docs:extract:done:${sharedDoc}:3:hash-b`);
 		expect(redis.scans).toEqual([
+			`yjs:doc:user:${actor}:document:${personalDoc}:restore:*`,
+			`yjs:doc:workspace:${workspace}:document:${sharedDoc}:restore:*`,
 			`hiai-docs:cache:docs:list:${actor}:*`,
 			`hiai-docs:cache:docs:single:*:${personalDoc}`,
 			`hiai-docs:reembed:dedup:${personalDoc}:*`,

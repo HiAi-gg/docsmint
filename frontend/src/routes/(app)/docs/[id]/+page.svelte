@@ -75,6 +75,12 @@ const share = getDocsmintShareAdapter();
 
 let title = $state("");
 let content = $state("");
+let restoringVersion = $state(false);
+let versionPreview = $state<{
+	id: string;
+	content: string;
+	contentJson?: unknown;
+} | null>(null);
 let contentJson = $state<object | undefined>(undefined);
 let mode = $state<"wysiwyg" | "markdown">("wysiwyg");
 let saveStatus = $state<"saved" | "saving" | "unsaved">("saved");
@@ -185,9 +191,23 @@ import type { Folder as FolderType } from "#lib/types.js";
 let folders = $state<FolderType[]>([]);
 let foldersLoading = $state(false);
 let placementRevision = 0;
+const documentRevisions = new Map<string, string>();
+let hydratedDocumentId: string | undefined;
+
+async function updateCurrentRevision(
+	documentId: string,
+	update: Parameters<typeof updateDocument>[1],
+) {
+	const saved = await updateDocument(documentId, {
+		...update,
+		expectedUpdatedAt: documentRevisions.get(documentId),
+	});
+	documentRevisions.set(documentId, saved.updatedAt);
+	return saved;
+}
 const enqueuePlacementMutation = createPlacementMutationQueue(
 	async (placement) => {
-		await updateDocument(data.document.id, placement);
+		await updateCurrentRevision(data.document.id, placement);
 	},
 );
 let currentFolderId = $state<string | null>(null);
@@ -213,6 +233,15 @@ let currentCategoryId = $state<string | null>(null);
 // this effect writes to — that would re-introduce a read-after-write cycle.
 $effect(() => {
 	const doc = data.document;
+	if (hydratedDocumentId === doc.id && contentAutosave.dirty) return;
+	const confirmedRevision = documentRevisions.get(doc.id);
+	if (
+		confirmedRevision &&
+		Date.parse(doc.updatedAt) < Date.parse(confirmedRevision)
+	)
+		return;
+	hydratedDocumentId = doc.id;
+	documentRevisions.set(doc.id, doc.updatedAt);
 	saveStatus = "saved";
 	title = doc.title;
 	content = doc.content ?? "";
@@ -369,7 +398,7 @@ function handleWindowClick(e: MouseEvent) {
 type ContentUpdate = EditorOutput;
 const contentAutosave = createDocumentAutosave<ContentUpdate>({
 	mutate: (documentId, update) =>
-		updateDocument(documentId, {
+		updateCurrentRevision(documentId, {
 			content: update.markdown,
 			contentJson: update.json,
 		}),
@@ -379,8 +408,12 @@ const contentAutosave = createDocumentAutosave<ContentUpdate>({
 		if (documentId !== data.document.id) return;
 		saveStatus = status;
 	},
-	onError: (documentId) => {
-		if (documentId === data.document.id) error = m.doc_save_content_error();
+	onError: (documentId, cause) => {
+		if (documentId !== data.document.id) return;
+		error =
+			cause instanceof ApiError && cause.status === 409
+				? "This document changed in another session. Your draft is still here. Copy it before reopening the document."
+				: m.doc_save_content_error();
 	},
 	onRetry: (documentId) => {
 		if (documentId === data.document.id)
@@ -421,7 +454,7 @@ async function handleTitleUpdate(newTitle: string) {
 	title = newTitle;
 	saveStatus = "saving";
 	try {
-		await updateDocument(data.document.id, { title: newTitle });
+		await updateCurrentRevision(data.document.id, { title: newTitle });
 		saveStatus = "saved";
 		refreshDocs();
 	} catch (_e) {
@@ -958,7 +991,7 @@ $effect(() => {
               <button
                 class="dropdown-item mobile-menu-item"
                 role="menuitem"
-                onclick={() => { showVersionPanel = true; showMenu = false; }}
+                onclick={() => { showMenu = false; void openVersionHistory(); }}
               >
                 <History size={14} /> {m.version_history_title()}
               </button>
@@ -1223,8 +1256,19 @@ $effect(() => {
       </div>
 
       <!-- Editor -->
-      <div class="editor-container">
-        {#if activeTab === "editor"}
+      <div class="editor-container" inert={restoringVersion}>
+        {#if showVersionPanel && versionPreview}
+          <div class="mb-3 rounded border border-border bg-muted p-3 text-sm">Viewing an earlier version</div>
+          {#if EditorComponent}
+            {#key versionPreview.id}
+              <EditorComponent
+                content={versionPreview.content}
+                contentJson={(versionPreview.contentJson as object | null | undefined) ?? undefined}
+                editable={false}
+              />
+            {/key}
+          {/if}
+        {:else if activeTab === "editor"}
           {#if mode === "wysiwyg"}
             {#if EditorComponent}
               <EditorComponent
@@ -1293,9 +1337,20 @@ $effect(() => {
           {#if VersionHistoryComponent}
             <VersionHistoryComponent
               documentId={data.document.id}
-              onRestored={() => {
+              onPreview={(version) => {
+                versionPreview = version;
+                if (version) void activateEditor();
+              }}
+              beforeRestore={() => contentAutosave.flush()}
+              onRestoringChange={(busy) => (restoringVersion = busy)}
+              onRestored={(_version, restored) => {
+                if (restored.id !== data.document.id) return;
+                documentRevisions.set(restored.id, restored.updatedAt);
+                content = restored.content ?? "";
+                contentJson = (restored.contentJson as object | null | undefined) ?? undefined;
+                saveStatus = "saved";
                 showVersionPanel = false;
-                window.location.reload();
+                refreshDocs();
               }}
             />
           {:else}
