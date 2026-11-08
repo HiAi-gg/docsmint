@@ -162,7 +162,14 @@ async function verifyLegacyMarkdownRestore(
 		});
 	})()`) as Promise<{ text: string; hasJson: boolean; count: number }>;
 
-	await browser(session, ["open", pageUrl.toString()]);
+	await readBrowserJson(session, `JSON.stringify((() => {
+		const link = document.createElement("a");
+		link.href = ${JSON.stringify(pageUrl.toString())};
+		link.textContent = "Open synthetic legacy document";
+		document.body.append(link);
+		link.click();
+		return true;
+	})())`);
 	const rendered = `document.querySelector('[aria-label="Document content editor"]')?.textContent`;
 	await waitForBrowserCondition(session, `${rendered}?.startsWith("Legacy bravo")`, "legacy current Markdown");
 	const before = await checkState();
@@ -366,7 +373,12 @@ async function runFlow(
 			title,
 			content,
 			apiProof,
-			versionHistory: { preview: true, restored: true, stayedInPage: true },
+			versionHistory: {
+				preview: true,
+				restored: true,
+				stayedInPage: true,
+				legacyMarkdown: mode === "desktop" ? "passed" : "not-run",
+			},
 			capabilities,
 			diagnostics,
 			screenshot,

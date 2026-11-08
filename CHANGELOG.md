@@ -1,6 +1,11 @@
 # Changelog
 
-## 2.1.2 - 2026-11-08
+## 2.1.3 - 2026-11-08
+
+- Preview and restore large legacy Markdown without autosaving the rendered output.
+- Preserve the current view mode during version preview.
+
+## 2.1.2 - 2026-11-08 (publication canceled)
 
 - Preview and restore historical document versions without reloading the page.
 - Skip unchanged history writes, invalidate restored document caches, and reject stale saves.
