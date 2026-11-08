@@ -97,6 +97,19 @@ function jsonResult(result: JsonCommandResult): unknown {
 	return JSON.parse(serialized);
 }
 
+async function readBrowserJson(session: string, expression: string): Promise<unknown> {
+	return jsonResult(await browserJson(session, ["eval", expression]));
+}
+
+async function waitForBrowserCondition(session: string, expression: string, label: string) {
+	const deadline = Date.now() + 15_000;
+	while (Date.now() < deadline) {
+		if (await readBrowserJson(session, `JSON.stringify(Boolean(${expression}))`)) return;
+		await Bun.sleep(150);
+	}
+	throw new Error(`Timed out waiting for browser condition: ${label}`);
+}
+
 async function browserDiagnostics(
 	session: string,
 ): Promise<{ errors: number; consoleErrors: number }> {
@@ -219,6 +232,61 @@ async function runFlow(
 			throw new Error("Browser flow did not persist the exact document title and content");
 		}
 
+		const nextContent = `${content} second revision`;
+		await readBrowserJson(session,
+			`JSON.stringify((() => {
+				const editor = document.querySelector('[aria-label="Document content editor"]');
+				if (!(editor instanceof HTMLElement)) throw new Error('Document editor missing');
+				editor.focus();
+				editor.innerHTML = '<p></p>';
+				editor.querySelector('p').textContent = ${JSON.stringify(nextContent)};
+				editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ${JSON.stringify(nextContent)} }));
+				globalThis.__docsmintVersionReleaseProbe = true;
+				return true;
+			})())`
+		);
+		const documentUrl = `${baseUrl}/api/documents/${apiProof.id}`;
+		const readDocumentBody = async () => readBrowserJson(session,
+			`(async () => JSON.stringify((await (await fetch(${JSON.stringify(documentUrl)})).json()).content))()`
+		);
+		const saveDeadline = Date.now() + 15_000;
+		while ((await readDocumentBody()) !== nextContent) {
+			if (Date.now() >= saveDeadline) throw new Error("Second browser edit did not persist");
+			await Bun.sleep(150);
+		}
+
+		if (mode === "mobile") {
+			await browser(session, ["find", "role", "button", "click", "--name", "More options"]);
+		}
+		await browser(session, [
+			"find", "role", mode === "mobile" ? "menuitem" : "button", "click",
+			"--name", "Version History",
+		]);
+		const priorButton = `Array.from(document.querySelectorAll('.version-panel button')).find(button => button.textContent.trim() === ${JSON.stringify(content)})`;
+		await waitForBrowserCondition(session, priorButton, "prior history item");
+		await readBrowserJson(session, `JSON.stringify((${priorButton}).click() ?? true)`);
+		const contentSelector = '[aria-label="Document content editor"]';
+		const editorText = `document.querySelector(${JSON.stringify(contentSelector)})?.textContent?.trim()`;
+		await waitForBrowserCondition(session, `${editorText} === ${JSON.stringify(content)}`, "version preview");
+		if ((await readDocumentBody()) !== nextContent) throw new Error("Version preview changed the live document");
+		await browser(session, ["find", "role", "button", "click", "--name", "Return to current"]);
+		await waitForBrowserCondition(session, `${editorText} === ${JSON.stringify(nextContent)}`, "return to current");
+
+		await readBrowserJson(session, `JSON.stringify((() => {
+			const restore = (${priorButton}).parentElement.querySelector('[aria-label="Restore this version"]');
+			if (!restore) throw new Error('Version restore action missing');
+			restore.click();
+			return true;
+		})())`);
+		const confirm = "Array.from(document.querySelectorAll('[role=dialog] button, [role=alertdialog] button')).find(button => button.textContent.trim() === 'Restore')";
+		await waitForBrowserCondition(session, confirm, "restore confirmation");
+		await readBrowserJson(session, `JSON.stringify((${confirm}).click() ?? true)`);
+		await waitForBrowserCondition(session, `${editorText} === ${JSON.stringify(content)}`, "restored editor");
+		if ((await readDocumentBody()) !== content) throw new Error("Restore did not update the live document");
+		if (!(await readBrowserJson(session, "JSON.stringify(globalThis.__docsmintVersionReleaseProbe === true)"))) {
+			throw new Error("Version flow reloaded the document page");
+		}
+
 		const capabilities = jsonResult(
 			await browserJson(session, [
 				"eval",
@@ -234,6 +302,7 @@ async function runFlow(
 			title,
 			content,
 			apiProof,
+			versionHistory: { preview: true, restored: true, stayedInPage: true },
 			capabilities,
 			diagnostics,
 			screenshot,

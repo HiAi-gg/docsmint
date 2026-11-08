@@ -991,7 +991,7 @@ $effect(() => {
               <button
                 class="dropdown-item mobile-menu-item"
                 role="menuitem"
-                onclick={() => { showVersionPanel = true; showMenu = false; }}
+                onclick={() => { showMenu = false; void openVersionHistory(); }}
               >
                 <History size={14} /> {m.version_history_title()}
               </button>
