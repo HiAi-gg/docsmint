@@ -246,7 +246,7 @@ async function confirmRestore() {
 		if (targetDocumentId !== documentId) return;
 		const restored = await apiFetch<RestoredDocument>(
 			`/api/documents/${targetDocumentId}/versions/${target.id}/restore`,
-			{ method: "POST" },
+			{ method: "POST", body: {} },
 			request.fetch,
 		);
 		if (targetDocumentId !== documentId) return;
