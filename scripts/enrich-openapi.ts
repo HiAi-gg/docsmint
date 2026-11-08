@@ -1239,6 +1239,256 @@ function describeFileTransfers(spec: Spec) {
 	});
 }
 
+function describeCredentialManagement(spec: Spec) {
+	const string = { type: "string" };
+	const date = { ...string, format: "date-time" };
+	const obj = (properties: Record<string, object>) => ({
+		type: "object",
+		properties,
+		required: Object.keys(properties),
+	});
+	const created = obj({ id: uuid, key: string, prefix: string });
+	const createdExample = {
+		id: documentExample.id,
+		key: "example-placeholder",
+		prefix: "example",
+	};
+	const listRow = obj({
+		id: uuid,
+		name: string,
+		prefix: string,
+		scopes: { type: "array", items: string },
+		lastUsedAt: { ...date, nullable: true },
+		expiresAt: { ...date, nullable: true },
+		createdAt: date,
+		recoverable: { type: "boolean" },
+	});
+	for (const [path, summary, description, errors] of [
+		[
+			"/api/keys/global",
+			"Create a global API key",
+			"Requires a browser session. Treat the returned key as a secret.",
+			[400, 401, 429],
+		],
+		[
+			"/api/categories/{id}/keys",
+			"Create a category API key",
+			"Requires a browser session and an existing category with enabled API permissions.",
+			[400, 401, 404, 409, 429],
+		],
+	] as const) {
+		describeOperation(
+			spec,
+			path,
+			"post",
+			summary,
+			description,
+			created,
+			createdExample,
+			[...errors],
+			undefined,
+			201,
+		);
+		const operation = spec.paths[path].post;
+		const responses = operation.responses as Record<string, unknown>;
+		delete responses["200"];
+		if ("409" in responses)
+			responses["409"] = failure(
+				"Category API access or permissions are not configured.",
+				"Save Category API access before issuing a scoped key",
+			);
+		operation.requestBody = {
+			required: false,
+			content: json(
+				{
+					type: "object",
+					properties: { name: { ...string, minLength: 1, maxLength: 255 } },
+				},
+				{ name: "Example integration" },
+			),
+		};
+	}
+	describeOperation(
+		spec,
+		"/api/keys",
+		"get",
+		"List API key metadata",
+		"Requires a browser session. Lists the current user's keys without secret values.",
+		obj({ keys: { type: "array", items: listRow } }),
+		{ keys: [] },
+		[401, 429, 500],
+	);
+	describeOperation(
+		spec,
+		"/api/keys/{id}/secret",
+		"get",
+		"Reveal a recoverable category key",
+		"Requires a browser session belonging to the key owner. The response is not cacheable.",
+		obj({ key: string }),
+		{ key: "example-placeholder" },
+		[401, 404, 429, 500],
+	);
+	describeOperation(
+		spec,
+		"/api/keys/{id}",
+		"delete",
+		"Revoke an API key",
+		"Requires a browser session belonging to the key owner. The credential stops granting access.",
+		success,
+		successExample,
+		[400, 401, 404, 409, 429, 500],
+	);
+	for (const [method, path] of [
+		["post", "/api/keys/global"],
+		["post", "/api/categories/{id}/keys"],
+		["get", "/api/keys"],
+		["get", "/api/keys/{id}/secret"],
+		["delete", "/api/keys/{id}"],
+	]) {
+		spec.paths[path][method].security = [{ SessionAuth: [] }];
+		delete spec.paths[path][method]["x-docsmint-v1-route-alias"];
+		spec.paths[path][method].tags = ["API Keys"];
+	}
+}
+
+function describeDocumentEditsAndProgress(spec: Spec) {
+	const string = { type: "string" };
+	const date = { ...string, format: "date-time" };
+	const docPath = "/api/documents/{id}";
+	const pipelinePath = `${docPath}/pipeline`;
+	const summaryPath = `${docPath}/knowledge-summary`;
+	const duplicatePath = `${docPath}/duplicate`;
+	describeOperation(
+		spec,
+		docPath,
+		"patch",
+		"Update a document",
+		"Requires edit permission. Supply expectedUpdatedAt to detect a write conflict.",
+		document,
+		documentExample,
+		[400, 401, 403, 404, 409, 429, 500],
+	);
+	const update = spec.paths[docPath].patch;
+	update.requestBody = {
+		required: true,
+		content: json(
+			{
+				type: "object",
+				properties: {
+					title: { ...string, minLength: 1, maxLength: 500 },
+					content: string,
+					contentJson: {},
+					metadata: {},
+					folderId: { ...uuid, nullable: true },
+					categoryId: { ...uuid, nullable: true },
+					visibility: { ...string, enum: ["private", "shared", "public"] },
+					expectedUpdatedAt: date,
+				},
+			},
+			{ title: "Edited", expectedUpdatedAt: "2026-11-08T12:00:00Z" },
+		),
+	};
+	const conflict = {
+		type: "object",
+		required: ["error", "code", "currentUpdatedAt"],
+		properties: {
+			error: string,
+			code: { ...string, enum: ["DOCUMENT_CONFLICT"] },
+			currentUpdatedAt: date,
+		},
+	};
+	(update.responses as Record<string, unknown>)["409"] = {
+		description: "Stale document revision or an active account mutation fence.",
+		content: json(
+			{
+				oneOf: [
+					conflict,
+					{ $ref: "#/components/schemas/AccountPurgeFencedError" },
+				],
+			},
+			{
+				error: "Document changed on the server",
+				code: "DOCUMENT_CONFLICT",
+				currentUpdatedAt: "2026-11-08T12:01:00Z",
+			},
+		),
+	};
+	describeOperation(
+		spec,
+		duplicatePath,
+		"post",
+		"Duplicate a document",
+		"Requires write permission. Creates a new copy of the visible source document.",
+		document,
+		{ ...documentExample, title: "API quickstart (Copy)" },
+		[401, 403, 404, 409, 429, 500],
+		undefined,
+		201,
+	);
+	delete (spec.paths[duplicatePath].post.responses as Record<string, unknown>)[
+		"200"
+	];
+
+	describeOperation(
+		spec,
+		pipelinePath,
+		"get",
+		"Read pipeline progress",
+		"Returns the latest indexing run for a visible document.",
+		{ $ref: "#/components/schemas/DocsDocumentPipeline" },
+		{
+			documentId: documentExample.id,
+			generationId: "22222222-2222-4222-8222-222222222222",
+			status: "pending",
+			revision: "example",
+			stages: {
+				prepare: "pending",
+				embed: "pending",
+				graph: "pending",
+				summarize: "pending",
+				finalize: "pending",
+			},
+			batches: { total: 0, completed: 0, failed: 0 },
+			warnings: [],
+			updatedAt: "2026-11-08T12:00:00Z",
+		},
+		[401, 403, 404, 500],
+	);
+	const summary = {
+		documentId: uuid,
+		generationId: uuid,
+		revision: string,
+		language: string,
+		description: string,
+		keywords: { type: "array", items: string },
+		createdAt: date,
+		updatedAt: date,
+	};
+	describeOperation(
+		spec,
+		summaryPath,
+		"get",
+		"Read a document knowledge summary",
+		"Returns the summary for the active generation of a visible document.",
+		{
+			type: "object",
+			required: Object.keys(summary),
+			properties: summary,
+		},
+		{
+			documentId: documentExample.id,
+			generationId: "22222222-2222-4222-8222-222222222222",
+			revision: "example",
+			language: "en",
+			description: "A sample document.",
+			keywords: ["example"],
+			createdAt: "2026-11-08T12:00:00Z",
+			updatedAt: "2026-11-08T12:00:00Z",
+		},
+		[400, 401, 403, 404, 429],
+	);
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -1357,5 +1607,7 @@ export function enrichOpenApi(spec: Spec) {
 		name: "X-Share-Token",
 	};
 	describeFileTransfers(spec);
+	describeCredentialManagement(spec);
+	describeDocumentEditsAndProgress(spec);
 	return spec;
 }
