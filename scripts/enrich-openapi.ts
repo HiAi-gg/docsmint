@@ -1,6 +1,9 @@
 import { publicIntegrationCollections } from "../backend/src/api/routes/integration-collections";
 
-type Spec = { paths: Record<string, Record<string, Record<string, unknown>>> };
+type Spec = {
+	paths: Record<string, Record<string, Record<string, unknown>>>;
+	components?: { securitySchemes?: Record<string, unknown> };
+};
 const uuid = { type: "string", format: "uuid" };
 const documentExample = {
 	id: "11111111-1111-4111-8111-111111111111",
@@ -65,14 +68,23 @@ function describeOperation(
 		404: failure("Document not found in this scope.", "Document not found"),
 		409: { $ref: "#/components/responses/AccountPurgeFenced" },
 		413: failure(
-			"Comparison exceeds the safe size limit.",
-			"Version diff exceeds the safe comparison limit",
+			"Request exceeds the configured size limit.",
+			"Request too large",
 		),
 		429: {
 			...failure("Request rate limit exceeded.", "Too many requests"),
 			headers: { "Retry-After": { schema: { type: "integer" } } },
 		},
+		415: failure("Unsupported content type.", "Unsupported content type"),
+		422: failure(
+			"The content could not be processed safely.",
+			"Unprocessable content",
+		),
 		500: failure("The request failed.", "Request failed"),
+		503: failure(
+			"Attachment storage admission is temporarily unavailable.",
+			"Attachment storage unavailable",
+		),
 	};
 	Object.assign(operation, {
 		summary,
@@ -895,6 +907,338 @@ function describeSearch(spec: Spec) {
 	}
 }
 
+function describeFileTransfers(spec: Spec) {
+	const string = { type: "string" };
+	const binary = { ...string, format: "binary" };
+	const count = { type: "integer", minimum: 0 };
+	const obj = (
+		properties: Record<string, object>,
+		required = Object.keys(properties),
+	) => ({ type: "object", properties, required });
+	const query = (name: string, schema: object, required = false) => ({
+		name,
+		in: "query",
+		schema,
+		required,
+	});
+	const replaceContent = (
+		path: string,
+		method: string,
+		status: string,
+		content: object,
+	) => {
+		const responses = spec.paths[path][method].responses as Record<
+			string,
+			Record<string, unknown>
+		>;
+		if ("$ref" in responses[status]) {
+			responses[status] = {
+				description: "Import conflicts with an active account mutation fence.",
+				content,
+			};
+		} else {
+			responses[status].content = content;
+		}
+		if (status === "201") delete responses["200"];
+	};
+	const requests = (path: string, content: object) => {
+		spec.paths[path].post.requestBody = { required: true, content };
+	};
+
+	const uploads = "/api/documents/{id}/attachments";
+	const size = { type: "integer", minimum: 1 };
+	const file = {
+		filename: { ...string, minLength: 1, maxLength: 255 },
+		contentType: string,
+		size,
+	};
+	const uploadExample = {
+		filename: "sample.png",
+		contentType: "image/png",
+		size: 128,
+	};
+	const attachment = obj({
+		id: uuid,
+		filename: string,
+		mimeType: string,
+		size,
+		url: string,
+	});
+	const attachmentExample = {
+		id: documentExample.id,
+		filename: "sample.png",
+		mimeType: "image/png",
+		size: 128,
+		url: "/api/attachments/11111111-1111-4111-8111-111111111111/raw",
+	};
+	const uploadErrors = [400, 401, 403, 404, 409, 413, 415, 429, 500, 503];
+	describeOperation(
+		spec,
+		`${uploads}/presign`,
+		"post",
+		"Request a signed attachment upload",
+		"Returns a storage URL and confirmation token for an admitted image. Use the reservation value verbatim when present.",
+		obj(
+			{
+				url: { ...string, format: "uri" },
+				key: string,
+				uploadToken: string,
+				quotaReservationId: string,
+				maxSize: size,
+				expiresIn: size,
+			},
+			["url", "key", "uploadToken", "maxSize", "expiresIn"],
+		),
+		{
+			url: "https://storage.example.invalid/upload",
+			key: "example/storage-key",
+			uploadToken: "example-upload-token",
+			maxSize: 10485760,
+			expiresIn: 300,
+		},
+		uploadErrors,
+	);
+	requests(`${uploads}/presign`, json(obj(file), uploadExample));
+
+	describeOperation(
+		spec,
+		`${uploads}/confirm`,
+		"post",
+		"Confirm a signed attachment upload",
+		"Verifies the uploaded image and records it on the document. Repeating a completed confirmation can return the same attachment.",
+		attachment,
+		attachmentExample,
+		uploadErrors,
+		undefined,
+		201,
+	);
+	replaceContent(
+		`${uploads}/confirm`,
+		"post",
+		"201",
+		json(attachment, attachmentExample),
+	);
+	requests(
+		`${uploads}/confirm`,
+		json(
+			obj(
+				{
+					...file,
+					key: string,
+					uploadToken: string,
+					quotaReservationId: string,
+				},
+				[...Object.keys(file), "key", "uploadToken"],
+			),
+			{
+				...uploadExample,
+				key: "example/storage-key",
+				uploadToken: "example-upload-token",
+			},
+		),
+	);
+
+	describeOperation(
+		spec,
+		uploads,
+		"post",
+		"Upload an image attachment",
+		"Accepts a multipart file and attaches it to an editable document.",
+		attachment,
+		attachmentExample,
+		uploadErrors,
+		undefined,
+		201,
+	);
+	replaceContent(uploads, "post", "201", json(attachment, attachmentExample));
+	requests(uploads, {
+		"multipart/form-data": { schema: obj({ file: binary }) },
+	});
+	describeOperation(
+		spec,
+		uploads,
+		"get",
+		"List document attachments",
+		"Returns attachment metadata and same-origin read URLs for a visible document.",
+		obj({ items: { type: "array", items: attachment } }),
+		{ items: [attachmentExample] },
+		[401, 403, 404],
+	);
+	describeOperation(
+		spec,
+		"/api/attachments/{id}",
+		"delete",
+		"Delete an attachment",
+		"Requires access to remove the attachment. Storage cleanup can finish asynchronously.",
+		success,
+		successExample,
+		[401, 403, 404, 409, 429],
+	);
+
+	const confirmResponses = spec.paths[`${uploads}/confirm`].post
+		.responses as Record<string, unknown>;
+	confirmResponses["409"] = failure(
+		"The upload is unavailable or storage confirmation must be retried.",
+		"Upload not found in storage — please retry upload",
+	);
+
+	const image = { "image/*": { schema: binary } };
+	const shareHeaders = [
+		{ name: "X-Share-Password", in: "header", schema: string },
+	];
+	for (const [path, title, description, parameters, errors] of [
+		[
+			"/api/attachments/{id}/raw",
+			"Read image attachment bytes",
+			"Requires access to the document or a valid share that grants access to it.",
+			[
+				{ name: "id", in: "path", required: true, schema: uuid },
+				...shareHeaders,
+			],
+			[401, 403, 404, 500],
+		],
+		[
+			"/api/attachments/remote-image",
+			"Read a referenced remote image",
+			"The authorized document must already reference the supplied image URL. Unsafe URLs are refused.",
+			[
+				query("documentId", uuid, true),
+				query("url", { ...string, format: "uri", maxLength: 4096 }, true),
+				...shareHeaders,
+			],
+			[400, 401, 403, 404, 422, 429],
+		],
+	] as const) {
+		describeOperation(
+			spec,
+			path,
+			"get",
+			title,
+			description,
+			binary,
+			{},
+			[...errors],
+			[...parameters],
+		);
+		replaceContent(path, "get", "200", image);
+		// The two file reads also accept a scoped share token.
+		spec.paths[path].get.security = [...scope, { ShareToken: [] }];
+	}
+
+	const exportPath = "/api/documents/{id}/export";
+	const exported = obj({
+		id: uuid,
+		title: string,
+		updatedAt: { ...string, format: "date-time" },
+		markdown: string,
+		filename: string,
+	});
+	const exportExample = {
+		id: documentExample.id,
+		title: documentExample.title,
+		updatedAt: "2026-11-08T12:00:00Z",
+		markdown: "# Example",
+		filename: "Example.md",
+	};
+	describeOperation(
+		spec,
+		exportPath,
+		"get",
+		"Export document Markdown",
+		"Omit format for a Markdown download or pass json for metadata alongside the Markdown.",
+		exported,
+		exportExample,
+		[400, 401, 403, 404, 500],
+		[
+			{ name: "id", in: "path", required: true, schema: uuid },
+			query("format", { ...string, enum: ["json"] }),
+		],
+	);
+	replaceContent(exportPath, "get", "200", {
+		"text/markdown": { schema: string, example: "# Example" },
+		...json(exported, exportExample),
+	});
+
+	const importPath = "/api/documents/import";
+	const imported = obj(
+		{
+			items: {
+				type: "array",
+				items: {
+					oneOf: [
+						obj({
+							filename: string,
+							status: { ...string, enum: ["ok"] },
+							document,
+						}),
+						obj(
+							{
+								filename: string,
+								status: { ...string, enum: ["error"] },
+								error: string,
+								code: string,
+							},
+							["filename", "status", "error"],
+						),
+					],
+				},
+			},
+			imported: count,
+			failed: count,
+			code: string,
+		},
+		["items", "imported", "failed"],
+	);
+	const importExample = {
+		items: [
+			{ filename: "Example.md", status: "ok", document: documentExample },
+		],
+		imported: 1,
+		failed: 0,
+	};
+	describeOperation(
+		spec,
+		importPath,
+		"post",
+		"Import documents",
+		"Accepts JSON text or up to ten multipart files. The response reports each file independently when at least one succeeds.",
+		imported,
+		importExample,
+		[400, 401, 403, 409, 413, 415, 422, 429, 500],
+		undefined,
+		201,
+	);
+	replaceContent(importPath, "post", "201", json(imported, importExample));
+	const errorResult = obj({ error: string, code: string }, ["error"]);
+	for (const status of ["400", "409", "413", "415", "422", "500"]) {
+		replaceContent(importPath, "post", status, {
+			"application/json": { schema: { oneOf: [errorResult, imported] } },
+		});
+	}
+	requests(importPath, {
+		...json(
+			obj(
+				{
+					title: { ...string, minLength: 1, maxLength: 500 },
+					content: { ...string, minLength: 1, maxLength: 5000000 },
+					folderId: uuid,
+				},
+				["content"],
+			),
+			{ title: "Example", content: "Example Markdown" },
+		),
+		"multipart/form-data": {
+			schema: obj(
+				{
+					file: { type: "array", items: binary, minItems: 1, maxItems: 10 },
+					folderId: uuid,
+				},
+				["file"],
+			),
+		},
+	});
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -1005,5 +1349,13 @@ export function enrichOpenApi(spec: Spec) {
 	describeVersions(spec);
 	describeOrganization(spec);
 	describeSearch(spec);
+	spec.components ??= {};
+	spec.components.securitySchemes ??= {};
+	spec.components.securitySchemes.ShareToken = {
+		type: "apiKey",
+		in: "header",
+		name: "X-Share-Token",
+	};
+	describeFileTransfers(spec);
 	return spec;
 }
