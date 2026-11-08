@@ -5,6 +5,7 @@ import {
 } from "@hiai-docs/sdk/mcp";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { Elysia } from "elysia";
+import { publicIntegrationCollections } from "./integration-collections";
 
 export interface IntegrationIdentity {
 	principalType: "account" | "workspace" | "category";
@@ -49,17 +50,6 @@ export async function createIntegrationMcpServer(
 		},
 	});
 }
-
-const publicCollections = new Set([
-	"documents",
-	"folders",
-	"categories",
-	"tags",
-	"search",
-	"graph",
-	"trash",
-	"attachments",
-]);
 
 export function createIntegrationRoutes(options: IntegrationRouteOptions) {
 	const mcp = createDocsmintMcpHttpHandler({
@@ -141,7 +131,7 @@ export function createIntegrationRoutes(options: IntegrationRouteOptions) {
 			);
 		const collection =
 			url.pathname.slice("/api/v1/".length).split("/")[0] ?? "";
-		if (!publicCollections.has(collection))
+		if (!publicIntegrationCollections.has(collection))
 			return finish(new Response(null, { status: 404 }));
 		url.pathname = url.pathname.replace(/^\/api\/v1(?=\/)/, "/api");
 		const forwarded = new Headers(request.headers);
