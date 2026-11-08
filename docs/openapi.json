@@ -2526,10 +2526,421 @@
         "operationId": "getApiSearch",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "score": {
+                            "type": "number"
+                          },
+                          "snippet": {
+                            "type": "string"
+                          },
+                          "preview": {
+                            "type": "string"
+                          },
+                          "folder_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "folder_name": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "categoryId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "effectiveCategoryId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "nullable": true
+                          },
+                          "chunks": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "chunkIndex": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "chunkText": {
+                                  "type": "string"
+                                },
+                                "charStart": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "charEnd": {
+                                  "type": "integer",
+                                  "minimum": 0
+                                },
+                                "score": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "chunkIndex",
+                                "chunkText",
+                                "charStart",
+                                "charEnd",
+                                "score"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "title",
+                          "snippet",
+                          "score",
+                          "folder_id",
+                          "folder_name",
+                          "created_at",
+                          "updated_at"
+                        ]
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "default": 1
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "default": 20
+                    },
+                    "diagnostics": {
+                      "type": "object",
+                      "properties": {
+                        "graphAttempted": {
+                          "type": "boolean"
+                        },
+                        "graphFailed": {
+                          "type": "boolean"
+                        },
+                        "graphContribution": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "graphAttempted",
+                        "graphFailed",
+                        "graphContribution"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "page",
+                    "limit"
+                  ]
+                },
+                "example": {
+                  "items": [],
+                  "total": 0,
+                  "page": 1,
+                  "limit": 20
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
-        "x-docsmint-v1-route-alias": "/api/v1/search/"
+        "x-docsmint-v1-route-alias": "/api/v1/search/",
+        "summary": "Search visible documents",
+        "description": "Searches within the current scope. The ranking window is capped at 1,000 results.",
+        "tags": [
+          "Search"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "folder",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": false
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "required": false
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "relevance",
+                "date_desc",
+                "date_asc",
+                "name_asc",
+                "name_desc"
+              ],
+              "default": "relevance"
+            },
+            "required": false
+          },
+          {
+            "name": "includeChunks",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "required": false
+          },
+          {
+            "name": "includeDiagnostics",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "required": false
+          },
+          {
+            "name": "graph",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "deprecated": true
+            },
+            "required": false
+          },
+          {
+            "name": "graphHops",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "deprecated": true
+            },
+            "required": false
+          },
+          {
+            "name": "graphBoost",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2,
+              "deprecated": true
+            },
+            "required": false
+          }
+        ]
       }
     },
     "/api/search/suggest": {
@@ -2537,10 +2948,179 @@
         "operationId": "getApiSearchSuggest",
         "responses": {
           "200": {
-            "description": "Successful request."
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "score": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "title",
+                      "score"
+                    ]
+                  }
+                },
+                "example": [
+                  {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "title": "API quickstart",
+                    "score": 0.8
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
           }
         },
-        "x-docsmint-v1-route-alias": "/api/v1/search/suggest"
+        "x-docsmint-v1-route-alias": "/api/v1/search/suggest",
+        "summary": "Suggest visible document titles",
+        "description": "Returns up to five scoped title matches.",
+        "tags": [
+          "Search"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "SessionAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ]
       }
     },
     "/api/documents": {
@@ -6810,47 +7390,39 @@
         "tags": [
           "Graph"
         ],
-        "summary": "List entities linked to a document",
-        "description": "Requires read access to the seed document in the active workspace or effective category. Returns entities from its active graph generation; graph unavailability or disabled graph search returns an empty entities array.",
+        "summary": "Read document graph entities",
+        "description": "Returns graph entities for an authorized document.",
         "security": [
           {
-            "SessionAuth": []
+            "BearerAuth": []
           },
           {
-            "BearerAuth": []
+            "SessionAuth": []
           }
         ],
         "parameters": [
           {
-            "in": "query",
             "name": "docId",
-            "required": true,
-            "description": "Readable seed document ID.",
+            "in": "query",
             "schema": {
               "type": "string",
-              "minLength": 1
-            }
+              "format": "uuid"
+            },
+            "required": true
           }
         ],
         "responses": {
           "200": {
-            "description": "Seed entity context.",
+            "description": "Successful request.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "entities"
-                  ],
                   "properties": {
                     "entities": {
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "name",
-                          "type"
-                        ],
                         "properties": {
                           "name": {
                             "type": "string"
@@ -6858,25 +7430,107 @@
                           "type": {
                             "type": "string"
                           }
-                        }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ]
                       }
                     }
-                  }
+                  },
+                  "required": [
+                    "entities"
+                  ]
+                },
+                "example": {
+                  "entities": []
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or body."
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required."
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Read access required."
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Document not found in the active scope."
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
           },
           "429": {
             "description": "Search rate limit exceeded."
@@ -6891,64 +7545,54 @@
         "tags": [
           "Graph"
         ],
-        "summary": "List related documents via graph traversal",
-        "description": "Requires read access to the seed. Returns current-generation graph neighbors within the active workspace or effective category, ordered by hop distance then document ID. The limit applies after authorization and generation filtering. Disabled or unavailable graph search returns an empty related array.",
+        "summary": "Read related documents",
+        "description": "Returns visible documents within two graph hops of an authorized seed.",
         "security": [
           {
-            "SessionAuth": []
+            "BearerAuth": []
           },
           {
-            "BearerAuth": []
+            "SessionAuth": []
           }
         ],
         "parameters": [
           {
-            "in": "path",
             "name": "docId",
+            "in": "path",
             "required": true,
-            "description": "Readable seed document ID.",
             "schema": {
               "type": "string",
-              "minLength": 1
+              "format": "uuid"
             }
           },
           {
-            "in": "query",
             "name": "limit",
-            "required": false,
-            "description": "Maximum authorized related documents to return.",
+            "in": "query",
             "schema": {
               "type": "integer",
               "minimum": 1,
               "maximum": 100,
               "default": 20
-            }
+            },
+            "required": false
           }
         ],
         "responses": {
           "200": {
-            "description": "Authorized graph neighbors.",
+            "description": "Successful request.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "related"
-                  ],
                   "properties": {
                     "related": {
                       "type": "array",
-                      "maxItems": 100,
                       "items": {
                         "type": "object",
-                        "required": [
-                          "docId",
-                          "relationType",
-                          "hopDistance"
-                        ],
                         "properties": {
                           "docId": {
-                            "type": "string"
+                            "type": "string",
+                            "format": "uuid"
                           },
                           "relationType": {
                             "type": "string"
@@ -6957,25 +7601,108 @@
                             "type": "integer",
                             "minimum": 1
                           }
-                        }
+                        },
+                        "required": [
+                          "docId",
+                          "relationType",
+                          "hopDistance"
+                        ]
                       }
                     }
-                  }
+                  },
+                  "required": [
+                    "related"
+                  ]
+                },
+                "example": {
+                  "related": []
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or body."
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required."
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Read access required."
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Seed document not found in the active scope."
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
           },
           "429": {
             "description": "Search rate limit exceeded."
@@ -6990,14 +7717,14 @@
         "tags": [
           "Graph"
         ],
-        "summary": "Graph-aware RAG retrieval for agents",
-        "description": "Every seed requires read access in the active workspace or effective category before traversal. Non-blank query text filters authorized current-generation neighbors using exact-title and English or language-neutral full-text matching. Exact titles rank first, followed by lexical score and document ID. No model call is made. An omitted or blank query returns unfiltered authorized graph context ordered by hop distance then document ID. Entities always describe the seed documents and are not query-filtered. Disabled or unavailable graph search returns empty entities and relatedDocs arrays.",
+        "summary": "Search the document graph",
+        "description": "Returns graph entities and related documents for visible seed documents. Requires read access.",
         "security": [
           {
-            "SessionAuth": []
+            "BearerAuth": []
           },
           {
-            "BearerAuth": []
+            "SessionAuth": []
           }
         ],
         "requestBody": {
@@ -7006,47 +7733,45 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": [
-                  "docIds"
-                ],
                 "properties": {
                   "query": {
                     "type": "string",
-                    "maxLength": 2000,
-                    "description": "Optional lexical query for related documents; blank or omitted leaves graph context unfiltered."
+                    "maxLength": 2000
                   },
                   "docIds": {
                     "type": "array",
-                    "minItems": 1,
-                    "maxItems": 50,
                     "items": {
                       "type": "string",
-                      "minLength": 1
+                      "format": "uuid"
                     },
-                    "description": "Readable seed document IDs; one inaccessible seed rejects the request."
+                    "minItems": 1,
+                    "maxItems": 50
                   },
                   "maxResults": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 100,
-                    "description": "Optional cap on relatedDocs after authorization, query filtering, and ranking. Does not limit seed entities. Omit to return all matches produced by the bounded graph traversal."
+                    "maximum": 100
                   }
-                }
+                },
+                "required": [
+                  "docIds"
+                ]
+              },
+              "example": {
+                "docIds": [
+                  "11111111-1111-4111-8111-111111111111"
+                ]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Seed entities and authorized related document summaries.",
+            "description": "Successful request.",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "entities",
-                    "relatedDocs"
-                  ],
                   "properties": {
                     "query": {
                       "type": "string"
@@ -7055,10 +7780,6 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "name",
-                          "type"
-                        ],
                         "properties": {
                           "name": {
                             "type": "string"
@@ -7066,23 +7787,21 @@
                           "type": {
                             "type": "string"
                           }
-                        }
+                        },
+                        "required": [
+                          "name",
+                          "type"
+                        ]
                       }
                     },
                     "relatedDocs": {
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": [
-                          "docId",
-                          "relationType",
-                          "hopDistance",
-                          "title",
-                          "snippet"
-                        ],
                         "properties": {
                           "docId": {
-                            "type": "string"
+                            "type": "string",
+                            "format": "uuid"
                           },
                           "relationType": {
                             "type": "string"
@@ -7095,28 +7814,114 @@
                             "type": "string"
                           },
                           "snippet": {
-                            "type": "string",
-                            "maxLength": 200
+                            "type": "string"
                           }
-                        }
+                        },
+                        "required": [
+                          "docId",
+                          "relationType",
+                          "hopDistance",
+                          "title",
+                          "snippet"
+                        ]
                       }
                     }
-                  }
+                  },
+                  "required": [
+                    "entities",
+                    "relatedDocs"
+                  ]
+                },
+                "example": {
+                  "entities": [],
+                  "relatedDocs": []
                 }
               }
             }
           },
           "400": {
-            "description": "Invalid request parameters or body."
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Authentication required."
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
           },
           "403": {
-            "description": "Read access required."
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
           },
           "404": {
-            "description": "One or more seed documents were not found in the active scope."
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
           },
           "429": {
             "description": "Search rate limit exceeded."

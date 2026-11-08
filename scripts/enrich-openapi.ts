@@ -702,6 +702,199 @@ function describeOrganization(spec: Spec) {
 	);
 }
 
+function describeSearch(spec: Spec) {
+	const string = { type: "string" };
+	const score = { type: "number" };
+	const count = { type: "integer", minimum: 0 };
+	const page = { type: "integer", minimum: 1, default: 1 };
+	const limit = { type: "integer", minimum: 1, maximum: 100, default: 20 };
+	const namedHit = { id: uuid, title: string, score };
+	const example = {
+		id: documentExample.id,
+		title: documentExample.title,
+		score: 0.8,
+	};
+	const query = (name: string, schema: object, required = false) => ({
+		name,
+		in: "query",
+		schema,
+		required,
+	});
+	const listOf = (items: object) => ({ type: "array", items });
+	const object = (
+		properties: Record<string, object>,
+		required = Object.keys(properties),
+	) => ({ type: "object", properties, required });
+
+	const hit = object(
+		{
+			...namedHit,
+			snippet: string,
+			preview: string,
+			folder_id: { ...uuid, nullable: true },
+			folder_name: { ...string, nullable: true },
+			created_at: { ...string, format: "date-time" },
+			updated_at: { ...string, format: "date-time" },
+			categoryId: { ...uuid, nullable: true },
+			effectiveCategoryId: { ...uuid, nullable: true },
+			chunks: listOf(
+				object({
+					chunkIndex: count,
+					chunkText: string,
+					charStart: count,
+					charEnd: count,
+					score,
+				}),
+			),
+		},
+		[
+			"id",
+			"title",
+			"snippet",
+			"score",
+			"folder_id",
+			"folder_name",
+			"created_at",
+			"updated_at",
+		],
+	);
+	const diagnostics = object({
+		graphAttempted: { type: "boolean" },
+		graphFailed: { type: "boolean" },
+		graphContribution: { type: "boolean" },
+	});
+	describeOperation(
+		spec,
+		"/api/search/",
+		"get",
+		"Search visible documents",
+		"Searches within the current scope. The ranking window is capped at 1,000 results.",
+		object({ items: listOf(hit), total: count, page, limit, diagnostics }, [
+			"items",
+			"total",
+			"page",
+			"limit",
+		]),
+		{ items: [], total: 0, page: 1, limit: 20 },
+		[400, 401, 403, 429, 500],
+		[
+			...["q", "folder", "tags", "dateFrom", "dateTo"].map((name) =>
+				query(name, string),
+			),
+			query("category", uuid),
+			query("page", page),
+			query("limit", limit),
+			query("sort", {
+				...string,
+				enum: ["relevance", "date_desc", "date_asc", "name_asc", "name_desc"],
+				default: "relevance",
+			}),
+			query("includeChunks", { type: "boolean", default: false }),
+			query("includeDiagnostics", { type: "boolean", default: false }),
+			query("graph", { type: "boolean", deprecated: true }),
+			query("graphHops", {
+				type: "integer",
+				minimum: 1,
+				maximum: 3,
+				deprecated: true,
+			}),
+			query("graphBoost", {
+				type: "number",
+				minimum: 0,
+				maximum: 2,
+				deprecated: true,
+			}),
+		],
+	);
+	describeOperation(
+		spec,
+		"/api/search/suggest",
+		"get",
+		"Suggest visible document titles",
+		"Returns up to five scoped title matches.",
+		listOf(object(namedHit)),
+		[example],
+		[400, 401, 403, 429, 500],
+		[query("q", string)],
+	);
+
+	const entities = listOf(object({ name: string, type: string }));
+	const neighbor = {
+		docId: uuid,
+		relationType: string,
+		hopDistance: { type: "integer", minimum: 1 },
+	};
+	describeOperation(
+		spec,
+		"/api/graph/entities",
+		"get",
+		"Read document graph entities",
+		"Returns graph entities for an authorized document.",
+		object({ entities }),
+		{ entities: [] },
+		[400, 401, 403, 404],
+		[query("docId", uuid, true)],
+	);
+	describeOperation(
+		spec,
+		"/api/graph/related/{docId}",
+		"get",
+		"Read related documents",
+		"Returns visible documents within two graph hops of an authorized seed.",
+		object({ related: listOf(object(neighbor)) }),
+		{ related: [] },
+		[400, 401, 403, 404],
+		[
+			{ name: "docId", in: "path", required: true, schema: uuid },
+			query("limit", limit),
+		],
+	);
+	describeOperation(
+		spec,
+		"/api/graph/search",
+		"post",
+		"Search the document graph",
+		"Returns graph entities and related documents for visible seed documents. Requires read access.",
+		object(
+			{
+				query: string,
+				entities,
+				relatedDocs: listOf(
+					object({ ...neighbor, title: string, snippet: string }),
+				),
+			},
+			["entities", "relatedDocs"],
+		),
+		{ entities: [], relatedDocs: [] },
+		[400, 401, 403, 404],
+	);
+	spec.paths["/api/graph/search"].post.requestBody = {
+		required: true,
+		content: json(
+			object(
+				{
+					query: { ...string, maxLength: 2000 },
+					docIds: { ...listOf(uuid), minItems: 1, maxItems: 50 },
+					maxResults: { type: "integer", minimum: 1, maximum: 100 },
+				},
+				["docIds"],
+			),
+			{ docIds: [documentExample.id] },
+		),
+	};
+	for (const path of [
+		"/api/search/",
+		"/api/search/suggest",
+		"/api/graph/entities",
+		"/api/graph/related/{docId}",
+		"/api/graph/search",
+	]) {
+		for (const operation of Object.values(spec.paths[path])) {
+			operation.tags = [path.startsWith("/api/search/") ? "Search" : "Graph"];
+		}
+	}
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -811,5 +1004,6 @@ export function enrichOpenApi(spec: Spec) {
 	describeDocumentReadsAndTrash(spec);
 	describeVersions(spec);
 	describeOrganization(spec);
+	describeSearch(spec);
 	return spec;
 }
