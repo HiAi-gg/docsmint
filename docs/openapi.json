@@ -4793,8 +4793,7 @@
                       "never"
                     ]
                   }
-                },
-                "required": []
+                }
               },
               "example": {
                 "expiresIn": "7d"

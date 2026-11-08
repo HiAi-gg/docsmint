@@ -1497,7 +1497,11 @@ function describeSharing(spec: Spec) {
 	const obj = (
 		properties: Record<string, object>,
 		required = Object.keys(properties),
-	) => ({ type: "object", properties, required });
+	) => ({
+		type: "object",
+		properties,
+		...(required.length ? { required } : {}),
+	});
 	const list = (items: object) => ({ type: "array", items });
 	const pathParam = (name: string, schema: object) => ({
 		name,
