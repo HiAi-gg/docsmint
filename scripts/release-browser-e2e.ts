@@ -130,6 +130,68 @@ async function browserDiagnostics(
 	return { errors, consoleErrors };
 }
 
+async function verifyLegacyMarkdownRestore(
+	session: string,
+	documentPage: string,
+): Promise<void> {
+	const create = await readBrowserJson(session, `(async () => {
+		const headers = { "content-type": "application/json" };
+		const markdown = label => label + "\\n\\n" + "Legacy Markdown sentence. ".repeat(10_000);
+		const created = await fetch("/api/documents", {
+			method: "POST", headers,
+			body: JSON.stringify({ title: "Synthetic legacy Markdown history", content: markdown("Legacy alpha") }),
+		});
+		if (!created.ok) throw new Error("Legacy document creation failed: " + created.status);
+		const { id } = await created.json();
+		const edited = await fetch("/api/documents/" + id, {
+			method: "PATCH", headers, body: JSON.stringify({ content: markdown("Legacy bravo") }),
+		});
+		if (!edited.ok) throw new Error("Legacy document update failed: " + edited.status);
+		return JSON.stringify({ id });
+	})()`) as { id: string };
+	const path = "/api/documents/" + create.id;
+	const pageUrl = new URL(documentPage);
+	pageUrl.pathname = pageUrl.pathname.replace(/[^/]+$/, create.id);
+	const checkState = () => readBrowserJson(session, `(async () => {
+		const doc = await (await fetch(${JSON.stringify(path)})).json();
+		const versions = await (await fetch(${JSON.stringify(path + "/versions")})).json();
+		return JSON.stringify({
+			text: doc.content?.split("\\n", 1)[0],
+			hasJson: doc.contentJson != null,
+			count: versions.length,
+		});
+	})()`) as Promise<{ text: string; hasJson: boolean; count: number }>;
+
+	await browser(session, ["open", pageUrl.toString()]);
+	const rendered = `document.querySelector('[aria-label="Document content editor"]')?.textContent`;
+	await waitForBrowserCondition(session, `${rendered}?.startsWith("Legacy bravo")`, "legacy current Markdown");
+	const before = await checkState();
+	if (before.hasJson || before.text !== "Legacy bravo") throw new Error("Expected legacy Markdown only");
+	await browser(session, ["find", "role", "button", "click", "--name", "Version History"]);
+	const prior = `Array.from(document.querySelectorAll('.version-panel button')).find(button => button.textContent.trim().startsWith('Legacy alpha'))`;
+	await waitForBrowserCondition(session, prior, "legacy history item");
+	await readBrowserJson(session, `JSON.stringify((${prior}).click() ?? true)`);
+	await waitForBrowserCondition(session, `${rendered}?.startsWith("Legacy alpha")`, "legacy version preview");
+	await browser(session, ["find", "role", "radio", "click", "--name", "Markdown mode"]);
+	await waitForBrowserCondition(
+		session,
+		`document.querySelector('[aria-label="Historical Markdown"]')?.textContent?.startsWith("Legacy alpha")`,
+		"legacy Markdown preview",
+	);
+	await browser(session, ["find", "role", "radio", "click", "--name", "WYSIWYG mode"]);
+	await readBrowserJson(session, `JSON.stringify((${prior}).parentElement.querySelector('[aria-label="Restore this version"]').click() ?? true)`);
+	const confirm = "Array.from(document.querySelectorAll('[role=dialog] button, [role=alertdialog] button')).find(button => button.textContent.trim() === 'Restore')";
+	await waitForBrowserCondition(session, confirm, "legacy restore confirmation");
+	await readBrowserJson(session, `JSON.stringify((${confirm}).click() ?? true)`);
+	await waitForBrowserCondition(session, `!document.querySelector('.version-panel') && ${rendered}?.startsWith("Legacy alpha")`, "legacy version restored");
+	// Wait beyond the editor debounce so a render-triggered write cannot escape detection.
+	await browser(session, ["wait", "3000"]);
+	const restored = await checkState();
+	if (restored.text !== "Legacy alpha" || restored.hasJson || restored.count !== before.count + 2) {
+		throw new Error("Legacy preview or restore caused an extra write: " + JSON.stringify({ before, restored }));
+	}
+}
+
 async function runFlow(
 	mode: "desktop" | "mobile",
 	commit: string,
@@ -294,11 +356,13 @@ async function runFlow(
 			]),
 		);
 		await browser(session, ["screenshot", screenshot]);
+		const documentPage = await browser(session, ["get", "url"]);
+		if (mode === "desktop") await verifyLegacyMarkdownRestore(session, documentPage);
 		const diagnostics = await browserDiagnostics(session);
 		return {
 			mode,
 			session,
-			url: await browser(session, ["get", "url"]),
+			url: documentPage,
 			title,
 			content,
 			apiProof,

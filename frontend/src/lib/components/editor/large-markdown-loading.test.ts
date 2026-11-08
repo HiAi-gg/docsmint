@@ -20,10 +20,17 @@ describe("large markdown loading", () => {
 		).toBe(true);
 	});
 
-	test("persists the background markdown parse as contentJson", () => {
-		expect(editorSource).toContain(
-			"onUpdate({ markdown: source, json: parsed })",
+	test("renders deferred Markdown without autosaving it or applying an outdated parse", () => {
+		const deferredParse = editorSource.slice(
+			editorSource.indexOf("function scheduleDeferredMarkdownParse"),
+			editorSource.indexOf("requestAnimationFrame"),
 		);
+
+		expect(deferredParse).toContain("content !== source");
+		expect(deferredParse).toContain(
+			"ed.commands.setContent(parsed, { emitUpdate: false })",
+		);
+		expect(deferredParse).not.toContain("onUpdate(");
 	});
 
 	test("starts background parsing only after the editor exists and does not wait for idle time", () => {
