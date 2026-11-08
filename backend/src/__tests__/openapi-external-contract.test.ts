@@ -92,6 +92,15 @@ describe("OpenAPI external integration contract", () => {
 		expect(openApiInventory).toEqual(committedInventory);
 		expect(new Set(committedInventory).size).toBe(committedInventory.length);
 	});
+	test("publishes version snapshot success as HTTP 201 with a JSON body", () => {
+		const snapshots = spec.paths["/api/documents/{id}/versions/"]?.post;
+		expect(snapshots?.responses?.["200"]).toBeUndefined();
+		expect(snapshots?.responses?.["201"]).toMatchObject({
+			content: {
+				"application/json": { schema: { type: "object" } },
+			},
+		});
+	});
 	test("tracks the release version and critical SDK, CLI, and MCP routes", () => {
 		expect(spec.info.version).toBe("2.1.3");
 		for (const [method, path] of requiredOperations) {

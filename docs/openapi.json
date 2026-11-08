@@ -2986,6 +2986,70 @@
           }
         ],
         "responses": {
+          "201": {
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "documentId",
+                    "content",
+                    "createdBy",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "label": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "documentId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "contentJson": {},
+                    "createdBy": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "isSnapshot": {
+                      "type": "boolean"
+                    },
+                    "restoredFrom": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    }
+                  }
+                },
+                "example": {
+                  "id": "22222222-2222-4222-8222-222222222222",
+                  "documentId": "11111111-1111-4111-8111-111111111111",
+                  "content": "Sample version",
+                  "createdBy": "33333333-3333-4333-8333-333333333333",
+                  "createdAt": "2026-11-08T12:00:00.000Z",
+                  "label": "Baseline",
+                  "isSnapshot": true
+                }
+              }
+            }
+          },
           "400": {
             "description": "Invalid parameters or query.",
             "content": {

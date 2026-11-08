@@ -82,7 +82,7 @@ function describeOperation(
 		...(parameters && { parameters }),
 		responses: {
 			...(operation.responses as Record<string, unknown>),
-			200: {
+			[status]: {
 				description: "Successful request.",
 				content: json(schema, example),
 			},
@@ -326,7 +326,7 @@ function describeVersions(spec: Spec) {
 
 	describeOperation(
 		spec,
-		path + "/",
+		`${path}/`,
 		"get",
 		"List document versions",
 		"Returns versions of an authorized document, newest first. Set onlySnapshots to select named snapshots.",
@@ -349,7 +349,7 @@ function describeVersions(spec: Spec) {
 	);
 	describeOperation(
 		spec,
-		path + "/",
+		`${path}/`,
 		"post",
 		"Create a named snapshot",
 		"Captures the current document content. Requires write permission.",
@@ -359,7 +359,7 @@ function describeVersions(spec: Spec) {
 		[idParameter],
 		201,
 	);
-	const create = spec.paths[path + "/"].post;
+	const create = spec.paths[`${path}/`].post;
 	// Elysia's placeholder success status is superseded by the actual 201.
 	delete (create.responses as Record<string, unknown>)["200"];
 	create.requestBody = {
@@ -379,7 +379,7 @@ function describeVersions(spec: Spec) {
 
 	describeOperation(
 		spec,
-		path + "/{vid}",
+		`${path}/{vid}`,
 		"get",
 		"Read a document version",
 		"Returns the version body in the current document scope.",
@@ -389,7 +389,7 @@ function describeVersions(spec: Spec) {
 	);
 	describeOperation(
 		spec,
-		path + "/{vid}/restore",
+		`${path}/{vid}/restore`,
 		"post",
 		"Restore a document version",
 		"Applies the saved content to the current document. Requires edit permission.",
@@ -406,7 +406,7 @@ function describeVersions(spec: Spec) {
 	const count = { type: "integer", minimum: 0 };
 	describeOperation(
 		spec,
-		path + "/diff",
+		`${path}/diff`,
 		"get",
 		"Compare two document versions",
 		"Returns line changes from the older or source version to the target version.",
