@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 interface OpenApiOperation {
+	"x-docsmint-runtime-path"?: string;
 	security?: Array<Record<string, string[]>>;
 	summary?: string;
 	description?: string;
@@ -86,11 +87,32 @@ describe("OpenAPI external integration contract", () => {
 			.flatMap(([path, operations]) =>
 				Object.keys(operations)
 					.filter((method) => HTTP_METHODS.has(method.toLowerCase()))
-					.map((method) => `${method.toUpperCase()} ${path}`),
+					.map(
+						(method) =>
+							`${method.toUpperCase()} ${operations[method]["x-docsmint-runtime-path"] ?? path}`,
+					),
 			)
 			.sort();
 		expect(openApiInventory).toEqual(committedInventory);
 		expect(new Set(committedInventory).size).toBe(committedInventory.length);
+	});
+	test("describes every success body and avoids ambiguous URL templates", () => {
+		const paths = Object.keys(spec.paths);
+		expect(
+			new Set(paths.map((path) => path.replace(/\{[^}]+\}/g, "{}"))).size,
+		).toBe(paths.length);
+		for (const [path, operations] of Object.entries(spec.paths)) {
+			for (const [method, op] of Object.entries(operations)) {
+				const success = Object.entries(op.responses ?? {}).find(
+					([status, response]) =>
+						status.startsWith("2") &&
+						response &&
+						typeof response === "object" &&
+						"content" in response,
+				);
+				expect(success, `${method} ${path}`).toBeDefined();
+			}
+		}
 	});
 	test("publishes version snapshot success as HTTP 201 with a JSON body", () => {
 		const snapshots = spec.paths["/api/documents/{id}/versions/"]?.post;

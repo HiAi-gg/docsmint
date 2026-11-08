@@ -4578,322 +4578,6 @@
         ]
       }
     },
-    "/api/share/{token}": {
-      "get": {
-        "operationId": "getApiShareByToken",
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "schema": {
-              "type": "string"
-            },
-            "required": true
-          },
-          {
-            "name": "X-Share-Password",
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful request.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "oneOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "document"
-                          ]
-                        },
-                        "data": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "title": {
-                              "type": "string"
-                            },
-                            "content": {
-                              "type": "string",
-                              "nullable": true
-                            },
-                            "contentJson": {},
-                            "metadata": {},
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "title",
-                            "content",
-                            "contentJson",
-                            "metadata",
-                            "createdAt",
-                            "updatedAt"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "data"
-                      ]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "type": {
-                          "type": "string",
-                          "enum": [
-                            "folder"
-                          ]
-                        },
-                        "data": {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "type": "string",
-                              "format": "uuid"
-                            },
-                            "name": {
-                              "type": "string"
-                            },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "updatedAt": {
-                              "type": "string",
-                              "format": "date-time"
-                            },
-                            "folders": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string",
-                                    "format": "uuid"
-                                  },
-                                  "name": {
-                                    "type": "string"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  },
-                                  "updatedAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "name",
-                                  "createdAt",
-                                  "updatedAt"
-                                ]
-                              }
-                            },
-                            "documents": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "type": "string",
-                                    "format": "uuid"
-                                  },
-                                  "title": {
-                                    "type": "string"
-                                  },
-                                  "createdAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  },
-                                  "updatedAt": {
-                                    "type": "string",
-                                    "format": "date-time"
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "title",
-                                  "createdAt",
-                                  "updatedAt"
-                                ]
-                              }
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "name",
-                            "createdAt",
-                            "updatedAt",
-                            "folders",
-                            "documents"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "type",
-                        "data"
-                      ]
-                    }
-                  ]
-                },
-                "example": {
-                  "type": "document",
-                  "data": {
-                    "id": "11111111-1111-4111-8111-111111111111",
-                    "title": "API quickstart",
-                    "content": "Synthetic content.",
-                    "contentJson": null,
-                    "metadata": null,
-                    "createdAt": "2026-11-08T12:00:00Z",
-                    "updatedAt": "2026-11-08T12:00:00Z"
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication required.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "error": "Unauthorized"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Document not found in this scope.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "error": "Document not found"
-                }
-              }
-            }
-          },
-          "410": {
-            "description": "The share link has expired.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "error": "Share link has expired"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Request rate limit exceeded.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "error": "Too many requests"
-                }
-              }
-            },
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "integer"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "The request failed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "error"
-                  ],
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "example": {
-                  "error": "Request failed"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Open a shared resource",
-        "description": "A valid link token grants scoped access. Category shares are returned as folder-shaped content.",
-        "tags": [
-          "Sharing"
-        ],
-        "security": []
-      }
-    },
     "/api/share/{id}": {
       "delete": {
         "operationId": "deleteApiShareById",
@@ -5251,6 +4935,322 @@
             }
           }
         }
+      },
+      "get": {
+        "operationId": "getApiShareByToken",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "The share token."
+          },
+          {
+            "name": "X-Share-Password",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "document"
+                          ]
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "title": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "contentJson": {},
+                            "metadata": {},
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "title",
+                            "content",
+                            "contentJson",
+                            "metadata",
+                            "createdAt",
+                            "updatedAt"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "data"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "folder"
+                          ]
+                        },
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "updatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "folders": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "updatedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "name",
+                                  "createdAt",
+                                  "updatedAt"
+                                ]
+                              }
+                            },
+                            "documents": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  },
+                                  "title": {
+                                    "type": "string"
+                                  },
+                                  "createdAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "updatedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "title",
+                                  "createdAt",
+                                  "updatedAt"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "name",
+                            "createdAt",
+                            "updatedAt",
+                            "folders",
+                            "documents"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "data"
+                      ]
+                    }
+                  ]
+                },
+                "example": {
+                  "type": "document",
+                  "data": {
+                    "id": "11111111-1111-4111-8111-111111111111",
+                    "title": "API quickstart",
+                    "content": "Synthetic content.",
+                    "contentJson": null,
+                    "metadata": null,
+                    "createdAt": "2026-11-08T12:00:00Z",
+                    "updatedAt": "2026-11-08T12:00:00Z"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found in this scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Document not found"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The share link has expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Share link has expired"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Request rate limit exceeded.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Too many requests"
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Request failed"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Open a shared resource",
+        "description": "A valid link token grants scoped access. Category shares are returned as folder-shaped content.",
+        "tags": [
+          "Sharing"
+        ],
+        "security": [],
+        "x-docsmint-runtime-path": "/api/share/{token}"
       }
     },
     "/api/share/{id}/guests": {
@@ -16522,6 +16522,311 @@
             "OperatorBearer": []
           }
         ]
+      }
+    },
+    "/api/whoami": {
+      "get": {
+        "operationId": "getApiWhoami",
+        "summary": "Read API key identity",
+        "description": "Uses a self-hosted Bearer credential. This API does not accept a workspace selector.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "principalType": {
+                      "type": "string",
+                      "enum": [
+                        "account",
+                        "workspace",
+                        "category"
+                      ]
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "read",
+                          "edit",
+                          "write"
+                        ]
+                      }
+                    },
+                    "workspace": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "nullable": true
+                        },
+                        "slug": {
+                          "type": "string",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "slug"
+                      ],
+                      "nullable": true
+                    },
+                    "categoryId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "plan": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "principalType",
+                    "scopes",
+                    "permissions",
+                    "workspace",
+                    "categoryId",
+                    "plan"
+                  ]
+                },
+                "example": {
+                  "principalType": "workspace",
+                  "scopes": [
+                    "global"
+                  ],
+                  "permissions": [
+                    "read",
+                    "edit",
+                    "write"
+                  ],
+                  "workspace": null,
+                  "categoryId": null,
+                  "plan": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
+          }
+        },
+        "x-docsmint-v1-route-alias": "/api/v1/whoami"
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "operationId": "getApiWorkspaces",
+        "summary": "List workspaces visible to the API key",
+        "description": "Uses a self-hosted Bearer credential. This API does not accept a workspace selector.",
+        "tags": [
+          "Identity"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": "string",
+                        "nullable": true
+                      },
+                      "entireWorkspace": {
+                        "type": "boolean"
+                      },
+                      "categoryIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name",
+                      "slug",
+                      "entireWorkspace",
+                      "categoryIds"
+                    ]
+                  }
+                },
+                "example": [
+                  {
+                    "id": null,
+                    "name": "Personal",
+                    "slug": null,
+                    "entireWorkspace": true,
+                    "categoryIds": []
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Invalid query"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Operation outside the current grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Forbidden"
+                }
+              }
+            }
+          }
+        },
+        "x-docsmint-v1-route-alias": "/api/v1/workspaces"
       }
     }
   },

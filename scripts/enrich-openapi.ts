@@ -2235,6 +2235,123 @@ function describeOperatorEndpoints(spec: Spec) {
 	);
 }
 
+function describeDiscovery(spec: Spec) {
+	const string = { type: "string" };
+	const nullableString = { ...string, nullable: true };
+	const nullableUuid = { ...uuid, nullable: true };
+	const array = (items: object) => ({ type: "array", items });
+	const obj = (properties: Record<string, object>) => ({
+		type: "object",
+		properties,
+		required: Object.keys(properties),
+	});
+	const identity = obj({
+		principalType: { ...string, enum: ["account", "workspace", "category"] },
+		scopes: array(string),
+		permissions: array({ ...string, enum: ["read", "edit", "write"] }),
+		workspace: {
+			...obj({ id: nullableUuid, slug: nullableString }),
+			nullable: true,
+		},
+		categoryId: nullableUuid,
+		plan: { ...nullableString, enum: [null] },
+	});
+	const workspace = obj({
+		id: nullableUuid,
+		name: string,
+		slug: nullableString,
+		entireWorkspace: { type: "boolean" },
+		categoryIds: array(uuid),
+	});
+	for (const [path, operationId, title, schema, example] of [
+		[
+			"/api/whoami",
+			"getApiWhoami",
+			"Read API key identity",
+			identity,
+			{
+				principalType: "workspace",
+				scopes: ["global"],
+				permissions: ["read", "edit", "write"],
+				workspace: null,
+				categoryId: null,
+				plan: null,
+			},
+		],
+		[
+			"/api/workspaces",
+			"getApiWorkspaces",
+			"List workspaces visible to the API key",
+			array(workspace),
+			[
+				{
+					id: null,
+					name: "Personal",
+					slug: null,
+					entireWorkspace: true,
+					categoryIds: [],
+				},
+			],
+		],
+	] as const) {
+		spec.paths[path] ??= {};
+		spec.paths[path].get ??= { operationId };
+		describeOperation(
+			spec,
+			path,
+			"get",
+			title,
+			"Uses a self-hosted Bearer credential. This API does not accept a workspace selector.",
+			schema,
+			example,
+			[400, 401, 403],
+		);
+		spec.paths[path].get.security = [{ BearerAuth: [] }];
+		spec.paths[path].get.tags = ["Identity"];
+		spec.paths[path].get["x-docsmint-v1-route-alias"] = path.replace(
+			/^\/api\//,
+			"/api/v1/",
+		);
+	}
+}
+
+function restoreShareRuntimeTemplate(spec: Spec) {
+	const canonical = spec.paths["/api/share/{id}"];
+	const operation = canonical?.get;
+	if (operation?.["x-docsmint-runtime-path"] !== "/api/share/{token}") return;
+	const { "x-docsmint-runtime-path": _, ...rest } = operation;
+	spec.paths["/api/share/{token}"] = { get: rest };
+	delete canonical.get;
+}
+
+function normalizeShareTemplate(spec: Spec) {
+	const operation = spec.paths["/api/share/{token}"].get;
+	// OpenAPI requires a single template for identical path segments. Keep the
+	// actual router pattern separately so the frozen HTTP inventory is stable.
+	operation["x-docsmint-runtime-path"] = "/api/share/{token}";
+	operation.parameters = (operation.parameters as Array<{ name: string }>).map(
+		(parameter) =>
+			parameter.name === "token"
+				? { ...parameter, name: "id", description: "The share token." }
+				: parameter,
+	);
+	spec.paths["/api/share/{id}"].get = operation;
+	delete spec.paths["/api/share/{token}"];
+}
+
+export function openApiRuntimeInventory(spec: Spec) {
+	return Object.entries(spec.paths)
+		.flatMap(([path, operations]) =>
+			Object.entries(operations)
+				.filter(([method]) => HTTP_METHODS.has(method))
+				.map(
+					([method, operation]) =>
+						`${method.toUpperCase()} ${operation["x-docsmint-runtime-path"] ?? path}`,
+				),
+		)
+		.sort();
+}
+
 const HTTP_METHODS = new Set([
 	"get",
 	"post",
@@ -2247,6 +2364,7 @@ const HTTP_METHODS = new Set([
 ]);
 
 export function enrichOpenApi(spec: Spec) {
+	restoreShareRuntimeTemplate(spec);
 	for (const [path, methods] of Object.entries(spec.paths)) {
 		const collection = path.split("/")[2];
 		for (const [method, operation] of Object.entries(methods)) {
@@ -2368,5 +2486,7 @@ export function enrichOpenApi(spec: Spec) {
 	};
 	describeHostEndpoints(spec);
 	describeOperatorEndpoints(spec);
+	describeDiscovery(spec);
+	normalizeShareTemplate(spec);
 	return spec;
 }
