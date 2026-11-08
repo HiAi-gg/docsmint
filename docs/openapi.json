@@ -60,7 +60,9 @@
       "get": {
         "operationId": "getApiHealth",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -68,7 +70,9 @@
       "get": {
         "operationId": "getApiCsrf-token",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -76,7 +80,9 @@
       "post": {
         "operationId": "postApiAuthUpdateUser",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -92,7 +98,9 @@
       "post": {
         "operationId": "postApiAuthChangeEmail",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -108,14 +116,18 @@
       "get": {
         "operationId": "getApiTags",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/tags"
       },
       "post": {
         "operationId": "postApiTags",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -137,7 +149,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -157,7 +171,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -179,7 +195,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -209,7 +227,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -221,7 +241,9 @@
       "get": {
         "operationId": "getApiCategories",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -236,7 +258,9 @@
       "post": {
         "operationId": "postApiCategories",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -266,7 +290,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -294,7 +320,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -383,7 +411,9 @@
           }
         },
         "responses": {
-          "201": {},
+          "201": {
+            "description": "HTTP 201 response."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -413,7 +443,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -441,7 +473,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -468,7 +502,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -498,7 +534,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/attachments/{id}/raw"
       }
@@ -507,7 +545,9 @@
       "get": {
         "operationId": "getApiAttachmentsRemote-image",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -524,13 +564,17 @@
       "post": {
         "operationId": "postApiShare",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       },
       "get": {
         "operationId": "getApiShare",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -548,7 +592,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -566,7 +612,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       },
       "patch": {
@@ -582,7 +630,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -600,7 +650,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -626,7 +678,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -652,7 +706,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -678,7 +734,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -686,7 +744,9 @@
       "get": {
         "operationId": "getApiSearch",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/search/"
       }
@@ -695,7 +755,9 @@
       "get": {
         "operationId": "getApiSearchSuggest",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/search/suggest"
       }
@@ -1574,7 +1636,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -1656,12 +1720,24 @@
           }
         ],
         "responses": {
-          "200": {},
-          "400": {},
-          "401": {},
-          "403": {},
-          "404": {},
-          "429": {}
+          "200": {
+            "description": "Successful request."
+          },
+          "400": {
+            "description": "HTTP 400 response."
+          },
+          "401": {
+            "description": "HTTP 401 response."
+          },
+          "403": {
+            "description": "HTTP 403 response."
+          },
+          "404": {
+            "description": "HTTP 404 response."
+          },
+          "429": {
+            "description": "HTTP 429 response."
+          }
         },
         "security": [
           {
@@ -1991,7 +2067,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -2181,7 +2259,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "description": "Account purge fence is active"
           }
@@ -2626,7 +2706,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/documents/{id}/export"
       }
@@ -2635,7 +2717,9 @@
       "post": {
         "operationId": "postApiDocumentsImport",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "description": "Account purge fence is active"
           }
@@ -2657,7 +2741,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/folders/{id}"
       },
@@ -2674,7 +2760,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -2694,7 +2782,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -2706,14 +2796,18 @@
       "get": {
         "operationId": "getApiFolders",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "x-docsmint-v1-route-alias": "/api/v1/folders/"
       },
       "post": {
         "operationId": "postApiFolders",
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -3915,7 +4009,9 @@
       "post": {
         "operationId": "postApiWebhooksStorage",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -4244,7 +4340,9 @@
       "post": {
         "operationId": "postApiKeysGlobal",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4267,7 +4365,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4291,7 +4391,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4304,7 +4406,9 @@
       "get": {
         "operationId": "getApiKeys",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4327,7 +4431,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -4343,7 +4449,9 @@
       "get": {
         "operationId": "getApiPlugins",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -4361,7 +4469,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -4379,7 +4489,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -4409,7 +4521,9 @@
           }
         ],
         "responses": {
-          "200": {},
+          "200": {
+            "description": "Successful request."
+          },
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           }
@@ -4439,7 +4553,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4455,7 +4571,9 @@
       "get": {
         "operationId": "getApiAdminEmbedding-stats",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4471,7 +4589,9 @@
       "get": {
         "operationId": "getApiAdminHealthEmbeddings",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4487,7 +4607,9 @@
       "post": {
         "operationId": "postApiAdminReindexModel",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4503,7 +4625,9 @@
       "get": {
         "operationId": "getApiAdminGraphStats",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4529,7 +4653,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4555,7 +4681,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         },
         "security": [
           {
@@ -4571,7 +4699,9 @@
       "get": {
         "operationId": "getApiAdminAudit",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -4597,7 +4727,9 @@
           }
         ],
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     },
@@ -4610,7 +4742,9 @@
         "summary": "Process-local embedding metrics snapshot",
         "description": "Returns the current counter values and the raw duration histogram samples from the in-process metrics registry. Authenticated via `x-api-key` or `Authorization: Bearer <key>`.",
         "responses": {
-          "200": {}
+          "200": {
+            "description": "Successful request."
+          }
         }
       }
     }

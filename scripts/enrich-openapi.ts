@@ -453,28 +453,36 @@ function describeVersions(spec: Spec) {
 	);
 }
 
+const HTTP_METHODS = new Set([
+	"get",
+	"post",
+	"patch",
+	"put",
+	"delete",
+	"options",
+	"head",
+	"trace",
+]);
+
 export function enrichOpenApi(spec: Spec) {
 	for (const [path, methods] of Object.entries(spec.paths)) {
 		const collection = path.split("/")[2];
-		if (!collection || !publicIntegrationCollections.has(collection)) continue;
 		for (const [method, operation] of Object.entries(methods)) {
-			if (
-				![
-					"get",
-					"post",
-					"patch",
-					"put",
-					"delete",
-					"options",
-					"head",
-					"trace",
-				].includes(method)
-			)
-				continue;
-			operation["x-docsmint-v1-route-alias"] = path.replace(
-				/^\/api\//,
-				"/api/v1/",
-			);
+			if (!HTTP_METHODS.has(method)) continue;
+			if (collection && publicIntegrationCollections.has(collection)) {
+				operation["x-docsmint-v1-route-alias"] = path.replace(
+					/^\/api\//,
+					"/api/v1/",
+				);
+			}
+			const responses = operation.responses as
+				| Record<string, Record<string, unknown>>
+				| undefined;
+			for (const [status, response] of Object.entries(responses ?? {})) {
+				if ("description" in response || "$ref" in response) continue;
+				response.description =
+					status === "200" ? "Successful request." : `HTTP ${status} response.`;
+			}
 		}
 	}
 	const create = spec.paths["/api/documents"]?.post;
