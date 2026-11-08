@@ -53,6 +53,7 @@ function describeOperation(
 	example: object,
 	errors: number[],
 	parameters?: object[],
+	status = 200,
 ) {
 	const operation = spec.paths[path]?.[method];
 	if (!operation)
@@ -63,6 +64,10 @@ function describeOperation(
 		403: failure("Operation outside the current grant.", "Forbidden"),
 		404: failure("Document not found in this scope.", "Document not found"),
 		409: { $ref: "#/components/responses/AccountPurgeFenced" },
+		413: failure(
+			"Comparison exceeds the safe size limit.",
+			"Version diff exceeds the safe comparison limit",
+		),
 		429: {
 			...failure("Request rate limit exceeded.", "Too many requests"),
 			headers: { "Retry-After": { schema: { type: "integer" } } },
@@ -284,6 +289,170 @@ function describeDocumentReadsAndTrash(spec: Spec) {
 	);
 }
 
+function describeVersions(spec: Spec) {
+	const path = "/api/documents/{id}/versions";
+	const date = { type: "string", format: "date-time" };
+	const properties = {
+		id: uuid,
+		label: { type: "string", nullable: true },
+		createdAt: date,
+	};
+	const version = {
+		type: "object",
+		required: ["id", "documentId", "content", "createdBy", "createdAt"],
+		properties: {
+			...properties,
+			documentId: uuid,
+			content: { type: "string" },
+			contentJson: {},
+			createdBy: uuid,
+			description: { type: "string", nullable: true },
+			isSnapshot: { type: "boolean" },
+			restoredFrom: { ...uuid, nullable: true },
+		},
+	};
+	const versionId = "22222222-2222-4222-8222-222222222222";
+	const createdAt = "2026-11-08T12:00:00.000Z";
+	const row = {
+		id: versionId,
+		documentId: documentExample.id,
+		content: "Sample version",
+		createdBy: "33333333-3333-4333-8333-333333333333",
+		createdAt,
+		label: "Baseline",
+		isSnapshot: true,
+	};
+	const idParameter = { name: "id", in: "path", required: true, schema: uuid };
+
+	describeOperation(
+		spec,
+		path + "/",
+		"get",
+		"List document versions",
+		"Returns versions of an authorized document, newest first. Set onlySnapshots to select named snapshots.",
+		{ type: "array", items: version },
+		[row],
+		[400, 401, 403, 404, 429, 500],
+		[
+			idParameter,
+			{
+				name: "onlySnapshots",
+				in: "query",
+				schema: { type: "boolean", default: false },
+			},
+			{
+				name: "limit",
+				in: "query",
+				schema: { type: "integer", minimum: 1, maximum: 500, default: 100 },
+			},
+		],
+	);
+	describeOperation(
+		spec,
+		path + "/",
+		"post",
+		"Create a named snapshot",
+		"Captures the current document content. Requires write permission.",
+		version,
+		row,
+		[400, 401, 403, 404, 409, 429, 500],
+		[idParameter],
+		201,
+	);
+	const create = spec.paths[path + "/"].post;
+	// Elysia's placeholder success status is superseded by the actual 201.
+	delete (create.responses as Record<string, unknown>)["200"];
+	create.requestBody = {
+		required: true,
+		content: json(
+			{
+				type: "object",
+				required: ["label"],
+				properties: {
+					label: { type: "string", minLength: 1, maxLength: 200 },
+					description: { type: "string", maxLength: 1000 },
+				},
+			},
+			{ label: "Baseline" },
+		),
+	};
+
+	describeOperation(
+		spec,
+		path + "/{vid}",
+		"get",
+		"Read a document version",
+		"Returns the version body in the current document scope.",
+		version,
+		row,
+		[401, 403, 404, 500],
+	);
+	describeOperation(
+		spec,
+		path + "/{vid}/restore",
+		"post",
+		"Restore a document version",
+		"Applies the saved content to the current document. Requires edit permission.",
+		document,
+		documentExample,
+		[401, 403, 404, 409, 429, 500],
+	);
+
+	const revision = {
+		type: "object",
+		required: ["id", "createdAt"],
+		properties,
+	};
+	const count = { type: "integer", minimum: 0 };
+	describeOperation(
+		spec,
+		path + "/diff",
+		"get",
+		"Compare two document versions",
+		"Returns line changes from the older or source version to the target version.",
+		{
+			type: "object",
+			required: ["v1", "v2", "changes", "hunks"],
+			properties: {
+				v1: revision,
+				v2: revision,
+				changes: {
+					type: "object",
+					required: ["added", "removed", "modified"],
+					properties: { added: count, removed: count, modified: count },
+				},
+				hunks: {
+					type: "array",
+					items: {
+						type: "object",
+						required: ["type", "lines"],
+						properties: {
+							type: { type: "string", enum: ["add", "remove", "unchanged"] },
+							lines: { type: "array", items: { type: "string" } },
+						},
+					},
+				},
+			},
+		},
+		{
+			v1: { id: versionId, createdAt },
+			v2: { id: "44444444-4444-4444-8444-444444444444", createdAt },
+			changes: { added: 1, removed: 0, modified: 0 },
+			hunks: [{ type: "add", lines: ["New line"] }],
+		},
+		[400, 401, 403, 404, 413, 500],
+		[
+			idParameter,
+			...["from", "to"].map((name) => ({
+				name,
+				in: "query",
+				required: true,
+				schema: uuid,
+			})),
+		],
+	);
+}
+
 export function enrichOpenApi(spec: Spec) {
 	for (const [path, methods] of Object.entries(spec.paths)) {
 		const collection = path.split("/")[2];
@@ -383,5 +552,6 @@ export function enrichOpenApi(spec: Spec) {
 		},
 	});
 	describeDocumentReadsAndTrash(spec);
+	describeVersions(spec);
 	return spec;
 }
