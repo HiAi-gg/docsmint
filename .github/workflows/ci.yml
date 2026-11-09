@@ -120,6 +120,7 @@ jobs:
       - run: bun run release:check:audit
       - run: bun run test:unit
       - run: bun run test:contract
+      - run: bun run --filter '@hiai-docs/mcp-server' test:contract:generate-client
 
   integration-test:
     name: Required PostgreSQL Integrations
