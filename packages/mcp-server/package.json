@@ -11,7 +11,8 @@
     "dev": "bun run src/index.ts",
     "test": "bun run --filter '@hiai-docs/sdk' build && bun test --path-ignore-patterns=\"*node_modules*\" src",
     "test:unit": "bun run test",
-    "test:contract:scoped-live": "bun run --filter '@hiai-docs/sdk' build && ATTACHMENT_PRESIGN_EXPIRY_SECONDS=60 bun test tests/integration/scoped-public-surfaces.test.ts",
+    "test:contract:scoped-live": "bun run --filter '@hiai-docs/sdk' build && bun run test:contract:generate-client && ATTACHMENT_PRESIGN_EXPIRY_SECONDS=60 bun test tests/integration/scoped-public-surfaces.test.ts",
+    "test:contract:generate-client": "openapi-typescript ../../docs/openapi.json -o build/openapi-paths.ts && tsc --ignoreConfig --noEmit --strict --skipLibCheck --target ESNext --module ESNext --moduleResolution bundler tests/integration/openapi-client.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -23,6 +24,8 @@
     "@modelcontextprotocol/client": "2.3.0",
     "@types/bun": "^1.4.1",
     "ajv": "8.20.0",
+    "openapi-fetch": "0.14.0",
+    "openapi-typescript": "7.10.1",
     "typescript": "6.0.3"
   }
 }

@@ -37,6 +37,7 @@ import { tenantTopologyLockKey } from "../../../../backend/src/lib/topology-seri
 import { capabilityCatalog } from "../../src/capabilities.js";
 import { createDocsmintMcpServer } from "../../src/server.js";
 import { resolveContractServiceBindings } from "./contract-service-bindings";
+import { discoverWithOpenApi } from "./openapi-client";
 
 const requiredEnvironment = [
 	"DOCSMINT_WORKSPACE_SECRET",
@@ -569,6 +570,25 @@ afterAll(async () => {
 });
 
 describe("live category-scoped public surfaces", () => {
+	test("uses the generated OpenAPI client for identity, workspace discovery, and suggestions", async () => {
+		const { identity, workspaces, suggestions, rejected } =
+			await discoverWithOpenApi(
+				baseUrl,
+				ids.personalApiKey,
+				personalVisibleTitle,
+			);
+		expect(identity.response.status).toBe(200);
+		expect(identity.data?.principalType).toBe("workspace");
+		expect(identity.data?.permissions).toContain("read");
+		expect(workspaces.response.status).toBe(200);
+		expect(workspaces.data?.map(({ name }) => name)).toEqual(["Personal"]);
+		expect(suggestions.response.status).toBe(200);
+		expect(suggestions.data?.map(({ id }) => id)).toContain(
+			ids.docPersonalVisible,
+		);
+		expect(rejected.response.status).toBe(401);
+	});
+
 	test("excludes soft-deleted suggestions for personal, legacy workspace, and category assertions", async () => {
 		const personal = new DocsClient({
 			baseUrl,
