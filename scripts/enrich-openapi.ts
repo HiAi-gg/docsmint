@@ -2363,6 +2363,47 @@ const HTTP_METHODS = new Set([
 	"trace",
 ]);
 
+function describeIndexExamples(spec: Spec) {
+	const prefix = "/api/documents/{id}";
+	const documentId = documentExample.id;
+	const generationId = "22222222-2222-4222-8222-222222222222";
+	const accepted = { documentId, generationId, deduplicated: false };
+	const examples = [
+		[
+			"/pipeline/retry-warnings",
+			"post",
+			"200",
+			{ ...accepted, retriedStages: ["graph"] },
+		],
+		["/index/refresh", "post", "202", accepted],
+		[
+			"/index-status",
+			"get",
+			"200",
+			{
+				documentId,
+				embeddingStatus: "pending",
+				activeGenerationId: null,
+				pendingGenerationId: generationId,
+				embeddingProfile: null,
+				embeddingErrorCode: null,
+				embeddingUpdatedAt: null,
+				searchable: false,
+				pipeline: null,
+			},
+		],
+	] as const;
+
+	for (const [path, method, status, example] of examples) {
+		const responses = spec.paths[prefix + path]?.[method]?.responses as
+			| Record<string, { content?: Record<string, { example?: object }> }>
+			| undefined;
+		const content = responses?.[status]?.content?.["application/json"];
+		if (!content) throw new Error(`Missing index response schema for ${path}`);
+		content.example = example;
+	}
+}
+
 export function enrichOpenApi(spec: Spec) {
 	restoreShareRuntimeTemplate(spec);
 	for (const [path, methods] of Object.entries(spec.paths)) {
@@ -2487,6 +2528,7 @@ export function enrichOpenApi(spec: Spec) {
 	describeHostEndpoints(spec);
 	describeOperatorEndpoints(spec);
 	describeDiscovery(spec);
+	describeIndexExamples(spec);
 	normalizeShareTemplate(spec);
 	return spec;
 }

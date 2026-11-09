@@ -164,7 +164,7 @@ const swaggerConfig = {
 		},
 		info: {
 			title: "DocsMint API",
-			version: "2.1.4",
+			version: "2.1.5",
 			description:
 				"Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
 			contact: { name: "HiAi-gg", url: "https://github.com/HiAi-gg/docsmint" },
@@ -202,10 +202,16 @@ const integrationOrigins = integrationAllowedOrigins(config);
 
 const app = new Elysia()
 	.use(bodySizeLimit)
-	.onRequest(({ request }) =>
-		rejectIntegrationOrigin(request, integrationOrigins),
-	)
+	.onRequest(({ request, set }) => {
+		const rejected = rejectIntegrationOrigin(request, integrationOrigins);
+		if (rejected) {
+			rejected.headers.set("X-Request-ID", crypto.randomUUID());
+			return rejected;
+		}
+		set.headers["X-Request-ID"] = crypto.randomUUID();
+	})
 	.onError(({ error, set }) => {
+		set.headers["X-Request-ID"] ??= crypto.randomUUID();
 		const purgeFence = translateAccountPurgeFencedError(error, set);
 		if (purgeFence) return purgeFence;
 		if (error instanceof DocsmintWorkspaceContextError) {
@@ -213,7 +219,17 @@ const app = new Elysia()
 			return { error: error.message };
 		}
 	})
-	.onAfterHandle(({ set }) => {
+	.onAfterHandle(({ set, responseValue }) => {
+		// Versioned routes can return a response from the legacy route, including
+		// its request ID. Keep one ID even when a route replaces set.headers.
+		if (
+			responseValue instanceof Response &&
+			responseValue.headers.has("X-Request-ID")
+		) {
+			delete set.headers["X-Request-ID"];
+		} else {
+			set.headers["X-Request-ID"] ??= crypto.randomUUID();
+		}
 		set.headers["Content-Security-Policy"] = CSP_POLICY;
 		set.headers["Strict-Transport-Security"] = HSTS_POLICY;
 		set.headers["X-Content-Type-Options"] = "nosniff";
