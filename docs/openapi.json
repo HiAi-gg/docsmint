@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
-    "version": "2.1.4",
+    "version": "2.1.5",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -7645,6 +7645,14 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocsPipelineWarningRetry"
+                },
+                "example": {
+                  "documentId": "11111111-1111-4111-8111-111111111111",
+                  "generationId": "22222222-2222-4222-8222-222222222222",
+                  "deduplicated": false,
+                  "retriedStages": [
+                    "graph"
+                  ]
                 }
               }
             }
@@ -7908,6 +7916,17 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocsDocumentIndexStatus"
+                },
+                "example": {
+                  "documentId": "11111111-1111-4111-8111-111111111111",
+                  "embeddingStatus": "pending",
+                  "activeGenerationId": null,
+                  "pendingGenerationId": "22222222-2222-4222-8222-222222222222",
+                  "embeddingProfile": null,
+                  "embeddingErrorCode": null,
+                  "embeddingUpdatedAt": null,
+                  "searchable": false,
+                  "pipeline": null
                 }
               }
             }
@@ -7962,6 +7981,11 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DocsDocumentIndexRefresh"
+                },
+                "example": {
+                  "documentId": "11111111-1111-4111-8111-111111111111",
+                  "generationId": "22222222-2222-4222-8222-222222222222",
+                  "deduplicated": false
                 }
               }
             }

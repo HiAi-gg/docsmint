@@ -570,6 +570,34 @@ afterAll(async () => {
 });
 
 describe("live category-scoped public surfaces", () => {
+	test("returns a server-issued request ID on legacy REST, versioned REST, and MCP denials", async () => {
+		const callerId = "attacker-controlled";
+		const cases = [
+			["/api/documents", {}, 401],
+			["/api/v1/whoami", {}, 401],
+			["/api/v1/documents", { Origin: "https://untrusted.invalid" }, 403],
+			["/mcp", { Origin: "https://untrusted.invalid" }, 403],
+		] as const;
+		const observed = new Set<string>();
+		for (const [path, headers, status] of cases) {
+			const response = await fetch(baseUrl + path, {
+				headers: { ...headers, "X-Request-ID": callerId },
+			});
+			expect(response.status, path).toBe(status);
+			const requestId = response.headers.get("X-Request-ID");
+			expect(requestId, path).toMatch(/^[a-f0-9-]{36}$/);
+			expect(requestId).not.toBe(callerId);
+			if (requestId) observed.add(requestId);
+		}
+		expect(observed.size).toBe(cases.length);
+
+		const response = await fetch(baseUrl + "/api/v1/documents", {
+			headers: { Authorization: `Bearer ${ids.personalApiKey}` },
+		});
+		expect(response.status).toBe(200);
+		expect(response.headers.get("X-Request-ID")).toMatch(/^[a-f0-9-]{36}$/);
+	});
+
 	test("uses the generated OpenAPI client for identity, workspace discovery, and suggestions", async () => {
 		const { identity, workspaces, suggestions, rejected } =
 			await discoverWithOpenApi(

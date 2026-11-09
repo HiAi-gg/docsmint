@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.5 - 2026-11-09
+
+- Include a server-issued request ID in REST and HTTP MCP responses, including early authorization failures.
+- Show representative responses for index status, refresh and warning-stage retries in OpenAPI.
+- Exercise a client generated from OpenAPI in the existing contract checks.
+
 ## 2.1.4 - 2026-11-08
 
 - Document the self-hosted REST responses, request bodies, permissions, and retry behavior in OpenAPI.
