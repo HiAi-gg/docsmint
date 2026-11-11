@@ -455,7 +455,7 @@ const securityServer = createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', 'content-length': 1048577 })
     res.end('x'.repeat(1048577)); return
   }
-  if (req.url === '/token-error') { json(res, 400, { error_description: reflectedRefresh }); return }
+  if (req.url === '/token-error') { json(res, 400, { error: reflectedRefresh, error_description: reflectedRefresh }); return }
   if (req.url === '/http-error') { json(res, 403, { error: reflectedKey }); return }
   let body = ''
   for await (const chunk of req) body += chunk

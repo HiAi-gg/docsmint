@@ -885,7 +885,7 @@ async function tokenRequest(tokenEndpoint, form, signal) {
         `DocsMint refused the token request (${response.status})${detail ? `: ${detail}` : '.'}`,
         response.status,
       ),
-      reason,
+      reason: reason ? sanitize(reason) : undefined,
     }
   }
   const accessToken = str(data?.access_token)

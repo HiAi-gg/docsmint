@@ -314,18 +314,28 @@ async function readOAuthRecord(ctx) {
 }
 
 /**
- * Drop the stored OAuth record without touching the rest of the connection state.
- *
+ * Drop only the OAuth record whose refresh was refused.
  * @param {any} ctx - registrant context.
- * @returns {Promise<void>}
+ * @param {any} expectedRecord - the record used for the refresh request.
+ * @param {number} generation - the connection generation at refresh start.
+ * @returns {Promise<boolean>} false if a newer connection must be preserved.
  */
-async function clearOAuthRecord(ctx) {
+async function clearOAuthRecord(ctx, expectedRecord, generation) {
   const credentials = /** @type {any} */ (ctx.get('credentials'))
-  if (!credentials || typeof credentials.unset !== 'function') return
+  if (!credentials || typeof credentials.unset !== 'function') return true
+  const state = stateFor(ctx)
   try {
-    await mutateCredentials(ctx, () => credentials.unset(OAUTH_REF))
+    return await mutateCredentials(ctx, async () => {
+      if (!state.active || state.generation !== generation) return false
+      const current = await readOAuthRecord(ctx)
+      if (!state.active || state.generation !== generation) return false
+      if (JSON.stringify(current) !== JSON.stringify(expectedRecord)) return false
+      await credentials.unset(OAUTH_REF)
+      return true
+    })
   } catch {
     // Best effort: the caller already reports that authorization is required.
+    return true
   }
 }
 
@@ -408,7 +418,9 @@ async function ensureMcpAuth(ctx, config, connection, force = false) {
         // the panel asks for a fresh consent instead of replaying a doomed 400 on
         // every request until the user works out that reconnecting is the fix.
         if (refreshed.reason === 'invalid_grant') {
-          await clearOAuthRecord(ctx)
+          if (!(await clearOAuthRecord(ctx, record, generation))) {
+            return { error: failure('connection-changed', 'The DocsMint connection changed. Retry the request.', 409) }
+          }
           return {
             error: failure(
               'mcp-needs-oauth',

@@ -246,6 +246,18 @@ check(
   { body: revokedCall.body, stillStored: revokedStore.has('DOCSMINT_OAUTH') },
 )
 revoked.unload()
+const replacedStore = new Map([['DOCSMINT_OAUTH', JSON.stringify(token)], ['DOCSMINT_MODE', 'mcp']])
+const replaced = createHarness({ store: replacedStore })
+let finishRefusedRefresh
+refreshGate = new Promise(resolve => { finishRefusedRefresh = resolve })
+const replacedCall = rpc(replaced.routes, 'list')
+await new Promise(resolve => setTimeout(resolve, 20))
+const replacement = JSON.stringify({ ...token, access_token: 'new-test-access', refresh_token: 'new-test-refresh', expires_at: Date.now() + 3600000 })
+replacedStore.set('DOCSMINT_OAUTH', replacement)
+finishRefusedRefresh()
+const replacedResult = await replacedCall
+check('a stale refresh refusal preserves a newer OAuth record', replacedStore.get('DOCSMINT_OAUTH') === replacement && replacedResult.body?.code === 'connection-changed')
+replaced.unload()
 revokedRefresh = false
 const pendingRefreshStore = new Map([['DOCSMINT_OAUTH', JSON.stringify(token)], ['DOCSMINT_MODE', 'mcp']])
 const pendingRefresh = createHarness({ store: pendingRefreshStore })
