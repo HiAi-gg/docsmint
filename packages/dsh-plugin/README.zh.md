@@ -4,7 +4,7 @@
 
 [English](./README.md) | 简体中文
 
-在 DeepSeek Harness 左侧边栏中浏览 DocsMint 工作区，并让智能体通过四个工具搜索、读取、创建和更新文档。
+在 DeepSeek Harness 左侧边栏中浏览 DocsMint 工作区，并让智能体通过五个工具浏览目录结构以及搜索、读取、创建和更新文档。
 
 ## 安装稳定版
 
@@ -32,12 +32,13 @@ dsh --profile web
 
 | 工具 | 用途 |
 | --- | --- |
+| `docsmint_list_workspace_structure` | 列出可访问的文件夹和分类及其 ID |
 | `docsmint_search` | 搜索已授权文档 |
 | `docsmint_get_document` | 读取文档及链接 |
 | `docsmint_create_document` | 创建文档 |
 | `docsmint_update_document` | 更新标题或正文 |
 
-这四个是插件提供给智能体的工具，不是 DocsMint MCP 服务端完整工具目录。
+这五个是插件提供给智能体的工具，不是 DocsMint MCP 服务端完整工具目录。
 
 ## 隐私和凭据
 
