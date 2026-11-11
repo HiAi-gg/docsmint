@@ -5,7 +5,7 @@
 English | [简体中文](./README.zh.md)
 
 DocsMint in the DeepSeek Harness: a **left-sidebar panel** for your workspace and
-**four agent tools** the model can call, over either the DocsMint REST API or the
+**five agent tools** the model can call, over either the DocsMint REST API or the
 DocsMint MCP server.
 
 - **DocsMint Cloud** (`docsmint.com`) — default. MCP mode authorizes through the
@@ -88,6 +88,7 @@ pagination. Use SDK 2.1.0-compatible DocsMint endpoints for this behavior.
 
 | Tool | Purpose |
 |---|---|
+| `docsmint_list_workspace_structure` | Discover visible folders and categories with IDs; in MCP mode, also discover workspaces |
 | `docsmint_search` | Hybrid search over the workspace; returns ids, titles, snippets, scores |
 | `docsmint_get_document` | Read one document with its Markdown body and a link |
 | `docsmint_create_document` | Create a document, optionally inside a folder |

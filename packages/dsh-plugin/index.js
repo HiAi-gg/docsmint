@@ -46,6 +46,7 @@ const DEFAULTS = {
 
 /** Agent tools this bundle registers. */
 const TOOL_NAMES = [
+  'docsmint_list_workspace_structure',
   'docsmint_search',
   'docsmint_get_document',
   'docsmint_create_document',
@@ -713,13 +714,15 @@ async function runUpdate(ctx, config, options = {}) {
  * @param {any} ctx - registrant context.
  * @param {Record<string, unknown> | undefined} config - the Loader row config.
  * @param {'workspaces' | 'folders' | 'categories'} kind - structure kind.
+ * @param {{ workspaceId?: unknown }} [options] - explicit MCP workspace selection.
  * @returns {Promise<any>} `{ ok: true, items }` or a failure.
  */
-async function runStructure(ctx, config, kind) {
+async function runStructure(ctx, config, kind, options = {}) {
   const connection = await resolveConnection(ctx, config)
   /** @type {Record<string, string>} */
   const restPaths = { workspaces: '', folders: '/folders', categories: '/categories' }
   if (connection.mode !== 'mcp') {
+    if (str(options.workspaceId)) return failure('structure-unsupported', 'Explicit workspace selection needs MCP mode.', 400)
     const path = restPaths[kind]
     if (!path) {
       return failure('structure-unsupported', 'Listing workspaces needs the MCP transport.', 400)
@@ -737,7 +740,7 @@ async function runStructure(ctx, config, kind) {
             : []
     return { ok: true, status: 200, data: { items } }
   }
-  return mcpInvoke(ctx, config, connection, kind, {})
+  return mcpInvoke(ctx, config, connection, kind, { workspaceId: str(options.workspaceId) })
 }
 
 /**
@@ -1386,6 +1389,61 @@ function toolDefinitions(ctx, config) {
       },
     },
     {
+      name: 'docsmint_list_workspace_structure',
+      description: 'List visible DocsMint folders or categories with their real IDs before placing a document. Use kind=workspaces in MCP mode to discover workspace IDs. Only resources permitted by the active connection are shown.',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind'],
+        properties: {
+          kind: { type: 'string', enum: ['folders', 'categories', 'workspaces'] },
+          workspaceId: { type: 'string', description: 'Optional MCP workspace UUID returned by kind=workspaces.' },
+        },
+      },
+      output: {
+        schema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['kind', 'items'],
+          properties: {
+            kind: { type: 'string' },
+            partial: { type: 'boolean' },
+            items: { type: 'array', items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['id', 'name'],
+              properties: {
+                id: { type: 'string' }, name: { type: 'string' }, parentId: { type: 'string' },
+                categoryId: { type: 'string' }, workspaceId: { type: 'string' },
+              },
+            } },
+          },
+        },
+        render: (_args, value) => {
+          const lines = (value?.items ?? []).map(item =>
+            [item.name, item.id, item.workspaceId && `workspace: ${item.workspaceId}`, item.categoryId && `category: ${item.categoryId}`, item.parentId && `parent: ${item.parentId}`].filter(Boolean).join(' — '))
+          return [{ type: 'text', text: [`DocsMint ${value?.kind ?? 'structure'}:`, ...(lines.length ? lines : ['No visible items.']), ...(value?.partial ? ['Some granted scopes could not be listed.'] : [])].join('\n') }]
+        },
+      },
+      presentCall: (args) => ({ card: 'generic', title: `List DocsMint ${str(args?.kind) ?? 'structure'}`, kind: 'search', rawInput: args }),
+      async execute(args) {
+        const input = toolArgs(args)
+        const kind = input.kind
+        if (kind !== 'folders' && kind !== 'categories' && kind !== 'workspaces') {
+          throwFailure(failure('invalid-kind', 'Choose folders, categories or workspaces.', 400))
+        }
+        const result = await runStructure(ctx, config, kind, { workspaceId: input.workspaceId })
+        if (!result.ok) throwFailure(result)
+        const rows = Array.isArray(result.data?.items) ? result.data.items : []
+        return { kind, ...(result.data?.partial ? { partial: true } : {}), items: rows.flatMap(row => {
+          const id = str(row?.id)
+          const name = str(row?.name) ?? str(row?.title)
+          return id && name ? [compact({ id, name, workspaceId: str(row?.workspaceId) ?? str(input.workspaceId),
+            parentId: str(row?.parentId) ?? str(row?.parent_id), categoryId: str(row?.categoryId) ?? str(row?.category_id) })] : []
+        }) }
+      },
+    },
+    {
       name: 'docsmint_get_document',
       description:
         'Read one DocsMint document by id, including its full Markdown content, folder, category, tags and a link to open it in the DocsMint web app.',
@@ -1440,7 +1498,7 @@ function toolDefinitions(ctx, config) {
         properties: {
           title: { type: 'string', description: 'Document title.' },
           content: { type: 'string', description: 'Markdown body of the new document.' },
-          folderId: { type: 'string', description: 'Optional DocsMint folder id to place the document in.' },
+          folderId: { type: 'string', description: 'Optional folder ID from docsmint_list_workspace_structure(kind=folders).' },
         },
       },
       output: {

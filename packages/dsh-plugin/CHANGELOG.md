@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.0.2] — 2026-11-11
+
+- Let the DSH agent discover visible folders and categories with their IDs before placing documents.
+
 ## [1.0.1] — 2026-11-11
 
 - Report the DocsMint token refusal reason (`error` / `error_description` from the
