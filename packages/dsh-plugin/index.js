@@ -314,6 +314,32 @@ async function readOAuthRecord(ctx) {
 }
 
 /**
+ * Drop only the OAuth record whose refresh was refused.
+ * @param {any} ctx - registrant context.
+ * @param {any} expectedRecord - the record used for the refresh request.
+ * @param {number} generation - the connection generation at refresh start.
+ * @returns {Promise<boolean>} false if a newer connection must be preserved.
+ */
+async function clearOAuthRecord(ctx, expectedRecord, generation) {
+  const credentials = /** @type {any} */ (ctx.get('credentials'))
+  if (!credentials || typeof credentials.unset !== 'function') return true
+  const state = stateFor(ctx)
+  try {
+    return await mutateCredentials(ctx, async () => {
+      if (!state.active || state.generation !== generation) return false
+      const current = await readOAuthRecord(ctx)
+      if (!state.active || state.generation !== generation) return false
+      if (JSON.stringify(current) !== JSON.stringify(expectedRecord)) return false
+      await credentials.unset(OAUTH_REF)
+      return true
+    })
+  } catch {
+    // Best effort: the caller already reports that authorization is required.
+    return true
+  }
+}
+
+/**
  * @param {any} ctx - registrant context.
  * @param {any} record - the token record to persist.
  * @returns {Promise<void>}
@@ -387,7 +413,24 @@ async function ensureMcpAuth(ctx, config, connection, force = false) {
         { token_endpoint: record.token_endpoint },
         { clientId: record.client_id, refreshToken: record.refresh_token, resource: record.resource },
       )
-      if (!refreshed.ok) return { error: refreshed }
+      if (!refreshed.ok) {
+        // A revoked or expired refresh token is terminal: drop the dead record so
+        // the panel asks for a fresh consent instead of replaying a doomed 400 on
+        // every request until the user works out that reconnecting is the fix.
+        if (refreshed.reason === 'invalid_grant') {
+          if (!(await clearOAuthRecord(ctx, record, generation))) {
+            return { error: failure('connection-changed', 'The DocsMint connection changed. Retry the request.', 409) }
+          }
+          return {
+            error: failure(
+              'mcp-needs-oauth',
+              'The DocsMint Cloud authorization expired or was revoked. Press "Connect with OAuth" in the DocsMint panel to authorize again.',
+              401,
+            ),
+          }
+        }
+        return { error: refreshed }
+      }
       if (!state.active || state.generation !== generation) return { error: failure('connection-changed', 'The DocsMint connection changed. Retry the request.', 409) }
       const next = { ...record, access_token: refreshed.tokens.accessToken, refresh_token: refreshed.tokens.refreshToken ?? record.refresh_token, expires_at: refreshed.tokens.expiresAt }
       await writeOAuthRecord(ctx, next)

@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.1] — 2026-11-11
+
+- Report the DocsMint token refusal reason (`error` / `error_description` from the
+  token endpoint) in the panel message, with request credentials redacted, so a
+  failure explains itself instead of showing a bare HTTP 400.
+- Drop a revoked or expired OAuth record when a refresh is refused with
+  `invalid_grant`, and ask for a fresh consent instead of replaying the same 400 on
+  every request until the user guesses that reconnecting is the fix.
+- Cover both behaviours in the adapter and plugin suites.
+
 ## [1.0.0] — 2026-11-04
 
 - Load further document pages while preserving filters and sorting, with unique rows and a shown/total counter.

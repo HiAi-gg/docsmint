@@ -866,7 +866,27 @@ async function tokenRequest(tokenEndpoint, form, signal) {
     data = undefined
   }
   if (!response.ok) {
-    return failure('oauth-token', `DocsMint refused the token request (${response.status}).`, response.status)
+    // The description is server-controlled text: strip anything the request sent
+    // as a credential, so a reflecting endpoint cannot leak it into the panel.
+    const secrets = ['refresh_token', 'code', 'code_verifier']
+      .map((key) => form.get(key))
+      .filter((value) => typeof value === 'string' && value.length >= 8)
+    const sanitize = (value) => {
+      let out = value
+      for (const secret of secrets) out = out.split(secret).join('[redacted]')
+      return out.length > 200 ? `${out.slice(0, 200)}…` : out
+    }
+    const reason = str(data?.error)
+    const description = str(data?.error_description)
+    const detail = [reason, description].filter(Boolean).map(sanitize).join(': ')
+    return {
+      ...failure(
+        'oauth-token',
+        `DocsMint refused the token request (${response.status})${detail ? `: ${detail}` : '.'}`,
+        response.status,
+      ),
+      reason: reason ? sanitize(reason) : undefined,
+    }
   }
   const accessToken = str(data?.access_token)
   if (!accessToken) return failure('oauth-token', 'The token response carried no access_token.')

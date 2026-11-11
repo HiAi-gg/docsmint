@@ -224,6 +224,13 @@ const server = createServer(async (req, res) => {
     const form = new URLSearchParams(raw)
     const grant = form.get('grant_type')
     asState.tokenCalls.push({ grant, verifier: form.get('code_verifier'), redirectUri: form.get('redirect_uri') })
+    if (form.get('refresh_token') === 'revoked-refresh' || form.get('code') === 'expired-code') {
+      const description = grant === 'refresh_token'
+        ? 'Invalid or expired refresh token'
+        : 'Invalid or expired authorization code'
+      json(res, 400, { error: 'invalid_grant', error_description: description })
+      return
+    }
     if (grant === 'authorization_code' && asState.challenge) {
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(form.get('code_verifier') ?? ''))
       if (Buffer.from(new Uint8Array(digest)).toString('base64url') !== asState.challenge) {
@@ -419,6 +426,16 @@ check(
 const refreshed = await refreshOAuthToken({ token_endpoint: discovery.metadata.token_endpoint }, { clientId: registration.clientId, refreshToken: 'refresh-1' })
 check('refresh returns a new access token', refreshed.ok === true && refreshed.tokens.accessToken === 'access-refreshed', refreshed)
 
+const refused = await refreshOAuthToken({ token_endpoint: discovery.metadata.token_endpoint }, { clientId: registration.clientId, refreshToken: 'revoked-refresh' })
+check(
+  'a refused token request carries the server reason for the panel',
+  refused.ok === false &&
+    refused.reason === 'invalid_grant' &&
+    refused.status === 400 &&
+    refused.message.includes('Invalid or expired refresh token'),
+  refused,
+)
+
 const denied = await exchangeAuthorizationCode(
   discovery.metadata,
   { clientId: registration.clientId, code: 'code-1', verifier: 'wrong-verifier', redirectUri: 'http://127.0.0.1:49869/docsmint/oauth/callback' },
@@ -438,7 +455,7 @@ const securityServer = createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'application/json', 'content-length': 1048577 })
     res.end('x'.repeat(1048577)); return
   }
-  if (req.url === '/token-error') { json(res, 400, { error_description: reflectedRefresh }); return }
+  if (req.url === '/token-error') { json(res, 400, { error: reflectedRefresh, error_description: reflectedRefresh }); return }
   if (req.url === '/http-error') { json(res, 403, { error: reflectedKey }); return }
   let body = ''
   for await (const chunk of req) body += chunk
