@@ -314,6 +314,22 @@ async function readOAuthRecord(ctx) {
 }
 
 /**
+ * Drop the stored OAuth record without touching the rest of the connection state.
+ *
+ * @param {any} ctx - registrant context.
+ * @returns {Promise<void>}
+ */
+async function clearOAuthRecord(ctx) {
+  const credentials = /** @type {any} */ (ctx.get('credentials'))
+  if (!credentials || typeof credentials.unset !== 'function') return
+  try {
+    await mutateCredentials(ctx, () => credentials.unset(OAUTH_REF))
+  } catch {
+    // Best effort: the caller already reports that authorization is required.
+  }
+}
+
+/**
  * @param {any} ctx - registrant context.
  * @param {any} record - the token record to persist.
  * @returns {Promise<void>}
@@ -387,7 +403,22 @@ async function ensureMcpAuth(ctx, config, connection, force = false) {
         { token_endpoint: record.token_endpoint },
         { clientId: record.client_id, refreshToken: record.refresh_token, resource: record.resource },
       )
-      if (!refreshed.ok) return { error: refreshed }
+      if (!refreshed.ok) {
+        // A revoked or expired refresh token is terminal: drop the dead record so
+        // the panel asks for a fresh consent instead of replaying a doomed 400 on
+        // every request until the user works out that reconnecting is the fix.
+        if (refreshed.reason === 'invalid_grant') {
+          await clearOAuthRecord(ctx)
+          return {
+            error: failure(
+              'mcp-needs-oauth',
+              'The DocsMint Cloud authorization expired or was revoked. Press "Connect with OAuth" in the DocsMint panel to authorize again.',
+              401,
+            ),
+          }
+        }
+        return { error: refreshed }
+      }
       if (!state.active || state.generation !== generation) return { error: failure('connection-changed', 'The DocsMint connection changed. Retry the request.', 409) }
       const next = { ...record, access_token: refreshed.tokens.accessToken, refresh_token: refreshed.tokens.refreshToken ?? record.refresh_token, expires_at: refreshed.tokens.expiresAt }
       await writeOAuthRecord(ctx, next)
