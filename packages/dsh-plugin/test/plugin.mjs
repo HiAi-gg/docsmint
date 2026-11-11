@@ -111,9 +111,10 @@ const SECRET = 'dmp_live_test_secret_do_not_leak_0001'
 const store = new Map()
 const harness = createHarness({ store })
 
-check('registers exactly four tools', [...harness.tools.keys()].sort().join(',') === [
+check('registers five tools', [...harness.tools.keys()].sort().join(',') === [
   'docsmint_create_document',
   'docsmint_get_document',
+  'docsmint_list_workspace_structure',
   'docsmint_search',
   'docsmint_update_document',
 ].join(','), [...harness.tools.keys()])
@@ -162,7 +163,7 @@ check('unload unregisters every tool', harness.tools.size === 0, [...harness.too
 
 const restarted = createHarness({ store })
 check('re-apply after unload works and keeps the stored credentials', (await rpc(restarted.routes, 'state')).body.configured === true)
-check('re-apply registers the tools again', restarted.tools.size === 4, restarted.tools.size)
+check('re-apply registers the tools again', restarted.tools.size === 5, restarted.tools.size)
 restarted.unload()
 
 /* ---------------------- profile security regressions --------------------- */
@@ -217,6 +218,20 @@ await rpc(two.routes, 'save', { mode: 'api' })
 await rpc(two.routes, 'list', filterInput)
 const rest = calls.filter(call => call.rest).at(-1).rest
 check('REST bridge forwards filters with CSV tags and false', rest.searchParams.get('tagIds') === 'tag-a,tag-b' && rest.searchParams.get('rootOnly') === 'false' && rest.searchParams.get('categoryId') === 'category-a' && rest.searchParams.get('sortBy') === 'title', String(rest))
+tools.push({ name: 'list_workspace_structure', inputSchema: { oneOf: ['folders', 'categories', 'workspaces'].map(kind => ({
+  type: 'object', properties: { kind: { const: kind }, workspaceId: {} }, required: ['kind'],
+})) } })
+const structureProfile = makeProfile('profile-structure-key')
+const structure = structureProfile.tools.get('docsmint_list_workspace_structure')
+for (const kind of ['folders', 'categories']) {
+  scopedFixture = { operation: kind, result: [{ id: 'item-' + kind, name: 'Visible ' + kind, categoryId: 'category-a' }] }
+  const value = structure ? await structure.execute({ kind, workspaceId: 'workspace-a' }) : undefined
+  const last = calls.filter(call => call.method === 'tools/call').at(-1)?.params
+  check('agent lists ' + kind + ' with real IDs and workspace routing', value?.items[0]?.id === 'item-' + kind &&
+    last?.name === 'list_workspace_structure' && last.arguments.kind === kind && last.arguments.workspaceId === 'workspace-a')
+}
+scopedFixture = undefined
+structureProfile.unload()
 const cachedCalls = calls.filter(call => call.method === 'initialize').length
 scopedFixture = { operation: 'list', scopedResults: ['alpha', 'beta'].map((name) => ({ workspace: { id: name, slug: name + '-slug', name }, categoryId: null, data: { operation: 'list', result: { items: [{ id: 'same-doc-id', title: name, url: 'http://127.0.0.1:59999/w/' + name + '-slug/documents/same-doc-id' }], total: 20 } } })) }
 const fanout = await rpc(one.routes, 'list')
