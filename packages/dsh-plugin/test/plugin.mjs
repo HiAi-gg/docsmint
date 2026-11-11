@@ -274,6 +274,38 @@ const replacedResult = await replacedCall
 check('a stale refresh refusal preserves a newer OAuth record', replacedStore.get('DOCSMINT_OAUTH') === replacement && replacedResult.body?.code === 'connection-changed')
 replaced.unload()
 revokedRefresh = false
+/* The consent link must survive a page reload (it lives in Host state) and must
+ * never carry the PKCE verifier, which stays in the Host only. */
+const linkProfile = createHarness({ store: new Map() })
+await rpc(linkProfile.routes, 'save', { deployment: 'cloud', mode: 'mcp' })
+const linkBegun = await rpc(linkProfile.routes, 'mcpConnect')
+const authorizeUrl = linkBegun.body?.authorizeUrl
+check(
+  'mcpConnect offers a consent link with a lifetime, without the PKCE verifier',
+  typeof authorizeUrl === 'string' &&
+    authorizeUrl.startsWith('https://docsmint.com/authorize?') &&
+    authorizeUrl.includes('code_challenge_method=S256') &&
+    !authorizeUrl.includes('code_verifier') &&
+    linkBegun.body.expiresAt > Date.now(),
+  linkBegun.body,
+)
+const linkAfterReload = await rpc(linkProfile.routes, 'state')
+check(
+  'panel state keeps offering the live consent link after a reload',
+  linkAfterReload.body?.mcp?.authorizeUrl === authorizeUrl && linkAfterReload.body.mcp.authorizeExpiresAt > Date.now(),
+  linkAfterReload.body.mcp,
+)
+const secondFlow = await rpc(linkProfile.routes, 'mcpConnect')
+check('starting another flow replaces the offered link', secondFlow.body.authorizeUrl !== authorizeUrl)
+await rpc(linkProfile.routes, 'mcpDisconnect')
+const linkAfterDisconnect = await rpc(linkProfile.routes, 'state')
+check(
+  'disconnecting withdraws the consent link',
+  linkAfterDisconnect.body?.mcp?.authorizeUrl === undefined,
+  linkAfterDisconnect.body.mcp,
+)
+linkProfile.unload()
+
 const pendingRefreshStore = new Map([['DOCSMINT_OAUTH', JSON.stringify(token)], ['DOCSMINT_MODE', 'mcp']])
 const pendingRefresh = createHarness({ store: pendingRefreshStore })
 refreshGate = new Promise(resolve => { releaseRefresh = resolve })
@@ -428,3 +460,4 @@ if (failures.length > 0) {
 } else {
   console.log('\nall checks passed')
 }
+

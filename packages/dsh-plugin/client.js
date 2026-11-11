@@ -102,6 +102,12 @@ window.__ModuleLoader__.load({
       'panel.mcp.server': 'Server',
       'panel.mcp.failed': 'OAuth did not finish',
       'panel.mcp.reopen': 'Open the consent page again',
+      'panel.mcp.copyLink': 'Copy OAuth link',
+      'panel.mcp.copied': 'Link copied',
+      'panel.mcp.copyFailed': 'Select the link below and copy it manually.',
+      'panel.mcp.consentLink': 'OAuth consent link',
+      'panel.mcp.linkHint':
+        'If the browser did not open, or the consent tab was lost, copy this link and paste it into a browser tab.',
       'filter.workspace': 'Workspace',
       'filter.category': 'Category',
       'filter.folder': 'Folder',
@@ -200,6 +206,12 @@ window.__ModuleLoader__.load({
       'panel.mcp.server': 'Сервер',
       'panel.mcp.failed': 'OAuth не завершён',
       'panel.mcp.reopen': 'Открыть экран согласия снова',
+      'panel.mcp.copyLink': 'Скопировать ссылку OAuth',
+      'panel.mcp.copied': 'Ссылка скопирована',
+      'panel.mcp.copyFailed': 'Выделите ссылку ниже и скопируйте вручную.',
+      'panel.mcp.consentLink': 'Ссылка для согласия OAuth',
+      'panel.mcp.linkHint':
+        'Если браузер не открылся или вкладка с согласием потерялась, скопируйте ссылку и откройте её в браузере.',
       'filter.workspace': 'Пространство',
       'filter.category': 'Категория',
       'filter.folder': 'Папка',
@@ -337,6 +349,10 @@ window.__ModuleLoader__.load({
       .dm-oauth-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
       .dm-oauth .dm-card-body { margin:0; }
       .dm-oauth .dm-form-actions { margin:0; }
+      .dm-oauth-link { display:flex; flex-direction:column; gap:6px; padding-top:8px;
+        border-top:1px dashed var(--dsw-alias-border-l1); }
+      .dm-oauth-link-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+      .dm-oauth-link-input { font-size:11.5px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; }
       .dm-foot { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 20px;
         border-top:1px solid var(--dsw-alias-border-l1); font-size:11.5px;
         color:var(--dsw-alias-label-secondary); }
@@ -525,6 +541,9 @@ window.__ModuleLoader__.load({
         const [form, setForm] = React.useState({ apiKey: '', workspace: '', deployment: 'cloud', mode: 'api', baseUrl: '' })
         const [formError, setFormError] = React.useState('')
         const [waitingOAuth, setWaitingOAuth] = React.useState(false)
+        const [pendingLink, setPendingLink] = React.useState('')
+        const [linkNote, setLinkNote] = React.useState('')
+        const [copiedLink, setCopiedLink] = React.useState(false)
         const [filters, setFilters] = React.useState({ workspaceId: '', categoryId: '', folderId: '' })
         const [sort, setSort] = React.useState('updated-desc')
         const [structure, setStructure] = React.useState({ workspaces: [], folders: [], categories: [] })
@@ -818,8 +837,10 @@ window.__ModuleLoader__.load({
               return
             }
             const opened = window.open(started.authorizeUrl, '_blank', 'noopener,noreferrer')
-            if (!opened) setNotice(started.authorizeUrl)
+            setPendingLink(started.authorizeUrl)
+            setLinkNote(opened ? '' : t('panel.mcp.copyFailed'))
             setWaitingOAuth(true)
+            setCopiedLink(false)
             const deadline = Date.now() + 5 * 60_000
             if (pollRef.current) clearInterval(pollRef.current)
             pollRef.current = setInterval(() => {
@@ -833,6 +854,9 @@ window.__ModuleLoader__.load({
                     setWaitingOAuth(false)
                     setEditing(false)
                     setNotice('')
+                    setPendingLink('')
+                    setLinkNote('')
+                    setCopiedLink(false)
                     await loadFirstPage()
                   } else if (Date.now() > deadline) {
                     clearInterval(pollRef.current)
@@ -852,10 +876,100 @@ window.__ModuleLoader__.load({
           }
         }
 
+        /**
+         * The consent link to offer. The Host keeps the newest live pending link,
+         * so it survives a page reload while that consent is still valid.
+         */
+        function authorizeLink() {
+          if (pendingLink) return pendingLink
+          const link = connection?.mcp?.authorizeUrl
+          return typeof link === 'string' ? link : ''
+        }
+
+        async function copyText(value) {
+          try {
+            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+              await navigator.clipboard.writeText(value)
+              return true
+            }
+          } catch {
+            // Fall through to the selection-based copy.
+          }
+          try {
+            const holder = document.createElement('textarea')
+            holder.value = value
+            holder.setAttribute('readonly', '')
+            holder.style.position = 'fixed'
+            holder.style.top = '-1000px'
+            holder.style.opacity = '0'
+            document.body.appendChild(holder)
+            holder.select()
+            const copied = typeof document.execCommand === 'function' && document.execCommand('copy')
+            document.body.removeChild(holder)
+            return copied === true
+          } catch {
+            return false
+          }
+        }
+
+        async function copyAuthorizeLink() {
+          const link = authorizeLink()
+          if (!link) return
+          const copied = await copyText(link)
+          setCopiedLink(copied)
+          setLinkNote(copied ? '' : t('panel.mcp.copyFailed'))
+          if (copied) setTimeout(() => setCopiedLink(false), 2500)
+        }
+
+        function reopenAuthorizeLink() {
+          const link = authorizeLink()
+          if (!link) return
+          const opened = window.open(link, '_blank', 'noopener,noreferrer')
+          if (!opened) setLinkNote(t('panel.mcp.copyFailed'))
+        }
+
+        function oauthLinkBlock() {
+          const link = authorizeLink()
+          if (!link) return null
+          return h(
+            'div',
+            { className: 'dm-oauth-link' },
+            h('p', { className: 'dm-hint' }, t('panel.mcp.linkHint')),
+            h(
+              'div',
+              { className: 'dm-oauth-link-row' },
+              h('input', {
+                className: 'dm-input dm-oauth-link-input',
+                type: 'text',
+                readOnly: true,
+                value: link,
+                spellCheck: false,
+                'aria-label': t('panel.mcp.consentLink'),
+                onFocus: (event) => event.currentTarget.select(),
+                onClick: (event) => event.currentTarget.select(),
+              }),
+              h(
+                'button',
+                { type: 'button', className: 'dm-btn', disabled: busy, onClick: () => void copyAuthorizeLink() },
+                t(copiedLink ? 'panel.mcp.copied' : 'panel.mcp.copyLink'),
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dm-btn', disabled: busy, onClick: reopenAuthorizeLink },
+                t('panel.mcp.reopen'),
+              ),
+            ),
+            linkNote ? h('p', { className: 'dm-hint dm-link-note' }, linkNote) : null,
+          )
+        }
+
         async function disconnectOAuth() {
           resetPaging()
           setBusy(true)
           setFormError('')
+          setPendingLink('')
+          setLinkNote('')
+          setCopiedLink(false)
           try {
             const state = await rpc('mcpDisconnect')
             setConnection(state)
@@ -1035,6 +1149,7 @@ window.__ModuleLoader__.load({
             ),
             waitingOAuth ? h('p', { className: 'dm-hint' }, t('panel.mcp.waiting')) : null,
             metaRow(t('panel.mcp.endpoint'), mcp?.endpoint),
+            oauthLinkBlock(),
             metaRow(t('panel.mcp.server'), mcp?.server),
             mcp?.expiresAt ? metaRow(t('panel.mcp.expires'), new Date(mcp.expiresAt).toLocaleString()) : null,
           )

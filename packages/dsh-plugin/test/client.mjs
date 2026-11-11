@@ -29,7 +29,7 @@ async function mountPanel(options = {}) {
       assert.equal(Object.keys(init.headers).some(key => key.toLowerCase() === 'authorization'), false)
       const call = JSON.parse(init.body); calls.push(call); pending++
       let payload = { ok: true }
-      if (call.method === 'state') payload = { ...payload, configured: true, mode: 'mcp', deployment: 'cloud', webHome: 'https://docsmint.com' }
+      if (call.method === 'state') payload = { ...payload, configured: options.configured !== false, mode: 'mcp', deployment: 'cloud', webHome: 'https://docsmint.com', ...(options.mcp ? { mcp: options.mcp } : {}) }
       else if (call.method === 'structure') payload.items = fixtures[call.params.kind] || []
       else if (call.method === 'list' && options.list) { try { payload = { ok: true, ...await options.list(call.params) } } catch (error) { pending--; throw error } }
       else if (call.method === 'list') payload = { ...payload, total: 140, items: [
@@ -203,3 +203,29 @@ test('refresh updates successful timestamp, failure retains it, search has no lo
   await panel.click('Show more')
   assert.equal(last(panel, 'list').params.page, 2)
 })
+
+test('panel offers the consent link and its copy action when the browser flow stalls', async () => {
+  const authorizeUrl = 'https://docsmint.com/oauth/authorize?client_id=client-1&code_challenge=abc&state=xyz'
+  const panel = await mountPanel({
+    configured: false,
+    mcp: { connected: false, needsConnect: true, endpoint: 'https://docsmint.com/mcp', authorizeUrl, authorizeExpiresAt: Date.now() + 600000 },
+  })
+  const field = panel.nodes().find(n => n.type === 'input' && n.props.className.includes('dm-oauth-link-input'))
+  assert.ok(field, 'the consent link is shown')
+  assert.equal(field.props.value, authorizeUrl)
+  assert.equal(field.props.readOnly, true, 'the link is copied from, not edited')
+  assert.ok(panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Copy OAuth link'))
+  assert.ok(panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Open the consent page again'))
+  // Without a clipboard in this sandbox the copy must degrade to manual selection.
+  await panel.click('Copy OAuth link')
+  assert.ok(panel.nodes().some(n => n.props.className === 'dm-hint dm-link-note' && panel.text(n).includes('copy it manually')))
+})
+
+test('no consent link is offered once the authorization is connected', async () => {
+  const panel = await mountPanel({ configured: false, mcp: { connected: true, needsConnect: false, endpoint: 'https://docsmint.com/mcp' } })
+  assert.ok(!panel.nodes().some(n => n.type === 'button' && panel.text(n) === 'Copy OAuth link'))
+  assert.ok(!panel.nodes().some(n => n.type === 'input' && n.props.className.includes('dm-oauth-link-input')))
+  assert.ok(panel.nodes().some(n => n.props.className === 'dm-meta-row' && panel.text(n).includes('MCP endpoint')))
+})
+
+

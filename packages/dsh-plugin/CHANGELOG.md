@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.3] — 2026-11-11
+
+- Offer the OAuth consent link in the panel, next to the MCP endpoint, with copy and
+  reopen actions: when the browser blocks the popup, the tab is lost, or the flow
+  never completes, the link can still be copied and opened by hand.
+- Keep the pending consent link in Host state, so it survives a page reload for as
+  long as the authorization is valid; withdrawing it on disconnect and replacing it
+  when another flow starts.
+- Degrade copy to manual selection where the clipboard API is unavailable, and
+  report that next to the link instead of in a surface the setup view does not show.
+
 ## [1.0.2] — 2026-11-11
 
 - Let the DSH agent discover visible folders and categories with their IDs before placing documents.

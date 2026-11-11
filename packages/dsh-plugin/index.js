@@ -578,12 +578,30 @@ async function mcpState(ctx, config, connection) {
   const info = session && typeof session.info === 'function' ? session.info() : { tools: null, server: null }
   if (connection.deployment === 'cloud') {
     const record = await readOAuthRecord(ctx)
+    // Surface the newest live authorization link: the panel can show it after a
+    // reload, when the popup was blocked, or when the consent tab was closed.
+    let authorizeUrl
+    let authorizeExpiresAt
+    for (const [state, entry] of stateFor(ctx).pending) {
+      const expiresAt = Number(entry.createdAt) + 10 * 60_000
+      if (expiresAt <= Date.now()) {
+        stateFor(ctx).pending.delete(state)
+        continue
+      }
+      if (!str(entry.authorizeUrl)) continue
+      if (authorizeExpiresAt === undefined || expiresAt > authorizeExpiresAt) {
+        authorizeUrl = entry.authorizeUrl
+        authorizeExpiresAt = expiresAt
+      }
+    }
     return {
       endpoint,
       transport: 'oauth',
       connected: Boolean(record?.access_token),
       needsConnect: !record?.access_token,
       expiresAt: typeof record?.expires_at === 'number' ? record.expires_at : null,
+      authorizeUrl,
+      authorizeExpiresAt,
       tools: info.tools,
       server: info.server,
     }
@@ -832,6 +850,15 @@ async function startOAuth(ctx, config) {
   const state = randomToken(24)
   const { verifier, challenge } = await pkcePair()
   if (!stateFor(ctx).active || stateFor(ctx).generation !== generation) return failure('connection-changed', 'The DocsMint connection changed.', 409)
+  const authorizeUrl = authorizationUrl(discovery.metadata, {
+    clientId: registration.clientId,
+    redirectUri,
+    scope,
+    resource: discovery.resource,
+    state,
+    challenge,
+  })
+  const createdAt = Date.now()
   stateFor(ctx).pending.set(state, {
     verifier,
     clientId: registration.clientId,
@@ -839,22 +866,19 @@ async function startOAuth(ctx, config) {
     resource: discovery.resource,
     metadata: discovery.metadata,
     tokenEndpoint: str(discovery.metadata.token_endpoint),
-    createdAt: Date.now(),
+    createdAt,
+    // Kept so the panel can offer the link itself when a browser blocks the
+    // popup or the consent tab never reaches the callback.
+    authorizeUrl,
   })
 
   return {
     ok: true,
-    authorizeUrl: authorizationUrl(discovery.metadata, {
-      clientId: registration.clientId,
-      redirectUri,
-      scope,
-      resource: discovery.resource,
-      state,
-      challenge,
-    }),
+    authorizeUrl,
     redirectUri,
     scopes: discovery.scopes,
     resource: discovery.resource,
+    expiresAt: createdAt + 10 * 60_000,
   }
 }
 
