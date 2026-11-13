@@ -60,7 +60,10 @@ window.__ModuleLoader__.load({
       'panel.emptyDocument': 'This document is empty.',
       'panel.setup.title': 'Connect a DocsMint workspace',
       'panel.setup.body':
-        'DocsMint Cloud is the default. Choose a self-hosted instance below if that is where your workspace runs, then paste an API key from that instance and the workspace slug for account-scoped keys. The key is stored in the Harness credential store and used only by this Host.',
+        'Choose DocsMint Cloud or your own running instance. Cloud MCP connects through OAuth; API mode and self-hosted MCP use an API key from that service. Credentials stay in the Harness credential store and are used only by this Host.',
+      'panel.setup.createAccount': 'Create a Cloud account',
+      'panel.setup.installSelfHosted': 'Install self-hosted DocsMint',
+      'panel.setup.getStarted': 'No DocsMint workspace yet?',
       'panel.setup.deployment': 'Where DocsMint runs',
       'panel.setup.cloudHint': 'docsmint.com — hosted workspace',
       'panel.setup.selfHostedHint': 'Your own DocsMint OSS or on-prem install',
@@ -96,7 +99,7 @@ window.__ModuleLoader__.load({
       'panel.mcp.connected': 'OAuth connected',
       'panel.mcp.expires': 'Token expires',
       'panel.mcp.selfBody':
-        'A self-hosted instance authenticates MCP with its own API key. It must serve /mcp over Streamable HTTP: DocsMint OSS ships MCP as the stdio binary docsmint-mcp, so API mode stays the supported path until the instance exposes HTTP MCP.',
+        'A self-hosted instance authenticates MCP with its own API key and must expose POST /mcp over Streamable HTTP. DocsMint OSS 2.1.0 and later provide HTTP MCP; use API mode for older stdio-only instances.',
       'panel.mcp.endpoint': 'MCP endpoint',
       'panel.mcp.tools': 'Tools discovered',
       'panel.mcp.server': 'Server',
@@ -164,7 +167,10 @@ window.__ModuleLoader__.load({
       'panel.emptyDocument': 'Документ пуст.',
       'panel.setup.title': 'Подключите рабочее пространство DocsMint',
       'panel.setup.body':
-        'По умолчанию используется DocsMint Cloud. Если рабочее пространство живёт на своём сервере, выберите его ниже, затем вставьте API-ключ этого инстанса и slug рабочего пространства, если ключ привязан к аккаунту. Ключ хранится в хранилище учётных данных Harness и используется только на стороне Host.',
+        'Выберите DocsMint Cloud или свой работающий инстанс. Cloud MCP подключается через OAuth; API-режим и MCP своего сервера используют API-ключ соответствующего сервиса. Учётные данные хранятся в Harness и используются только на стороне Host.',
+      'panel.setup.createAccount': 'Создать аккаунт Cloud',
+      'panel.setup.installSelfHosted': 'Установить DocsMint на своём сервере',
+      'panel.setup.getStarted': 'Ещё нет рабочего пространства DocsMint?',
       'panel.setup.deployment': 'Где работает DocsMint',
       'panel.setup.cloudHint': 'docsmint.com — облачное рабочее пространство',
       'panel.setup.selfHostedHint': 'Свой DocsMint OSS или on-prem установка',
@@ -200,7 +206,7 @@ window.__ModuleLoader__.load({
       'panel.mcp.connected': 'OAuth подключён',
       'panel.mcp.expires': 'Токен истекает',
       'panel.mcp.selfBody':
-        'Свой инстанс авторизует MCP собственным API-ключом. Инстанс должен отдавать /mcp по Streamable HTTP: в DocsMint OSS MCP поставляется как stdio-бинарник docsmint-mcp, поэтому пока HTTP MCP не включён, поддерживаемый путь — API.',
+        'MCP своего сервера использует API-ключ инстанса и требует POST /mcp через Streamable HTTP. DocsMint OSS 2.1.0 и новее поддерживает HTTP MCP; для старых инстансов только со stdio используйте API-режим.',
       'panel.mcp.endpoint': 'MCP-эндпоинт',
       'panel.mcp.tools': 'Найдено инструментов',
       'panel.mcp.server': 'Сервер',
@@ -1167,6 +1173,11 @@ window.__ModuleLoader__.load({
               { className: 'dm-card' },
               h('div', { className: 'dm-card-title' }, t('panel.setup.title')),
               h('p', { className: 'dm-card-body' }, t('panel.setup.body')),
+              h('p', { className: 'dm-hint' }, t('panel.setup.getStarted')),
+              h('div', { className: 'dm-form-actions' },
+                h('a', { className: 'dm-btn', href: SITE + '/signup', target: '_blank', rel: 'noreferrer noopener' }, t('panel.setup.createAccount')),
+                h('a', { className: 'dm-btn', href: 'https://github.com/HiAi-gg/docsmint#quickstart', target: '_blank', rel: 'noreferrer noopener' }, t('panel.setup.installSelfHosted')),
+              ),
               h(
                 'form',
                 { className: 'dm-form', onSubmit: saveConnection },

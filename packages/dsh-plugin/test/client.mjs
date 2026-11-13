@@ -229,3 +229,20 @@ test('no consent link is offered once the authorization is connected', async () 
 })
 
 
+
+test('setup offers public Cloud signup and self-hosted installation without credentials', async () => {
+  const panel = await mountPanel({ configured: false })
+  const links = panel.nodes().filter(node => node.type === 'a')
+  for (const [label, href] of [
+    ['Create a Cloud account', 'https://docsmint.com/signup'],
+    ['Install self-hosted DocsMint', 'https://github.com/HiAi-gg/docsmint#quickstart'],
+  ]) {
+    const link = links.find(node => panel.text(node) === label)
+    assert.ok(link, label)
+    assert.equal(link.props.href, href)
+    assert.equal(link.props.target, '_blank')
+    assert.equal(link.props.rel, 'noreferrer noopener')
+  }
+  assert.ok(!panel.calls.some(call => call.method === 'save' || call.method === 'oauthStart'))
+  panel.unmount()
+})

@@ -72,3 +72,6 @@ dsh plugin --profile web remove @hiai-gg/dsh-docsmint
 欢迎自愿为[插件镜像](https://github.com/HiAi-gg/dsh-docsmint)或[主仓库](https://github.com/HiAi-gg/docsmint)加星；这不是使用条件，也不代表第三方安全认证。
 
 许可证：[Apache-2.0](./LICENSE)。
+
+
+首次使用 DocsMint？先[注册 Cloud 账户](https://docsmint.com/signup)或[使用 Docker 安装自托管应用](https://github.com/HiAi-gg/docsmint#quickstart)，然后返回插件连接。只安装此插件不会创建工作区，也不会启动 DocsMint 服务。
