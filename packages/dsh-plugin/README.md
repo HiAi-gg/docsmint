@@ -182,3 +182,6 @@ tags are immutable. Pin an exact version when reproducing a report or rolling ba
 ## Support the project
 
 If the integration is useful, you can star the [plugin mirror](https://github.com/HiAi-gg/dsh-docsmint) or the [DocsMint source](https://github.com/HiAi-gg/docsmint). Stars are optional and do not unlock features.
+
+
+New to DocsMint? [Create a Cloud account](https://docsmint.com/signup) or [install the self-hosted application with Docker](https://github.com/HiAi-gg/docsmint#quickstart), then return to the plugin to connect. Installing this plugin alone does not create a workspace or run the DocsMint server.
