@@ -88,7 +88,7 @@ is a separate listing.
 
 REST and HTTP MCP responses include a server-issued request ID in the
 X-Request-ID header. Include that ID when reporting a failed request.
-See the [2.1.6 release notes](docs/release/v2.1.6-notes.md).
+See the [2.1.7 release notes](docs/release/v2.1.7-notes.md).
 
 ## Document version patch 2.1.4
 

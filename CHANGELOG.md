@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.1.7 - 2026-11-16
+
+- Upload and verify document image attachments through MCP.
+- Build the release browser stack with standard Docker networking.
+
 ## 2.1.6 - 2026-11-16
 
 - Limit document cursor pages before loading folder and category labels.
