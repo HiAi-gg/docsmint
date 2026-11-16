@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.9 - 2026-11-16
+
+- Publish the updated MCP setup and attachment workflow with the original frozen dependency graph.
+
 ## 2.1.8 - 2026-11-16
 
 - Pin the stdio setup to the verified GitHub release archive.
