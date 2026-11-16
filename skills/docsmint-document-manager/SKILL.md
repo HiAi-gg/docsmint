@@ -31,4 +31,11 @@ Use this skill when an agent must create, organize, edit, or research documents 
 5. Use `create_snapshot` before a substantial rewrite; choose a version through `read_document(view=versions)` before `restore_document_version`.
 6. Treat `delete_document`, `restore_trashed_document`, and `permanently_delete_document` as distinct lifecycle actions. Purge only on an explicit request.
 
+## Image attachments
+
+1. Read the document with `read_document(view=detail)`. Check existing files with `check_document_attachments` before retrying a previous upload.
+2. Call `upload_document_image` with `documentId`, `filename`, `mimeType`, and `contentBase64`. The document requires edit access. Supply PNG, JPEG or WebP bytes up to 2 MiB, without a data URL prefix.
+3. Insert the returned `url` as a Markdown image with descriptive alt text via `save_document(action=update)`, preserving the existing content.
+4. Reread the document and use `check_document_attachments` with the returned `attachmentId` to confirm the bytes open with the current access.
+
 DocsMint owns chunking, embeddings, multilingual hybrid retrieval, cross-encoder rerank, entity extraction, and GraphRAG indexing. Agents must use the MCP tools and never write those persistence layers directly.
