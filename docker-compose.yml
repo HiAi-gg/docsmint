@@ -99,7 +99,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-      network: host
     restart: unless-stopped
     ports:
       # API_PORT selects only the published host port. The container contract
@@ -268,7 +267,6 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-      network: host
       args:
         PUBLIC_APP_ID: ${PUBLIC_APP_ID:-docsmint}
         PUBLIC_DEPLOYMENT_ID: ${PUBLIC_DEPLOYMENT_ID:-docsmint-oss-2.1.6}

@@ -782,7 +782,12 @@ test("GitHub releases use reviewed versioned notes on create and rerun", async (
 	expect(run).not.toContain("--generate-notes");
 });
 
- test("Compose builds avoid the unresolved Bake host-network grant regression", async () => {
- const workflow = Bun.YAML.parse(await Bun.file(new URL("../.github/workflows/ci.yml", import.meta.url)).text()) as { env: Record<string, unknown> };
- expect(workflow.env.COMPOSE_BAKE).toBe("false");
- });
+test("Compose can build release images without host-network entitlements", async () => {
+	const compose = Bun.YAML.parse(
+		await Bun.file(new URL("../docker-compose.yml", import.meta.url)).text(),
+	) as { services: Record<string, { build: { network?: string } }> };
+
+	for (const service of ["api", "web"]) {
+		expect(compose.services[service].build.network).toBeUndefined();
+	}
+});

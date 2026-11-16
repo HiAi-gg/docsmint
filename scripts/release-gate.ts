@@ -409,7 +409,6 @@ if (import.meta.main) {
 	await mkdir(evidenceDirectory, { recursive: true });
 	const environment = {
 		...Bun.env,
-		COMPOSE_BAKE: "false",
 		PGPASSWORD: Bun.env.DB_PASSWORD,
 		RELEASE_COMMIT: commit,
 		RELEASE_DOCKER_EVIDENCE_DIRECTORY:
