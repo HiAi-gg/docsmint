@@ -998,6 +998,25 @@ export const documentCreateOperations = pgTable(
   ],
 );
 
+export const folderCreateOperations = pgTable(
+  "folder_create_operations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: text("workspace_id").notNull(),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key").notNull(),
+    folderId: uuid("folder_id").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("folder_create_operations_workspace_actor_key_unique").on(
+      table.workspaceId, table.actorUserId, table.idempotencyKey,
+    ),
+    uniqueIndex("folder_create_operations_folder_idx").on(table.folderId),
+  ],
+);
+
 export const versionRelations = relations(versions, ({ one }) => ({
   document: one(documents, {
     fields: [versions.documentId],

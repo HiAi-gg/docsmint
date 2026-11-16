@@ -1,4 +1,5 @@
-import { categories, documents, folders } from "@hiai-docs/db/schema";
+import { createHash } from "node:crypto";
+import { categories, documents, folderCreateOperations, folders } from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
@@ -14,6 +15,7 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import { documentCreateIdempotencyKey, documentCreateWorkspaceIdentity } from "../../lib/document-create-idempotency";
 import { invalidateDocListCache } from "../../lib/doc-cache";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
@@ -361,6 +363,12 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 400;
 			return { error: "Invalid input", details: parsed.error.flatten() };
 		}
+		const idempotencyKey = documentCreateIdempotencyKey(request);
+		if (idempotencyKey === "invalid") {
+			set.status = 400;
+			return { error: "Invalid Idempotency-Key" };
+		}
+		const workspaceIdentity = documentCreateWorkspaceIdentity(userId, ctx.workspaceId);
 		try {
 			const created = await withTenant(ctx, async (tx) => {
 				await acquireTenantTopologyLock(tx, ctx);
@@ -407,6 +415,31 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 					}
 				}
 
+				const requestFingerprint = createHash("sha256")
+					.update(JSON.stringify([parsed.data.name, parentId, categoryId])).digest("hex");
+				if (idempotencyKey) {
+					const [operation] = await tx.select().from(folderCreateOperations).where(and(
+						eq(folderCreateOperations.workspaceId, workspaceIdentity),
+						eq(folderCreateOperations.actorUserId, userId),
+						eq(folderCreateOperations.idempotencyKey, idempotencyKey),
+					)).limit(1);
+					if (operation) {
+						if (operation.requestFingerprint !== requestFingerprint) {
+							return { idempotencyConflict: true as const };
+						}
+						const [row] = await tx.select().from(folders).where(and(
+							eq(folders.id, operation.folderId),
+							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
+						)).limit(1);
+						if (!row) return { idempotencyConflict: true as const };
+						const currentCategory = await resolveFolderEffectiveCategory(tx, ctx, row.id);
+						if (!isAuthorizedCategory(access, currentCategory ?? null)) {
+							return { forbidden: true as const };
+						}
+						return { row, replay: true as const };
+					}
+				}
+
 				// Serialize allocation within this exact sibling scope. A database
 				// uniqueness constraint is intentionally avoided because category deletion
 				// uses ON DELETE SET NULL and folder moves remain independently editable.
@@ -446,8 +479,21 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						categoryId,
 					})
 					.returning();
+				if (idempotencyKey) {
+					await tx.insert(folderCreateOperations).values({
+						workspaceId: workspaceIdentity,
+						actorUserId: userId,
+						idempotencyKey,
+						folderId: row!.id,
+						requestFingerprint,
+					});
+				}
 				return { row };
 			});
+			if ("idempotencyConflict" in created) {
+				set.status = 409;
+				return { error: "Folder creation request conflicts with a previous operation" };
+			}
 			if ("notFound" in created) {
 				set.status = 404;
 				return { error: "Parent folder not found" };
@@ -460,7 +506,7 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				set.status = 404;
 				return { error: "Category not found" };
 			}
-			set.status = 201;
+			set.status = "replay" in created ? 200 : 201;
 			return created.row;
 		} catch (err) {
 			const purgeFence = translateAccountPurgeFencedError(err, set);
