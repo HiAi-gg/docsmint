@@ -290,6 +290,20 @@ describe("DocsClient public contract", () => {
 		expect(seenUrl).toContain("sortOrder=asc");
 	});
 
+	it("requests a compact catalog page without a count", async () => {
+		const docs = client(async (input) => {
+			const url = new URL(String(input));
+			expect(url.pathname).toBe("/api/documents/cursor");
+			expect(url.searchParams.get("view")).toBe("catalog");
+			expect(url.searchParams.get("includeTotal")).toBe("false");
+			expect(url.searchParams.get("cursor")).toBe("opaque");
+			return jsonResponse({ items: [], nextCursor: null });
+		});
+		expect(await docs.listCatalogDocuments({ cursor: "opaque", includeTotal: false })).toEqual({
+			items: [], nextCursor: null,
+		});
+	});
+
 	it("supports commenter share links and graph metadata endpoints", async () => {
 		const calls: Array<{ url: string; method: string; body?: string }> = [];
 		const docs = client(async (input, init) => {

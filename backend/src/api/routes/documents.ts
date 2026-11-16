@@ -170,6 +170,8 @@ const cursorListQuerySchema = z
 	.object({
 		...documentListQueryFields,
 		cursor: z.string().min(1).optional(),
+		view: z.enum(["catalog"]).optional(),
+		includeTotal: z.enum(["true", "false"]).optional(),
 		limit: z.coerce.number().int().min(1).max(100).default(50),
 		sortBy: z
 			.enum([
@@ -730,44 +732,62 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 			}
 		}
 		try {
-			const [countResult, rows] = await withTenant(ctx, (tx) =>
-				Promise.all([
-					tx
-						.select({ total: count() })
-						.from(documents)
-						.where(and(...filteredConditions)),
-					tx
-						.select({
-							id: documents.id,
-							title: documents.title,
-							content: sql<string>`LEFT(${documents.content}, 200)`.as(
-								"content",
-							),
-							folderId: documents.folderId,
-							folderName: folders.name,
-							categoryId: documents.categoryId,
-							effectiveCategoryId: effectiveDocumentCategoryValue(
+			const includeTotal = parsed.data.includeTotal !== "false";
+			const joinedSort = sortBy === "category" || sortBy === "folder";
+			const [countResult, rows] = await withTenant(ctx, (tx) => {
+				const projection = {
+					id: documents.id,
+					title: documents.title,
+					content: sql<string>`LEFT(${documents.content}, 200)`.as("content"),
+					folderId: documents.folderId,
+					categoryId: documents.categoryId,
+					effectiveCategoryId: (effectiveCategoryId
+						? sql<string>`${effectiveCategoryId}::uuid`
+						: effectiveDocumentCategoryValue(
 								documents.categoryId,
 								documents.folderId,
 								ctx,
-							).as("effective_category_id"),
-							categoryName: categories.name,
-							createdAt: documents.createdAt,
-							updatedAt: documents.updatedAt,
-						})
-						.from(documents)
-						.leftJoin(folders, eq(folders.id, documents.folderId))
-						.leftJoin(categories, eq(categories.id, documents.categoryId))
-						.where(and(...conditions))
-						.orderBy(
-							sortOrder === "asc"
-								? sql`${sortValue} asc nulls last`
-								: sql`${sortValue} desc nulls last`,
-							sortOrder === "asc" ? asc(documents.id) : desc(documents.id),
-						)
-						.limit(limit + 1),
-				]),
-			);
+							)
+					).as("effective_category_id"),
+					createdAt: documents.createdAt,
+					updatedAt: documents.updatedAt,
+				};
+				const order = [
+					sortOrder === "asc"
+						? sql`${sortValue} asc nulls last`
+						: sql`${sortValue} desc nulls last`,
+					sortOrder === "asc" ? asc(documents.id) : desc(documents.id),
+				] as const;
+				const selected = tx
+					.select(projection)
+					.from(documents)
+					.where(and(...conditions))
+					.orderBy(...order)
+					.limit(limit + 1);
+				const pageQuery = joinedSort
+					? tx
+							.select({
+								...projection,
+								folderName: folders.name,
+								categoryName: categories.name,
+							})
+							.from(documents)
+							.leftJoin(folders, eq(folders.id, documents.folderId))
+							.leftJoin(categories, eq(categories.id, documents.categoryId))
+							.where(and(...conditions))
+							.orderBy(...order)
+							.limit(limit + 1)
+					: selected;
+				return Promise.all([
+					includeTotal
+						? tx
+								.select({ total: count() })
+								.from(documents)
+								.where(and(...filteredConditions))
+						: Promise.resolve([]),
+					pageQuery,
+				]);
+			});
 			const hasMore = rows.length > limit;
 			const page = rows.slice(0, limit);
 			const last = page.at(-1);
@@ -775,20 +795,39 @@ export const documentRoutes = new Elysia({ prefix: "/api" })
 				? sortBy === "title"
 					? last.title.toLocaleLowerCase()
 					: sortBy === "category"
-						? (last.categoryName?.toLocaleLowerCase() ?? null)
+						? (("categoryName" in last
+								? (last.categoryName as string | null)
+								: null
+							)?.toLocaleLowerCase() ?? null)
 						: sortBy === "folder"
-							? (last.folderName?.toLocaleLowerCase() ?? null)
+							? (("folderName" in last
+									? (last.folderName as string | null)
+									: null
+								)?.toLocaleLowerCase() ?? null)
 							: new Date(
 									sortBy === "createdAt" ? last.createdAt : last.updatedAt,
 								).toISOString()
 				: null;
+			const compact = parsed.data.view === "catalog";
+			const items = (
+				await withDocumentLocationNames(
+					ctx,
+					compact ? page : await withTags(ctx, page),
+				)
+			).map((row) =>
+				withDocumentPreview(row, ctx.workspaceId, config.PUBLIC_APP_URL),
+			);
 			return {
-				total: countResult[0]?.total ?? 0,
-				items: (
-					await withDocumentLocationNames(ctx, await withTags(ctx, page))
-				).map((row) =>
-					withDocumentPreview(row, ctx.workspaceId, config.PUBLIC_APP_URL),
-				),
+				...(includeTotal ? { total: countResult[0]?.total ?? 0 } : {}),
+				items: compact
+					? items.map(({ id, title, preview, folderId, folderName }) => ({
+							id,
+							title,
+							preview,
+							folderId,
+							folderName,
+						}))
+					: items,
 				nextCursor:
 					hasMore && last
 						? encodeDocumentCursor({

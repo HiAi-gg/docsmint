@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { categories, documents, folderCreateOperations, folders } from "@hiai-docs/db/schema";
+import {
+	categories,
+	documents,
+	folderCreateOperations,
+	folders,
+} from "@hiai-docs/db/schema";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Elysia } from "elysia";
 import { z } from "zod";
@@ -15,8 +20,11 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
-import { documentCreateIdempotencyKey, documentCreateWorkspaceIdentity } from "../../lib/document-create-idempotency";
 import { invalidateDocListCache } from "../../lib/doc-cache";
+import {
+	documentCreateIdempotencyKey,
+	documentCreateWorkspaceIdentity,
+} from "../../lib/document-create-idempotency";
 import { nextAvailableFolderName } from "../../lib/folder-name";
 import { logger } from "../../lib/logger";
 import {
@@ -368,7 +376,10 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			set.status = 400;
 			return { error: "Invalid Idempotency-Key" };
 		}
-		const workspaceIdentity = documentCreateWorkspaceIdentity(userId, ctx.workspaceId);
+		const workspaceIdentity = documentCreateWorkspaceIdentity(
+			userId,
+			ctx.workspaceId,
+		);
 		try {
 			const created = await withTenant(ctx, async (tx) => {
 				await acquireTenantTopologyLock(tx, ctx);
@@ -416,23 +427,44 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 				}
 
 				const requestFingerprint = createHash("sha256")
-					.update(JSON.stringify([parsed.data.name, parentId, categoryId])).digest("hex");
+					.update(JSON.stringify([parsed.data.name, parentId, categoryId]))
+					.digest("hex");
 				if (idempotencyKey) {
-					const [operation] = await tx.select().from(folderCreateOperations).where(and(
-						eq(folderCreateOperations.workspaceId, workspaceIdentity),
-						eq(folderCreateOperations.actorUserId, userId),
-						eq(folderCreateOperations.idempotencyKey, idempotencyKey),
-					)).limit(1);
+					const [operation] = await tx
+						.select()
+						.from(folderCreateOperations)
+						.where(
+							and(
+								eq(folderCreateOperations.workspaceId, workspaceIdentity),
+								eq(folderCreateOperations.actorUserId, userId),
+								eq(folderCreateOperations.idempotencyKey, idempotencyKey),
+							),
+						)
+						.limit(1);
 					if (operation) {
 						if (operation.requestFingerprint !== requestFingerprint) {
 							return { idempotencyConflict: true as const };
 						}
-						const [row] = await tx.select().from(folders).where(and(
-							eq(folders.id, operation.folderId),
-							tenantOwnerCondition(folders.ownerId, folders.workspaceId, ctx),
-						)).limit(1);
+						const [row] = await tx
+							.select()
+							.from(folders)
+							.where(
+								and(
+									eq(folders.id, operation.folderId),
+									tenantOwnerCondition(
+										folders.ownerId,
+										folders.workspaceId,
+										ctx,
+									),
+								),
+							)
+							.limit(1);
 						if (!row) return { idempotencyConflict: true as const };
-						const currentCategory = await resolveFolderEffectiveCategory(tx, ctx, row.id);
+						const currentCategory = await resolveFolderEffectiveCategory(
+							tx,
+							ctx,
+							row.id,
+						);
 						if (!isAuthorizedCategory(access, currentCategory ?? null)) {
 							return { forbidden: true as const };
 						}
@@ -479,12 +511,13 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 						categoryId,
 					})
 					.returning();
+				if (!row) throw new Error("Folder insert returned no row");
 				if (idempotencyKey) {
 					await tx.insert(folderCreateOperations).values({
 						workspaceId: workspaceIdentity,
 						actorUserId: userId,
 						idempotencyKey,
-						folderId: row!.id,
+						folderId: row.id,
 						requestFingerprint,
 					});
 				}
@@ -492,7 +525,9 @@ export const folderRoutes = new Elysia({ prefix: "/api/folders" })
 			});
 			if ("idempotencyConflict" in created) {
 				set.status = 409;
-				return { error: "Folder creation request conflicts with a previous operation" };
+				return {
+					error: "Folder creation request conflicts with a previous operation",
+				};
 			}
 			if ("notFound" in created) {
 				set.status = 404;
