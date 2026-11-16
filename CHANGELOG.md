@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.8 - 2026-11-16
+
+- Pin the stdio setup to the verified GitHub release archive.
+- Document how to upload, embed, reread, and verify image attachments.
+- Cover uploads and verification in the live scoped MCP contract.
+
 ## 2.1.7 - 2026-11-16
 
 - Upload and verify document image attachments through MCP.

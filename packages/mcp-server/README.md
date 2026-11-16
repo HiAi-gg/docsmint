@@ -72,13 +72,13 @@ not install or expose the DocsMint Cloud OAuth authorization server.
 ### Run with Bun
 
 ```bash
-bunx --package @hiai-gg/docsmint docsmint-mcp
+bunx --package https://github.com/HiAi-gg/docsmint/releases/download/v2.1.8/hiai-gg-docsmint-2.1.8.tgz docsmint-mcp
 ```
 
 ### Run with NPX
 
 ```bash
-npx --yes --package @hiai-gg/docsmint docsmint-mcp
+npx --yes --package https://github.com/HiAi-gg/docsmint/releases/download/v2.1.8/hiai-gg-docsmint-2.1.8.tgz docsmint-mcp
 ```
 
 ### Run from a local checkout
@@ -99,7 +99,7 @@ All three methods run the same stdio server from `@hiai-gg/docsmint`.
   "mcpServers": {
     "docsmint": {
       "command": "npx",
-      "args": ["--yes", "--package", "@hiai-gg/docsmint", "docsmint-mcp"],
+      "args": ["--yes", "--package", "https://github.com/HiAi-gg/docsmint/releases/download/v2.1.8/hiai-gg-docsmint-2.1.8.tgz", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"
