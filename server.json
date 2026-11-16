@@ -87,7 +87,7 @@
       "licenseFile": "https://github.com/HiAi-gg/docsmint/blob/main/LICENSE",
       "documentationUrl": "https://docsmint.com/mcp/connect?source=mcp_registry",
       "catalog": {
-        "tools": 22,
+        "tools": 24,
         "prompts": 2,
         "resources": 3
       }

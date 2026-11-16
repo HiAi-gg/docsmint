@@ -6,7 +6,7 @@ import { createDocsmintMcpServer } from './server.js';
 const readOnly = new Set([
   'find_documents', 'read_document', 'list_workspace_structure', 'explore_graph',
   'get_document_index_status', 'list_trash',
-  'get_workspace_item',
+  'get_workspace_item', 'check_document_attachments',
 ]);
 const destructive = new Set([
   'save_document', 'delete_document', 'save_folder', 'delete_folder',

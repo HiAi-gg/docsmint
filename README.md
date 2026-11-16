@@ -308,7 +308,7 @@ checkout, all tools, prompts, resources, permissions, and REST mappings.
 
 ### Self-hosted HTTP
 
-The same 22-tool contract is also available at `/mcp` on your installation's
+The same 24-tool contract is also available at `/mcp` on your installation's
 **public web origin**. With the default Compose ports, that is
 `http://localhost:50701/mcp`; with Caddy, use your normal application domain,
 such as `https://docs.example.com/mcp`. The web server streams requests to the

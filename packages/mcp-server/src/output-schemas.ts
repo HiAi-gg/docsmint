@@ -277,6 +277,14 @@ const operationOutputSchemas = {
 const variant = <Name extends string, Schema extends z.ZodType>(operation: Name, result: Schema) =>
   z.object({ operation: z.literal(operation), result });
 
+const attachment = z.object({
+  id: z.string().uuid(),
+  filename: z.string(),
+  mimeType: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
 const singleToolOutputSchemas = {
   delete_document: operationOutputSchemas.delete_document,
   delete_folder: operationOutputSchemas.delete_folder,
@@ -298,6 +306,11 @@ const singleToolOutputSchemas = {
     variant('markdown', operationOutputSchemas.export_document),
     variant('versions', operationOutputSchemas.get_version_history),
   ]),
+  upload_document_image: attachment,
+  check_document_attachments: z.strictObject({
+    items: z.array(attachment),
+    verifiedAttachmentId: z.string().uuid().optional(),
+  }),
   save_document: z.union([
     variant('create', operationOutputSchemas.create_document),
     variant('update', operationOutputSchemas.update_document),

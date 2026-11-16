@@ -17,6 +17,19 @@ const read = { readOnlyHint: true, destructiveHint: false, idempotentHint: true,
 const write = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
 const destructive = { ...write, destructiveHint: true } as const;
 
+function matchesImageType(bytes: Buffer, mimeType: string): boolean {
+  switch (mimeType) {
+    case 'image/png':
+      return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    case 'image/jpeg':
+      return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+    case 'image/webp':
+      return bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+    default:
+      return false;
+  }
+}
+
 function required<T>(value: T | undefined, name: string): T {
   if (!value) throw new Error(`The injected legacy MCP client does not support ${name}; use a public DocsClient.`);
   return value;
@@ -54,6 +67,30 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     }
     const { action: _action, id, ...data } = input;
     return { operation: 'update', result: await client.updateDocument(id, data) };
+  });
+
+  const maxImageBytes = 2 * 1024 * 1024;
+  register('upload_document_image', 'Upload one PNG, JPEG or WebP image to an existing editable document. Send the file bytes as base64, up to 2 MiB before encoding. Insert the returned url as an image using save_document. If the result is lost, check attachments before uploading again.', z.strictObject({
+    documentId: uuid,
+    filename: z.string().min(1).max(255).regex(/^[^/\\\u0000-\u001f\u007f]+$/).describe('Image file name with extension and without path segments.'),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).describe('MIME type of the source image.'),
+    contentBase64: z.base64().min(4).max(Math.ceil(maxImageBytes / 3) * 4).describe('Base64 file bytes without a data: prefix.'),
+  }), write, async ({ documentId, filename, mimeType, contentBase64 }) => {
+    const bytes = Buffer.from(contentBase64, 'base64');
+    if (!bytes.length || bytes.length > maxImageBytes) throw new Error('Image must be between 1 byte and 2 MiB.');
+    if (!matchesImageType(bytes, mimeType)) throw new Error('Image bytes do not match the declared MIME type.');
+    return required(client.uploadDocumentImage, 'upload_document_image')(documentId, filename, mimeType, bytes);
+  });
+
+  register('check_document_attachments', 'List attachments on a readable document. Supply attachmentId to verify that this attachment belongs to the document and that its stored bytes can be opened with the current access.', z.strictObject({
+    documentId: uuid,
+    attachmentId: uuid.optional(),
+  }), read, async ({ documentId, attachmentId }) => {
+    const { items } = await required(client.listAttachments, 'check_document_attachments')(documentId);
+    if (!attachmentId) return { items };
+    if (!items.some(item => item.id === attachmentId)) throw new Error('Attachment not found in this document.');
+    await required(client.verifyAttachment, 'check_document_attachments')(attachmentId);
+    return { items, verifiedAttachmentId: attachmentId };
   });
 
   register('delete_document', 'Move one document to trash without purging content or versions. Use batch_documents(action=trash) for multiple explicit IDs. Requires write access and an explicit delete request; permanently_delete_document is a separate irreversible action.', z.strictObject({ id: uuid }), destructive, async ({ id }) => {
