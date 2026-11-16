@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.6 - 2026-11-16
+
+- Limit document cursor pages before loading folder and category labels.
+- Offer compact catalog pages and optional exact counts.
+- Make keyed folder creation safe to retry.
+
 ## 2.1.5 - 2026-11-09
 
 - Include a server-issued request ID in REST and HTTP MCP responses, including early authorization failures.

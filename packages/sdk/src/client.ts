@@ -23,6 +23,7 @@ import type {
 	DocsDocument,
 	DocsDocumentCreateInput,
 	DocsDocumentCursorPage,
+	DocsCatalogCursorPage,
 	DocsDocumentIndexRefresh,
 	DocsDocumentIndexStatus,
 	DocsDocumentKnowledgeSummary,
@@ -308,17 +309,30 @@ export class DocsClient {
 	 * List documents through the bounded cursor API. Cursors are opaque and
 	 * bound by the server to the authenticated workspace and category scope.
 	 */
-	async listDocuments(
-		options: Omit<import("./types.js").DocsListOptions, "page" | "sortBy"> & {
+	async listDocuments(options: Omit<import("./types.js").DocsListOptions, "page" | "sortBy"> & {
 			categoryId?: string;
 			cursor?: string;
 			limit?: number;
+			includeTotal?: boolean;
 			sortBy?: import("./types").DocsDocumentSortField;
 			sortOrder?: import("./types").DocsSortOrder;
-		} = {},
+		} = {}, context?: DocsRequestContext): Promise<DocsDocumentCursorPage> {
+		return this.listDocumentCursor(options, context);
+	}
+
+	async listCatalogDocuments(
+		options: Parameters<DocsClient["listDocuments"]>[0] = {},
 		context?: DocsRequestContext,
-	): Promise<DocsDocumentCursorPage> {
-		return this.request<DocsDocumentCursorPage>(
+	): Promise<DocsCatalogCursorPage> {
+		return this.listDocumentCursor(options, context, "catalog");
+	}
+
+	private async listDocumentCursor<T>(
+		options: NonNullable<Parameters<DocsClient["listDocuments"]>[0]>,
+		context?: DocsRequestContext,
+		view?: "catalog",
+	): Promise<T> {
+		return this.request<T>(
 			"GET",
 			"/api/documents/cursor",
 			{
@@ -335,6 +349,8 @@ export class DocsClient {
                     updatedTo: options.updatedTo,
 					cursor: options.cursor,
 					limit: options.limit,
+					view,
+					includeTotal: options.includeTotal === undefined ? undefined : String(options.includeTotal),
 					sortBy: options.sortBy,
 					sortOrder: options.sortOrder,
 				}),

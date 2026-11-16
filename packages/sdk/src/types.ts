@@ -95,6 +95,12 @@ export interface DocsDocumentCursorPage {
 	nextCursor: string | null;
 }
 
+export interface DocsCatalogCursorPage {
+	total?: number;
+	items: { id: string; title: string; preview: string; folderId: string | null; folderName: string | null }[];
+	nextCursor: string | null;
+}
+
 export type DocsDocumentSortField = "title" | "category" | "folder" | "updated" | "updatedAt" | "createdAt";
 export type DocsSortOrder = "asc" | "desc";
 
