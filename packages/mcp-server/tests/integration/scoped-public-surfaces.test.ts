@@ -1868,13 +1868,30 @@ describe("live category-scoped public surfaces", () => {
 			...capabilityCatalog.resources,
 		]);
 
+		let uploadedAttachmentId: string | undefined;
 		const toolCases: Array<{
 			name: string;
 			arguments: Record<string, unknown>;
 			error?: { status: number; code: string };
+			requests?: number;
 		}> = [
 			{ name: "search_documents", arguments: { query: lexicalNeedle, limit: 5 } },
 			{ name: "get_document", arguments: { id: ids.docDirectA } },
+			{
+				name: "upload_document_image",
+				arguments: {
+					documentId: disposableTagDocument,
+					filename: "mcp-contract.png",
+					mimeType: "image/png",
+					contentBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aCdwAAAAASUVORK5CYII=",
+				},
+				requests: 2,
+			},
+			{
+				name: "check_document_attachments",
+				arguments: { documentId: disposableTagDocument },
+				requests: 2,
+			},
 			{
 				name: "create_document",
 				arguments: { title: "MCP scoped create", categoryId: ids.categoryA },
@@ -1977,7 +1994,7 @@ describe("live category-scoped public surfaces", () => {
 			get_related_documents: { name: "explore_graph", selector: { mode: "neighbors" } },
 			search_knowledge_graph: { name: "explore_graph", selector: { mode: "search" } },
 		};
-		expect(toolCases).toHaveLength(33);
+		expect(toolCases).toHaveLength(35);
 		expect(new Set(toolCases.map(({ name }) => compactRoute[name]?.name ?? name))).toEqual(
 			new Set(capabilityCatalog.tools),
 		);
@@ -1987,12 +2004,21 @@ describe("live category-scoped public surfaces", () => {
 			const route = compactRoute[tool.name] ?? { name: tool.name };
 			const args = tool.name === "get_version_history"
 				? { ...route.selector, id: tool.arguments.documentId }
-				: { ...route.selector, ...tool.arguments };
+				: tool.name === "check_document_attachments"
+					? { ...tool.arguments, attachmentId: uploadedAttachmentId }
+					: { ...route.selector, ...tool.arguments };
 			const result = await mcpClient.callTool({
 				name: route.name,
 				arguments: args,
 			});
-			expect(observedRequests.length - before, tool.name).toBe(1);
+			expect(observedRequests.length - before, tool.name).toBe(tool.requests ?? 1);
+			if (tool.name === "upload_document_image") {
+				const uploaded = result.structuredContent as { id?: string } | undefined;
+				expect(uploaded?.id).toBeString();
+				uploadedAttachmentId = uploaded?.id;
+			}
+			if (tool.name === "check_document_attachments")
+				expect(result.structuredContent).toMatchObject({ verifiedAttachmentId: uploadedAttachmentId });
 			if (tool.error) {
 				expect(result.isError, tool.name).toBe(true);
 				const body = JSON.parse(
@@ -2034,7 +2060,7 @@ describe("live category-scoped public surfaces", () => {
 			}
 		}
 
-		expect(observedRequests).toHaveLength(toolCases.length);
+		expect(observedRequests).toHaveLength(toolCases.reduce((total, tool) => total + (tool.requests ?? 1), 0));
 		expect(observedRequests.every(({ method }) => method !== "OPTIONS")).toBe(
 			true,
 		);
@@ -2055,6 +2081,7 @@ describe("live category-scoped public surfaces", () => {
 		});
 		expect(catalog.contents).toHaveLength(1);
 		expect(observedRequests.length - beforeCatalog).toBe(3);
+		if (uploadedAttachmentId) await docsClient.deleteAttachment(uploadedAttachmentId, { workspaceAssertion: assertion });
 	});
 
 	test("enforces lifecycle permissions and scope through MCP without losing document history", async () => {
