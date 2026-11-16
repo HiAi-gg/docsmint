@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { capabilityCatalog, createDocsmintMcpServer } from './server.js';
 
 const names = [
-  'find_documents', 'read_document', 'save_document', 'delete_document',
+  'find_documents', 'read_document', 'save_document', 'upload_document_image', 'check_document_attachments', 'delete_document',
   'list_workspace_structure', 'save_folder', 'delete_folder', 'save_category',
   'delete_category', 'save_tag', 'delete_tag', 'set_document_tag',
   'create_snapshot', 'restore_document_version', 'explore_graph',
@@ -14,7 +14,7 @@ const names = [
 ] as const;
 
 describe('compact MCP catalog', () => {
-  test('advertises one 22-tool catalog with all existing prompts and resources', async () => {
+  test('advertises one 24-tool catalog with all existing prompts and resources', async () => {
     expect(capabilityCatalog.tools).toEqual(names);
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createDocsmintMcpServer();

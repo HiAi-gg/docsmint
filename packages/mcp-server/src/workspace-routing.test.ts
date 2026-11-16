@@ -23,11 +23,11 @@ describe('public MCP workspace routing', () => {
       expect(result.structuredContent).toEqual({ operation: 'workspaces', result: [emptyWorkspace, other] });
     } finally { await s.close(); }
   });
-  test('publishes an optional UUID selector on all 22 tool schemas', async () => {
+  test('publishes an optional UUID selector on all 24 tool schemas', async () => {
     const s = await connected(routing);
     try {
       const tools = (await s.client.listTools()).tools;
-      expect(tools).toHaveLength(22);
+      expect(tools).toHaveLength(24);
       for (const tool of tools) {
         const schema = tool.inputSchema as { properties: Record<string, unknown> };
         expect(schema.properties.workspaceId, tool.name).toMatchObject({ type: 'string', format: 'uuid' });

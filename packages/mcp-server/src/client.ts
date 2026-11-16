@@ -3,7 +3,7 @@
  * surface. The MCP server has no independent REST transport.
  */
 
-import { DocsClient, type DocsRequestContext } from "@hiai-docs/sdk";
+import { DocsClient, type DocsRequestContext, type DocsAttachment, type DocsAttachmentListResponse } from "@hiai-docs/sdk";
 
 import type { ExportResponse } from "./types.js";
 
@@ -31,6 +31,9 @@ export class HiaiDocsError extends Error {
 }
 
 export interface HiaiDocsClient {
+	uploadDocumentImage?(id: string, filename: string, mimeType: string, bytes: Buffer): Promise<DocsAttachment>;
+	listAttachments?(id: string): Promise<DocsAttachmentListResponse>;
+	verifyAttachment?(id: string): Promise<void>;
 	getFolder?(id: string): Promise<unknown>;
 	createTag?(input: { name: string; color?: string }): Promise<unknown>;
 	updateTag?(id: string, input: { name?: string; color?: string }): Promise<unknown>;
@@ -90,6 +93,35 @@ export function createMcpDocsClient(
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
 	return {
+		uploadDocumentImage: async (id, filename, mimeType, bytes) => {
+			const descriptor = { filename, contentType: mimeType, size: bytes.byteLength };
+			const upload = await docsClient.presignAttachment(id, descriptor, context);
+			const response = await fetch(upload.url, {
+				method: "PUT",
+				body: new Blob([Uint8Array.from(bytes)], { type: mimeType }),
+				redirect: "error",
+				signal: context?.signal,
+			}).catch(() => { throw new Error("Could not send image bytes to DocsMint storage."); });
+			await response.body?.cancel();
+			if (!response.ok) throw new Error(`DocsMint storage rejected the image (${response.status}).`);
+			return docsClient.confirmAttachment(id, {
+				...descriptor,
+				key: upload.key,
+				uploadToken: upload.uploadToken,
+				quotaReservationId: upload.quotaReservationId,
+			}, context);
+		},
+		listAttachments: (id) => docsClient.listAttachments(id, context),
+		verifyAttachment: async (id) => {
+			const response = await docsClient.fetchAttachment(id, context);
+			const reader = response.body?.getReader();
+			if (!reader) throw new Error("The attachment response has no body.");
+			try {
+				if (!(await reader.read()).value?.byteLength) throw new Error("The attachment is empty.");
+			} finally {
+				await reader.cancel();
+			}
+		},
 		getFolder: (id) => docsClient.getFolder(id, context),
 		createTag: (input) => docsClient.createTag(input, context),
 		updateTag: (id, input) => docsClient.updateTag(id, input, context),

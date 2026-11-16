@@ -4,6 +4,8 @@ export const capabilityCatalog = {
     'find_documents',
     'read_document',
     'save_document',
+    'upload_document_image',
+    'check_document_attachments',
     'delete_document',
     'list_workspace_structure',
     'save_folder',

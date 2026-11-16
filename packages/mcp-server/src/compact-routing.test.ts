@@ -53,7 +53,7 @@ describe('compact MCP operation routing', () => {
     try {
       await Promise.all([server.connect(b), client.connect(a)]);
       const tools = new Set((await client.listTools()).tools.map(tool => tool.name));
-      expect(tools.size).toBe(22);
+      expect(tools.size).toBe(24);
       for (const [method, tool, args] of cases) {
         expect(tools.has(tool), tool).toBe(true);
         const result = await client.callTool({ name: tool, arguments: args });

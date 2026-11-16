@@ -151,6 +151,8 @@ entries; it cannot update an existing snapshot like a `save_*` resource.
 - `find_documents`: Browse by folder/tag UUID with `mode=list`, or hybrid-search by text/tag names with `mode=search`.
 - `read_document`: Read content and metadata with `view=detail`, export Markdown with `view=markdown`, or list revisions and snapshots with `view=versions`.
 - `save_document`: Create a document with `action=create` or patch an existing one with `action=update`. Omitted patch fields remain unchanged; null placement clears it. The API enforces the effective category and schedules indexing.
+- `upload_document_image`: attach a PNG, JPEG or WebP to an editable document using base64 bytes (up to 2 MiB). Insert the returned URL with `save_document`.
+- `check_document_attachments`: list a readable document’s attachments or verify that one of them opens.
 - `delete_document`: Move a document to trash without purging its content or versions.
 - `list_workspace_structure`: List folders, categories, or tags with `kind=folders|categories|tags`; folders optionally accept `parentId`.
 - `save_folder`: Create with `action=create` or rename, move, or reorder with `action=update`; metadata changes queue reindexing.

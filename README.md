@@ -88,7 +88,7 @@ is a separate listing.
 
 REST and HTTP MCP responses include a server-issued request ID in the
 X-Request-ID header. Include that ID when reporting a failed request.
-See the [2.1.6 release notes](docs/release/v2.1.6-notes.md).
+See the [2.1.7 release notes](docs/release/v2.1.7-notes.md).
 
 ## Document version patch 2.1.4
 
@@ -308,7 +308,7 @@ checkout, all tools, prompts, resources, permissions, and REST mappings.
 
 ### Self-hosted HTTP
 
-The same 22-tool contract is also available at `/mcp` on your installation's
+The same 24-tool contract is also available at `/mcp` on your installation's
 **public web origin**. With the default Compose ports, that is
 `http://localhost:50701/mcp`; with Caddy, use your normal application domain,
 such as `https://docs.example.com/mcp`. The web server streams requests to the

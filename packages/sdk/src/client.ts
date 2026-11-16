@@ -1022,6 +1022,18 @@ export class DocsClient {
 		);
 	}
 
+	/** Fetch an authorized attachment without exposing its storage URL. */
+	async fetchAttachment(id: string, context?: DocsRequestContext): Promise<Response> {
+		const response = await this.fetchRaw(
+			"GET",
+			`/api/attachments/${encodeURIComponent(id)}/raw`,
+			{},
+			context,
+		);
+		if (!response.ok) throw await this.toApiError(response);
+		return response;
+	}
+
 	async deleteAttachment(
 		id: string,
 		context?: DocsRequestContext,

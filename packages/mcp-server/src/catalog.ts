@@ -42,6 +42,7 @@ function example(schema: JsonObject): unknown {
 				.map(([name, value]) => [name, example(object(value))]),
 		);
 	}
+	if (schema.contentEncoding === "base64" || schema.format === "base64") return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aCdwAAAAASUVORK5CYII=";
 	if (schema.format === "uuid") return "11111111-1111-4111-8111-111111111111";
 	if (schema.format === "date-time") return "2026-01-01T00:00:00.000Z";
 	return "Example";

@@ -29,7 +29,7 @@ test("the public stdio binary returns redacted JSON-RPC argument diagnostics", a
 			expect(JSON.stringify(error)).not.toContain("secret-invalid-action");
 			expect(JSON.stringify(error)).not.toContain("private-not-for-errors");
 		});
-		expect((await client.listTools()).tools).toHaveLength(22);
+		expect((await client.listTools()).tools).toHaveLength(24);
 	} finally {
 		await client.close();
 	}

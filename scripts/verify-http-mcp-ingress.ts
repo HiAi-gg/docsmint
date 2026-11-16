@@ -66,7 +66,7 @@ async function main() {
 			tools.push(...page.tools.map((tool) => tool.name));
 			cursor = page.nextCursor;
 		} while (cursor);
-		if (tools.length !== 22 || new Set(tools).size !== 22)
+		if (tools.length !== 24 || new Set(tools).size !== 24)
 			throw new Error("MCP inventory mismatch");
 		phase = "prompts discovery";
 		const prompts: string[] = [];
@@ -122,7 +122,7 @@ async function main() {
 		JSON.stringify({
 			target: url.href,
 			sdkVersion: expected,
-			tools: 22,
+			tools: 24,
 			prompts: 2,
 			resources: 3,
 			resourceReads: 3,
