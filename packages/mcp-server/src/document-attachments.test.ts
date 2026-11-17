@@ -18,7 +18,7 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
   let object: Uint8Array | undefined;
   let confirmed = false;
   let opened = 0;
-  const record = { id: attachmentId, filename, mimeType, size: image.length, url };
+  const record = { id: attachmentId, documentId, filename, mimeType, size: image.length, url };
   let document = {
     id: documentId, title: 'Attachment test', content: 'Initial', categoryId: null, folderId: null,
     visibility: 'private', ownerId: otherId, tags: [],
@@ -64,7 +64,13 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
     expect(!invalid || invalid.isError).toBeTruthy();
     const mismatched = await client.callTool({ name: 'upload_document_image', arguments: { documentId, filename, mimeType: 'image/jpeg', contentBase64 } });
     expect(mismatched.isError).toBe(true);
+    expect(JSON.parse((mismatched.content[0] as { text: string }).text).code).toBe("IMAGE_MIME_MISMATCH");
     expect(object).toBeUndefined();
+    const oversized = await client.callTool({ name: 'upload_document_image', arguments: {
+      documentId, filename, mimeType, contentBase64: Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64'),
+    } });
+    expect(oversized.isError).toBe(true);
+    expect(JSON.parse((oversized.content[0] as { text: string }).text).code).toBe('IMAGE_TOO_LARGE');
     const uploaded = await client.callTool({ name: 'upload_document_image', arguments: { documentId, filename, mimeType, contentBase64 } });
     expect(uploaded.structuredContent).toEqual(record);
     const content = `![Fixture](${url})`;
@@ -78,6 +84,11 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
     const checked = await client.callTool({ name: 'check_document_attachments', arguments: { documentId, attachmentId } });
     expect(checked.isError, JSON.stringify(checked.content)).not.toBe(true);
     expect(checked.structuredContent).toEqual({ items: [record], verifiedAttachmentId: attachmentId, verification: { size: image.length, mimeType, sha256: new Bun.CryptoHasher('sha256').update(image).digest('hex') } });
+    expect(opened).toBe(1);
+    confirmed = false;
+    const deleted = await client.callTool({ name: 'check_document_attachments', arguments: { documentId, attachmentId } });
+    expect(deleted.isError).toBe(true);
+    expect(JSON.parse((deleted.content[0] as { text: string }).text).code).toBe('ATTACHMENT_NOT_FOUND');
     expect(opened).toBe(1);
   } finally {
     await client.close();

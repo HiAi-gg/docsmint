@@ -177,7 +177,10 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 			}
 		}, 30_000);
 
-		test.each([false, true])("confirm lease blocks cleanup of source or final WebP: %s", async (converted) => {
+		test.each([
+			false,
+			true,
+		])("confirm lease blocks cleanup of source or final WebP: %s", async (converted) => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 2 });
 			const ownerId = crypto.randomUUID();
 			const documentId = crypto.randomUUID();
@@ -186,7 +189,9 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 			const storageKey = converted
 				? `confirm-lease/${documentId}/live.webp.pending`
 				: `confirm-lease/${documentId}/live.png`;
-			const cleanupKey = converted ? storageKey.slice(0, -".pending".length) : storageKey;
+			const cleanupKey = converted
+				? storageKey.slice(0, -".pending".length)
+				: storageKey;
 			const deletedKeys: string[] = [];
 			try {
 				await setup`INSERT INTO public.users (id, email)

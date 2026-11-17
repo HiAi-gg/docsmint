@@ -685,7 +685,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 										: "quota_reserve_terminal",
 									quotaState: retryable ? "reserve_pending" : "not_required",
 								})
-								.where(and(eq(pendingAttachmentUploads.id, admissionId), eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner))),
+								.where(
+									and(
+										eq(pendingAttachmentUploads.id, admissionId),
+										eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner),
+									),
+								),
 						).catch(() => undefined);
 						logger.warn(
 							{ err: error, documentId, retryable },
@@ -766,7 +771,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					tx
 						.update(pendingAttachmentUploads)
 						.set({ leaseOwner: null, leaseExpiresAt: new Date() })
-						.where(and(eq(pendingAttachmentUploads.id, admissionId), eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner))),
+						.where(
+							and(
+								eq(pendingAttachmentUploads.id, admissionId),
+								eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner),
+							),
+						),
 				).catch(() => undefined);
 				if (isAccountPurgeFencedError(err)) {
 					set.status = 409;

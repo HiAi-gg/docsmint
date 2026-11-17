@@ -279,6 +279,7 @@ const variant = <Name extends string, Schema extends z.ZodType>(operation: Name,
 
 const attachment = z.object({
   id: z.string().uuid(),
+  documentId: z.string().uuid().optional(),
   filename: z.string(),
   mimeType: z.string(),
   size: z.number().int().nonnegative(),

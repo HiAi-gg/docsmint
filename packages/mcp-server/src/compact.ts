@@ -1,7 +1,7 @@
 import { captureMcpInputSchema } from './argument-diagnostics.js';
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import type { HiaiDocsClient } from './client.js';
+import { HiaiDocsError, type HiaiDocsClient } from './client.js';
 import { toolOutputSchemas } from './output-schemas.js';
 import type { capabilityCatalog } from './capabilities.js';
 import { registerBatchAndWorkspaceCapabilities } from './batch-workspace.js';
@@ -78,19 +78,20 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     contentBase64: z.base64().min(4).max(Math.ceil(maxImageBytes / 3) * 4).describe('Base64 file bytes without a data: prefix.'),
   }), write, async ({ documentId, filename, mimeType, contentBase64, operationId }) => {
     const bytes = Buffer.from(contentBase64, 'base64');
-    if (!bytes.length || bytes.length > maxImageBytes) throw new Error('Image must be between 1 byte and 2 MiB.');
-    if (!matchesImageType(bytes, mimeType)) throw new Error('Image bytes do not match the declared MIME type.');
-    return required(client.uploadDocumentImage, 'upload_document_image')(documentId, filename, mimeType, bytes, operationId);
+    if (!bytes.length || bytes.length > maxImageBytes) throw new HiaiDocsError('Image must be between 1 byte and 2 MiB.', 413, null, 'IMAGE_TOO_LARGE');
+    if (!matchesImageType(bytes, mimeType)) throw new HiaiDocsError('Image bytes do not match the declared MIME type.', 415, null, 'IMAGE_MIME_MISMATCH');
+    return { ...await required(client.uploadDocumentImage, 'upload_document_image')(documentId, filename, mimeType, bytes, operationId), documentId };
   });
 
   register('check_document_attachments', 'List attachments on a readable document. Supply attachmentId to verify that this attachment belongs to the document and that its stored bytes can be opened with the current access.', z.strictObject({
     documentId: uuid,
     attachmentId: uuid.optional(),
   }), read, async ({ documentId, attachmentId }) => {
-    const { items } = await required(client.listAttachments, 'check_document_attachments')(documentId);
+    const response = await required(client.listAttachments, 'check_document_attachments')(documentId);
+    const items = response.items.map(item => ({ ...item, documentId }));
     if (!attachmentId) return { items };
     const attachment = items.find(item => item.id === attachmentId);
-    if (!attachment) throw new Error('Attachment not found in this document.');
+    if (!attachment) throw new HiaiDocsError('Attachment not found in this document.', 404, null, 'ATTACHMENT_NOT_FOUND');
     const verification = await required(client.verifyAttachment, 'check_document_attachments')(attachment);
     return { items, verifiedAttachmentId: attachmentId, verification };
   });

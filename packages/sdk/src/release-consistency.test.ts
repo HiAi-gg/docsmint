@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 
 const repositoryRoot = new URL("../../../", import.meta.url);
-const releaseVersion = "2.1.9";
+const releaseVersion = "2.2.0";
 
 async function json(path: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(new URL(path, repositoryRoot), "utf8"));
 }
 
-test("all published and workspace release metadata reports 2.1.9", async () => {
+test("all published and workspace release metadata reports 2.2.0", async () => {
   for (const path of [
     "package.json",
     "package.public.json",
@@ -132,13 +132,13 @@ test("all published and workspace release metadata reports 2.1.9", async () => {
 
   expect(
     await readFile(new URL("frontend/vite.config.ts", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-2.1.9");
+  ).toContain("docsmint-oss-2.2.0");
   expect(
     await readFile(new URL("docker-compose.yml", repositoryRoot), "utf8"),
-  ).toContain("docsmint-oss-2.1.9");
+  ).toContain("docsmint-oss-2.2.0");
 });
 
-test("workspace and public package metadata share the 2.1.9 product identity", async () => {
+test("workspace and public package metadata share the 2.2.0 product identity", async () => {
   const workspaceManifest = await json("package.json");
   const publicManifest = await json("package.public.json");
   const description =

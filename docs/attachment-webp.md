@@ -51,6 +51,8 @@ image is visually correct or replace decoding validation during upload.
 Upload and confirmation do not edit document Markdown or publish content.
 Insert the returned raw reference through a separate authorized document save.
 
+See [Skills automation guide](skills-image-automation.md) for stable operation IDs, batch rules and the authenticated Cloud retrieval contract.
+
 ## Verified so far
 
 - Real-byte PNG alpha, JPEG orientation, GIF frames/timing, malformed input,

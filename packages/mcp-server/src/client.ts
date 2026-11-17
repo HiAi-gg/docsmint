@@ -105,9 +105,10 @@ export function createMcpDocsClient(
 					? { sourceSha256: createHash("sha256").update(bytes).digest("hex") }
 					: {}),
 			};
-			const uploadContext = operationId
-				? { ...context, headers: new Headers(context?.headers) }
-				: context;
+			const signal = context?.signal
+                ? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])
+                : AbortSignal.timeout(30_000);
+            const uploadContext = { ...context, signal, headers: new Headers(context?.headers) };
 			if (operationId && uploadContext?.headers instanceof Headers)
 				uploadContext.headers.set("Idempotency-Key", operationId);
 			const upload = await docsClient.presignAttachment(
@@ -120,15 +121,16 @@ export function createMcpDocsClient(
 					method: "PUT",
 					body: new Blob([Uint8Array.from(bytes)], { type: mimeType }),
 					redirect: "error",
-					signal: context?.signal,
+					signal,
 				}).catch(() => {
-					throw new Error("Could not send image bytes to DocsMint storage.");
+					throw new HiaiDocsError("Could not send image bytes to DocsMint storage.", 502, null, "IMAGE_STORAGE_UNAVAILABLE");
 				});
 				await response.body?.cancel();
 				if (!response.ok)
-					throw new Error(
-						`DocsMint storage rejected the image (${response.status}).`,
-					);
+					throw new HiaiDocsError(
+                        `DocsMint storage rejected the image (${response.status}).`,
+                        response.status, null, "IMAGE_STORAGE_REJECTED",
+                    );
 			}
 			return docsClient.confirmAttachment(
 				id,
@@ -138,7 +140,7 @@ export function createMcpDocsClient(
 					uploadToken: upload.uploadToken,
 					quotaReservationId: upload.quotaReservationId,
 				},
-				context,
+				uploadContext,
 			);
 		},
 		listAttachments: (id) => docsClient.listAttachments(id, context),
