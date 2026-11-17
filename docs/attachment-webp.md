@@ -74,5 +74,10 @@ Insert the returned raw reference through a separate authorized document save.
 - MCP: complete-stream verification rejects truncation, stream errors,
   oversized output, mismatched headers and non-image signatures.
 
-Category-key attachment isolation, quota accounting through the real confirmation route
-and Cloud production acceptance remain pending. Do not treat the component checks as release acceptance.
+- Real QA raw-attachment route with category/read keys: authorized WebP bytes
+  match storage, adjacent category and foreign owner return 404, write is
+  denied, revoked key returns 401. Uses synthetic personal-category fixtures,
+  not the actual Skills workspace bindings.
+
+Actual Skills workspace bindings, quota accounting through the full Cloud
+confirmation route and Cloud production acceptance remain pending. Do not treat the component checks as release acceptance.
