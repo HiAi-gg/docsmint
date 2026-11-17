@@ -121,3 +121,17 @@ test("rejects malformed images and excessive animation frames before publication
 	await expect(normalizeAttachmentImage(gif, "image/gif", "large.gif", 4096))
 		.rejects.toThrow("decoded size");
 });
+
+test("caps concurrent conversions and releases capacity after failures", async () => {
+	const png = await sharp({
+		create: { width: 2, height: 2, channels: 3, background: "white" },
+	}).png().toBuffer();
+	const first = normalizeAttachmentImage(png, "image/png", "first.png", 4096);
+	const second = normalizeAttachmentImage(png, "image/png", "second.png", 4096);
+	await expect(normalizeAttachmentImage(png, "image/png", "third.png", 4096))
+		.rejects.toThrow("capacity");
+	await Promise.all([first, second]);
+	await expect(normalizeAttachmentImage(png, "image/png", "small.png", 1)).rejects.toThrow("size");
+	expect((await normalizeAttachmentImage(png, "image/png", "retry.png", 4096)).mimeType)
+		.toBe("image/webp");
+});

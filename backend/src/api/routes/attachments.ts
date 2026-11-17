@@ -27,7 +27,7 @@ import {
 	stageAttachmentStorageCleanup,
 	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
-import { AttachmentImageValidationError, committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
+import { AttachmentImageBusyError, AttachmentImageValidationError, committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
 import {
 	abandonClaimedPendingAttachmentUpload,
 	abandonPendingAttachmentUploadByProof,
@@ -851,6 +851,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							return { error: "Image could not be converted to WebP" };
 						}
 						abandonRejectedConfirm = false;
+						set.headers["Retry-After"] = "1";
 						set.status = 503;
 						return { error: "Image processing is temporarily unavailable; retry confirmation" };
 					}
@@ -1101,7 +1102,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					file.name,
 					LEGACY_MAX_FILE_SIZE,
 				);
-			} catch {
+			} catch (error) {
+				if (error instanceof AttachmentImageBusyError) {
+					set.status = 503;
+					set.headers["Retry-After"] = "1";
+					return { error: "Image processing capacity is temporarily exhausted" };
+				}
 				set.status = 422;
 				return { error: "Image could not be converted to WebP" };
 			}

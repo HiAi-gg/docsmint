@@ -2,6 +2,15 @@ import sharp from "sharp";
 
 const maxPixels = 40_000_000;
 const maxFrames = 120;
+const maxConcurrentConversions = 2;
+let activeConversions = 0;
+
+export class AttachmentImageBusyError extends Error {
+	constructor() {
+		super("Image processing capacity is temporarily exhausted");
+		this.name = "AttachmentImageBusyError";
+	}
+}
 const sourceMime = {
 	png: "image/png",
 	jpeg: "image/jpeg",
@@ -36,6 +45,23 @@ export async function readAttachmentImageSource(
 }
 
 export async function normalizeAttachmentImage(
+	source: Buffer,
+	mimeType: string,
+	filename: string,
+	maxOutputBytes: number,
+) {
+	if (activeConversions >= maxConcurrentConversions) {
+		throw new AttachmentImageBusyError();
+	}
+	activeConversions++;
+	try {
+		return await encodeAttachmentImage(source, mimeType, filename, maxOutputBytes);
+	} finally {
+		activeConversions--;
+	}
+}
+
+async function encodeAttachmentImage(
 	source: Buffer,
 	mimeType: string,
 	filename: string,
@@ -96,7 +122,8 @@ export async function prepareAttachmentWebp(input: {
 		image = await normalizeAttachmentImage(
 			source, input.mimeType, input.filename, input.maxBytes,
 		);
-	} catch {
+	} catch (error) {
+		if (error instanceof AttachmentImageBusyError) throw error;
 		throw new AttachmentImageValidationError();
 	}
 	// Persist cleanup authority before PUT so a crash never hides an object.
