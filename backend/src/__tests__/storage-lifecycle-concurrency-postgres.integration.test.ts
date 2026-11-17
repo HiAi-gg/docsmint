@@ -177,13 +177,21 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 			}
 		}, 30_000);
 
-		test("confirm lease blocks expired-upload cleanup from deleting the object", async () => {
+		test.each([
+			false,
+			true,
+		])("confirm lease blocks cleanup of source or final WebP: %s", async (converted) => {
 			const setup = postgres(ownerDatabaseUrl as string, { max: 2 });
 			const ownerId = crypto.randomUUID();
 			const documentId = crypto.randomUUID();
 			const admissionId = crypto.randomUUID();
 			const sourceId = crypto.randomUUID();
-			const storageKey = `confirm-lease/${documentId}/live.png`;
+			const storageKey = converted
+				? `confirm-lease/${documentId}/live.webp.pending`
+				: `confirm-lease/${documentId}/live.png`;
+			const cleanupKey = converted
+				? storageKey.slice(0, -".pending".length)
+				: storageKey;
 			const deletedKeys: string[] = [];
 			try {
 				await setup`INSERT INTO public.users (id, email)
@@ -206,7 +214,7 @@ describe.skipIf(!ownerDatabaseUrl || !runtimeDatabaseUrl)(
 					 actor_user_id, owner_user_id, requested_by_user_id,
 					 size, quota_operation_key, quota_release_kind, not_before)
 					VALUES (
-						'pending_upload', ${sourceId}::uuid, ${storageKey},
+						'pending_upload', ${sourceId}::uuid, ${cleanupKey},
 						${documentId}::uuid, ${ownerId}::uuid, ${ownerId}::uuid,
 						${ownerId}::uuid, 4, ${`confirm-${sourceId}`}, 'none', now()
 					)`;

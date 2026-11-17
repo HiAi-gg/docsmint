@@ -99,7 +99,7 @@ export interface CreateDocsmintMcpServerOptions {
 }
 
 export function createDocsmintMcpServer(options: CreateDocsmintMcpServerOptions = {}): McpServer {
-  const server = new DocsMintMcpServer({ name: 'docsmint', version: '2.1.9' });
+  const server = new DocsMintMcpServer({ name: 'docsmint', version: '2.2.0' });
   const client = options.docsClient
     ? createMcpDocsClient(options.docsClient, options.requestContext)
     : options.client ?? createMcpDocsClient(createDefaultDocsClient(), options.requestContext);

@@ -61,7 +61,7 @@ management belongs to the signed-in browser session.
 
 **Self-hosted alternative:** run [DocsMint with Docker](#quickstart), create an API
 key in its browser UI, and configure `HIAI_DOCS_URL` and `HIAI_DOCS_API_KEY` for
-`npx --yes --package https://github.com/HiAi-gg/docsmint/releases/download/v2.1.9/hiai-gg-docsmint-2.1.9.tgz docsmint-mcp`. Install Bun 1.4.4 or
+`npx --yes --package https://github.com/HiAi-gg/docsmint/releases/download/v2.2.0/hiai-gg-docsmint-2.2.0.tgz docsmint-mcp`. Install Bun 1.4.4 or
 later to execute the published binary. The npm package is a stdio bridge to
 your own API; it does not install the DocsMint application or Cloud OAuth server.
 See the [MCP guide](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)
@@ -88,7 +88,7 @@ is a separate listing.
 
 REST and HTTP MCP responses include a server-issued request ID in the
 X-Request-ID header. Include that ID when reporting a failed request.
-See the [2.1.9 release notes](docs/release/v2.1.9-notes.md).
+See the [2.2.0 release notes](docs/release/v2.2.0-notes.md).
 
 ## Document version patch 2.1.4
 
@@ -291,7 +291,7 @@ Run the published stdio bridge against your own DocsMint API:
   "mcpServers": {
     "docsmint": {
       "command": "npx",
-      "args": ["--yes", "--package", "https://github.com/HiAi-gg/docsmint/releases/download/v2.1.9/hiai-gg-docsmint-2.1.9.tgz", "docsmint-mcp"],
+      "args": ["--yes", "--package", "https://github.com/HiAi-gg/docsmint/releases/download/v2.2.0/hiai-gg-docsmint-2.2.0.tgz", "docsmint-mcp"],
       "env": {
         "HIAI_DOCS_URL": "http://localhost:50700",
         "HIAI_DOCS_API_KEY": "your-global-or-category-key"
@@ -502,3 +502,5 @@ DocsMint is released under the [Apache License 2.0](https://github.com/HiAi-gg/d
 
 Built as an independent open-source project in the
 [HiAi](https://github.com/HiAi-gg) ecosystem.
+
+For reliable editorial image batches, see [Skills image automation](docs/skills-image-automation.md) and [WebP storage](docs/attachment-webp.md).

@@ -16,7 +16,9 @@ describe("attachment confirm idempotency contract", () => {
 		const headLookup = routeSource.indexOf("new HeadObjectCommand");
 		expect(existingLookup).toBeGreaterThan(-1);
 		expect(headLookup).toBeGreaterThan(existingLookup);
-		expect(routeSource).toContain("eq(attachments.storageKey, key)");
+		expect(routeSource).toContain(
+			"eq(attachments.storageKey, committedAttachmentKey(key))",
+		);
 	});
 
 	test("serializes concurrent confirms and returns the winning row", () => {

@@ -5,6 +5,9 @@
 
 import { DocsClient, type DocsRequestContext, type DocsAttachment, type DocsAttachmentListResponse } from "@hiai-docs/sdk";
 
+import { createHash } from "node:crypto";
+import { verifyAttachmentResponse, type AttachmentVerification } from "./attachment-verification.js";
+
 import type { ExportResponse } from "./types.js";
 
 const DEFAULT_BASE_URL = "http://localhost:50700";
@@ -31,9 +34,9 @@ export class HiaiDocsError extends Error {
 }
 
 export interface HiaiDocsClient {
-	uploadDocumentImage?(id: string, filename: string, mimeType: string, bytes: Buffer): Promise<DocsAttachment>;
+	uploadDocumentImage?(id: string, filename: string, mimeType: string, bytes: Buffer, operationId?: string): Promise<DocsAttachment>;
 	listAttachments?(id: string): Promise<DocsAttachmentListResponse>;
-	verifyAttachment?(id: string): Promise<void>;
+	verifyAttachment?(attachment: DocsAttachment): Promise<AttachmentVerification>;
 	getFolder?(id: string): Promise<unknown>;
 	createTag?(input: { name: string; color?: string }): Promise<unknown>;
 	updateTag?(id: string, input: { name?: string; color?: string }): Promise<unknown>;
@@ -93,34 +96,63 @@ export function createMcpDocsClient(
 ): HiaiDocsClient {
 	const context = sanitizeMcpRequestContext(requestContext);
 	return {
-		uploadDocumentImage: async (id, filename, mimeType, bytes) => {
-			const descriptor = { filename, contentType: mimeType, size: bytes.byteLength };
-			const upload = await docsClient.presignAttachment(id, descriptor, context);
-			const response = await fetch(upload.url, {
-				method: "PUT",
-				body: new Blob([Uint8Array.from(bytes)], { type: mimeType }),
-				redirect: "error",
-				signal: context?.signal,
-			}).catch(() => { throw new Error("Could not send image bytes to DocsMint storage."); });
-			await response.body?.cancel();
-			if (!response.ok) throw new Error(`DocsMint storage rejected the image (${response.status}).`);
-			return docsClient.confirmAttachment(id, {
-				...descriptor,
-				key: upload.key,
-				uploadToken: upload.uploadToken,
-				quotaReservationId: upload.quotaReservationId,
-			}, context);
+		uploadDocumentImage: async (id, filename, mimeType, bytes, operationId) => {
+			const descriptor = {
+				filename,
+				contentType: mimeType,
+				size: bytes.byteLength,
+				...(operationId
+					? { sourceSha256: createHash("sha256").update(bytes).digest("hex") }
+					: {}),
+			};
+			const signal = context?.signal
+                ? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])
+                : AbortSignal.timeout(30_000);
+            const uploadContext = { ...context, signal, headers: new Headers(context?.headers) };
+			if (operationId && uploadContext?.headers instanceof Headers)
+				uploadContext.headers.set("Idempotency-Key", operationId);
+			const upload = await docsClient.presignAttachment(
+				id,
+				descriptor,
+				uploadContext,
+			);
+			if (!upload.alreadyConfirmed) {
+				const response = await fetch(upload.url, {
+					method: "PUT",
+					body: new Blob([Uint8Array.from(bytes)], { type: mimeType }),
+					redirect: "error",
+					signal,
+				}).catch(() => {
+					throw new HiaiDocsError("Could not send image bytes to DocsMint storage.", 502, null, "IMAGE_STORAGE_UNAVAILABLE");
+				});
+				await response.body?.cancel();
+				if (!response.ok)
+					throw new HiaiDocsError(
+                        `DocsMint storage rejected the image (${response.status}).`,
+                        response.status, null, "IMAGE_STORAGE_REJECTED",
+                    );
+			}
+			return docsClient.confirmAttachment(
+				id,
+				{
+					...descriptor,
+					key: upload.key,
+					uploadToken: upload.uploadToken,
+					quotaReservationId: upload.quotaReservationId,
+				},
+				uploadContext,
+			);
 		},
 		listAttachments: (id) => docsClient.listAttachments(id, context),
-		verifyAttachment: async (id) => {
-			const response = await docsClient.fetchAttachment(id, context);
-			const reader = response.body?.getReader();
-			if (!reader) throw new Error("The attachment response has no body.");
-			try {
-				if (!(await reader.read()).value?.byteLength) throw new Error("The attachment is empty.");
-			} finally {
-				await reader.cancel();
-			}
+		verifyAttachment: async (attachment) => {
+			const signal = context?.signal
+				? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])
+				: AbortSignal.timeout(30_000);
+			const response = await docsClient.fetchAttachment(attachment.id, {
+				...context,
+				signal,
+			});
+			return verifyAttachmentResponse(response, attachment);
 		},
 		getFolder: (id) => docsClient.getFolder(id, context),
 		createTag: (input) => docsClient.createTag(input, context),

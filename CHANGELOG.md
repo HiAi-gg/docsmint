@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.0 - 2026-11-17
+
+- Normalize new document images to WebP through the existing storage lifecycle, with bounded decoding, orientation and animation handling.
+- Add durable upload operation IDs and actual-byte source checksums for safe retries after interrupted requests.
+- Verify complete MCP attachment responses, recorded size and MIME, and return stored-byte SHA-256 and document identity.
+- Preserve authenticated category/workspace boundaries and keep upload, document editing and publication separate.
+- Include the native converter as a runtime dependency and document the Skills backend image-proxy contract.
+
+
 ## 2.1.9 - 2026-11-16
 
 - Publish the updated MCP setup and attachment workflow with the original frozen dependency graph.

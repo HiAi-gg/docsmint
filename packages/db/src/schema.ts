@@ -695,6 +695,41 @@ export const pendingAttachmentUploads = pgTable(
 // DB-authoritative intents for object removal and quota release. Source rows
 // are deleted in the same transaction that inserts an intent; S3 and quota
 // effects happen only after commit and remain recoverable across crashes.
+export const attachmentUploadOperations = pgTable(
+	"attachment_upload_operations",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		workspaceId: text("workspace_id").notNull(),
+		actorUserId: uuid("actor_user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		documentId: uuid("document_id")
+			.notNull()
+			.references(() => documents.id, { onDelete: "cascade" }),
+		idempotencyKey: text("idempotency_key").notNull(),
+		requestFingerprint: text("request_fingerprint").notNull(),
+		sourceSha256: text("source_sha256").notNull(),
+		storageKey: text("storage_key").notNull(),
+		expiresAt: timestamp("expires_at").notNull(),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(table) => [
+		uniqueIndex("attachment_upload_operations_actor_document_key_unique").on(
+			table.workspaceId,
+			table.actorUserId,
+			table.documentId,
+			table.idempotencyKey,
+		),
+		uniqueIndex("attachment_upload_operations_storage_key_unique").on(
+			table.storageKey,
+		),
+	],
+);
+
+// DB-authoritative intents for object removal and quota release. Source rows
+// are deleted in the same transaction that inserts an intent; S3 and quota
+// effects happen only after commit and remain recoverable across crashes.
+
 export const attachmentStorageCleanupOutbox = pgTable(
   "attachment_storage_cleanup_outbox",
   {

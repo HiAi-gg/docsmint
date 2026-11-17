@@ -35,6 +35,7 @@ export interface TestState {
 	metadataReembedOutbox: Map<string, any>;
 	lifecycleOperations: Map<string, any>;
 	pendingAttachmentUploads: Map<string, any>;
+	attachmentUploadOperations: Map<string, any>;
 	attachmentStorageCleanupOutbox: Map<string, any>;
 	enqueuedEmbeddings: string[];
 	enqueuedEmbeddingRequests: Array<{
@@ -76,6 +77,7 @@ function createState(): TestState {
 		metadataReembedOutbox: new Map(),
 		lifecycleOperations: new Map(),
 		pendingAttachmentUploads: new Map(),
+		attachmentUploadOperations: new Map(),
 		attachmentStorageCleanupOutbox: new Map(),
 		enqueuedEmbeddings: [],
 		enqueuedEmbeddingRequests: [],
@@ -298,6 +300,8 @@ function getCollection(name: string): any[] | Map<string, any> {
 			return state.metadataReembedOutbox;
 		case "lifecycle_operations":
 			return state.lifecycleOperations;
+		case "attachment_upload_operations":
+			return state.attachmentUploadOperations;
 		case "pending_attachment_uploads":
 			return state.pendingAttachmentUploads;
 		case "attachment_storage_cleanup_outbox":
@@ -617,7 +621,7 @@ function buildUpdateProxy(ctx: UpdateCtx): any {
 		for (const row of rows) {
 			if (!evaluateCondition(row, ctx.where)) continue;
 			for (const [key, value] of Object.entries(ctx.set ?? {})) {
-				if ((value as any)?.[TAG_SQL]) {
+				if ((value as any)?.[TAG_SQL] && !asHarnessDate(value)) {
 					row[key] = Number(row[key] ?? 0) + 1;
 					continue;
 				}
@@ -1575,6 +1579,10 @@ mock.module("../../src/lib/storage.js", () => ({
 					throw new Error("Simulated put failure");
 				}
 				storageMockState.putObjectCalls++;
+				if (command.input.Body instanceof Uint8Array) {
+					storageMockState.objectBytes.set(command.input.Key, Buffer.from(command.input.Body));
+					storageMockState.storedSizes.set(command.input.Key, command.input.Body.length);
+				}
 				return {};
 			} else if (cmdName === "DeleteObjectCommand") {
 				storageMockState.removeObjectCalls++;

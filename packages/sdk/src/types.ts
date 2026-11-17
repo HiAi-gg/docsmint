@@ -410,12 +410,16 @@ export interface DocsAttachmentListResponse {
 }
 
 export interface DocsAttachmentPresignInput {
+	/** Optional original-byte SHA-256 for WebP finalization. */
+	sourceSha256?: string;
 	filename: string;
 	contentType: string;
 	size: number;
 }
 
 export interface DocsAttachmentPresignResponse {
+	/** A completed replay. Skip PUT and repeat confirmAttachment. */
+	alreadyConfirmed?: boolean;
 	url: string;
 	key: string;
 	/** Signed, exact admission identity required by confirmAttachment. */

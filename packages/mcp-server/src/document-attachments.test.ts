@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/client';
 import { InMemoryTransport } from '@modelcontextprotocol/server';
 import { DocsClient } from '@hiai-docs/sdk';
 import { createDocsmintMcpServer } from './server.js';
+import { createMcpDocsClient } from './client.js';
 
 const documentId = '11111111-1111-4111-8111-111111111111';
 const attachmentId = '22222222-2222-4222-8222-222222222222';
@@ -17,7 +18,7 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
   let object: Uint8Array | undefined;
   let confirmed = false;
   let opened = 0;
-  const record = { id: attachmentId, filename, mimeType, size: image.length, url };
+  const record = { id: attachmentId, documentId, filename, mimeType, size: image.length, url };
   let document = {
     id: documentId, title: 'Attachment test', content: 'Initial', categoryId: null, folderId: null,
     visibility: 'private', ownerId: otherId, tags: [],
@@ -63,7 +64,13 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
     expect(!invalid || invalid.isError).toBeTruthy();
     const mismatched = await client.callTool({ name: 'upload_document_image', arguments: { documentId, filename, mimeType: 'image/jpeg', contentBase64 } });
     expect(mismatched.isError).toBe(true);
+    expect(JSON.parse((mismatched.content[0] as { text: string }).text).code).toBe("IMAGE_MIME_MISMATCH");
     expect(object).toBeUndefined();
+    const oversized = await client.callTool({ name: 'upload_document_image', arguments: {
+      documentId, filename, mimeType, contentBase64: Buffer.alloc(2 * 1024 * 1024 + 1).toString('base64'),
+    } });
+    expect(oversized.isError).toBe(true);
+    expect(JSON.parse((oversized.content[0] as { text: string }).text).code).toBe('IMAGE_TOO_LARGE');
     const uploaded = await client.callTool({ name: 'upload_document_image', arguments: { documentId, filename, mimeType, contentBase64 } });
     expect(uploaded.structuredContent).toEqual(record);
     const content = `![Fixture](${url})`;
@@ -76,11 +83,86 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
     expect(opened).toBe(0);
     const checked = await client.callTool({ name: 'check_document_attachments', arguments: { documentId, attachmentId } });
     expect(checked.isError, JSON.stringify(checked.content)).not.toBe(true);
-    expect(checked.structuredContent).toEqual({ items: [record], verifiedAttachmentId: attachmentId });
+    expect(checked.structuredContent).toEqual({ items: [record], verifiedAttachmentId: attachmentId, verification: { size: image.length, mimeType, sha256: new Bun.CryptoHasher('sha256').update(image).digest('hex') } });
+    expect(opened).toBe(1);
+    confirmed = false;
+    const deleted = await client.callTool({ name: 'check_document_attachments', arguments: { documentId, attachmentId } });
+    expect(deleted.isError).toBe(true);
+    expect(JSON.parse((deleted.content[0] as { text: string }).text).code).toBe('ATTACHMENT_NOT_FOUND');
     expect(opened).toBe(1);
   } finally {
     await client.close();
     await server.close();
     rest.stop(true);
   }
+});
+
+test("MCP retry keeps source checksum and operation identity and skips a second PUT after confirmation", async () => {
+	let puts = 0;
+	let completed = false;
+	const receipt = {
+		id: attachmentId,
+		filename: "fixture.webp",
+		mimeType: "image/webp",
+		size: 42,
+		url,
+	};
+	const rest = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		async fetch(request, server) {
+			const route = new URL(request.url).pathname;
+			if (route === "/object") {
+				puts++;
+				expect(Buffer.from(await request.arrayBuffer())).toEqual(image);
+				return new Response(null);
+			}
+			if (route.endsWith("/presign")) {
+				expect(request.headers.get("Idempotency-Key")).toBe(
+					"same-image-operation",
+				);
+				expect(await request.json()).toEqual({
+					filename,
+					contentType: mimeType,
+					size: image.length,
+					sourceSha256: new Bun.CryptoHasher("sha256")
+						.update(image)
+						.digest("hex"),
+				});
+				return Response.json({
+					key: "same-key",
+					uploadToken: "same-token",
+					url: completed ? "" : new URL("/object", server.url),
+					alreadyConfirmed: completed,
+				});
+			}
+			if (route.endsWith("/confirm")) {
+				expect(await request.json()).toMatchObject({
+					key: "same-key",
+					uploadToken: "same-token",
+				});
+				completed = true;
+				return Response.json(receipt);
+			}
+			return new Response(null, { status: 404 });
+		},
+	});
+	try {
+		const client = createMcpDocsClient(
+			new DocsClient({ baseUrl: rest.url.origin, apiKey: "test" }),
+		);
+		const upload = () =>
+			client.uploadDocumentImage!(
+				documentId,
+				filename,
+				mimeType,
+				image,
+				"same-image-operation",
+			);
+		expect(await upload()).toEqual(receipt);
+		expect(await upload()).toEqual(receipt);
+		expect(puts).toBe(1);
+	} finally {
+		rest.stop(true);
+	}
 });
