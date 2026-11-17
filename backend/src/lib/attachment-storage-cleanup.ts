@@ -1,3 +1,4 @@
+import { committedAttachmentKey } from "./attachment-image-key";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { attachmentStorageCleanupOutbox } from "@hiai-docs/db/schema";
 import {
@@ -218,7 +219,9 @@ async function claimCleanupPage(
 					AND NOT EXISTS (
 						SELECT 1
 						FROM public.pending_attachment_uploads AS pending
-						WHERE pending.storage_key = candidate.storage_key
+						WHERE (pending.storage_key = candidate.storage_key
+							OR (pending.storage_key LIKE '%.webp.pending'
+								AND left(pending.storage_key, length(pending.storage_key) - 8) = candidate.storage_key))
 							AND pending.lease_owner LIKE 'confirm:%'
 							AND pending.lease_expires_at IS NOT NULL
 							AND pending.lease_expires_at > ${nowTimestamp}
@@ -261,7 +264,7 @@ function quotaContext(row: ClaimedCleanupRow, signal?: AbortSignal) {
 		workspaceId: row.workspace_id,
 		actorUserId: row.actor_user_id,
 		documentId: row.document_id,
-		storageKey: row.storage_key,
+		storageKey: committedAttachmentKey(row.storage_key),
 		proposedSize: row.size,
 		requestId: row.id,
 		idempotencyKey: row.quota_operation_key,

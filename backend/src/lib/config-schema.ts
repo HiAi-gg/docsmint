@@ -251,6 +251,10 @@ export const envSchema = z
 				"API_KEY_ENCRYPTION_SECRET must be set in production",
 			),
 		OWNER_ID: z.string().uuid().default("00000000-0000-4000-8000-000000000001"),
+		DOCSMINT_ATTACHMENT_WEBP_ENABLED: z
+			.enum(["true", "false"])
+			.default("false")
+			.transform((value) => value === "true"),
 		DOCSMINT_WORKSPACE_ENABLED: z
 			.string()
 			.optional()

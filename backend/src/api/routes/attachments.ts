@@ -27,6 +27,7 @@ import {
 	stageAttachmentStorageCleanup,
 	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
+import { committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
 import {
 	abandonClaimedPendingAttachmentUpload,
 	abandonPendingAttachmentUploadByProof,
@@ -176,7 +177,7 @@ function attachmentQuotaContext(
 		workspaceId: ctx.workspaceId,
 		actorUserId,
 		documentId,
-		storageKey,
+		storageKey: committedAttachmentKey(storageKey),
 		proposedSize,
 		requestId,
 		idempotencyKey,
@@ -443,10 +444,13 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			// download route (GET /attachments/:id/raw) keeps working for
 			// any old records created before presign was introduced.
 			const ext = filename.split(".").pop() ?? "bin";
-			const key = `${attachmentKeyPrefix(ctx, userId, documentId)}/${nanoid()}.${ext}`;
+			const prefix = attachmentKeyPrefix(ctx, userId, documentId);
+			const key = config.DOCSMINT_ATTACHMENT_WEBP_ENABLED
+				? pendingWebpAttachmentKey(prefix, nanoid())
+				: `${prefix}/${nanoid()}.${ext}`;
 			const admissionId = crypto.randomUUID();
 			const expiresAt = new Date(Date.now() + PRESIGN_EXPIRY_SECONDS * 1000);
-			const quotaOperationKey = `attachment:${documentId}:${key}`;
+			const quotaOperationKey = `attachment:${documentId}:${committedAttachmentKey(key)}`;
 			const presignLeaseOwner = `presign:${admissionId}`;
 			const presignLeaseExpiresAt = new Date(Date.now() + 60_000);
 			const uploadToken = await signAttachmentUploadToken({
@@ -692,7 +696,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					tx
 						.select()
 						.from(attachments)
-						.where(eq(attachments.storageKey, key))
+						.where(eq(attachments.storageKey, committedAttachmentKey(key)))
 						.limit(1),
 				);
 				if (existing && authorization.authorized) {
@@ -790,7 +794,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					set.status = 409;
 					return { error: "Upload not found in storage — please retry upload" };
 				}
-				const storedSize = headOutput.ContentLength;
+				let storedSize = headOutput.ContentLength;
 				if (
 					typeof storedSize !== "number" ||
 					!Number.isFinite(storedSize) ||
@@ -804,6 +808,47 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					return {
 						error: `Uploaded file exceeds the ${config.ATTACHMENT_MAX_SIZE_MB}MB limit`,
 					};
+				}
+				let prepared = {
+					storageKey: key, filename: claimed.filename, mimeType: claimed.mimeType,
+				};
+				if (committedAttachmentKey(key) !== key) {
+					const outputId = claimed.id;
+					try {
+						const source = await storage.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+						if (!source.Body || typeof (source.Body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] !== "function") {
+							throw new Error("Image source stream is unavailable");
+						}
+						const image = await prepareAttachmentWebp({
+							source: source.Body as AsyncIterable<Uint8Array>,
+							expectedBytes: storedSize,
+							maxBytes: ATTACHMENT_MAX_SIZE_BYTES,
+							mimeType: claimed.mimeType,
+							filename: claimed.filename,
+							sourceKey: key,
+							trackOutput: (storageKey, size) => withTenant(claimCtx, tx =>
+								stageAttachmentStorageCleanup(tx, {
+									sourceKind: "uncommitted_upload", sourceId: outputId,
+									storageKey, size, documentId,
+									actorUserId: claims.actorUserId, ownerUserId: claimed.ownerUserId,
+									requestedByUserId: claims.actorUserId, workspaceId: claims.workspaceId,
+									quotaOperationKey: claimed.quotaOperationKey, quotaReleaseKind: "none",
+									notBefore: storageWriteHoldNotBefore(),
+								})),
+							writeOutput: async (storageKey, bytes, mimeType) => {
+								await storage.send(new PutObjectCommand({
+									Bucket: BUCKET, Key: storageKey, Body: bytes,
+									ContentType: mimeType, ContentLength: bytes.length,
+								}));
+							},
+						});
+						prepared = image;
+						storedSize = image.size;
+					} catch (error) {
+						logger.warn({ err: error, admissionId: claimed.id }, "Image conversion failed");
+						set.status = 422;
+						return { error: "Image could not be converted to WebP" };
+					}
 				}
 				if (admission && quotaContext && claimed.quotaReservationId) {
 					try {
@@ -880,7 +925,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					const [raced] = await tx
 						.select()
 						.from(attachments)
-						.where(eq(attachments.storageKey, key))
+						.where(eq(attachments.storageKey, committedAttachmentKey(key)))
 						.limit(1);
 					let result = raced;
 					if (!result) {
@@ -890,10 +935,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 								documentId,
 								workspaceId: claims.workspaceId,
 								uploadedBy: claims.actorUserId,
-								filename: claimed.filename,
-								mimeType: claimed.mimeType,
+								filename: prepared.filename,
+								mimeType: prepared.mimeType,
 								size: storedSize,
-								storageKey: key,
+								storageKey: prepared.storageKey,
 							})
 							.onConflictDoNothing({ target: attachments.storageKey })
 							.returning();
@@ -902,10 +947,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						[result] = await tx
 							.select()
 							.from(attachments)
-							.where(eq(attachments.storageKey, key))
+							.where(eq(attachments.storageKey, committedAttachmentKey(key)))
 							.limit(1);
 					}
 					if (!result) return null;
+					if (prepared.storageKey !== key) {
+						await tx.delete(attachmentStorageCleanupOutbox).where(and(
+							eq(attachmentStorageCleanupOutbox.sourceKind, "uncommitted_upload"),
+							eq(attachmentStorageCleanupOutbox.sourceId, claimed.id),
+						));
+						await stageAttachmentStorageCleanup(tx, {
+							sourceKind: "uncommitted_upload", sourceId: crypto.randomUUID(),
+							storageKey: key, documentId, actorUserId: claims.actorUserId,
+							ownerUserId: claimed.ownerUserId, requestedByUserId: claims.actorUserId,
+							workspaceId: claims.workspaceId, size: claimed.declaredSize,
+							quotaOperationKey: claimed.quotaOperationKey, quotaReleaseKind: "none",
+							retainUntil: claimed.expiresAt,
+						});
+					}
 					await tx
 						.delete(pendingAttachmentUploads)
 						.where(
@@ -1027,8 +1086,24 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			};
 		}
 
+		const source = Buffer.from(await file.arrayBuffer());
+		let image: { bytes: Buffer; mimeType: string; filename: string } = { bytes: source, mimeType: file.type, filename: file.name };
+		if (config.DOCSMINT_ATTACHMENT_WEBP_ENABLED) {
+			try {
+				image = await normalizeAttachmentImage(
+					source,
+					file.type,
+					file.name,
+					LEGACY_MAX_FILE_SIZE,
+				);
+			} catch {
+				set.status = 422;
+				return { error: "Image could not be converted to WebP" };
+			}
+		}
+
 		// Generate storage key
-		const ext = file.name.split(".").pop() ?? "bin";
+		const ext = image.filename.split(".").pop() ?? "bin";
 		const key = `${attachmentKeyPrefix(ctx, userId, documentId)}/${nanoid()}.${ext}`;
 		const cleanupSourceId = crypto.randomUUID();
 
@@ -1045,22 +1120,21 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					ownerUserId: userId,
 					requestedByUserId: userId,
 					workspaceId: null,
-					size: file.size,
+					size: image.bytes.length,
 					quotaOperationKey: `attachment:${documentId}:${key}`,
 					quotaReleaseKind: "none",
 					notBefore: storageWriteHoldNotBefore(),
 				}),
 			);
 			// Upload to SeaweedFS
-			const arrayBuffer = await file.arrayBuffer();
-			const buffer = Buffer.from(arrayBuffer);
+			const buffer = image.bytes;
 			await storage.send(
 				new PutObjectCommand({
 					Bucket: BUCKET,
 					Key: key,
 					Body: buffer,
-					ContentType: file.type,
-					ContentLength: file.size,
+					ContentType: image.mimeType,
+					ContentLength: image.bytes.length,
 				}),
 			);
 
@@ -1098,9 +1172,9 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						documentId,
 						workspaceId: ctx.workspaceId ?? null,
 						uploadedBy: userId,
-						filename: file.name,
-						mimeType: file.type,
-						size: file.size,
+						filename: image.filename,
+						mimeType: image.mimeType,
+						size: image.bytes.length,
 						storageKey: key,
 					})
 					.returning();
