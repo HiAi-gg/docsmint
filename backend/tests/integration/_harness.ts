@@ -617,7 +617,7 @@ function buildUpdateProxy(ctx: UpdateCtx): any {
 		for (const row of rows) {
 			if (!evaluateCondition(row, ctx.where)) continue;
 			for (const [key, value] of Object.entries(ctx.set ?? {})) {
-				if ((value as any)?.[TAG_SQL]) {
+				if ((value as any)?.[TAG_SQL] && !asHarnessDate(value)) {
 					row[key] = Number(row[key] ?? 0) + 1;
 					continue;
 				}

@@ -64,3 +64,41 @@ test("confirms ten PNGs as WebP and repeats each confirmation without duplicate 
 	}
 	expect(getState().documents.get(documentId)?.content).toBe("");
 });
+
+test("retries the same admitted upload after the WebP PUT fails", async () => {
+	resetState();
+	const documentId = "00000000-0000-4000-8000-000000000098";
+	getState().documents.set(documentId, {
+		id: documentId, ownerId: OWNER_ID, title: "Temporary storage failure", content: "unchanged",
+		contentJson: null, categoryId: null, folderId: null,
+		createdAt: new Date(), updatedAt: new Date(),
+	});
+	const bytes = await sharp({
+		create: { width: 2, height: 2, channels: 3, background: "white" },
+	}).png().toBuffer();
+	const body = { filename: "retry.png", contentType: "image/png", size: bytes.length };
+	const signed = await request(app, `/api/documents/${documentId}/attachments/presign`, {
+		method: "POST", headers: ownerHeaders(), body: JSON.stringify(body),
+	});
+	expect(signed.status).toBe(200);
+	const admitted = signed.body as { key: string; uploadToken: string };
+	const storage = getStorageMockState();
+	storage.objectBytes.set(admitted.key, bytes);
+	storage.storedSizes.set(admitted.key, bytes.length);
+	storage.getObjectBodyMode = "async-iterable";
+	storage.putObjectFailNext = true;
+	const confirm = () => request(app, `/api/documents/${documentId}/attachments/confirm`, {
+		method: "POST", headers: ownerHeaders(), body: JSON.stringify({ ...body, ...admitted }),
+	});
+	expect((await confirm()).status).toBe(503);
+	expect(getState().attachments.size).toBe(0);
+	expect(getState().pendingAttachmentUploads.size).toBe(1);
+
+
+const recovered = await confirm();
+
+expect(recovered.status).toBe(201);
+	expect(getState().attachments.size).toBe(1);
+	expect(getState().pendingAttachmentUploads.size).toBe(0);
+	expect(getState().documents.get(documentId)?.content).toBe("unchanged");
+});
