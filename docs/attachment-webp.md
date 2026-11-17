@@ -31,12 +31,15 @@ Insert the returned raw reference through a separate authorized document save.
   frame limits and concurrent encode limits pass.
 - HTTP fixture: ten uploads, authenticated WebP readback, repeated confirmations
   and a temporary PUT failure followed by successful confirmation pass.
-- Existing isolated PostgreSQL: confirmation leases block cleanup of both
-  source and derived WebP objects. This run used the database owner connection.
+- Existing isolated PostgreSQL: seven concurrency and lifecycle cases pass with
+  the backend connected as hiai_app (neither superuser nor BYPASSRLS), including
+  confirmation leases protecting both source and derived WebP objects.
+  Two older workspace fixtures are excluded because they use non-UUID workspace
+  IDs that conflict with the Cloud test database's workspace dependency triggers.
 - Existing isolated SeaweedFS: ten synthetic PNG sources converted to WebP,
   MIME and sizes verified by GET, decoded pixels compared. All twenty created
   objects were deleted and HEAD returned 404 after cleanup.
 
-Runtime-role isolation, quota accounting through the real confirmation route,
+Category-key attachment isolation, quota accounting through the real confirmation route,
 persistent idempotency across new upload requests and Cloud production
 acceptance remain pending. Do not treat the component checks as release acceptance.
