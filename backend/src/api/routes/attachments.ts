@@ -27,7 +27,7 @@ import {
 	stageAttachmentStorageCleanup,
 	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
-import { committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
+import { AttachmentImageValidationError, committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
 import {
 	abandonClaimedPendingAttachmentUpload,
 	abandonPendingAttachmentUploadByProof,
@@ -846,8 +846,13 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						storedSize = image.size;
 					} catch (error) {
 						logger.warn({ err: error, admissionId: claimed.id }, "Image conversion failed");
-						set.status = 422;
-						return { error: "Image could not be converted to WebP" };
+						if (error instanceof AttachmentImageValidationError) {
+							set.status = 422;
+							return { error: "Image could not be converted to WebP" };
+						}
+						abandonRejectedConfirm = false;
+						set.status = 503;
+						return { error: "Image processing is temporarily unavailable; retry confirmation" };
 					}
 				}
 				if (admission && quotaContext && claimed.quotaReservationId) {

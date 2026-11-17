@@ -67,6 +67,13 @@ export async function normalizeAttachmentImage(
 	};
 }
 
+export class AttachmentImageValidationError extends Error {
+	constructor() {
+		super("Image could not be validated or converted to WebP");
+		this.name = "AttachmentImageValidationError";
+	}
+}
+
 export async function prepareAttachmentWebp(input: {
 	source: AsyncIterable<Uint8Array>;
 	expectedBytes: number;
@@ -84,9 +91,14 @@ export async function prepareAttachmentWebp(input: {
 	const source = await readAttachmentImageSource(
 		input.source, input.expectedBytes, input.maxBytes,
 	);
-	const image = await normalizeAttachmentImage(
-		source, input.mimeType, input.filename, input.maxBytes,
-	);
+	let image: Awaited<ReturnType<typeof normalizeAttachmentImage>>;
+	try {
+		image = await normalizeAttachmentImage(
+			source, input.mimeType, input.filename, input.maxBytes,
+		);
+	} catch {
+		throw new AttachmentImageValidationError();
+	}
 	// Persist cleanup authority before PUT so a crash never hides an object.
 	await input.trackOutput(storageKey, image.bytes.length);
 	await input.writeOutput(storageKey, image.bytes, image.mimeType);

@@ -1575,6 +1575,10 @@ mock.module("../../src/lib/storage.js", () => ({
 					throw new Error("Simulated put failure");
 				}
 				storageMockState.putObjectCalls++;
+				if (command.input.Body instanceof Uint8Array) {
+					storageMockState.objectBytes.set(command.input.Key, Buffer.from(command.input.Body));
+					storageMockState.storedSizes.set(command.input.Key, command.input.Body.length);
+				}
 				return {};
 			} else if (cmdName === "DeleteObjectCommand") {
 				storageMockState.removeObjectCalls++;
