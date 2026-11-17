@@ -1998,6 +1998,11 @@
             ],
             "description": "MIME type of the source image."
           },
+          "operationId": {
+            "description": "Stable upload operation ID. Reuse with identical bytes and metadata after timeout to prevent duplicates. Requires WebP finalization on the server.",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
           "contentBase64": {
             "type": "string",
             "minLength": 4,
@@ -2138,6 +2143,29 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "verification": {
+            "type": "object",
+            "properties": {
+              "size": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "size",
+              "mimeType",
+              "sha256"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

@@ -7,6 +7,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
 	attachmentStorageCleanupOutbox,
 	attachments,
+	attachmentUploadOperations,
 	documents,
 	folders,
 	pendingAttachmentUploads,
@@ -56,6 +57,10 @@ import {
 	resolveContentAccess,
 	tenantOwnerCondition,
 } from "../../lib/content-access";
+import {
+	documentCreateIdempotencyKey,
+	documentCreateWorkspaceIdentity,
+} from "../../lib/document-create-idempotency";
 import { acquireDocumentPipelineLock } from "../../lib/document-pipeline-serialization";
 import { logger } from "../../lib/logger";
 import { fetchRemoteImage } from "../../lib/remote-image";
@@ -470,20 +475,33 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				};
 			}
 
+			const idempotencyKey = documentCreateIdempotencyKey(request);
+			if (
+				idempotencyKey === "invalid" ||
+				(idempotencyKey && typeof sourceSha256 !== "string")
+			) {
+				set.status = 400;
+				return { error: "A valid Idempotency-Key requires sourceSha256" };
+			}
+			const fingerprint = new Bun.CryptoHasher("sha256")
+				.update(
+					JSON.stringify([filename, contentType, size, sourceSha256 ?? null]),
+				)
+				.digest("hex");
 			// Generate storage key. Reuse the existing naming shape so the
 			// download route (GET /attachments/:id/raw) keeps working for
 			// any old records created before presign was introduced.
 			const ext = filename.split(".").pop() ?? "bin";
 			const prefix = attachmentKeyPrefix(ctx, userId, documentId);
-			const key = config.DOCSMINT_ATTACHMENT_WEBP_ENABLED
+			let key = config.DOCSMINT_ATTACHMENT_WEBP_ENABLED
 				? pendingWebpAttachmentKey(prefix, nanoid())
 				: `${prefix}/${nanoid()}.${ext}`;
-			const admissionId = crypto.randomUUID();
-			const expiresAt = new Date(Date.now() + PRESIGN_EXPIRY_SECONDS * 1000);
-			const quotaOperationKey = `attachment:${documentId}:${committedAttachmentKey(key)}`;
-			const presignLeaseOwner = `presign:${admissionId}`;
+			let admissionId: string = crypto.randomUUID();
+			let expiresAt = new Date(Date.now() + PRESIGN_EXPIRY_SECONDS * 1000);
+			let quotaOperationKey = `attachment:${documentId}:${committedAttachmentKey(key)}`;
+			const presignLeaseOwner = `presign:${crypto.randomUUID()}`;
 			const presignLeaseExpiresAt = new Date(Date.now() + 60_000);
-			const uploadToken = await signAttachmentUploadToken({
+			let uploadToken = await signAttachmentUploadToken({
 				id: admissionId,
 				documentId,
 				actorUserId: userId,
@@ -492,7 +510,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				expiresAt: expiresAt.getTime(),
 				...(typeof sourceSha256 === "string" ? { sourceSha256 } : {}),
 			});
-			const quotaContext = attachmentQuotaContext(
+			let quotaContext = attachmentQuotaContext(
 				ctx,
 				userId,
 				documentId,
@@ -515,7 +533,78 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			try {
 				// Persist the quota operation before the first external call. The
 				// operation key makes reserve/recovery retries the same admission.
-				await withTenant(ctx, async (tx) => {
+				const replay = await withTenant(ctx, async (tx) => {
+					if (idempotencyKey) {
+						const workspaceIdentity = documentCreateWorkspaceIdentity(
+							userId,
+							ctx.workspaceId,
+						);
+						await tx.execute(
+							sql`SELECT pg_advisory_xact_lock(hashtextextended(${JSON.stringify([workspaceIdentity, userId, documentId, idempotencyKey])}, 0))`,
+						);
+						const [operation] = await tx
+							.select()
+							.from(attachmentUploadOperations)
+							.where(
+								and(
+									eq(attachmentUploadOperations.workspaceId, workspaceIdentity),
+									eq(attachmentUploadOperations.actorUserId, userId),
+									eq(attachmentUploadOperations.documentId, documentId),
+									eq(attachmentUploadOperations.idempotencyKey, idempotencyKey),
+								),
+							)
+							.limit(1);
+						if (operation) {
+							if (operation.requestFingerprint !== fingerprint)
+								return { error: "conflict" } as const;
+							const [existing] = await tx
+								.select()
+								.from(attachments)
+								.where(
+									and(
+										eq(attachments.documentId, documentId),
+										eq(
+											attachments.storageKey,
+											committedAttachmentKey(operation.storageKey),
+										),
+									),
+								)
+								.limit(1);
+							if (existing) return { operation, completed: true } as const;
+							const [pending] = await tx
+								.select()
+								.from(pendingAttachmentUploads)
+								.where(eq(pendingAttachmentUploads.id, operation.id))
+								.limit(1)
+								.for("update");
+							if (!pending || operation.expiresAt.getTime() <= Date.now())
+								return { error: "expired" } as const;
+							if (
+								pending.leaseExpiresAt &&
+								pending.leaseExpiresAt.getTime() > Date.now()
+							)
+								return { error: "busy" } as const;
+							await tx
+								.update(pendingAttachmentUploads)
+								.set({
+									leaseOwner: presignLeaseOwner,
+									leaseExpiresAt: presignLeaseExpiresAt,
+								})
+								.where(eq(pendingAttachmentUploads.id, operation.id));
+							return { operation, pending, completed: false } as const;
+						}
+						await tx.insert(attachmentUploadOperations).values({
+							id: admissionId,
+							workspaceId: workspaceIdentity,
+							actorUserId: userId,
+							documentId,
+							idempotencyKey,
+							requestFingerprint: fingerprint,
+							sourceSha256: sourceSha256 as string,
+							storageKey: key,
+							expiresAt,
+						});
+					}
 					await tx.insert(pendingAttachmentUploads).values({
 						id: admissionId,
 						documentId,
@@ -532,8 +621,55 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						leaseExpiresAt: presignLeaseExpiresAt,
 						expiresAt,
 					});
+					return null;
 				});
-				if (admission && quotaContext) {
+				if (replay && "error" in replay) {
+					set.status = replay.error === "expired" ? 410 : 409;
+					if (replay.error === "busy") set.headers["Retry-After"] = "1";
+					return {
+						error:
+							replay.error === "conflict"
+								? "Idempotency-Key was already used for different image bytes or metadata"
+								: replay.error === "expired"
+									? "The upload operation expired or was removed; use a new operation key"
+									: "The upload operation is in progress; retry with the same Idempotency-Key",
+					};
+				}
+				if (replay && "operation" in replay) {
+					key = replay.operation.storageKey;
+					admissionId = replay.operation.id;
+					expiresAt = replay.operation.expiresAt;
+					quotaOperationKey = `attachment:${documentId}:${committedAttachmentKey(key)}`;
+					uploadToken = await signAttachmentUploadToken({
+						id: admissionId,
+						documentId,
+						actorUserId: userId,
+						workspaceId: ctx.workspaceId ?? null,
+						storageKey: key,
+						expiresAt: expiresAt.getTime(),
+						...(typeof sourceSha256 === "string" ? { sourceSha256 } : {}),
+					});
+					if (replay.completed)
+						return {
+							url: "",
+							key,
+							uploadToken,
+							alreadyConfirmed: true,
+							maxSize: ATTACHMENT_MAX_SIZE_BYTES,
+							expiresIn: 0,
+						};
+					reservationId = replay.pending.quotaReservationId ?? undefined;
+					quotaContext = attachmentQuotaContext(
+						ctx,
+						userId,
+						documentId,
+						key,
+						size,
+						admissionId,
+						quotaOperationKey,
+					);
+				}
+				if (admission && quotaContext && !reservationId) {
 					try {
 						reservationId = (await admission.reserve(quotaContext)).id;
 					} catch (error) {
@@ -549,7 +685,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 										: "quota_reserve_terminal",
 									quotaState: retryable ? "reserve_pending" : "not_required",
 								})
-								.where(eq(pendingAttachmentUploads.id, admissionId)),
+								.where(and(eq(pendingAttachmentUploads.id, admissionId), eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner))),
 						).catch(() => undefined);
 						logger.warn(
 							{ err: error, documentId, retryable },
@@ -583,7 +719,12 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				const url = await getSignedUrl(
 					storagePublic,
 					new PutObjectCommand({ Bucket: BUCKET, Key: key }),
-					{ expiresIn: PRESIGN_EXPIRY_SECONDS },
+					{
+						expiresIn: Math.max(
+							1,
+							Math.ceil((expiresAt.getTime() - Date.now()) / 1000),
+						),
+					},
 				);
 				const issuedRows = await withTenant(ctx, (tx) =>
 					tx
@@ -613,7 +754,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					// finalized after the storage HEAD check.
 					...(reservationId ? { quotaReservationId: reservationId } : {}),
 					maxSize: ATTACHMENT_MAX_SIZE_BYTES,
-					expiresIn: PRESIGN_EXPIRY_SECONDS,
+					expiresIn: Math.max(
+						0,
+						Math.ceil((expiresAt.getTime() - Date.now()) / 1000),
+					),
 				};
 			} catch (err) {
 				// The pending quota saga remains authoritative. Recovery resumes the
@@ -622,7 +766,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					tx
 						.update(pendingAttachmentUploads)
 						.set({ leaseOwner: null, leaseExpiresAt: new Date() })
-						.where(eq(pendingAttachmentUploads.id, admissionId)),
+						.where(and(eq(pendingAttachmentUploads.id, admissionId), eq(pendingAttachmentUploads.leaseOwner, presignLeaseOwner))),
 				).catch(() => undefined);
 				if (isAccountPurgeFencedError(err)) {
 					set.status = 409;

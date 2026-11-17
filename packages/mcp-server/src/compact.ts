@@ -74,12 +74,13 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
     documentId: uuid,
     filename: z.string().min(1).max(255).regex(/^[^/\\\u0000-\u001f\u007f]+$/).describe('Image file name with extension and without path segments.'),
     mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp']).describe('MIME type of the source image.'),
+    operationId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/).optional().describe('Stable upload operation ID. Reuse with identical bytes and metadata after timeout to prevent duplicates. Requires WebP finalization on the server.'),
     contentBase64: z.base64().min(4).max(Math.ceil(maxImageBytes / 3) * 4).describe('Base64 file bytes without a data: prefix.'),
-  }), write, async ({ documentId, filename, mimeType, contentBase64 }) => {
+  }), write, async ({ documentId, filename, mimeType, contentBase64, operationId }) => {
     const bytes = Buffer.from(contentBase64, 'base64');
     if (!bytes.length || bytes.length > maxImageBytes) throw new Error('Image must be between 1 byte and 2 MiB.');
     if (!matchesImageType(bytes, mimeType)) throw new Error('Image bytes do not match the declared MIME type.');
-    return required(client.uploadDocumentImage, 'upload_document_image')(documentId, filename, mimeType, bytes);
+    return required(client.uploadDocumentImage, 'upload_document_image')(documentId, filename, mimeType, bytes, operationId);
   });
 
   register('check_document_attachments', 'List attachments on a readable document. Supply attachmentId to verify that this attachment belongs to the document and that its stored bytes can be opened with the current access.', z.strictObject({
@@ -88,9 +89,10 @@ export function registerCompactCapabilities(server: McpServer, client: HiaiDocsC
   }), read, async ({ documentId, attachmentId }) => {
     const { items } = await required(client.listAttachments, 'check_document_attachments')(documentId);
     if (!attachmentId) return { items };
-    if (!items.some(item => item.id === attachmentId)) throw new Error('Attachment not found in this document.');
-    await required(client.verifyAttachment, 'check_document_attachments')(attachmentId);
-    return { items, verifiedAttachmentId: attachmentId };
+    const attachment = items.find(item => item.id === attachmentId);
+    if (!attachment) throw new Error('Attachment not found in this document.');
+    const verification = await required(client.verifyAttachment, 'check_document_attachments')(attachment);
+    return { items, verifiedAttachmentId: attachmentId, verification };
   });
 
   register('delete_document', 'Move one document to trash without purging content or versions. Use batch_documents(action=trash) for multiple explicit IDs. Requires write access and an explicit delete request; permanently_delete_document is a separate irreversible action.', z.strictObject({ id: uuid }), destructive, async ({ id }) => {

@@ -45,6 +45,7 @@ test("confirms ten PNGs as WebP and repeats each confirmation without duplicate 
 			.toBuffer();
 		const body = {
 			filename: `diagram-${index}.png`,
+			sourceSha256: new Bun.CryptoHasher("sha256").update(bytes).digest("hex"),
 			contentType: "image/png",
 			size: bytes.length,
 		};
@@ -53,13 +54,36 @@ test("confirms ten PNGs as WebP and repeats each confirmation without duplicate 
 			`/api/documents/${documentId}/attachments/presign`,
 			{
 				method: "POST",
-				headers: ownerHeaders(),
+				headers: { ...ownerHeaders(), "Idempotency-Key": `diagram-${index}` },
 				body: JSON.stringify(body),
 			},
 		);
 		expect(signed.status).toBe(200);
 		const admitted = signed.body as { key: string; uploadToken: string };
 		expect(admitted.key).toEndWith(".webp.pending");
+		const replayPresign = () =>
+			request(app, `/api/documents/${documentId}/attachments/presign`, {
+				method: "POST",
+				headers: { ...ownerHeaders(), "Idempotency-Key": `diagram-${index}` },
+				body: JSON.stringify(body),
+			});
+		const issuedReplay = await replayPresign();
+		expect(issuedReplay.status).toBe(200);
+		expect(issuedReplay.body).toMatchObject({
+			key: admitted.key,
+			uploadToken: admitted.uploadToken,
+		});
+		expect(getState().pendingAttachmentUploads.size).toBe(1);
+		const mismatch = await request(
+			app,
+			`/api/documents/${documentId}/attachments/presign`,
+			{
+				method: "POST",
+				headers: { ...ownerHeaders(), "Idempotency-Key": `diagram-${index}` },
+				body: JSON.stringify({ ...body, filename: "different.png" }),
+			},
+		);
+		expect(mismatch.status).toBe(409);
 		const storage = getStorageMockState();
 		storage.objectBytes.set(admitted.key, bytes);
 		storage.storedSizes.set(admitted.key, bytes.length);
@@ -103,6 +127,16 @@ test("confirms ten PNGs as WebP and repeats each confirmation without duplicate 
 		expect(repeated.status).toBe(201);
 		expect(repeated.body).toEqual(confirmed.body);
 		expect(storage.putObjectCalls).toBe(puts);
+		const completedReplay = await replayPresign();
+		expect(completedReplay.status).toBe(200);
+		expect(completedReplay.body).toMatchObject({
+			key: admitted.key,
+			uploadToken: admitted.uploadToken,
+			alreadyConfirmed: true,
+			url: "",
+		});
+		expect(getState().attachmentUploadOperations.size).toBe(index + 1);
+		expect(getState().pendingAttachmentUploads.size).toBe(0);
 		expect(getState().attachments.size).toBe(index + 1);
 	}
 	expect(getState().documents.get(documentId)?.content).toBe("");

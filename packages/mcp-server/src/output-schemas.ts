@@ -310,6 +310,11 @@ const singleToolOutputSchemas = {
   check_document_attachments: z.strictObject({
     items: z.array(attachment),
     verifiedAttachmentId: z.string().uuid().optional(),
+    verification: z.strictObject({
+      size: z.number().int().positive(),
+      mimeType: z.string(),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    }).optional(),
   }),
   save_document: z.union([
     variant('create', operationOutputSchemas.create_document),

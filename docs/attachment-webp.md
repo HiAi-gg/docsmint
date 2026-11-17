@@ -26,7 +26,27 @@ A WebP presign request may include optional `sourceSha256`, the lowercase
 SHA-256 of the original bytes. The signed upload token binds this digest.
 Confirmation recomputes it from the bytes read from storage before conversion
 and rejects a mismatch before writing the permanent object. This field verifies
-source integrity; durable request idempotency remains a separate requirement.
+source integrity.
+
+Supply an optional `Idempotency-Key` header with `sourceSha256` for durable
+upload retries. Keys use 1–128 characters matching
+`[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` and are scoped to actor, workspace and
+document. Identical retries reuse the source key and signed admission.
+Different bytes or metadata return 409. An active lease returns 409 with
+Retry-After. An expired or removed admission returns 410; start an explicitly
+new operation. A confirmed replay returns `alreadyConfirmed: true`, an empty
+`url`, and the original key/token. Skip PUT and repeat confirm to recover the
+attachment receipt. Authorization is rechecked on every retry.
+The operation journal and initial admission are committed together.
+The journal is removed by document/account deletion, not by upload cleanup.
+
+MCP `upload_document_image` exposes optional `operationId` for this header and
+computes the source digest itself. Reuse that value after connection loss.
+MCP `check_document_attachments` reads the complete authorized response with
+a 30-second timeout and a 16-MiB verification limit, checks MIME/signature and
+recorded size, and returns `verification: { size, mimeType, sha256 }`.
+This digest describes downloaded stored bytes. It does not claim that the
+image is visually correct or replace decoding validation during upload.
 
 Upload and confirmation do not edit document Markdown or publish content.
 Insert the returned raw reference through a separate authorized document save.
@@ -46,6 +66,13 @@ Insert the returned raw reference through a separate authorized document save.
   MIME and sizes verified by GET, decoded pixels compared. All twenty created
   objects were deleted and HEAD returned 404 after cleanup.
 
-Category-key attachment isolation, quota accounting through the real confirmation route,
-persistent idempotency across new upload requests and Cloud production
-acceptance remain pending. Do not treat the component checks as release acceptance.
+- Upload operation journal: actual PostgreSQL concurrency and RLS pass as
+  hiai_app without superuser/BYPASSRLS. Three concurrent retries share one ID;
+  another actor/workspace cannot read or forge the journal.
+- HTTP fixture: lost presign/confirm responses and changed-metadata conflicts
+  pass for ten images without duplicate admissions or attachments.
+- MCP: complete-stream verification rejects truncation, stream errors,
+  oversized output, mismatched headers and non-image signatures.
+
+Category-key attachment isolation, quota accounting through the real confirmation route
+and Cloud production acceptance remain pending. Do not treat the component checks as release acceptance.

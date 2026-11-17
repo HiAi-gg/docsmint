@@ -2580,6 +2580,16 @@
             "in": "path",
             "name": "id",
             "required": true
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Actor/workspace/document-scoped upload operation. Reuse identical bytes and metadata after timeout. Completed replay sets alreadyConfirmed; skip PUT and repeat confirm. Conflict/in-progress: 409; expired or removed: 410.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
           }
         ],
         "requestBody": {
@@ -2600,6 +2610,11 @@
                   "size": {
                     "type": "integer",
                     "minimum": 1
+                  },
+                  "sourceSha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$",
+                    "description": "Original-byte SHA-256. Requires WebP finalization. Required with Idempotency-Key."
                   }
                 },
                 "required": [
@@ -2626,7 +2641,10 @@
                   "properties": {
                     "url": {
                       "type": "string",
-                      "format": "uri"
+                      "description": "Presigned PUT URL, or empty for an alreadyConfirmed replay."
+                    },
+                    "alreadyConfirmed": {
+                      "type": "boolean"
                     },
                     "key": {
                       "type": "string"
@@ -2643,7 +2661,7 @@
                     },
                     "expiresIn": {
                       "type": "integer",
-                      "minimum": 1
+                      "minimum": 0
                     }
                   },
                   "required": [
@@ -2751,6 +2769,27 @@
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           },
+          "410": {
+            "description": "The share link has expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Share link has expired"
+                }
+              }
+            }
+          },
           "413": {
             "description": "Request exceeds the configured size limit.",
             "content": {
@@ -2789,6 +2828,27 @@
                 },
                 "example": {
                   "error": "Unsupported content type"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The content could not be processed safely.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unprocessable content"
                 }
               }
             }
@@ -3089,6 +3149,27 @@
               }
             }
           },
+          "410": {
+            "description": "The share link has expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Share link has expired"
+                }
+              }
+            }
+          },
           "413": {
             "description": "Request exceeds the configured size limit.",
             "content": {
@@ -3127,6 +3208,27 @@
                 },
                 "example": {
                   "error": "Unsupported content type"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The content could not be processed safely.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unprocessable content"
                 }
               }
             }
@@ -3362,6 +3464,27 @@
           "409": {
             "$ref": "#/components/responses/AccountPurgeFenced"
           },
+          "410": {
+            "description": "The share link has expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Share link has expired"
+                }
+              }
+            }
+          },
           "413": {
             "description": "Request exceeds the configured size limit.",
             "content": {
@@ -3400,6 +3523,27 @@
                 },
                 "example": {
                   "error": "Unsupported content type"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The content could not be processed safely.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "Unprocessable content"
                 }
               }
             }

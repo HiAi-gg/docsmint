@@ -972,7 +972,7 @@ function describeFileTransfers(spec: Spec) {
 		size: 128,
 		url: "/api/attachments/11111111-1111-4111-8111-111111111111/raw",
 	};
-	const uploadErrors = [400, 401, 403, 404, 409, 413, 415, 429, 500, 503];
+	const uploadErrors = [400, 401, 403, 404, 409, 410, 413, 415, 422, 429, 500, 503];
 	describeOperation(
 		spec,
 		`${uploads}/presign`,
@@ -981,12 +981,13 @@ function describeFileTransfers(spec: Spec) {
 		"Returns a storage URL and confirmation token for an admitted image. Use the reservation value verbatim when present.",
 		obj(
 			{
-				url: { ...string, format: "uri" },
+				url: { ...string, description: "Presigned PUT URL, or empty for an alreadyConfirmed replay." },
+				alreadyConfirmed: { type: "boolean" },
 				key: string,
 				uploadToken: string,
 				quotaReservationId: string,
 				maxSize: size,
-				expiresIn: size,
+				expiresIn: { type: "integer", minimum: 0 },
 			},
 			["url", "key", "uploadToken", "maxSize", "expiresIn"],
 		),
@@ -999,7 +1000,17 @@ function describeFileTransfers(spec: Spec) {
 		},
 		uploadErrors,
 	);
-	requests(`${uploads}/presign`, json(obj(file), uploadExample));
+	requests(`${uploads}/presign`, json(obj({
+        ...file,
+        sourceSha256: { ...string, pattern: "^[a-f0-9]{64}$", description: "Original-byte SHA-256. Requires WebP finalization. Required with Idempotency-Key." },
+    }, Object.keys(file)), uploadExample));
+    spec.paths[`${uploads}/presign`].post.parameters = [
+        ...((spec.paths[`${uploads}/presign`].post.parameters as Array<{ name?: string }> | undefined) ?? []).filter(p => p.name !== "Idempotency-Key"),
+        {
+        name: "Idempotency-Key", in: "header", required: false,
+        description: "Actor/workspace/document-scoped upload operation. Reuse identical bytes and metadata after timeout. Completed replay sets alreadyConfirmed; skip PUT and repeat confirm. Conflict/in-progress: 409; expired or removed: 410.",
+        schema: { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+    }];
 
 	describeOperation(
 		spec,

@@ -35,6 +35,7 @@ export interface TestState {
 	metadataReembedOutbox: Map<string, any>;
 	lifecycleOperations: Map<string, any>;
 	pendingAttachmentUploads: Map<string, any>;
+	attachmentUploadOperations: Map<string, any>;
 	attachmentStorageCleanupOutbox: Map<string, any>;
 	enqueuedEmbeddings: string[];
 	enqueuedEmbeddingRequests: Array<{
@@ -76,6 +77,7 @@ function createState(): TestState {
 		metadataReembedOutbox: new Map(),
 		lifecycleOperations: new Map(),
 		pendingAttachmentUploads: new Map(),
+		attachmentUploadOperations: new Map(),
 		attachmentStorageCleanupOutbox: new Map(),
 		enqueuedEmbeddings: [],
 		enqueuedEmbeddingRequests: [],
@@ -298,6 +300,8 @@ function getCollection(name: string): any[] | Map<string, any> {
 			return state.metadataReembedOutbox;
 		case "lifecycle_operations":
 			return state.lifecycleOperations;
+		case "attachment_upload_operations":
+			return state.attachmentUploadOperations;
 		case "pending_attachment_uploads":
 			return state.pendingAttachmentUploads;
 		case "attachment_storage_cleanup_outbox":
