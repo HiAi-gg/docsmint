@@ -1,4 +1,3 @@
-import { committedAttachmentKey } from "./attachment-image-key";
 import { DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { attachmentStorageCleanupOutbox } from "@hiai-docs/db/schema";
 import {
@@ -8,6 +7,7 @@ import {
 	ZERO_UUID,
 } from "@hiai-docs/db/with-tenant";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { committedAttachmentKey } from "./attachment-image-key";
 import { logger } from "./logger";
 import {
 	getDocsMintRuntimeOptions,

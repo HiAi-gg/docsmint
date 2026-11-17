@@ -1,6 +1,9 @@
 const pendingWebpSuffix = ".webp.pending";
 
-export function pendingWebpAttachmentKey(prefix: string, uploadId: string): string {
+export function pendingWebpAttachmentKey(
+	prefix: string,
+	uploadId: string,
+): string {
 	return `${prefix}/${uploadId}${pendingWebpSuffix}`;
 }
 
@@ -10,4 +13,3 @@ export function committedAttachmentKey(sourceKey: string): string {
 		? sourceKey.slice(0, -".pending".length)
 		: sourceKey;
 }
-

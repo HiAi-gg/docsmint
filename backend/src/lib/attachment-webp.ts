@@ -18,7 +18,11 @@ const sourceMime = {
 	webp: "image/webp",
 } as const;
 
-export { committedAttachmentKey, pendingWebpAttachmentKey } from "./attachment-image-key";
+export {
+	committedAttachmentKey,
+	pendingWebpAttachmentKey,
+} from "./attachment-image-key";
+
 import { committedAttachmentKey } from "./attachment-image-key";
 
 // The presigned source can change after HEAD. Bound the stream as it arrives
@@ -28,7 +32,11 @@ export async function readAttachmentImageSource(
 	expectedBytes: number,
 	maxBytes: number,
 ): Promise<Buffer> {
-	if (!Number.isSafeInteger(expectedBytes) || expectedBytes <= 0 || expectedBytes > maxBytes) {
+	if (
+		!Number.isSafeInteger(expectedBytes) ||
+		expectedBytes <= 0 ||
+		expectedBytes > maxBytes
+	) {
 		throw new Error("Invalid attachment source size");
 	}
 	const bytes = Buffer.allocUnsafe(expectedBytes);
@@ -40,7 +48,8 @@ export async function readAttachmentImageSource(
 		bytes.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
-	if (offset !== expectedBytes) throw new Error("Attachment source size changed");
+	if (offset !== expectedBytes)
+		throw new Error("Attachment source size changed");
 	return bytes;
 }
 
@@ -55,7 +64,12 @@ export async function normalizeAttachmentImage(
 	}
 	activeConversions++;
 	try {
-		return await encodeAttachmentImage(source, mimeType, filename, maxOutputBytes);
+		return await encodeAttachmentImage(
+			source,
+			mimeType,
+			filename,
+			maxOutputBytes,
+		);
 	} finally {
 		activeConversions--;
 	}
@@ -72,17 +86,35 @@ async function encodeAttachmentImage(
 		failOn: "warning",
 		limitInputPixels: maxPixels,
 	});
-	const { format, pages = 1, width, height, pageHeight } = await image.metadata();
-	if (!format || !Object.hasOwn(sourceMime, format) ||
-		sourceMime[format as keyof typeof sourceMime] !== mimeType) {
+	const {
+		format,
+		pages = 1,
+		width,
+		height,
+		pageHeight,
+	} = await image.metadata();
+	if (
+		!format ||
+		!Object.hasOwn(sourceMime, format) ||
+		sourceMime[format as keyof typeof sourceMime] !== mimeType
+	) {
 		throw new Error("Unsupported attachment image format");
 	}
-	if (!width || !height || pages > maxFrames || width * (pageHeight ?? height) * pages > maxPixels) {
+	if (
+		!width ||
+		!height ||
+		pages > maxFrames ||
+		width * (pageHeight ?? height) * pages > maxPixels
+	) {
 		throw new Error("Attachment image exceeds decoded size limits");
 	}
-	const bytes = format === "webp"
-		? await image.stats().then(() => source)
-		: await image.autoOrient().webp({ lossless: format !== "jpeg", quality: 85 }).toBuffer();
+	const bytes =
+		format === "webp"
+			? await image.stats().then(() => source)
+			: await image
+					.autoOrient()
+					.webp({ lossless: format !== "jpeg", quality: 85 })
+					.toBuffer();
 	if (bytes.length > maxOutputBytes) {
 		throw new Error("Converted attachment exceeds size limit");
 	}
@@ -112,15 +144,22 @@ export async function prepareAttachmentWebp(input: {
 }) {
 	const storageKey = committedAttachmentKey(input.sourceKey);
 	if (storageKey === input.sourceKey) {
-		throw new Error("Converted image requires a separate permanent storage key");
+		throw new Error(
+			"Converted image requires a separate permanent storage key",
+		);
 	}
 	const source = await readAttachmentImageSource(
-		input.source, input.expectedBytes, input.maxBytes,
+		input.source,
+		input.expectedBytes,
+		input.maxBytes,
 	);
 	let image: Awaited<ReturnType<typeof normalizeAttachmentImage>>;
 	try {
 		image = await normalizeAttachmentImage(
-			source, input.mimeType, input.filename, input.maxBytes,
+			source,
+			input.mimeType,
+			input.filename,
+			input.maxBytes,
 		);
 	} catch (error) {
 		if (error instanceof AttachmentImageBusyError) throw error;

@@ -27,7 +27,6 @@ import {
 	stageAttachmentStorageCleanup,
 	storageWriteHoldNotBefore,
 } from "../../lib/attachment-storage-cleanup";
-import { AttachmentImageBusyError, AttachmentImageValidationError, committedAttachmentKey, pendingWebpAttachmentKey, prepareAttachmentWebp, normalizeAttachmentImage } from "../../lib/attachment-webp";
 import {
 	abandonClaimedPendingAttachmentUpload,
 	abandonPendingAttachmentUploadByProof,
@@ -42,6 +41,14 @@ import {
 	signAttachmentUploadToken,
 	verifyAttachmentUploadToken,
 } from "../../lib/attachment-upload-token";
+import {
+	AttachmentImageBusyError,
+	AttachmentImageValidationError,
+	committedAttachmentKey,
+	normalizeAttachmentImage,
+	pendingWebpAttachmentKey,
+	prepareAttachmentWebp,
+} from "../../lib/attachment-webp";
 import { config } from "../../lib/config";
 import {
 	canAccessContent,
@@ -810,13 +817,22 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					};
 				}
 				let prepared = {
-					storageKey: key, filename: claimed.filename, mimeType: claimed.mimeType,
+					storageKey: key,
+					filename: claimed.filename,
+					mimeType: claimed.mimeType,
 				};
 				if (committedAttachmentKey(key) !== key) {
 					const outputId = claimed.id;
 					try {
-						const source = await storage.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
-						if (!source.Body || typeof (source.Body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] !== "function") {
+						const source = await storage.send(
+							new GetObjectCommand({ Bucket: BUCKET, Key: key }),
+						);
+						if (
+							!source.Body ||
+							typeof (source.Body as AsyncIterable<Uint8Array>)[
+								Symbol.asyncIterator
+							] !== "function"
+						) {
 							throw new Error("Image source stream is unavailable");
 						}
 						const image = await prepareAttachmentWebp({
@@ -826,26 +842,42 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							mimeType: claimed.mimeType,
 							filename: claimed.filename,
 							sourceKey: key,
-							trackOutput: (storageKey, size) => withTenant(claimCtx, tx =>
-								stageAttachmentStorageCleanup(tx, {
-									sourceKind: "uncommitted_upload", sourceId: outputId,
-									storageKey, size, documentId,
-									actorUserId: claims.actorUserId, ownerUserId: claimed.ownerUserId,
-									requestedByUserId: claims.actorUserId, workspaceId: claims.workspaceId,
-									quotaOperationKey: claimed.quotaOperationKey, quotaReleaseKind: "none",
-									notBefore: storageWriteHoldNotBefore(),
-								})),
+							trackOutput: (storageKey, size) =>
+								withTenant(claimCtx, (tx) =>
+									stageAttachmentStorageCleanup(tx, {
+										sourceKind: "uncommitted_upload",
+										sourceId: outputId,
+										storageKey,
+										size,
+										documentId,
+										actorUserId: claims.actorUserId,
+										ownerUserId: claimed.ownerUserId,
+										requestedByUserId: claims.actorUserId,
+										workspaceId: claims.workspaceId,
+										quotaOperationKey: claimed.quotaOperationKey,
+										quotaReleaseKind: "none",
+										notBefore: storageWriteHoldNotBefore(),
+									}),
+								),
 							writeOutput: async (storageKey, bytes, mimeType) => {
-								await storage.send(new PutObjectCommand({
-									Bucket: BUCKET, Key: storageKey, Body: bytes,
-									ContentType: mimeType, ContentLength: bytes.length,
-								}));
+								await storage.send(
+									new PutObjectCommand({
+										Bucket: BUCKET,
+										Key: storageKey,
+										Body: bytes,
+										ContentType: mimeType,
+										ContentLength: bytes.length,
+									}),
+								);
 							},
 						});
 						prepared = image;
 						storedSize = image.size;
 					} catch (error) {
-						logger.warn({ err: error, admissionId: claimed.id }, "Image conversion failed");
+						logger.warn(
+							{ err: error, admissionId: claimed.id },
+							"Image conversion failed",
+						);
 						if (error instanceof AttachmentImageValidationError) {
 							set.status = 422;
 							return { error: "Image could not be converted to WebP" };
@@ -853,7 +885,10 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 						abandonRejectedConfirm = false;
 						set.headers["Retry-After"] = "1";
 						set.status = 503;
-						return { error: "Image processing is temporarily unavailable; retry confirmation" };
+						return {
+							error:
+								"Image processing is temporarily unavailable; retry confirmation",
+						};
 					}
 				}
 				if (admission && quotaContext && claimed.quotaReservationId) {
@@ -958,16 +993,29 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 					}
 					if (!result) return null;
 					if (prepared.storageKey !== key) {
-						await tx.delete(attachmentStorageCleanupOutbox).where(and(
-							eq(attachmentStorageCleanupOutbox.sourceKind, "uncommitted_upload"),
-							eq(attachmentStorageCleanupOutbox.sourceId, claimed.id),
-						));
+						await tx
+							.delete(attachmentStorageCleanupOutbox)
+							.where(
+								and(
+									eq(
+										attachmentStorageCleanupOutbox.sourceKind,
+										"uncommitted_upload",
+									),
+									eq(attachmentStorageCleanupOutbox.sourceId, claimed.id),
+								),
+							);
 						await stageAttachmentStorageCleanup(tx, {
-							sourceKind: "uncommitted_upload", sourceId: crypto.randomUUID(),
-							storageKey: key, documentId, actorUserId: claims.actorUserId,
-							ownerUserId: claimed.ownerUserId, requestedByUserId: claims.actorUserId,
-							workspaceId: claims.workspaceId, size: claimed.declaredSize,
-							quotaOperationKey: claimed.quotaOperationKey, quotaReleaseKind: "none",
+							sourceKind: "uncommitted_upload",
+							sourceId: crypto.randomUUID(),
+							storageKey: key,
+							documentId,
+							actorUserId: claims.actorUserId,
+							ownerUserId: claimed.ownerUserId,
+							requestedByUserId: claims.actorUserId,
+							workspaceId: claims.workspaceId,
+							size: claimed.declaredSize,
+							quotaOperationKey: claimed.quotaOperationKey,
+							quotaReleaseKind: "none",
 							retainUntil: claimed.expiresAt,
 						});
 					}
@@ -1093,7 +1141,11 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 		}
 
 		const source = Buffer.from(await file.arrayBuffer());
-		let image: { bytes: Buffer; mimeType: string; filename: string } = { bytes: source, mimeType: file.type, filename: file.name };
+		let image: { bytes: Buffer; mimeType: string; filename: string } = {
+			bytes: source,
+			mimeType: file.type,
+			filename: file.name,
+		};
 		if (config.DOCSMINT_ATTACHMENT_WEBP_ENABLED) {
 			try {
 				image = await normalizeAttachmentImage(
@@ -1106,7 +1158,9 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				if (error instanceof AttachmentImageBusyError) {
 					set.status = 503;
 					set.headers["Retry-After"] = "1";
-					return { error: "Image processing capacity is temporarily exhausted" };
+					return {
+						error: "Image processing capacity is temporarily exhausted",
+					};
 				}
 				set.status = 422;
 				return { error: "Image could not be converted to WebP" };
