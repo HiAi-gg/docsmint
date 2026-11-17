@@ -252,3 +252,47 @@ test("caps concurrent conversions and releases capacity after failures", async (
 			.mimeType,
 	).toBe("image/webp");
 });
+
+test("checks a supplied source digest against received bytes before any storage writes", async () => {
+	const bytes = await sharp({
+		create: { width: 2, height: 2, channels: 3, background: "white" },
+	})
+		.png()
+		.toBuffer();
+	let writes = 0;
+	const source = {
+		expectedBytes: bytes.length,
+		maxBytes: 4096,
+		mimeType: "image/png",
+		filename: "verified.png",
+		sourceKey: pendingWebpAttachmentKey("document", "checksum"),
+		trackOutput: async () => {
+			writes++;
+		},
+		writeOutput: async () => {
+			writes++;
+		},
+	};
+	const stream = async function* () {
+		yield bytes;
+	};
+	await expect(
+		prepareAttachmentWebp({
+			...source,
+			source: stream(),
+			sourceSha256: "0".repeat(64),
+		}),
+	).rejects.toThrow("validated");
+	expect(writes).toBe(0);
+	const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+	expect(
+		(
+			await prepareAttachmentWebp({
+				...source,
+				source: stream(),
+				sourceSha256: sha256,
+			})
+		).mimeType,
+	).toBe("image/webp");
+	expect(writes).toBe(2);
+});

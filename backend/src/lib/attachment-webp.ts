@@ -139,6 +139,7 @@ export async function prepareAttachmentWebp(input: {
 	mimeType: string;
 	filename: string;
 	sourceKey: string;
+	sourceSha256?: string;
 	trackOutput: (key: string, size: number) => Promise<void>;
 	writeOutput: (key: string, bytes: Buffer, mimeType: string) => Promise<void>;
 }) {
@@ -153,6 +154,11 @@ export async function prepareAttachmentWebp(input: {
 		input.expectedBytes,
 		input.maxBytes,
 	);
+	if (input.sourceSha256 !== undefined) {
+		const actual = new Bun.CryptoHasher("sha256").update(source).digest("hex");
+		if (actual !== input.sourceSha256)
+			throw new AttachmentImageValidationError();
+	}
 	let image: Awaited<ReturnType<typeof normalizeAttachmentImage>>;
 	try {
 		image = await normalizeAttachmentImage(

@@ -9,6 +9,7 @@ export type AttachmentUploadClaims = Readonly<{
 	workspaceId: string | null;
 	storageKey: string;
 	expiresAt: number;
+	sourceSha256?: string;
 }>;
 
 function encode(value: Uint8Array | string): string {
@@ -38,6 +39,9 @@ function validClaims(value: unknown): value is AttachmentUploadClaims {
 		typeof claims.actorUserId === "string" &&
 		(claims.workspaceId === null || typeof claims.workspaceId === "string") &&
 		typeof claims.storageKey === "string" &&
+		(claims.sourceSha256 === undefined ||
+			(typeof claims.sourceSha256 === "string" &&
+				/^[a-f0-9]{64}$/.test(claims.sourceSha256))) &&
 		typeof claims.expiresAt === "number" &&
 		Number.isFinite(claims.expiresAt)
 	);

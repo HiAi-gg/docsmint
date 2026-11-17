@@ -22,6 +22,12 @@ return 503 and Retry-After. Repeat confirmation with the same upload token,
 source key and original source metadata. A completed confirmation returns the
 existing attachment UUID without another PUT.
 
+A WebP presign request may include optional `sourceSha256`, the lowercase
+SHA-256 of the original bytes. The signed upload token binds this digest.
+Confirmation recomputes it from the bytes read from storage before conversion
+and rejects a mismatch before writing the permanent object. This field verifies
+source integrity; durable request idempotency remains a separate requirement.
+
 Upload and confirmation do not edit document Markdown or publish content.
 Insert the returned raw reference through a separate authorized document save.
 

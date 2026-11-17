@@ -420,13 +420,36 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 			const userId = authorization.access.userId;
 
 			const payload = body as
-				| { filename?: unknown; contentType?: unknown; size?: unknown }
+				| {
+						filename?: unknown;
+						contentType?: unknown;
+						size?: unknown;
+						sourceSha256?: unknown;
+				  }
 				| undefined;
 			const filename =
 				typeof payload?.filename === "string" ? payload.filename : "";
 			const contentType =
 				typeof payload?.contentType === "string" ? payload.contentType : "";
 			const size = typeof payload?.size === "number" ? payload.size : -1;
+			const sourceSha256 = payload?.sourceSha256;
+			if (
+				sourceSha256 !== undefined &&
+				(typeof sourceSha256 !== "string" ||
+					!/^[a-f0-9]{64}$/.test(sourceSha256))
+			) {
+				set.status = 400;
+				return { error: "sourceSha256 must be a lowercase SHA-256 digest" };
+			}
+			if (
+				sourceSha256 !== undefined &&
+				!config.DOCSMINT_ATTACHMENT_WEBP_ENABLED
+			) {
+				set.status = 400;
+				return {
+					error: "Source checksum validation requires WebP upload finalization",
+				};
+			}
 
 			if (!filename || filename.length > 255) {
 				set.status = 400;
@@ -467,6 +490,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 				workspaceId: ctx.workspaceId ?? null,
 				storageKey: key,
 				expiresAt: expiresAt.getTime(),
+				...(typeof sourceSha256 === "string" ? { sourceSha256 } : {}),
 			});
 			const quotaContext = attachmentQuotaContext(
 				ctx,
@@ -842,6 +866,7 @@ export const attachmentRoutes = new Elysia({ prefix: "/api" })
 							mimeType: claimed.mimeType,
 							filename: claimed.filename,
 							sourceKey: key,
+							sourceSha256: claims.sourceSha256,
 							trackOutput: (storageKey, size) =>
 								withTenant(claimCtx, (tx) =>
 									stageAttachmentStorageCleanup(tx, {
