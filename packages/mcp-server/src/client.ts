@@ -106,11 +106,10 @@ export function createMcpDocsClient(
 					: {}),
 			};
 			const signal = context?.signal
-                ? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])
-                : AbortSignal.timeout(30_000);
-            const uploadContext = { ...context, signal, headers: new Headers(context?.headers) };
-			if (operationId && uploadContext?.headers instanceof Headers)
-				uploadContext.headers.set("Idempotency-Key", operationId);
+				? AbortSignal.any([context.signal, AbortSignal.timeout(30_000)])
+				: AbortSignal.timeout(30_000);
+			// Attachment retries pair an explicit operation ID with a source checksum.
+			const uploadContext = { ...context, signal, idempotencyKey: operationId ?? null };
 			const upload = await docsClient.presignAttachment(
 				id,
 				descriptor,

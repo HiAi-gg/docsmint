@@ -1197,8 +1197,11 @@ export class DocsClient {
 			headers.set("Cookie", requestContext.cookie);
 		if (requestContext?.requestId)
 			headers.set("X-Request-Id", requestContext.requestId);
-		if (requestContext?.idempotencyKey)
+		if (requestContext?.idempotencyKey === null) {
+			headers.delete("Idempotency-Key");
+		} else if (requestContext?.idempotencyKey) {
 			headers.set("Idempotency-Key", requestContext.idempotencyKey);
+		}
 		// Document creation supports replay on the server. Generate once before
 		// the retry loop so a lost response cannot create a second document.
 		if (
