@@ -507,6 +507,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DB_PASSWORD: ci-live-db-password
+      # The contract writes both bucket and filer collections on one volume server.
+      SEAWEEDFS_MAX_VOLUMES: "16"
       HIAI_APP_PASSWORD: ci-live-runtime-password
       DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs

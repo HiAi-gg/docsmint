@@ -62,7 +62,7 @@ services:
     command:
       - |
         printf '%s' "$$SEAWEEDFS_S3_CONFIG" > /data/s3.json
-        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -dir=/data -ip=127.0.0.1 -ip.bind=0.0.0.0
+        exec /usr/bin/weed server -s3 -s3.port=8333 -s3.config=/data/s3.json -filer -filer.port=8888 -master.port=9333 -volume.port=8080 -volume.max=${SEAWEEDFS_MAX_VOLUMES:-8} -dir=/data -ip=127.0.0.1 -ip.bind=0.0.0.0
     environment:
       SEAWEEDFS_S3_CONFIG: >-
         {"identities":[{"name":"hiai-docs","credentials":[{"accessKey":"${STORAGE_ACCESS_KEY:-hiai-docs}","secretKey":"${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}"}],"actions":["Admin","Read","List","Tagging","Write"]}]}
