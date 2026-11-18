@@ -34,6 +34,7 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
       return new Response(null, { status: 401 });
     const path = `/api/documents/${documentId}`;
     if (route === path + '/attachments/presign') {
+      expect(request.headers.get('Idempotency-Key')).toBeNull();
       expect(await request.json()).toEqual({ filename, contentType: mimeType, size: image.length });
       return Response.json({ url: new URL('/object', server.url), key: 'image-key', uploadToken: 'upload-test' });
     }
@@ -56,7 +57,11 @@ test('uploads, embeds, rereads and opens an image through MCP', async () => {
     return new Response(null, { status: 404 });
   } });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = createDocsmintMcpServer({ docsClient: new DocsClient({ baseUrl: rest.url.origin, apiKey: 'test-key' }) });
+  const server = createDocsmintMcpServer({ docsClient: new DocsClient({
+    baseUrl: rest.url.origin,
+    apiKey: 'test-key',
+    requestContext: { idempotencyKey: 'request-idempotency', headers: { 'Idempotency-Key': 'default-header' } },
+  }) });
   const client = new Client({ name: 'attachments-test', version: '1.0.0' });
   try {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
@@ -150,6 +155,7 @@ test("MCP retry keeps source checksum and operation identity and skips a second 
 	try {
 		const client = createMcpDocsClient(
 			new DocsClient({ baseUrl: rest.url.origin, apiKey: "test" }),
+			{ idempotencyKey: "request-idempotency" },
 		);
 		const upload = () =>
 			client.uploadDocumentImage!(

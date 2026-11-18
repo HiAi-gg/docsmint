@@ -596,8 +596,8 @@ export interface DocsRequestContext {
 	signal?: AbortSignal;
 	/** Per-request timeout in milliseconds, overriding the client default. */
 	timeoutMs?: number;
-	/** Idempotency key forwarded as the standard Idempotency-Key header. */
-	idempotencyKey?: string;
+	/** Idempotency key forwarded as a header. Null clears any inherited key. */
+	idempotencyKey?: string | null;
 }
 
 /** Additive page-based list filters. All filters are applied server-side. */

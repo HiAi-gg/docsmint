@@ -39,7 +39,7 @@ test("CI separates hermetic units from zero-skip database integrations", () => {
     "does not install PostgreSQL debug instrumentation unless requested",
     "PUT write-hold keeps cleanup unclaimable until storage write activation",
     "workspace duplicate quota exhaustion rejects before copied attachments exist",
-    "confirm lease blocks expired-upload cleanup from deleting the object",
+    "confirm lease blocks cleanup of source or final WebP",
     "account purge pages attachments beyond the cleanup batch size",
     "restore and hard purge serialize on the document pipeline lock without deadlock",
     "terminal quota rejection retires cleanup instead of retrying forever",
@@ -102,7 +102,7 @@ test("tagged web publication receives the validated canonical PWA identity", asy
   const validator = await Bun.file(
     new URL("../../../scripts/release-version-validator.ts", import.meta.url),
   ).text();
-  const canonicalDeploymentId = "docsmint-oss-2.2.0";
+  const canonicalDeploymentId = "docsmint-oss-2.2.1";
 
   expect(vite).toContain(canonicalDeploymentId);
   expect(compose).toContain(`PUBLIC_DEPLOYMENT_ID:-${canonicalDeploymentId}`);

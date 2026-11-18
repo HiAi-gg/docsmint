@@ -220,7 +220,7 @@ jobs:
             "does not install PostgreSQL debug instrumentation unless requested" \
             "PUT write-hold keeps cleanup unclaimable until storage write activation" \
             "workspace duplicate quota exhaustion rejects before copied attachments exist" \
-            "confirm lease blocks expired-upload cleanup from deleting the object" \
+            "confirm lease blocks cleanup of source or final WebP" \
             "account purge pages attachments beyond the cleanup batch size" \
             "restore and hard purge serialize on the document pipeline lock without deadlock" \
             "terminal quota rejection retires cleanup instead of retrying forever" \
@@ -507,6 +507,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DB_PASSWORD: ci-live-db-password
+      # The contract writes both bucket and filer collections on one volume server.
+      SEAWEEDFS_MAX_VOLUMES: "16"
       HIAI_APP_PASSWORD: ci-live-runtime-password
       DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs
       DOCSMINT_CONTRACT_DATABASE_URL: postgresql://hiai_app:ci-live-runtime-password@127.0.0.1:5437/hiai_docs
@@ -709,7 +711,7 @@ jobs:
           file: frontend/Dockerfile
           build-args: |
             PUBLIC_APP_ID=docsmint
-            PUBLIC_DEPLOYMENT_ID=docsmint-oss-2.2.0
+            PUBLIC_DEPLOYMENT_ID=docsmint-oss-2.2.1
           push: true
           tags: |
             ghcr.io/hiai-gg/docsmint-web:${{ github.ref_name }}

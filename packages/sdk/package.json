@@ -1,6 +1,6 @@
 {
   "name": "@hiai-docs/sdk",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -30,6 +30,9 @@
     "test:unit": "bun run test",
     "typecheck": "tsc --noEmit",
     "build:server": "bun run --bun tsc && bun build ../mcp-server/src/server.ts --outfile dist/mcp-server.js --target bun --external @modelcontextprotocol/server --external zod && cp templates/mcp-server.d.ts dist/mcp-server.d.ts"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/bun": "^1.4.1",
