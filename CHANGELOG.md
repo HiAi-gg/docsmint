@@ -2,7 +2,9 @@
 
 ## 2.2.1 - 2026-11-18
 
-- Check both attachment confirmation lease cases in PostgreSQL release verification.
+- Keep image upload retries attached to the explicit operation ID and source checksum. Ordinary MCP uploads work with or without a caller-wide idempotency key.
+- Include the WebP converter when running the SDK backend from a source checkout.
+- Verify both PostgreSQL attachment lease cases and run the live attachment contract against an isolated SeaweedFS fixture.
 - Keep the SDK, CLI, API specification and setup examples on the same release version.
 
 ## 2.2.0 - 2026-11-17
