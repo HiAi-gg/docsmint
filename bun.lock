@@ -197,6 +197,9 @@
     "packages/sdk": {
       "name": "@hiai-docs/sdk",
       "version": "2.2.1",
+      "dependencies": {
+        "sharp": "0.35.5",
+      },
       "devDependencies": {
         "@types/bun": "^1.4.1",
         "@types/node": "25.9.3",
