@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.1 - 2026-11-18
+
+- Check both attachment confirmation lease cases in PostgreSQL release verification.
+- Keep the SDK, CLI, API specification and setup examples on the same release version.
+
 ## 2.2.0 - 2026-11-17
 
 - Normalize new document images to WebP through the existing storage lifecycle, with bounded decoding, orientation and animation handling.
