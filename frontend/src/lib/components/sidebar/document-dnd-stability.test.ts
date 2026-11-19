@@ -6,22 +6,18 @@ const folderNodeSource = await Bun.file(
 ).text();
 
 describe("document drag-and-drop stability", () => {
-	test("persists only the document reported by the finalize event", () => {
-		expect(source).toContain(
-			"const finalizedDocumentId = e.detail.info?.id ?? draggedDocId",
-		);
+	test("uses the finalized document and the release point for header drops", () => {
+		expect(source).toContain("const documentId = String(info.id)");
+		expect(source).toContain('finishPointerDrag("doc", documentId)');
+		expect(source).toContain("pointerDrag.target = pointerDrag.cancelled ? null : headerAtPointer()");
 		expect(source).toContain("documentDropCoordinator.zone(");
-		expect(source).toContain(
-			"const finalizedDocumentId = e.detail.info?.id ?? draggedDocId",
-		);
-		expect(source).not.toContain("for (const item of zoneItems)");
+		expect(source).not.toContain("ondrop=");
+		expect(folderNodeSource).not.toContain("ondrop=");
 	});
 
-	test("keeps the dragged id until native header drop has fired", () => {
-		expect(source).toContain("window.setTimeout(() => {");
-		expect(source).toContain(
-			"if (draggedDocId === finalizedDocumentId) draggedDocId = null",
-		);
+	test("loads subfolders for both a click and a drag expansion", () => {
+		expect(folderNodeSource).toContain("if (isExpanded) {");
+		expect(folderNodeSource).toContain("if (!subfoldersLoaded && !subfoldersLoading) void loadSubfolders()");
 	});
 
 	test("protects the optimistic move from concurrent sidebar refreshes", () => {

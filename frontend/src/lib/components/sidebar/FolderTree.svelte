@@ -48,7 +48,12 @@ import {
 } from "lucide-svelte";
 import { onDestroy, onMount, untrack } from "svelte";
 import { flip } from "svelte/animate";
-import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
+import {
+	DRAGGED_ELEMENT_ID,
+	SHADOW_ITEM_MARKER_PROPERTY_NAME,
+	SOURCES,
+	TRIGGERS,
+} from "svelte-dnd-action";
 import {
 	type Category,
 	deleteCategory,
@@ -128,6 +133,7 @@ interface FolderItem {
 	categoryId?: string | null;
 	parentId?: string | null;
 	order?: number;
+	[SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean;
 }
 
 type DndDoc = Document & { id: string };
@@ -156,7 +162,7 @@ const FLIP_MS = 200;
 // make an already completed drop look as though it is still pending. Keep the
 // slower animation for folders/categories, but settle document rows quickly.
 const DOCUMENT_FLIP_MS = 80;
-const FOLDER_EXPAND_DELAY_MS = 400;
+const HEADER_EXPAND_DELAY_MS = 400;
 // Tiny initial-fetch delay so the sidebar lists don't fire their
 // listDocuments calls at exactly the same instant on a cold page load
 // — staggered delays here keep the burst under the documentRateLimiter
@@ -210,12 +216,8 @@ function setDndError(msg: string | null) {
 }
 
 let dragDisabled = $state(false);
-// True while a drag is in flight across any zone. Folder auto-expand on
-// hover should only fire during a drag, not on plain mouseover.
-let isDraggingGlobal = $state(false);
 let isDraggingFolder = $state(false);
 let isDraggingDoc = $state(false);
-let draggedDocId = $state<string | null>(null);
 let documentDragGeneration = 0;
 // Concurrency guard for `persistFolderChanges`. `svelte-dnd-action`
 // dispatches `finalize` on BOTH source and destination zones for
@@ -303,11 +305,18 @@ let categoryDialogMode = $state<CategoryDialogMode>("create");
 let selectedCategory = $state<CategoryWithApiAccess | null>(null);
 let categoryBusy = $state(false);
 
-let expandTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingExpandFolderId = $state<string | null>(null);
-
-let categoryExpandTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingExpandCategoryId = $state<string | null>(null);
+type HeaderTarget = { kind: "folder" | "category"; id: string };
+let treeElement: HTMLDivElement;
+let hoveredHeader = $state<HeaderTarget | null>(null);
+let headerExpandTimer: ReturnType<typeof setTimeout> | null = null;
+let pointerPosition: { clientX: number; clientY: number } | null = null;
+let pointerDrag: {
+	kind: "doc" | "folder";
+	id: string;
+	released: boolean;
+	cancelled: boolean;
+	target: HeaderTarget | null;
+} | null = null;
 
 // (Per-folder subfolder refresh nonces are kept in a module-level
 // reactive store — see `subfolders-refresh-store.svelte.ts` — so
@@ -348,61 +357,73 @@ async function handleCopyContent(docId: string) {
 	}, 2000);
 }
 
-function clearExpandTimer() {
-	if (expandTimer !== null) {
-		clearTimeout(expandTimer);
-		expandTimer = null;
+function expandHeader(target: HeaderTarget) {
+	if (target.kind === "folder") {
+		if (!expandedFolderIds.has(target.id))
+			expandedFolderIds = new Set(expandedFolderIds).add(target.id);
+	} else if (target.id === UNCATEGORIZED_KEY) {
+		uncategorizedExpanded = true;
+	} else if (!expandedCategoryIds.has(target.id)) {
+		expandedCategoryIds = new Set(expandedCategoryIds).add(target.id);
 	}
-	pendingExpandFolderId = null;
 }
 
-function scheduleFolderExpand(folderId: string) {
-	clearExpandTimer();
-	if (expandedFolderIds.has(folderId)) return;
-	pendingExpandFolderId = folderId;
-	expandTimer = setTimeout(() => {
-		if (
-			pendingExpandFolderId === folderId &&
-			!expandedFolderIds.has(folderId)
-		) {
-			const next = new Set(expandedFolderIds);
-			next.add(folderId);
-			expandedFolderIds = next;
-		}
-		expandTimer = null;
-		pendingExpandFolderId = null;
-	}, FOLDER_EXPAND_DELAY_MS);
+function headerAtPointer(): HeaderTarget | null {
+	if (!treeElement || !pointerPosition || !pointerDrag) return null;
+	const hit = treeElement.ownerDocument
+		.elementsFromPoint(pointerPosition.clientX, pointerPosition.clientY)
+		.find((element) => !element.closest(
+			`#${DRAGGED_ELEMENT_ID}, [data-is-dnd-shadow-item-hint="true"]`,
+		));
+	if (!hit || !treeElement.contains(hit)) return null;
+	const header = hit.closest<HTMLElement>("[data-sidebar-drop-kind]");
+	if (!header || !treeElement.contains(header)) return null;
+	const { sidebarDropKind: kind, sidebarDropId: id } = header.dataset;
+	if (!id || (kind !== "folder" && kind !== "category")) return null;
+	if (kind === "folder" && pointerDrag.kind === "folder" &&
+		computeBlockedAncestors(id).has(pointerDrag.id)) return null;
+	return { kind, id };
 }
 
-function clearCategoryExpandTimer() {
-	if (categoryExpandTimer !== null) {
-		clearTimeout(categoryExpandTimer);
-		categoryExpandTimer = null;
+function hoverHeader(target: HeaderTarget | null) {
+	if (target?.kind === hoveredHeader?.kind && target?.id === hoveredHeader?.id) return;
+	if (headerExpandTimer !== null) clearTimeout(headerExpandTimer);
+	headerExpandTimer = null;
+	hoveredHeader = target;
+	if (target) {
+		headerExpandTimer = setTimeout(() => {
+			headerExpandTimer = null;
+			expandHeader(target);
+		}, HEADER_EXPAND_DELAY_MS);
 	}
-	pendingExpandCategoryId = null;
 }
 
-function scheduleCategoryExpand(categoryId: string) {
-	clearCategoryExpandTimer();
-	const isExpanded =
-		categoryId === UNCATEGORIZED_KEY
-			? uncategorizedExpanded
-			: expandedCategoryIds.has(categoryId);
-	if (isExpanded) return;
-	pendingExpandCategoryId = categoryId;
-	categoryExpandTimer = setTimeout(() => {
-		if (pendingExpandCategoryId === categoryId) {
-			if (categoryId === UNCATEGORIZED_KEY) {
-				uncategorizedExpanded = true;
-			} else {
-				const next = new Set(expandedCategoryIds);
-				next.add(categoryId);
-				expandedCategoryIds = next;
-			}
-		}
-		categoryExpandTimer = null;
-		pendingExpandCategoryId = null;
-	}, FOLDER_EXPAND_DELAY_MS);
+function beginPointerDrag(kind: "doc" | "folder", info: DndEvent["info"]) {
+	if (info.source !== SOURCES.POINTER || info.trigger !== TRIGGERS.DRAG_STARTED) return;
+	pointerDrag = { kind, id: String(info.id), released: false, cancelled: false, target: null };
+	hoverHeader(headerAtPointer());
+}
+
+function finishPointerDrag(kind: "doc" | "folder", id: string) {
+	if (pointerDrag?.kind !== kind || pointerDrag.id !== id) return null;
+	const completed = pointerDrag;
+	pointerDrag = null;
+	hoverHeader(null);
+	return completed;
+}
+
+function updatePointer(event: MouseEvent | TouchEvent) {
+	pointerPosition = "touches" in event ? event.touches[0] ?? null : event;
+	if (pointerDrag && !pointerDrag.released) hoverHeader(headerAtPointer());
+}
+
+function releasePointer(event: MouseEvent | TouchEvent) {
+	if (!pointerDrag || pointerDrag.released) return;
+	pointerPosition = "changedTouches" in event ? event.changedTouches[0] ?? null : event;
+	pointerDrag.released = true;
+	pointerDrag.cancelled = event.type === "touchcancel";
+	pointerDrag.target = pointerDrag.cancelled ? null : headerAtPointer();
+	hoverHeader(null);
 }
 
 function sanitizeItems(raw: unknown): DndDoc[] {
@@ -660,6 +681,21 @@ onMount(() => {
 	return () => clearTimeout(timer);
 });
 
+onMount(() => {
+	// dnd-action drives dragging with mouse and touch events. Capture release
+	// before its own finalize, which may be deferred for the drop animation.
+	const motion = ["mousedown", "mousemove", "touchstart", "touchmove"] as const;
+	const release = ["mouseup", "touchend", "touchcancel"] as const;
+	for (const event of motion)
+		window.addEventListener(event, updatePointer, { capture: true, passive: true });
+	for (const event of release)
+		window.addEventListener(event, releasePointer, { capture: true, passive: true });
+	return () => {
+		for (const event of motion) window.removeEventListener(event, updatePointer, true);
+		for (const event of release) window.removeEventListener(event, releasePointer, true);
+	};
+});
+
 onDestroy(() => {
 	documentDropCoordinator.cancel();
 	// Clear the pending dnd-error auto-dismiss timer so we don't write
@@ -669,14 +705,7 @@ onDestroy(() => {
 		clearTimeout(dndErrorTimer);
 		dndErrorTimer = null;
 	}
-	if (expandTimer) {
-		clearTimeout(expandTimer);
-		expandTimer = null;
-	}
-	if (categoryExpandTimer) {
-		clearTimeout(categoryExpandTimer);
-		categoryExpandTimer = null;
-	}
+	hoverHeader(null);
 });
 
 $effect(() => {
@@ -832,129 +861,56 @@ function setZoneItems(zone: DocZone, next: DndDoc[]) {
 function handleConsider(zone: DocZone) {
 	return (e: CustomEvent<DndEvent<DndDoc>>) => {
 		e.stopPropagation();
-		const startsNewDrag = !isDraggingDoc;
-		isDraggingGlobal = true;
 		isDraggingDoc = true;
-		if (e.detail.info?.id) {
-			draggedDocId = e.detail.info.id;
-			if (startsNewDrag) {
-				documentDropCoordinator.begin(
-					e.detail.info.id,
-					++documentDragGeneration,
-				);
-			}
+		const { info } = e.detail;
+		if (info.trigger === TRIGGERS.DRAG_STARTED) {
+			documentDropCoordinator.begin(String(info.id), ++documentDragGeneration);
+			beginPointerDrag("doc", info);
 		}
-		const next = sanitizeItems(e.detail.items);
-		setZoneItems(zone, next);
-		clearExpandTimer();
+		setZoneItems(zone, sanitizeItems(e.detail.items));
 	};
 }
 
 function handleFinalize(zone: DocZone) {
 	return (e: CustomEvent<DndEvent<DndDoc>>) => {
 		e.stopPropagation();
-		const next = sanitizeItems(e.detail.items);
-		setZoneItems(zone, next);
-		clearExpandTimer();
-		const isSourceZone = e.detail.info?.trigger === "droppedIntoAnother";
-		debugLog(
-			"[DnD] handleFinalize zone:",
-			zone,
-			"trigger:",
-			e.detail.info?.trigger,
-			"isSourceZone:",
-			isSourceZone,
-		);
-		const finalizedDocumentId = e.detail.info?.id ?? draggedDocId;
-		if (!isSourceZone && finalizedDocumentId) {
-			documentDropCoordinator.zone(finalizedDocumentId, placementForZone(zone));
+		setZoneItems(zone, sanitizeItems(e.detail.items));
+		const { info } = e.detail;
+		const documentId = String(info.id);
+		if (info.trigger !== TRIGGERS.DROPPED_INTO_ANOTHER) {
+			const pointer = finishPointerDrag("doc", documentId);
+			if (pointer?.target) {
+				const target = pointer.target;
+				expandHeader(target);
+				documentDropCoordinator.zone(documentId, placementForZone(
+					target.kind === "category" && target.id === UNCATEGORIZED_KEY
+						? { kind: "root" }
+						: target,
+				));
+				queueMicrotask(resyncZonesFromDocuments);
+			} else if (!pointer?.cancelled && info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
+				documentDropCoordinator.zone(documentId, placementForZone(zone));
+			} else {
+				queueMicrotask(resyncZonesFromDocuments);
+			}
 		}
-		if (finalizedDocumentId) {
-			documentDropCoordinator.end(finalizedDocumentId, documentDragGeneration);
-		}
-		isDraggingGlobal = false;
+		documentDropCoordinator.end(documentId, documentDragGeneration);
 		isDraggingDoc = false;
-		// Native `drop` on a folder/category header can be delivered after the
-		// dndzone source `finalize`. Keep the id alive through the current event
-		// turn so the header handler cannot intermittently observe `null`.
-		if (typeof window !== "undefined") {
-			window.setTimeout(() => {
-				if (draggedDocId === finalizedDocumentId) draggedDocId = null;
-			}, 0);
-		} else {
-			draggedDocId = null;
-		}
 	};
 }
 
 function placementForZone(zone: DocZone): SidebarDocumentPlacement {
-	const targetFolderId: string | null = zone.kind === "folder" ? zone.id : null;
-	const targetCategoryId: string | null =
-		zone.kind === "category"
-			? zone.id
-			: zone.kind === "root"
-				? null
-				: // Resolve nested folder category ID using the registry
-					(getFolderFromRegistry(zone.id)?.categoryId ?? null);
-	return { folderId: targetFolderId, categoryId: targetCategoryId };
-}
-
-function handleDragOver(e: DragEvent) {
-	if (
-		draggedDocId ??
-		documentDropCoordinator.pendingId(documentDragGeneration)
-	) {
-		e.preventDefault();
-		if (e.dataTransfer) {
-			e.dataTransfer.dropEffect = "move";
-		}
+	if (zone.kind === "category") return { folderId: null, categoryId: zone.id };
+	if (zone.kind === "root") return { folderId: null, categoryId: null };
+	const visited = new Set<string>();
+	let folderId: string | null = zone.id;
+	while (folderId && !visited.has(folderId)) {
+		visited.add(folderId);
+		const folder = getFolderFromRegistry(folderId);
+		if (folder?.categoryId) return { folderId: zone.id, categoryId: folder.categoryId };
+		folderId = folder?.parentId ?? null;
 	}
-}
-
-function handleDropOnCategory(e: DragEvent, categoryId: string) {
-	const documentId =
-		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
-	if (!documentId) return;
-	e.preventDefault();
-	e.stopPropagation();
-
-	const targetCategoryId = categoryId === UNCATEGORIZED_KEY ? null : categoryId;
-	const original = getDocumentFromRegistry(documentId);
-	if (!original) return;
-
-	const folderChanged = original.folderId !== null;
-	const categoryChanged = original.categoryId !== targetCategoryId;
-
-	if (folderChanged || categoryChanged) {
-		documentDropCoordinator.header(documentId, {
-			folderId: null,
-			categoryId: targetCategoryId,
-		});
-	}
-	draggedDocId = null;
-}
-
-function handleDropOnFolder(e: DragEvent, folderId: string) {
-	const documentId =
-		draggedDocId ?? documentDropCoordinator.pendingId(documentDragGeneration);
-	if (!documentId) return;
-	e.preventDefault();
-	e.stopPropagation();
-
-	const targetFolder = getFolderFromRegistry(folderId);
-	const targetCategoryId = targetFolder?.categoryId ?? null;
-	const original = getDocumentFromRegistry(documentId);
-	if (!original) return;
-
-	const folderChanged = original.folderId !== folderId;
-
-	if (folderChanged) {
-		documentDropCoordinator.header(documentId, {
-			folderId,
-			categoryId: targetCategoryId,
-		});
-	}
-	draggedDocId = null;
+	return { folderId: zone.id, categoryId: null };
 }
 
 // --- Folder DnD between categories (`type: "folder"`) ---
@@ -970,8 +926,8 @@ const PARENT_ZONE_PREFIX = "parent:";
 function handleFolderConsider(zoneKey: string) {
 	return (e: CustomEvent<DndEvent<FolderItem>>) => {
 		e.stopPropagation();
-		isDraggingGlobal = true;
 		isDraggingFolder = true;
+		beginPointerDrag("folder", e.detail.info);
 		const next = sanitizeFolderItems(e.detail.items);
 		// `bucketFoldersMap` is the source for category buckets; per-folder
 		// nested subfolders live inside each `FolderNode` and don't share
@@ -988,20 +944,28 @@ function handleFolderFinalize(zoneKey: string) {
 	return (e: CustomEvent<DndEvent<FolderItem>>) => {
 		e.stopPropagation();
 		const next = sanitizeFolderItems(e.detail.items);
-		const isSourceZone = e.detail.info?.trigger === "droppedIntoAnother";
+		const isSourceZone = e.detail.info.trigger === TRIGGERS.DROPPED_INTO_ANOTHER;
 
 		if (!zoneKey.startsWith(PARENT_ZONE_PREFIX)) {
 			// Update bucketFoldersMap for both zones to keep Svelte state in sync with svelte-dnd-action
 			bucketFoldersMap = { ...bucketFoldersMap, [zoneKey]: next };
 		}
-		isDraggingGlobal = false;
 		isDraggingFolder = false;
+		if (isSourceZone) return;
 
-		// Only persist changes for the DESTINATION zone.
-		// The source zone's persist would send stale data and race with
-		// the destination zone's correct persist.
-		if (!isSourceZone) {
+		const folderId = String(e.detail.info.id);
+		const pointer = finishPointerDrag("folder", folderId);
+		if (pointer?.target) {
+			const target = pointer.target;
+			queueMicrotask(() => void moveFolderToHeader(folderId, target));
+		} else if (!pointer?.cancelled && e.detail.info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
 			void persistFolderChanges(zoneKey, next);
+		} else {
+			queueMicrotask(() => {
+				resyncBucketFolders();
+				if (zoneKey.startsWith(PARENT_ZONE_PREFIX))
+					bumpSubfoldersRefresh(zoneKey.slice(PARENT_ZONE_PREFIX.length));
+			});
 		}
 	};
 }
@@ -1042,6 +1006,28 @@ function computeBlockedAncestors(targetParentId: string | null): Set<string> {
 		currentId = getFolderFromRegistry(currentId)?.parentId ?? null;
 	}
 	return blocked;
+}
+
+async function moveFolderToHeader(id: string, target: HeaderTarget) {
+	const previous = getFolderFromRegistry(id);
+	if (!previous) return;
+	const parentId = target.kind === "folder" ? target.id : null;
+	const categoryId = target.kind === "category" && target.id !== UNCATEGORIZED_KEY
+		? target.id
+		: null;
+	try {
+		if (previous.parentId !== parentId || previous.categoryId !== categoryId) {
+			await updateFolder(id, { parentId, categoryId }, request.fetch);
+		}
+		expandHeader(target);
+	} catch (error) {
+		setDndError(error instanceof Error ? error.message : "Move failed");
+	} finally {
+		await refresh();
+		resyncBucketFolders();
+		if (previous.parentId) bumpSubfoldersRefresh(previous.parentId);
+		if (parentId && parentId !== previous.parentId) bumpSubfoldersRefresh(parentId);
+	}
 }
 
 async function persistFolderChanges(zoneKey: string, zoneItems: FolderItem[]) {
@@ -1214,7 +1200,6 @@ type CategoryBucket = {
 
 function handleCategoryConsider(e: CustomEvent<DndEvent<CategoryBucket>>) {
 	e.stopPropagation();
-	isDraggingGlobal = true;
 	categoryDragActive = true;
 	// Keep the library's shadow marker intact. Rebuilding/deduplicating these
 	// items here makes svelte-dnd-action lose its placeholder and insert a
@@ -1230,7 +1215,6 @@ function handleCategoryFinalize(e: CustomEvent<DndEvent<CategoryBucket>>) {
 		finalizeCategoryDndItems(e.detail.items),
 	);
 	orderedBuckets = next;
-	isDraggingGlobal = false;
 	categoryDragActive = false;
 	queueCategoryOrder(next);
 }
@@ -1652,17 +1636,13 @@ const buckets = $derived.by(() => {
     onCreateSubfolder={openNewSubfolder}
     onShare={openShareDialogForFolder}
     {dragDisabled}
-    {isDraggingGlobal}
     {isDraggingFolder}
     {isDraggingDoc}
-    {draggedDocId}
-    onScheduleFolderExpand={scheduleFolderExpand}
-    onClearExpandTimer={clearExpandTimer}
+    activeDropFolderId={hoveredHeader?.kind === 'folder' ? hoveredHeader.id : null}
     onConsiderDocs={handleConsider}
     onFinalizeDocs={handleFinalize}
     onConsiderSubfolders={handleNestedFolderConsider}
     onFinalizeSubfolders={handleNestedFolderFinalize}
-    onDropOnFolder={handleDropOnFolder}
     {folderDocsMap}
     folderFlipDurationMs={FLIP_MS}
     documentFlipDurationMs={DOCUMENT_FLIP_MS}
@@ -1672,7 +1652,7 @@ const buckets = $derived.by(() => {
   />
 {/snippet}
 
-<div class="space-y-1">
+<div class="space-y-1" bind:this={treeElement}>
   <div class="mb-2 flex items-center justify-between gap-1">
     <a
       href={resolveDocsmintRoute(route, '/')}
@@ -1722,22 +1702,12 @@ const buckets = $derived.by(() => {
           <button
             type="button"
             onclick={() => toggleCategory(bucket.id)}
-            onmouseenter={() => {
-              if (isDraggingGlobal && !isBucketExpanded) {
-                scheduleCategoryExpand(bucket.id);
-              }
-            }}
-            onmouseleave={() => {
-              if (isDraggingGlobal) {
-                clearCategoryExpandTimer();
-              }
-            }}
-            ondragover={handleDragOver}
-            ondrop={(e) => handleDropOnCategory(e, bucket.id)}
+            data-sidebar-drop-kind="category"
+            data-sidebar-drop-id={bucket.id}
             aria-expanded={isBucketExpanded}
             class={cn(
               'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-              draggedDocId && 'hover:bg-accent/40 border border-dashed border-primary/30'
+              hoveredHeader?.kind === 'category' && hoveredHeader.id === bucket.id && 'bg-accent ring-1 ring-primary/50'
             )}
           >
             {#if isBucketExpanded}
@@ -1816,7 +1786,7 @@ const buckets = $derived.by(() => {
               onfinalize={handleFolderFinalize(bucket.id)}
             >
               {#each zoneItems as folder (folder.id)}
-                <div animate:flip={{ duration: FLIP_MS }}>
+                <div animate:flip={{ duration: FLIP_MS }} data-is-dnd-shadow-item-hint={folder[SHADOW_ITEM_MARKER_PROPERTY_NAME]}>
                   {@render folderBlock(folder)}
                 </div>
               {/each}
@@ -1868,22 +1838,12 @@ const buckets = $derived.by(() => {
         <button
           type="button"
           onclick={toggleUncategorized}
-          onmouseenter={() => {
-            if (isDraggingGlobal && !uncategorizedExpanded) {
-              scheduleCategoryExpand(UNCATEGORIZED_KEY);
-            }
-          }}
-          onmouseleave={() => {
-            if (isDraggingGlobal) {
-              clearCategoryExpandTimer();
-            }
-          }}
-          ondragover={handleDragOver}
-          ondrop={(e) => handleDropOnCategory(e, UNCATEGORIZED_KEY)}
+          data-sidebar-drop-kind="category"
+          data-sidebar-drop-id={UNCATEGORIZED_KEY}
           aria-expanded={uncategorizedExpanded}
           class={cn(
             'flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
-            draggedDocId && 'hover:bg-accent/40 border border-dashed border-primary/30'
+            hoveredHeader?.kind === 'category' && hoveredHeader.id === UNCATEGORIZED_KEY && 'bg-accent ring-1 ring-primary/50'
           )}
         >
           {#if uncategorizedExpanded}

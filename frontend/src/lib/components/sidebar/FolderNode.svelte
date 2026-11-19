@@ -28,8 +28,9 @@ import {
 	DropdownMenuTrigger,
 } from "@hiai-gg/hiai-ui/components/ui/dropdown-menu/index";
 import { ChevronRight, Folder, MoreVertical } from "lucide-svelte";
-import type { Snippet } from "svelte";
+import { type Snippet, untrack } from "svelte";
 import { flip } from "svelte/animate";
+import { SHADOW_ITEM_MARKER_PROPERTY_NAME } from "svelte-dnd-action";
 import type { Document } from "#lib/api/documents.js";
 import { listFolders } from "#lib/api/folders.js";
 import {
@@ -53,6 +54,7 @@ export interface FolderNodeItem {
 	categoryId?: string | null;
 	parentId?: string | null;
 	order?: number;
+	[SHADOW_ITEM_MARKER_PROPERTY_NAME]?: boolean;
 }
 
 type FolderItem = FolderNodeItem;
@@ -65,16 +67,13 @@ let {
 	depth = 0,
 	folderDocsMap,
 	expandedFolderIds,
-	isDraggingGlobal,
 	isDraggingFolder = false,
 	isDraggingDoc = false,
 	dragDisabled,
 	folderFlipDurationMs,
 	documentFlipDurationMs,
-	draggedDocId = null,
+	activeDropFolderId = null,
 	onToggleFolder,
-	onScheduleFolderExpand,
-	onClearExpandTimer,
 	onRename,
 	onDelete,
 	onCreateSubfolder,
@@ -83,7 +82,6 @@ let {
 	onFinalizeDocs,
 	onConsiderSubfolders,
 	onFinalizeSubfolders,
-	onDropOnFolder,
 	docRowInner,
 	copyButton,
 	docMenu,
@@ -92,16 +90,13 @@ let {
 	depth?: number;
 	folderDocsMap: Record<string, DndDoc[]>;
 	expandedFolderIds: Set<string>;
-	isDraggingGlobal: boolean;
 	isDraggingFolder?: boolean;
 	isDraggingDoc?: boolean;
 	dragDisabled: boolean;
 	folderFlipDurationMs: number;
 	documentFlipDurationMs: number;
-	draggedDocId?: string | null;
+	activeDropFolderId?: string | null;
 	onToggleFolder: (id: string) => void;
-	onScheduleFolderExpand: (id: string) => void;
-	onClearExpandTimer: () => void;
 	onRename: (id: string, name: string) => void;
 	onDelete: (id: string, name: string) => void;
 	onCreateSubfolder: (parentId: string) => void;
@@ -120,7 +115,6 @@ let {
 	onFinalizeSubfolders: (
 		parentId: string,
 	) => (e: CustomEvent<DndEvent<FolderItem>>) => void;
-	onDropOnFolder: (e: DragEvent, folderId: string) => void;
 	docRowInner: Snippet<[DndDoc]>;
 	copyButton: Snippet<[DndDoc]>;
 	docMenu: Snippet<[DndDoc]>;
@@ -177,13 +171,13 @@ async function loadSubfolders() {
 	}
 }
 
-function handleExpandClick() {
-	const wasExpanded = isExpanded;
-	onToggleFolder(folder.id);
-	if (!wasExpanded) {
-		void loadSubfolders();
+$effect(() => {
+	if (isExpanded) {
+		untrack(() => {
+			if (!subfoldersLoaded && !subfoldersLoading) void loadSubfolders();
+		});
 	}
-}
+});
 
 // Re-fetch subfolders whenever the per-folder refresh nonce (held in
 // `subfolders-refresh-store`) increments. FolderTree bumps the nonce
@@ -222,33 +216,19 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 }
 </script>
 
-<div
-	role="group"
-	aria-label={folder.name}
-	onmouseenter={() => {
-		if (isDraggingGlobal && !isExpanded) onScheduleFolderExpand(folder.id);
-	}}
-	onmouseleave={() => {
-		if (isDraggingGlobal) onClearExpandTimer();
-	}}
->
+<div role="group" aria-label={folder.name}>
 	<div class="group/folder flex w-full min-w-0 items-center gap-1">
 		<button
 			type="button"
-			onclick={handleExpandClick}
-			ondragover={(e) => {
-				if (draggedDocId) {
-					e.preventDefault();
-					if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-				}
-			}}
-			ondrop={(e) => onDropOnFolder(e, folder.id)}
+			onclick={() => onToggleFolder(folder.id)}
+			data-sidebar-drop-kind="folder"
+			data-sidebar-drop-id={folder.id}
 			aria-expanded={isExpanded}
 			class={cn(
 				"flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
 				page.params.id === folder.id &&
 					"bg-accent text-accent-foreground font-medium",
-				draggedDocId && "hover:bg-accent/40 border border-dashed border-primary/30",
+				activeDropFolderId === folder.id && "bg-accent ring-1 ring-primary/50",
 			)}
 		>
 			<ChevronRight
@@ -319,22 +299,19 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 			>
 				{#each subfolderZone as sub (sub.id)}
 					{@const SubComponent = FolderNodeSelf}
-					<div animate:flip={{ duration: folderFlipDurationMs }}>
+					<div animate:flip={{ duration: folderFlipDurationMs }} data-is-dnd-shadow-item-hint={sub[SHADOW_ITEM_MARKER_PROPERTY_NAME]}>
 						<SubComponent
 							folder={sub}
 							depth={depth + 1}
 							{folderDocsMap}
 							{expandedFolderIds}
-							{isDraggingGlobal}
 							{isDraggingFolder}
 							{isDraggingDoc}
 							{dragDisabled}
 							{folderFlipDurationMs}
 							{documentFlipDurationMs}
-							{draggedDocId}
+							{activeDropFolderId}
 							{onToggleFolder}
-							{onScheduleFolderExpand}
-							{onClearExpandTimer}
 							{onRename}
 							{onShare}
 							{onDelete}
@@ -343,7 +320,6 @@ function handleSubfolderFinalizeProxy(e: CustomEvent<DndEvent<FolderItem>>) {
 							{onFinalizeDocs}
 							{onConsiderSubfolders}
 							{onFinalizeSubfolders}
-							{onDropOnFolder}
 							{docRowInner}
 							{copyButton}
 							{docMenu}

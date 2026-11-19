@@ -42,6 +42,8 @@ import { dndzone as originalDndzone } from "svelte-dnd-action";
 
 export type { DndEvent, Item, Options };
 
+const SIDEBAR_TOUCH_HOLD_MS = 320;
+
 /**
  * Hydration-safe `dndzone` action. Defers the real setup to a microtask so
  * the library's `document.body.prepend(...)` aria injection runs *after*
@@ -54,7 +56,17 @@ export function dndzone<T extends Item>(
 	// Capture the original options so the deferred call uses the values
 	// that were passed at mount time, not whatever a later `update(...)`
 	// races to set.
-	const initialOptions = options;
+	const initialOptions = { delayTouchStart: SIDEBAR_TOUCH_HOLD_MS, ...options };
+	let touchHoldEnabled = Boolean(initialOptions.delayTouchStart);
+	// The library fires a plain synthetic click on touchend even when
+	// delayed touchstart leaves the browser's own tap click enabled.
+	const preventDuplicateTap = (event: Event) => {
+		if (touchHoldEnabled && !event.isTrusted && !(event instanceof MouseEvent)) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+		}
+	};
+	node.addEventListener("click", preventDuplicateTap, true);
 	let real: { update: (o: Options<T>) => void; destroy: () => void } | null =
 		null;
 	let pendingUpdate: Options<T> | null = null;
@@ -96,14 +108,17 @@ export function dndzone<T extends Item>(
 
 	return {
 		update(newOptions) {
+			const updated = { delayTouchStart: SIDEBAR_TOUCH_HOLD_MS, ...newOptions };
+			touchHoldEnabled = Boolean(updated.delayTouchStart);
 			if (real) {
-				real.update(newOptions);
+				real.update(updated);
 			} else {
-				pendingUpdate = newOptions;
+				pendingUpdate = updated;
 				schedule();
 			}
 		},
 		destroy() {
+			node.removeEventListener("click", preventDuplicateTap, true);
 			if (real) {
 				real.destroy();
 				real = null;
