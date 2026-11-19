@@ -372,21 +372,29 @@ function headerAtPointer(): HeaderTarget | null {
 	if (!treeElement || !pointerPosition || !pointerDrag) return null;
 	const hit = treeElement.ownerDocument
 		.elementsFromPoint(pointerPosition.clientX, pointerPosition.clientY)
-		.find((element) => !element.closest(
-			`#${DRAGGED_ELEMENT_ID}, [data-is-dnd-shadow-item-hint="true"]`,
-		));
+		.find(
+			(element) =>
+				!element.closest(
+					`#${DRAGGED_ELEMENT_ID}, [data-is-dnd-shadow-item-hint="true"]`,
+				),
+		);
 	if (!hit || !treeElement.contains(hit)) return null;
 	const header = hit.closest<HTMLElement>("[data-sidebar-drop-kind]");
 	if (!header || !treeElement.contains(header)) return null;
 	const { sidebarDropKind: kind, sidebarDropId: id } = header.dataset;
 	if (!id || (kind !== "folder" && kind !== "category")) return null;
-	if (kind === "folder" && pointerDrag.kind === "folder" &&
-		computeBlockedAncestors(id).has(pointerDrag.id)) return null;
+	if (
+		kind === "folder" &&
+		pointerDrag.kind === "folder" &&
+		computeBlockedAncestors(id).has(pointerDrag.id)
+	)
+		return null;
 	return { kind, id };
 }
 
 function hoverHeader(target: HeaderTarget | null) {
-	if (target?.kind === hoveredHeader?.kind && target?.id === hoveredHeader?.id) return;
+	if (target?.kind === hoveredHeader?.kind && target?.id === hoveredHeader?.id)
+		return;
 	if (headerExpandTimer !== null) clearTimeout(headerExpandTimer);
 	headerExpandTimer = null;
 	hoveredHeader = target;
@@ -399,8 +407,15 @@ function hoverHeader(target: HeaderTarget | null) {
 }
 
 function beginPointerDrag(kind: "doc" | "folder", info: DndEvent["info"]) {
-	if (info.source !== SOURCES.POINTER || info.trigger !== TRIGGERS.DRAG_STARTED) return;
-	pointerDrag = { kind, id: String(info.id), released: false, cancelled: false, target: null };
+	if (info.source !== SOURCES.POINTER || info.trigger !== TRIGGERS.DRAG_STARTED)
+		return;
+	pointerDrag = {
+		kind,
+		id: String(info.id),
+		released: false,
+		cancelled: false,
+		target: null,
+	};
 	hoverHeader(headerAtPointer());
 }
 
@@ -413,13 +428,14 @@ function finishPointerDrag(kind: "doc" | "folder", id: string) {
 }
 
 function updatePointer(event: MouseEvent | TouchEvent) {
-	pointerPosition = "touches" in event ? event.touches[0] ?? null : event;
+	pointerPosition = "touches" in event ? (event.touches[0] ?? null) : event;
 	if (pointerDrag && !pointerDrag.released) hoverHeader(headerAtPointer());
 }
 
 function releasePointer(event: MouseEvent | TouchEvent) {
 	if (!pointerDrag || pointerDrag.released) return;
-	pointerPosition = "changedTouches" in event ? event.changedTouches[0] ?? null : event;
+	pointerPosition =
+		"changedTouches" in event ? (event.changedTouches[0] ?? null) : event;
 	pointerDrag.released = true;
 	pointerDrag.cancelled = event.type === "touchcancel";
 	pointerDrag.target = pointerDrag.cancelled ? null : headerAtPointer();
@@ -687,12 +703,20 @@ onMount(() => {
 	const motion = ["mousedown", "mousemove", "touchstart", "touchmove"] as const;
 	const release = ["mouseup", "touchend", "touchcancel"] as const;
 	for (const event of motion)
-		window.addEventListener(event, updatePointer, { capture: true, passive: true });
+		window.addEventListener(event, updatePointer, {
+			capture: true,
+			passive: true,
+		});
 	for (const event of release)
-		window.addEventListener(event, releasePointer, { capture: true, passive: true });
+		window.addEventListener(event, releasePointer, {
+			capture: true,
+			passive: true,
+		});
 	return () => {
-		for (const event of motion) window.removeEventListener(event, updatePointer, true);
-		for (const event of release) window.removeEventListener(event, releasePointer, true);
+		for (const event of motion)
+			window.removeEventListener(event, updatePointer, true);
+		for (const event of release)
+			window.removeEventListener(event, releasePointer, true);
 	};
 });
 
@@ -882,13 +906,19 @@ function handleFinalize(zone: DocZone) {
 			if (pointer?.target) {
 				const target = pointer.target;
 				expandHeader(target);
-				documentDropCoordinator.zone(documentId, placementForZone(
-					target.kind === "category" && target.id === UNCATEGORIZED_KEY
-						? { kind: "root" }
-						: target,
-				));
+				documentDropCoordinator.zone(
+					documentId,
+					placementForZone(
+						target.kind === "category" && target.id === UNCATEGORIZED_KEY
+							? { kind: "root" }
+							: target,
+					),
+				);
 				queueMicrotask(resyncZonesFromDocuments);
-			} else if (!pointer?.cancelled && info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
+			} else if (
+				!pointer?.cancelled &&
+				info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY
+			) {
 				documentDropCoordinator.zone(documentId, placementForZone(zone));
 			} else {
 				queueMicrotask(resyncZonesFromDocuments);
@@ -907,7 +937,8 @@ function placementForZone(zone: DocZone): SidebarDocumentPlacement {
 	while (folderId && !visited.has(folderId)) {
 		visited.add(folderId);
 		const folder = getFolderFromRegistry(folderId);
-		if (folder?.categoryId) return { folderId: zone.id, categoryId: folder.categoryId };
+		if (folder?.categoryId)
+			return { folderId: zone.id, categoryId: folder.categoryId };
 		folderId = folder?.parentId ?? null;
 	}
 	return { folderId: zone.id, categoryId: null };
@@ -944,7 +975,8 @@ function handleFolderFinalize(zoneKey: string) {
 	return (e: CustomEvent<DndEvent<FolderItem>>) => {
 		e.stopPropagation();
 		const next = sanitizeFolderItems(e.detail.items);
-		const isSourceZone = e.detail.info.trigger === TRIGGERS.DROPPED_INTO_ANOTHER;
+		const isSourceZone =
+			e.detail.info.trigger === TRIGGERS.DROPPED_INTO_ANOTHER;
 
 		if (!zoneKey.startsWith(PARENT_ZONE_PREFIX)) {
 			// Update bucketFoldersMap for both zones to keep Svelte state in sync with svelte-dnd-action
@@ -958,7 +990,10 @@ function handleFolderFinalize(zoneKey: string) {
 		if (pointer?.target) {
 			const target = pointer.target;
 			queueMicrotask(() => void moveFolderToHeader(folderId, target));
-		} else if (!pointer?.cancelled && e.detail.info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY) {
+		} else if (
+			!pointer?.cancelled &&
+			e.detail.info.trigger !== TRIGGERS.DROPPED_OUTSIDE_OF_ANY
+		) {
 			void persistFolderChanges(zoneKey, next);
 		} else {
 			queueMicrotask(() => {
@@ -1012,9 +1047,10 @@ async function moveFolderToHeader(id: string, target: HeaderTarget) {
 	const previous = getFolderFromRegistry(id);
 	if (!previous) return;
 	const parentId = target.kind === "folder" ? target.id : null;
-	const categoryId = target.kind === "category" && target.id !== UNCATEGORIZED_KEY
-		? target.id
-		: null;
+	const categoryId =
+		target.kind === "category" && target.id !== UNCATEGORIZED_KEY
+			? target.id
+			: null;
 	try {
 		if (previous.parentId !== parentId || previous.categoryId !== categoryId) {
 			await updateFolder(id, { parentId, categoryId }, request.fetch);
@@ -1026,7 +1062,8 @@ async function moveFolderToHeader(id: string, target: HeaderTarget) {
 		await refresh();
 		resyncBucketFolders();
 		if (previous.parentId) bumpSubfoldersRefresh(previous.parentId);
-		if (parentId && parentId !== previous.parentId) bumpSubfoldersRefresh(parentId);
+		if (parentId && parentId !== previous.parentId)
+			bumpSubfoldersRefresh(parentId);
 	}
 }
 

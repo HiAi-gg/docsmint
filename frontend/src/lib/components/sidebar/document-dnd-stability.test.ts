@@ -9,7 +9,9 @@ describe("document drag-and-drop stability", () => {
 	test("uses the finalized document and the release point for header drops", () => {
 		expect(source).toContain("const documentId = String(info.id)");
 		expect(source).toContain('finishPointerDrag("doc", documentId)');
-		expect(source).toContain("pointerDrag.target = pointerDrag.cancelled ? null : headerAtPointer()");
+		expect(source).toContain(
+			"pointerDrag.target = pointerDrag.cancelled ? null : headerAtPointer()",
+		);
 		expect(source).toContain("documentDropCoordinator.zone(");
 		expect(source).not.toContain("ondrop=");
 		expect(folderNodeSource).not.toContain("ondrop=");
@@ -17,7 +19,9 @@ describe("document drag-and-drop stability", () => {
 
 	test("loads subfolders for both a click and a drag expansion", () => {
 		expect(folderNodeSource).toContain("if (isExpanded) {");
-		expect(folderNodeSource).toContain("if (!subfoldersLoaded && !subfoldersLoading) void loadSubfolders()");
+		expect(folderNodeSource).toContain(
+			"if (!subfoldersLoaded && !subfoldersLoading) void loadSubfolders()",
+		);
 	});
 
 	test("protects the optimistic move from concurrent sidebar refreshes", () => {

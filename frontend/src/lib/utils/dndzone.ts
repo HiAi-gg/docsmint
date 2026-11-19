@@ -61,7 +61,11 @@ export function dndzone<T extends Item>(
 	// The library fires a plain synthetic click on touchend even when
 	// delayed touchstart leaves the browser's own tap click enabled.
 	const preventDuplicateTap = (event: Event) => {
-		if (touchHoldEnabled && !event.isTrusted && !(event instanceof MouseEvent)) {
+		if (
+			touchHoldEnabled &&
+			!event.isTrusted &&
+			!(event instanceof MouseEvent)
+		) {
 			event.preventDefault();
 			event.stopImmediatePropagation();
 		}
