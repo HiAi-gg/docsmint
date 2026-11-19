@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.2 - 2026-11-19
+
+- Start touch dragging in the sidebar after a short hold, so swiping scrolls the document tree.
+- Let documents and folders drop directly into collapsed folders and categories. Hovering over a destination expands it and loads its contents.
+
 ## 2.2.1 - 2026-11-18
 
 - Keep image upload retries attached to the explicit operation ID and source checksum. Ordinary MCP uploads work with or without a caller-wide idempotency key.
