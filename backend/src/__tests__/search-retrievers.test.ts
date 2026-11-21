@@ -33,6 +33,29 @@ function executor(rowsByChannel: Partial<Record<SearchChannel, FakeRow[]>>) {
 }
 
 describe("owner-scoped retrieval channels", () => {
+	test("skips unused exact retrieval without dropping the remaining channels", async () => {
+		const executed: SearchChannel[] = [];
+		const results = await retrieveFastChannels(
+			{ userId: OWNER_ID, role: "user" },
+			plan,
+			{
+				includeExact: false,
+				execute: async (channel) => {
+					executed.push(channel);
+					return [];
+				},
+				queryEmbedding: embedding,
+			},
+		);
+
+		expect(executed).toEqual(["fts", "fuzzy", "vector"]);
+		expect(results[0]).toEqual({
+			channel: "exact",
+			candidates: [],
+			durationMs: 0,
+		});
+	});
+
 	test("rejects adapter candidates outside a restricted category allow-list before ranking", async () => {
 		const results = await retrieveFastChannels(
 			{ userId: OWNER_ID, role: "user" },

@@ -567,6 +567,7 @@ async function defaultExpandedRetriever(
 			const variantPlan: QueryPlan = { ...plan, normalized: variant };
 			const result = await retrieveFastChannels(ctx, variantPlan, {
 				limit,
+				includeExact: false,
 				documentIds: options.documentIds,
 				categoryId: options.categoryId,
 				filters: options.filters,

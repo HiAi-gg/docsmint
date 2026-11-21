@@ -37,6 +37,7 @@ export interface RetrieverOptions {
 	>;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
+	includeExact?: boolean;
 	queryEmbedding?: EmbeddingResult;
 	getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	/** Test adapter; production uses withTenant and a pinned transaction. */
@@ -71,16 +72,18 @@ export async function retrieveFastChannels(
 	const scopedOptions = buildRetrievalScope(ctx, options);
 
 	const tasks: Array<Promise<ChannelResult>> = [
-		measure("exact", () =>
-			retrieveExact(
-				ctx,
-				plan,
-				limit,
-				execute,
-				scopedOptions,
-				options.documentIds,
-			),
-		),
+		options.includeExact === false
+			? Promise.resolve({ channel: "exact", candidates: [], durationMs: 0 })
+			: measure("exact", () =>
+					retrieveExact(
+						ctx,
+						plan,
+						limit,
+						execute,
+						scopedOptions,
+						options.documentIds,
+					),
+				),
 		measure("fts", () =>
 			retrieveFts(
 				ctx,
@@ -216,28 +219,22 @@ async function retrieveFts(
 	scope: ReturnType<typeof sql>,
 	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
+	const englishQuery = sql`websearch_to_tsquery('english', ${plan.normalized})`;
+	const simpleQuery = sql`websearch_to_tsquery('simple', ${plan.normalized})`;
+	const englishMatch = sql`d.search_vector @@ ${englishQuery}`;
+	const simpleMatch = sql`d.search_vector_simple @@ ${simpleQuery}`;
 	const query = sql`
-		WITH lexical AS (
-			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
-				ts_rank(d.search_vector, websearch_to_tsquery('english', ${plan.normalized})) AS score
-			FROM documents d
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.search_vector @@ websearch_to_tsquery('english', ${plan.normalized})
-			UNION ALL
-			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
-				ts_rank(d.search_vector_simple, websearch_to_tsquery('simple', ${plan.normalized})) AS score
-			FROM documents d
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.search_vector_simple @@ websearch_to_tsquery('simple', ${plan.normalized})
-		)
-		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
-		FROM lexical
-		GROUP BY document_id, owner_id, workspace_id
-		ORDER BY score DESC, document_id ASC
+		SELECT d.id AS document_id, d.owner_id, d.workspace_id,
+			GREATEST(
+				CASE WHEN ${englishMatch} THEN ts_rank(d.search_vector, ${englishQuery}) END,
+				CASE WHEN ${simpleMatch} THEN ts_rank(d.search_vector_simple, ${simpleQuery}) END
+			)::double precision AS score
+		FROM documents d
+		WHERE ${tenantOwnerSql("d", ctx)}
+			AND d.deleted_at IS NULL
+			${scope}
+			AND (${englishMatch} OR ${simpleMatch})
+		ORDER BY score DESC, d.id ASC
 		LIMIT ${limit}
 	`;
 	const rows = await execute("fts", ctx, query);
