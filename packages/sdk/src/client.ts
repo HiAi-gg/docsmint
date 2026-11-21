@@ -766,8 +766,12 @@ export class DocsClient {
 				query: this.cleanQuery({
 					q: query,
 					folder: options?.folder,
+					folderId: options?.folderId,
 					tags: options?.tags,
+					tagIds: options?.tagIds?.join(","),
+					tagMatch: options?.tagMatch,
 					category: options?.category,
+					categoryId: options?.categoryId,
 					dateFrom: options?.dateFrom,
 					dateTo: options?.dateTo,
 					sort: options?.sort,

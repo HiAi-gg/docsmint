@@ -1,4 +1,5 @@
 import { documentTags, tags as tagsTable } from "@hiai-docs/db/schema";
+import { csvIds } from "../../lib/document-list-query";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Elysia } from "elysia";
@@ -30,6 +31,7 @@ import {
 } from "../../search/graph-retriever";
 import {
 	MAX_SEARCH_RANKING_WINDOW,
+	SearchUnavailableError,
 	searchDocuments,
 } from "../../search/orchestrator";
 import type { SearchExplanation } from "../../search/types";
@@ -71,7 +73,10 @@ const searchQuerySchema = z.object({
 		.enum(["relevance", "date_desc", "date_asc", "name_asc", "name_desc"])
 		.default("relevance"),
 	folder: z.string().optional(),
+	folderId: z.string().uuid().optional(),
 	tags: z.string().optional(),
+	tagIds: csvIds.optional(),
+	tagMatch: z.enum(["all", "any"]).optional(),
 	/**
 	 * Optional category UUID filter. When supplied, results are restricted to
 	 * documents whose own `category_id` matches OR whose folder's
@@ -79,6 +84,7 @@ const searchQuerySchema = z.object({
 	 * document membership and folder-level classification).
 	 */
 	category: z.string().uuid().optional(),
+	categoryId: z.string().uuid().optional(),
 	dateFrom: z.string().optional(),
 	dateTo: z.string().optional(),
 	/** Deprecated compatibility fields. GraphRAG is now automatic for every search. */
@@ -260,6 +266,11 @@ export function createSearchRoutes(
 					includeChunks,
 					includeDiagnostics,
 				} = parsed.data;
+				const { folderId, categoryId, tagIds, tagMatch } = parsed.data;
+				if ((folder !== undefined && folderId) || (category && categoryId) || (tags !== undefined && tagIds)) {
+					set.status = 400;
+					return { error: "Use either the current filter name or its legacy alias." };
+				}
 				const q = rawQ ?? "";
 				if (!q.trim()) return { items: [], total: 0, page, limit };
 				const legacyGraphRequested = ["graph", "graphHops", "graphBoost"].some(
@@ -278,12 +289,14 @@ export function createSearchRoutes(
 					limit,
 					graphEnabled,
 					filters: {
-						folderId: folder,
+						folderId: folderId ?? folder,
+						tagIds,
+						tagMatch,
 						tagNames: tags
 							?.split(",")
 							.map((tag) => tag.trim())
 							.filter(Boolean),
-						categoryId: category,
+						categoryId: categoryId ?? category,
 						dateFrom,
 						dateTo,
 						sort,
@@ -353,6 +366,15 @@ export function createSearchRoutes(
 						: {}),
 				};
 			} catch (err) {
+				if (err instanceof SearchUnavailableError) {
+					const incomingId = request.headers.get("x-request-id");
+					const requestId = incomingId && /^[a-z0-9-]{1,64}$/i.test(incomingId)
+						? incomingId : crypto.randomUUID();
+					logger.warn({ requestId }, "All search channels unavailable");
+					set.headers["X-Request-Id"] = requestId;
+					set.status = 503;
+					return { error: "Search temporarily unavailable", code: "SEARCH_UNAVAILABLE", requestId };
+				}
 				logger.error({ err }, "Search failed");
 				set.status = 500;
 				return { error: "Search failed" };

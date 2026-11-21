@@ -83,6 +83,8 @@ export type SearchSort =
 export interface SearchFilters {
 	folderId?: string;
 	tagNames?: string[];
+	tagIds?: string[];
+	tagMatch?: "all" | "any";
 	categoryId?: string;
 	dateFrom?: string;
 	dateTo?: string;

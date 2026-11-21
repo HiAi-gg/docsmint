@@ -5,6 +5,7 @@ import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { EMBEDDING_NORM_EPSILON } from "../embedding/validation";
 import { config } from "../lib/config";
+import { documentTagCondition } from "../lib/document-list-query";
 import {
 	effectiveDocumentCategorySql,
 	tenantOwnerSql,
@@ -14,6 +15,7 @@ import type {
 	QueryPlan,
 	SearchCandidate,
 	SearchChannel,
+	SearchFilters,
 } from "./types";
 
 type Row = Record<string, unknown>;
@@ -29,6 +31,7 @@ export interface RetrieverOptions {
 	documentIds?: string[];
 	/** Effective category enforced for a restricted assertion. */
 	categoryId?: string;
+	filters?: Pick<SearchFilters, "folderId" | "tagIds" | "tagNames" | "tagMatch">;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
 	chunkLimitPerDocument?: number;
@@ -261,15 +264,20 @@ async function retrieveFuzzy(
 	scope: ReturnType<typeof sql>,
 	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
+	const shortTitle = isShortTitleQuery(plan.normalized);
+	const score = shortTitle
+		? sql`GREATEST(similarity(d.title, ${plan.normalized}), strict_word_similarity(${plan.normalized}, d.title))`
+		: sql`similarity(d.title, ${plan.normalized})`;
 	const query = sql`
 		SELECT d.id AS document_id, d.owner_id, d.workspace_id,
-			similarity(d.title, ${plan.normalized})::double precision AS score
+			(${score})::double precision AS score
 		FROM documents d
 		WHERE ${tenantOwnerSql("d", ctx)}
 			AND d.deleted_at IS NULL
 			${scope}
-			AND d.title % ${plan.normalized}
-			AND similarity(d.title, ${plan.normalized}) >= ${minimum}
+			AND (d.title % ${plan.normalized}
+				${shortTitle ? sql`OR ${plan.normalized} <<% d.title` : sql``})
+			AND ${score} >= ${minimum}
 		ORDER BY score DESC, d.id ASC
 		LIMIT ${limit}
 	`;
@@ -282,6 +290,10 @@ async function retrieveFuzzy(
 		undefined,
 		allowedDocumentIds,
 	);
+}
+
+export function isShortTitleQuery(query: string): boolean {
+	return /^(?:[\p{L}\p{N}]{2,}\s+){1,3}[\p{L}\p{N}]{2,}$/u.test(query);
 }
 
 async function retrieveVector(
@@ -414,7 +426,11 @@ function buildRetrievalScope(
 	const category = options.categoryId
 		? sql`AND ${effectiveDocumentCategorySql("d", ctx, options.categoryId)}`
 		: sql``;
-	return sql`${ids} ${category}`;
+	const folder = options.filters?.folderId
+		? sql`AND d.folder_id = ${options.filters.folderId}`
+		: sql``;
+	const tagCondition = options.filters && documentTagCondition(ctx, sql`d.id`, options.filters);
+	return sql`${ids} ${category} ${folder} ${tagCondition ? sql`AND ${tagCondition}` : sql``}`;
 }
 
 function rowMatchesTenant(row: Row, ctx: TenantContext): boolean {

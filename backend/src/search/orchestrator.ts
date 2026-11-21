@@ -1,9 +1,10 @@
-import { documents, documentTags, folders, tags } from "@hiai-docs/db/schema";
+import { documents, folders } from "@hiai-docs/db/schema";
 import type { TenantContext } from "@hiai-docs/db/with-tenant";
-import { and, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
+import { documentTagCondition } from "../lib/document-list-query";
 import {
 	effectiveDocumentCategoryCondition,
 	tenantOwnerCondition,
@@ -27,7 +28,7 @@ import { expandQuery } from "./query-expander";
 import { applyRerankOrder, type RerankProviderResult } from "./rerank";
 import { requestRerank } from "./rerank-provider";
 import { loadRerankTexts } from "./rerank-texts";
-import { retrieveFastChannels } from "./retrievers";
+import { isShortTitleQuery, retrieveFastChannels, type RetrieverOptions } from "./retrievers";
 import { fuseCandidates } from "./rrf";
 import type {
 	ChannelResult,
@@ -106,6 +107,7 @@ export interface SearchAdapterOptions {
 			limit?: number;
 			documentIds?: string[];
 			categoryId?: string;
+			filters?: RetrieverOptions["filters"];
 			getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 		},
 	) => Promise<ChannelResult[]>;
@@ -124,6 +126,13 @@ export interface SearchAdapterOptions {
 const CHANNELS = ["exact", "fts", "fuzzy", "vector"] as const;
 const EXPANDED_CHANNELS = new Set<SearchChannel>(["fts", "fuzzy", "vector"]);
 export const MAX_SEARCH_RANKING_WINDOW = 1_000;
+
+export class SearchUnavailableError extends Error {
+	constructor() {
+		super("All primary search channels failed");
+		this.name = "SearchUnavailableError";
+	}
+}
 
 /**
  * Search-domain orchestration. The HTTP layer owns validation and hydration;
@@ -183,7 +192,8 @@ export async function searchDocuments(
 		fast = await retrieveFast(ctx, plan, {
 			limit: rankingWindow,
 			documentIds: request.documentIds,
-			categoryId: request.authorizedCategoryId,
+			categoryId: request.authorizedCategoryId ?? request.filters?.categoryId,
+			filters: request.filters,
 			getEmbedding: getCachedEmbedding,
 		} as Parameters<typeof retrieveFastChannels>[2]);
 	} catch {
@@ -208,6 +218,9 @@ export async function searchDocuments(
 		METRIC_NAMES.SEARCH_FAST_DURATION_MS,
 		performance.now() - fastStarted,
 	);
+	if (fast.length === CHANNELS.length && fast.every((channel) => channel.errorCode)) {
+		throw new SearchUnavailableError();
+	}
 
 	const confidence = evaluateConfidence(fast, plan, {
 		vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
@@ -236,7 +249,8 @@ export async function searchDocuments(
 					expanded = await retrieveExpanded(ctx, expandedPlan, {
 						limit: rankingWindow,
 						documentIds: request.documentIds,
-						categoryId: request.authorizedCategoryId,
+						categoryId: request.authorizedCategoryId ?? request.filters?.categoryId,
+						filters: request.filters,
 						getEmbedding: getCachedEmbedding,
 					});
 				} catch {
@@ -306,7 +320,7 @@ export async function searchDocuments(
 				limit: Math.min(limit * 2, config.SEARCH_GRAPH_RESULT_LIMIT),
 				maxHops: request.maxGraphHops ?? config.SEARCH_GRAPH_MAX_HOPS,
 				visibilityScope: request.visibilityScope,
-				categoryId: request.authorizedCategoryId,
+				categoryId: request.authorizedCategoryId ?? request.filters?.categoryId,
 			});
 		} catch {
 			graphFailed = true;
@@ -403,6 +417,16 @@ export async function searchDocuments(
 				),
 			];
 		}
+	}
+	const titleMatches = fast.find((channel) => channel.channel === "fuzzy")?.candidates ?? [];
+	if (isShortTitleQuery(plan.normalized) && (request.filters?.sort ?? "relevance") === "relevance") {
+		const best = titleMatches[0]?.rawScore ?? 0;
+		const leadingIds = new Set(titleMatches
+			.filter((candidate) => (candidate.rawScore ?? 0) >= Math.max(0.5, best - 0.03))
+			.map((candidate) => candidate.documentId));
+		const priority = (item: RankedSearchResult) =>
+			item.channels.includes("exact") ? 2 : leadingIds.has(item.documentId) ? 1 : 0;
+		ranked.sort((left, right) => priority(right) - priority(left));
 	}
 	const filters = request.filters;
 	const hasFilters = Boolean(
@@ -505,6 +529,7 @@ async function defaultExpandedRetriever(
 		limit?: number;
 		documentIds?: string[];
 		categoryId?: string;
+		filters?: RetrieverOptions["filters"];
 		getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	} = {},
 ): Promise<ChannelResult[]> {
@@ -523,6 +548,7 @@ async function defaultExpandedRetriever(
 				limit,
 				documentIds: options.documentIds,
 				categoryId: options.categoryId,
+				filters: options.filters,
 				getEmbedding: options.getEmbedding,
 			});
 			return result
@@ -626,6 +652,7 @@ async function applySearchFilters(
 					visibility,
 					isNull(documents.deletedAt),
 					inArray(documents.id, ids),
+					documentTagCondition(ctx, sql`${documents.id}`, filters),
 					filters.categoryId
 						? effectiveDocumentCategoryCondition(
 								documents.categoryId,
@@ -638,7 +665,7 @@ async function applySearchFilters(
 			),
 	);
 	const byId = new Map(rows.map((row) => [row.id, row]));
-	let filtered = items.filter((item) => {
+	const filtered = items.filter((item) => {
 		const row = byId.get(item.documentId);
 		if (!row) return false;
 		if (
@@ -660,23 +687,6 @@ async function applySearchFilters(
 		}
 		return true;
 	});
-	if (filters.tagNames && filters.tagNames.length > 0) {
-		const tagRows = await withTenant(ctx, async (tx) =>
-			tx
-				.select({ documentId: documentTags.documentId })
-				.from(documentTags)
-				.innerJoin(tags, eq(tags.id, documentTags.tagId))
-				.where(
-					and(
-						tenantOwnerCondition(tags.ownerId, tags.workspaceId, ctx),
-						inArray(tags.name, filters.tagNames ?? []),
-						inArray(documentTags.documentId, ids),
-					),
-				),
-		);
-		const tagged = new Set(tagRows.map((row) => row.documentId));
-		filtered = filtered.filter((item) => tagged.has(item.documentId));
-	}
 	if (filters.sort && filters.sort !== "relevance") {
 		filtered.sort((left, right) => {
 			const a = byId.get(left.documentId);

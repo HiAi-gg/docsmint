@@ -1,5 +1,5 @@
 import { documents } from "@hiai-docs/db/schema";
-import { asc, desc, eq, gte, isNull, lt, or, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
 	effectiveDocumentCategoryCondition,
@@ -8,7 +8,7 @@ import {
 import type { TenantContext } from "./with-tenant";
 
 const uuid = z.string().uuid();
-const csvIds = z.preprocess(
+export const csvIds = z.preprocess(
 	(value) =>
 		typeof value === "string" ? value.split(",").map((id) => id.trim()) : value,
 	z
@@ -104,16 +104,26 @@ export function documentListConditions(
 			sql`(position(lower(${query.q}) in lower(${documents.title})) > 0 OR position(lower(${query.q}) in lower(coalesce(${documents.content}, ''))) > 0)`,
 		);
 	const ids = query.tagIds ?? (query.tag ? [query.tag] : []);
-	const tagConditions = ids.map(
-		(id) =>
-			sql`EXISTS (SELECT 1 FROM document_tags list_dt JOIN tags list_tag ON list_tag.id = list_dt.tag_id WHERE list_dt.document_id = ${documents.id} AND list_dt.tag_id = ${id} AND ${tenantOwnerSql("list_tag", ctx)})`,
-	);
-	if (tagConditions.length) {
-		if (query.tagMatch === "any")
-			conditions.push(or(...tagConditions) ?? sql`false`);
-		else conditions.push(...tagConditions);
-	}
+	const tags = documentTagCondition(ctx, sql`${documents.id}`, {
+		tagIds: ids, tagMatch: query.tagMatch,
+	});
+	if (tags) conditions.push(tags);
 	return conditions;
+}
+
+export function documentTagCondition(
+	ctx: TenantContext,
+	documentId: SQL,
+	filters: { tagIds?: string[]; tagNames?: string[]; tagMatch?: "all" | "any" },
+): SQL | undefined {
+	const matches = [
+		...(filters.tagIds ?? []).map((id) => sql`list_dt.tag_id = ${id}`),
+		...(filters.tagNames ?? []).map((name) => sql`list_tag.name = ${name}`),
+	].map((predicate) => sql`EXISTS (
+		SELECT 1 FROM document_tags list_dt JOIN tags list_tag ON list_tag.id = list_dt.tag_id
+		WHERE list_dt.document_id = ${documentId} AND ${predicate} AND ${tenantOwnerSql("list_tag", ctx)}
+	)`);
+	return filters.tagMatch === "any" ? or(...matches) : and(...matches);
 }
 
 export function documentListOrder(

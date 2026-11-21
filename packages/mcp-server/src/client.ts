@@ -52,7 +52,7 @@ export interface HiaiDocsClient {
 	deleteFolder?(id: string): Promise<void>;
 	deleteCategory?(id: string): Promise<void>;
 	restoreDocumentVersion?(documentId: string, versionId: string): Promise<unknown>;
-	search(params: { query: string; folder?: string; tags?: string[]; limit?: number; includeChunks?: boolean; includeDiagnostics?: boolean }): Promise<unknown>;
+	search(params: { query: string; folder?: string; folderId?: string; categoryId?: string; tags?: string[]; tagIds?: string[]; tagMatch?: "all" | "any"; limit?: number; includeChunks?: boolean; includeDiagnostics?: boolean }): Promise<unknown>;
 	getDocument(id: string): Promise<unknown>;
 	createDocument(input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
 	updateDocument(id: string, input: { title?: string; content?: string; folderId?: string | null; categoryId?: string | null }): Promise<unknown>;
@@ -171,7 +171,11 @@ export function createMcpDocsClient(
 		search: (params) =>
 			docsClient.search(params.query, {
 				folder: params.folder,
+				folderId: params.folderId,
+				categoryId: params.categoryId,
 				tags: params.tags?.join(","),
+				tagIds: params.tagIds,
+				tagMatch: params.tagMatch,
 				limit: params.limit,
                 includeChunks: params.includeChunks,
                 includeDiagnostics: params.includeDiagnostics,
