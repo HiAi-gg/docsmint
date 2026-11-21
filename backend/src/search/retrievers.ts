@@ -37,7 +37,6 @@ export interface RetrieverOptions {
 	>;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
-	chunkLimitPerDocument?: number;
 	queryEmbedding?: EmbeddingResult;
 	getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	/** Test adapter; production uses withTenant and a pinned transaction. */
@@ -45,7 +44,6 @@ export interface RetrieverOptions {
 }
 
 const DEFAULT_LIMIT = 20;
-const DEFAULT_CHUNK_LIMIT = 3;
 
 /**
  * Run the inexpensive retrieval channels in parallel. Every production query
@@ -63,10 +61,6 @@ export async function retrieveFastChannels(
 		options.vectorMinSimilarity ?? config.SEARCH_VECTOR_MIN_SIMILARITY;
 	const fuzzyMinSimilarity =
 		options.fuzzyMinSimilarity ?? config.SEARCH_FUZZY_MIN_SIMILARITY;
-	const chunkLimitPerDocument = Math.max(
-		1,
-		Math.floor(options.chunkLimitPerDocument ?? DEFAULT_CHUNK_LIMIT),
-	);
 	if (options.documentIds && options.documentIds.length === 0) {
 		return ["exact", "fts", "fuzzy", "vector"].map((channel) => ({
 			channel: channel as SearchChannel,
@@ -114,7 +108,6 @@ export async function retrieveFastChannels(
 				plan,
 				limit,
 				vectorMinSimilarity,
-				chunkLimitPerDocument,
 				execute,
 				options.queryEmbedding,
 				options.getEmbedding,
@@ -304,7 +297,6 @@ async function retrieveVector(
 	plan: QueryPlan,
 	limit: number,
 	minimum: number,
-	chunkLimit: number,
 	execute: SearchQueryExecutor,
 	providedEmbedding?: EmbeddingResult,
 	embeddingProvider: (text: string) => Promise<EmbeddingResult> = getEmbedding,
@@ -322,17 +314,13 @@ async function retrieveVector(
 	if (!queryEmbedding.ok) return { code: queryEmbedding.code };
 
 	const embeddingString = `[${queryEmbedding.vector.join(",")}]`;
+	// The document score uses only its best eligible chunk. Aggregation avoids
+	// sorting chunks within every document before applying the result limit.
 	const query = sql`
-		WITH ranked_chunks AS (
-			SELECT
-				de.document_id,
-				d.owner_id,
-				d.workspace_id,
-				(1 - (de.embedding <=> ${embeddingString}::vector))::double precision AS score,
-				row_number() OVER (
-					PARTITION BY de.document_id
-					ORDER BY de.embedding <=> ${embeddingString}::vector
-				) AS chunk_rank
+		SELECT document_id, owner_id, workspace_id, score
+		FROM (
+			SELECT de.document_id, d.owner_id, d.workspace_id,
+				MAX(1 - (de.embedding <=> ${embeddingString}::vector))::double precision AS score
 			FROM document_embeddings de
 			JOIN documents d ON d.id = de.document_id
 			WHERE ${tenantOwnerSql("d", ctx)}
@@ -346,15 +334,9 @@ async function retrieveVector(
 				AND de.embedding_profile = ${queryEmbedding.profile}
 				AND de.embedding IS NOT NULL
 				AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
-		), top_chunks AS (
-			SELECT document_id, owner_id, workspace_id, score
-			FROM ranked_chunks
-			WHERE chunk_rank <= ${chunkLimit}
-		)
-		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
-		FROM top_chunks
+			GROUP BY de.document_id, d.owner_id, d.workspace_id
+		) scored_documents
 		WHERE score >= ${minimum}
-		GROUP BY document_id, owner_id, workspace_id
 		ORDER BY score DESC, document_id ASC
 		LIMIT ${limit}
 	`;

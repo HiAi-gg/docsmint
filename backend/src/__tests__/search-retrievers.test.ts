@@ -298,6 +298,25 @@ describe("owner-scoped retrieval channels", () => {
 		]);
 	});
 
+	test("scores each document by its best eligible chunk without sorting its chunks", async () => {
+		let vectorSql = "";
+		await retrieveFastChannels({ userId: OWNER_ID, role: "user" }, plan, {
+			queryEmbedding: embedding,
+			execute: async (channel, _ctx, query) => {
+				if (channel === "vector") {
+					vectorSql = new PgDialect().sqlToQuery(
+						query as Parameters<PgDialect["sqlToQuery"]>[0],
+					).sql;
+				}
+				return [];
+			},
+		});
+		expect(vectorSql).toContain("MAX(1 - (de.embedding <=>");
+		expect(vectorSql).toContain("GROUP BY de.document_id");
+		expect(vectorSql).toContain("ORDER BY score DESC, document_id ASC");
+		expect(vectorSql).not.toContain("row_number()");
+	});
+
 	test("returns vector provider failures without failing lexical channels", async () => {
 		const results = await retrieveFastChannels(
 			{ userId: OWNER_ID, role: "user" },
