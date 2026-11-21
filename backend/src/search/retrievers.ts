@@ -45,6 +45,7 @@ export interface RetrieverOptions {
 }
 
 const DEFAULT_LIMIT = 20;
+const INDEXED_VECTOR_MAX_DOCUMENTS = 5_000;
 
 /**
  * Run the inexpensive retrieval channels in parallel. Every production query
@@ -70,7 +71,6 @@ export async function retrieveFastChannels(
 		}));
 	}
 	const scopedOptions = buildRetrievalScope(ctx, options);
-
 	const tasks: Array<Promise<ChannelResult>> = [
 		options.includeExact === false
 			? Promise.resolve({ channel: "exact", candidates: [], durationMs: 0 })
@@ -311,26 +311,50 @@ async function retrieveVector(
 	if (!queryEmbedding.ok) return { code: queryEmbedding.code };
 
 	const embeddingString = `[${queryEmbedding.vector.join(",")}]`;
+	const validEmbedding = sql`
+		de.generation_id = d.active_embedding_generation
+		AND de.is_valid = true
+		AND de.embedding_dimensions = 1024
+		AND de.embedding_profile = d.embedding_profile
+		AND de.embedding_profile = ${queryEmbedding.profile}
+		AND de.embedding IS NOT NULL
+		AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
+	`;
+	const documentScope = sql`
+		${tenantOwnerSql("d", ctx)}
+		AND d.deleted_at IS NULL
+		${scope}
+		AND d.active_embedding_generation IS NOT NULL
+	`;
+	const bestScore = sql`MAX(1 - (de.embedding <=> ${embeddingString}::vector))::double precision`;
 	// The document score uses only its best eligible chunk. Aggregation avoids
 	// sorting chunks within every document before applying the result limit.
-	const query = sql`
+	// For a small allow-list, look up each active generation through its index.
+	const useIndexedLookup =
+		ctx.resourceScope?.kind === "category" &&
+		allowedDocumentIds !== undefined &&
+		allowedDocumentIds.length <= INDEXED_VECTOR_MAX_DOCUMENTS;
+	const query = useIndexedLookup
+		? sql`
+			SELECT d.id AS document_id, d.owner_id, d.workspace_id, scored.score
+			FROM documents d
+			CROSS JOIN LATERAL (
+				SELECT ${bestScore} AS score
+				FROM document_embeddings de
+				WHERE de.document_id = d.id AND ${validEmbedding}
+			) scored
+			WHERE ${documentScope} AND scored.score >= ${minimum}
+			ORDER BY scored.score DESC, d.id ASC
+			LIMIT ${limit}
+		`
+		: sql`
 		SELECT document_id, owner_id, workspace_id, score
 		FROM (
 			SELECT de.document_id, d.owner_id, d.workspace_id,
-				MAX(1 - (de.embedding <=> ${embeddingString}::vector))::double precision AS score
+				${bestScore} AS score
 			FROM document_embeddings de
 			JOIN documents d ON d.id = de.document_id
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.active_embedding_generation IS NOT NULL
-				AND de.generation_id = d.active_embedding_generation
-				AND de.is_valid = true
-				AND de.embedding_dimensions = 1024
-				AND de.embedding_profile = d.embedding_profile
-				AND de.embedding_profile = ${queryEmbedding.profile}
-				AND de.embedding IS NOT NULL
-				AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
+			WHERE ${documentScope} AND ${validEmbedding}
 			GROUP BY de.document_id, d.owner_id, d.workspace_id
 		) scored_documents
 		WHERE score >= ${minimum}

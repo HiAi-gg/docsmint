@@ -56,6 +56,39 @@ describe("owner-scoped retrieval channels", () => {
 		});
 	});
 
+	test("uses active-generation index lookups within an authorized category", async () => {
+		const categoryId = "00000000-0000-4000-8000-000000000099";
+		let vectorSql = "";
+		await retrieveFastChannels(
+			{
+				userId: OWNER_ID,
+				role: "user",
+				source: "external",
+				workspaceId: "workspace-a",
+				resourceScope: { kind: "category", categoryId, permissions: ["read"] },
+			},
+			plan,
+			{
+				categoryId,
+				documentIds: ["00000000-0000-4000-8000-000000000098"],
+				queryEmbedding: embedding,
+				execute: async (channel, _context, query) => {
+					if (channel === "vector") {
+						vectorSql = new PgDialect().sqlToQuery(
+							query as Parameters<PgDialect["sqlToQuery"]>[0],
+						).sql;
+					}
+					return [];
+				},
+			},
+		);
+		expect(vectorSql).toContain("CROSS JOIN LATERAL");
+		expect(vectorSql).toContain(
+			"de.generation_id = d.active_embedding_generation",
+		);
+		expect(vectorSql).toContain("WITH RECURSIVE ancestors");
+	});
+
 	test("rejects adapter candidates outside a restricted category allow-list before ranking", async () => {
 		const results = await retrieveFastChannels(
 			{ userId: OWNER_ID, role: "user" },

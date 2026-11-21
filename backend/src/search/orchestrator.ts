@@ -190,6 +190,23 @@ export async function searchDocuments(
 		return pending;
 	};
 
+	const languageMismatch =
+		plan.detectedLanguage !== "en" && plan.detectedLanguage !== "und";
+	const runExpansion = () =>
+		expand(plan, {
+			tenantScope: ctx.workspaceId ?? ctx.userId,
+			ownerId: ctx.userId,
+		});
+	// A language mismatch always requires expansion, regardless of fast evidence.
+	const earlyExpansionStarted = languageMismatch
+		? performance.now()
+		: undefined;
+	const earlyExpansion = languageMismatch
+		? Promise.resolve()
+				.then(runExpansion)
+				.catch(() => null)
+		: undefined;
+
 	let fast: ChannelResult[];
 	const fastStarted = performance.now();
 	try {
@@ -232,8 +249,7 @@ export async function searchDocuments(
 	const confidence = evaluateConfidence(fast, plan, {
 		vectorMinSimilarity: config.SEARCH_VECTOR_MIN_SIMILARITY,
 		minChannelAgreement: config.SEARCH_MIN_CHANNEL_AGREEMENT,
-		languageMismatch:
-			plan.detectedLanguage !== "en" && plan.detectedLanguage !== "und",
+		languageMismatch,
 	});
 	let expandedPlan: QueryPlan | null = null;
 	let expansionModel: string | undefined;
@@ -242,12 +258,9 @@ export async function searchDocuments(
 	let expanded: ChannelResult[] = [];
 	if (!confidence.confident) {
 		expansionAttempted = true;
-		const expandedStarted = performance.now();
+		const expandedStarted = earlyExpansionStarted ?? performance.now();
 		try {
-			const expansion = await expand(plan, {
-				tenantScope: ctx.workspaceId ?? ctx.userId,
-				ownerId: ctx.userId,
-			});
+			const expansion = await (earlyExpansion ?? runExpansion());
 			if (expansion) {
 				expansionUsed = true;
 				expandedPlan = expansion.plan;
