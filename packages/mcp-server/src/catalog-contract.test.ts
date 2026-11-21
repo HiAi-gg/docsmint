@@ -106,7 +106,7 @@ describe('DocsMint MCP catalog contract', () => {
     expect(readme).not.toContain('## MCP Features');
     expect(readme).toContain('[complete MCP reference](https://github.com/HiAi-gg/docsmint/blob/main/packages/mcp-server/README.md)');
     expect(readme).toContain('"command": "npx"');
-    expect(readme).toContain('"args": ["--yes", "--package", "https://github.com/HiAi-gg/docsmint/releases/download/v2.2.3/hiai-gg-docsmint-2.2.3.tgz", "docsmint-mcp"]');
+    expect(readme).toContain('"args": ["--yes", "--package", "https://github.com/HiAi-gg/docsmint/releases/download/v2.2.4/hiai-gg-docsmint-2.2.4.tgz", "docsmint-mcp"]');
     expect(publishedPackage.description).toContain('self-hosted MCP stdio bridge');
     expect(mcpReadme).toContain('## MCP Features');
     expect(await skill.exists()).toBe(true);

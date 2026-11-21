@@ -302,10 +302,12 @@ describe("automatic GraphRAG search orchestration", () => {
 		expect(response.items[0]?.documentId).toBe("doc-1");
 	});
 
-	test("Russian low-confidence pass expands once and reruns expanded channels", async () => {
-		const expand = mock(async (plan: QueryPlan) =>
-			expansion(plan, ["English"]),
-		);
+	test("starts Russian expansion alongside initial retrieval and runs expanded channels once", async () => {
+		const expansionStarted = Promise.withResolvers<void>();
+		const expand = mock(async (plan: QueryPlan) => {
+			expansionStarted.resolve();
+			return expansion(plan, ["English"]);
+		});
 		const expanded = mock(async () =>
 			channels({ expanded_fts: [candidate("doc-2", "expanded_fts")] }),
 		);
@@ -313,7 +315,10 @@ describe("automatic GraphRAG search orchestration", () => {
 			ctx,
 			{ query: "английский", limit: 10, rerankEnabled: false },
 			{
-				retrieveFast: async () => channels({}),
+				retrieveFast: async () => {
+					await expansionStarted.promise;
+					return channels({});
+				},
 				expand,
 				retrieveExpanded: expanded,
 				retrieveGraph: async () => [],
