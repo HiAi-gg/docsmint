@@ -196,6 +196,9 @@ export async function searchDocuments(
 		expand(plan, {
 			tenantScope: ctx.workspaceId ?? ctx.userId,
 			ownerId: ctx.userId,
+			...(languageMismatch && ctx.resourceScope?.kind === "category"
+				? { overlapFallbacks: true }
+				: {}),
 		});
 	// A language mismatch always requires expansion, regardless of fast evidence.
 	const earlyExpansionStarted = languageMismatch

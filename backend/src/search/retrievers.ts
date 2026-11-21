@@ -424,10 +424,7 @@ function buildRetrievalScope(
 	options: RetrieverOptions,
 ): ReturnType<typeof sql> {
 	const ids = options.documentIds
-		? sql`AND d.id IN (${sql.join(
-				options.documentIds.map((id) => sql`${id}`),
-				sql`, `,
-			)})`
+		? sql`AND d.id = ANY(${sql.param(options.documentIds)}::uuid[])`
 		: sql``;
 	const category = options.categoryId
 		? sql`AND ${effectiveDocumentCategorySql("d", ctx, options.categoryId)}`
@@ -466,6 +463,11 @@ async function productionExecutor(
 	query: unknown,
 ): Promise<unknown[]> {
 	return withTenant(ctx, async (tx) => {
+		// For category keys, these short queries repeat per expansion variant.
+		// PostgreSQL compilation costs more than it saves on this retrieval path.
+		if (ctx.resourceScope?.kind === "category") {
+			await tx.execute(sql`SET LOCAL jit = off`);
+		}
 		const result = await tx.execute(query as Parameters<typeof tx.execute>[0]);
 		return result as unknown as unknown[];
 	});
