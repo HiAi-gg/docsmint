@@ -1,11 +1,58 @@
 import { describe, expect, test } from "bun:test";
+import { PgDialect } from "drizzle-orm/pg-core";
+import { analyzeQuery } from "../search/query-analyzer";
+import { retrieveFastChannels } from "../search/retrievers";
 
 describe("self-host correctness contracts", () => {
 	test("filters trash before every retrieval channel", async () => {
-		const retrievers = await Bun.file(
-			new URL("../search/retrievers.ts", import.meta.url),
-		).text();
-		expect(retrievers.match(/d\.deleted_at IS NULL/g)).toHaveLength(5);
+		const userId = "00000000-0000-4000-8000-000000000001";
+		const categoryId = "00000000-0000-4000-8000-000000000002";
+		const documentId = "00000000-0000-4000-8000-000000000003";
+		const dialect = new PgDialect();
+		for (const restricted of [false, true]) {
+			const queries: string[] = [];
+			const scope = restricted
+				? {
+						source: "external" as const,
+						workspaceId: "workspace-a",
+						resourceScope: {
+							kind: "category" as const,
+							categoryId,
+							permissions: ["read" as const],
+						},
+					}
+				: {};
+			await retrieveFastChannels(
+				{ userId, role: "user", ...scope },
+				analyzeQuery("search"),
+				{
+					...(restricted ? { categoryId, documentIds: [documentId] } : {}),
+					queryEmbedding: {
+						ok: true,
+						profile: "test",
+						model: "test",
+						provider: "primary",
+						dimensions: 1024,
+						vector: Array.from({ length: 1024 }, () => 0.1),
+					},
+					execute: async (_channel, _context, query) => {
+						queries.push(
+							dialect.sqlToQuery(
+								query as Parameters<PgDialect["sqlToQuery"]>[0],
+							).sql,
+						);
+						return [];
+					},
+				},
+			);
+			expect(queries).toHaveLength(4);
+			for (const query of queries) {
+				expect(query).toContain("d.deleted_at IS NULL");
+				expect(query.indexOf("d.deleted_at IS NULL")).toBeLessThan(
+					query.lastIndexOf("LIMIT"),
+				);
+			}
+		}
 	});
 
 	test("never falls graph extraction back to embedding endpoints", async () => {

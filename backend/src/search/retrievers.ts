@@ -37,7 +37,7 @@ export interface RetrieverOptions {
 	>;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
-	chunkLimitPerDocument?: number;
+	includeExact?: boolean;
 	queryEmbedding?: EmbeddingResult;
 	getEmbedding?: (text: string) => Promise<EmbeddingResult>;
 	/** Test adapter; production uses withTenant and a pinned transaction. */
@@ -45,7 +45,7 @@ export interface RetrieverOptions {
 }
 
 const DEFAULT_LIMIT = 20;
-const DEFAULT_CHUNK_LIMIT = 3;
+const INDEXED_VECTOR_MAX_DOCUMENTS = 5_000;
 
 /**
  * Run the inexpensive retrieval channels in parallel. Every production query
@@ -63,10 +63,6 @@ export async function retrieveFastChannels(
 		options.vectorMinSimilarity ?? config.SEARCH_VECTOR_MIN_SIMILARITY;
 	const fuzzyMinSimilarity =
 		options.fuzzyMinSimilarity ?? config.SEARCH_FUZZY_MIN_SIMILARITY;
-	const chunkLimitPerDocument = Math.max(
-		1,
-		Math.floor(options.chunkLimitPerDocument ?? DEFAULT_CHUNK_LIMIT),
-	);
 	if (options.documentIds && options.documentIds.length === 0) {
 		return ["exact", "fts", "fuzzy", "vector"].map((channel) => ({
 			channel: channel as SearchChannel,
@@ -75,18 +71,19 @@ export async function retrieveFastChannels(
 		}));
 	}
 	const scopedOptions = buildRetrievalScope(ctx, options);
-
 	const tasks: Array<Promise<ChannelResult>> = [
-		measure("exact", () =>
-			retrieveExact(
-				ctx,
-				plan,
-				limit,
-				execute,
-				scopedOptions,
-				options.documentIds,
-			),
-		),
+		options.includeExact === false
+			? Promise.resolve({ channel: "exact", candidates: [], durationMs: 0 })
+			: measure("exact", () =>
+					retrieveExact(
+						ctx,
+						plan,
+						limit,
+						execute,
+						scopedOptions,
+						options.documentIds,
+					),
+				),
 		measure("fts", () =>
 			retrieveFts(
 				ctx,
@@ -114,7 +111,6 @@ export async function retrieveFastChannels(
 				plan,
 				limit,
 				vectorMinSimilarity,
-				chunkLimitPerDocument,
 				execute,
 				options.queryEmbedding,
 				options.getEmbedding,
@@ -223,28 +219,22 @@ async function retrieveFts(
 	scope: ReturnType<typeof sql>,
 	allowedDocumentIds?: string[],
 ): Promise<SearchCandidate[]> {
+	const englishQuery = sql`websearch_to_tsquery('english', ${plan.normalized})`;
+	const simpleQuery = sql`websearch_to_tsquery('simple', ${plan.normalized})`;
+	const englishMatch = sql`d.search_vector @@ ${englishQuery}`;
+	const simpleMatch = sql`d.search_vector_simple @@ ${simpleQuery}`;
 	const query = sql`
-		WITH lexical AS (
-			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
-				ts_rank(d.search_vector, websearch_to_tsquery('english', ${plan.normalized})) AS score
-			FROM documents d
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.search_vector @@ websearch_to_tsquery('english', ${plan.normalized})
-			UNION ALL
-			SELECT d.id AS document_id, d.owner_id, d.workspace_id,
-				ts_rank(d.search_vector_simple, websearch_to_tsquery('simple', ${plan.normalized})) AS score
-			FROM documents d
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.search_vector_simple @@ websearch_to_tsquery('simple', ${plan.normalized})
-		)
-		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
-		FROM lexical
-		GROUP BY document_id, owner_id, workspace_id
-		ORDER BY score DESC, document_id ASC
+		SELECT d.id AS document_id, d.owner_id, d.workspace_id,
+			GREATEST(
+				CASE WHEN ${englishMatch} THEN ts_rank(d.search_vector, ${englishQuery}) END,
+				CASE WHEN ${simpleMatch} THEN ts_rank(d.search_vector_simple, ${simpleQuery}) END
+			)::double precision AS score
+		FROM documents d
+		WHERE ${tenantOwnerSql("d", ctx)}
+			AND d.deleted_at IS NULL
+			${scope}
+			AND (${englishMatch} OR ${simpleMatch})
+		ORDER BY score DESC, d.id ASC
 		LIMIT ${limit}
 	`;
 	const rows = await execute("fts", ctx, query);
@@ -304,7 +294,6 @@ async function retrieveVector(
 	plan: QueryPlan,
 	limit: number,
 	minimum: number,
-	chunkLimit: number,
 	execute: SearchQueryExecutor,
 	providedEmbedding?: EmbeddingResult,
 	embeddingProvider: (text: string) => Promise<EmbeddingResult> = getEmbedding,
@@ -322,39 +311,53 @@ async function retrieveVector(
 	if (!queryEmbedding.ok) return { code: queryEmbedding.code };
 
 	const embeddingString = `[${queryEmbedding.vector.join(",")}]`;
-	const query = sql`
-		WITH ranked_chunks AS (
-			SELECT
-				de.document_id,
-				d.owner_id,
-				d.workspace_id,
-				(1 - (de.embedding <=> ${embeddingString}::vector))::double precision AS score,
-				row_number() OVER (
-					PARTITION BY de.document_id
-					ORDER BY de.embedding <=> ${embeddingString}::vector
-				) AS chunk_rank
+	const validEmbedding = sql`
+		de.generation_id = d.active_embedding_generation
+		AND de.is_valid = true
+		AND de.embedding_dimensions = 1024
+		AND de.embedding_profile = d.embedding_profile
+		AND de.embedding_profile = ${queryEmbedding.profile}
+		AND de.embedding IS NOT NULL
+		AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
+	`;
+	const documentScope = sql`
+		${tenantOwnerSql("d", ctx)}
+		AND d.deleted_at IS NULL
+		${scope}
+		AND d.active_embedding_generation IS NOT NULL
+	`;
+	const bestScore = sql`MAX(1 - (de.embedding <=> ${embeddingString}::vector))::double precision`;
+	// The document score uses only its best eligible chunk. Aggregation avoids
+	// sorting chunks within every document before applying the result limit.
+	// For a small allow-list, look up each active generation through its index.
+	const useIndexedLookup =
+		ctx.resourceScope?.kind === "category" &&
+		allowedDocumentIds !== undefined &&
+		allowedDocumentIds.length <= INDEXED_VECTOR_MAX_DOCUMENTS;
+	const query = useIndexedLookup
+		? sql`
+			SELECT d.id AS document_id, d.owner_id, d.workspace_id, scored.score
+			FROM documents d
+			CROSS JOIN LATERAL (
+				SELECT ${bestScore} AS score
+				FROM document_embeddings de
+				WHERE de.document_id = d.id AND ${validEmbedding}
+			) scored
+			WHERE ${documentScope} AND scored.score >= ${minimum}
+			ORDER BY scored.score DESC, d.id ASC
+			LIMIT ${limit}
+		`
+		: sql`
+		SELECT document_id, owner_id, workspace_id, score
+		FROM (
+			SELECT de.document_id, d.owner_id, d.workspace_id,
+				${bestScore} AS score
 			FROM document_embeddings de
 			JOIN documents d ON d.id = de.document_id
-			WHERE ${tenantOwnerSql("d", ctx)}
-				AND d.deleted_at IS NULL
-				${scope}
-				AND d.active_embedding_generation IS NOT NULL
-				AND de.generation_id = d.active_embedding_generation
-				AND de.is_valid = true
-				AND de.embedding_dimensions = 1024
-				AND de.embedding_profile = d.embedding_profile
-				AND de.embedding_profile = ${queryEmbedding.profile}
-				AND de.embedding IS NOT NULL
-				AND vector_norm(de.embedding) > ${EMBEDDING_NORM_EPSILON}
-		), top_chunks AS (
-			SELECT document_id, owner_id, workspace_id, score
-			FROM ranked_chunks
-			WHERE chunk_rank <= ${chunkLimit}
-		)
-		SELECT document_id, owner_id, workspace_id, MAX(score)::double precision AS score
-		FROM top_chunks
+			WHERE ${documentScope} AND ${validEmbedding}
+			GROUP BY de.document_id, d.owner_id, d.workspace_id
+		) scored_documents
 		WHERE score >= ${minimum}
-		GROUP BY document_id, owner_id, workspace_id
 		ORDER BY score DESC, document_id ASC
 		LIMIT ${limit}
 	`;
@@ -421,10 +424,7 @@ function buildRetrievalScope(
 	options: RetrieverOptions,
 ): ReturnType<typeof sql> {
 	const ids = options.documentIds
-		? sql`AND d.id IN (${sql.join(
-				options.documentIds.map((id) => sql`${id}`),
-				sql`, `,
-			)})`
+		? sql`AND d.id = ANY(${sql.param(options.documentIds)}::uuid[])`
 		: sql``;
 	const category = options.categoryId
 		? sql`AND ${effectiveDocumentCategorySql("d", ctx, options.categoryId)}`
@@ -463,6 +463,11 @@ async function productionExecutor(
 	query: unknown,
 ): Promise<unknown[]> {
 	return withTenant(ctx, async (tx) => {
+		// For category keys, these short queries repeat per expansion variant.
+		// PostgreSQL compilation costs more than it saves on this retrieval path.
+		if (ctx.resourceScope?.kind === "category") {
+			await tx.execute(sql`SET LOCAL jit = off`);
+		}
 		const result = await tx.execute(query as Parameters<typeof tx.execute>[0]);
 		return result as unknown as unknown[];
 	});

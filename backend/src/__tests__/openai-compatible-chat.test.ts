@@ -129,6 +129,44 @@ describe("structured chat fallback chain", () => {
 		expect(result).toBeNull();
 	});
 
+	test("can start a fallback while preserving the configured provider priority", async () => {
+		const fallbackStarted = Promise.withResolvers<void>();
+		const called: string[] = [];
+		globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+			if (String(input).includes("primary.test")) {
+				called.push("primary");
+				await fallbackStarted.promise;
+				return completion('{"ok":true}');
+			}
+			called.push("fallback");
+			fallbackStarted.resolve();
+			return completion('{"ok":false}');
+		}) as unknown as typeof fetch;
+		const result = await requestStructuredChat({
+			primary: chatProvider("primary"),
+			fallback: chatProvider("fallback"),
+			fallbackDelayMs: 1,
+			messages: [{ role: "user", content: "q" }],
+			outputSchema,
+		});
+		expect(called).toEqual(["primary", "fallback"]);
+		expect(result).toEqual({ data: { ok: true }, model: "primary" });
+	});
+
+	test("cancels a delayed fallback when the primary succeeds promptly", async () => {
+		const calls = mock(async () => completion('{"ok":true}'));
+		globalThis.fetch = calls as unknown as typeof fetch;
+		const result = await requestStructuredChat({
+			primary: chatProvider("primary"),
+			fallback: chatProvider("fallback"),
+			fallbackDelayMs: 200,
+			messages: [{ role: "user", content: "q" }],
+			outputSchema,
+		});
+		expect(result?.model).toBe("primary");
+		expect(calls).toHaveBeenCalledTimes(1);
+	});
+
 	test("classifies malformed JSON and schema validation separately", async () => {
 		globalThis.fetch = mock(async () =>
 			completion("not-json"),

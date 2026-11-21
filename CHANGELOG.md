@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.4 - 2026-11-21
+
+- Reduce scoped search latency by using active-generation vector lookups and combining the English and language-neutral lexical scans.
+- Overlap multilingual query expansion with initial retrieval. Category-scoped expansion can start fallbacks early while retaining provider priority.
+- Preserve workspace and category filters and the ranking rules for exact, fuzzy, lexical, vector, and graph results.
+
 ## 2.2.3 - 2026-11-21
 
 - Filter semantic search by workspace permissions, effective category, folder and tag IDs, with all-tag or any-tag matching.

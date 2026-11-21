@@ -1,3 +1,4 @@
+import { setTimeout as wait } from "node:timers/promises";
 import type { z } from "zod";
 import { PipelineProviderError } from "./pipeline-error";
 
@@ -22,6 +23,9 @@ export interface StructuredChatOptions<T> {
 	outputSchema: z.ZodType<T>;
 	maxTokens?: number;
 	temperature?: number;
+	signal?: AbortSignal;
+	/** Start slower-priority fallbacks after this delay while retaining provider order. */
+	fallbackDelayMs?: number;
 }
 
 export interface StructuredChatResult<T> {
@@ -83,8 +87,51 @@ export function uniqueChatProviders(
 export async function requestStructuredChat<T>(
 	options: StructuredChatOptions<T>,
 ): Promise<StructuredChatResult<T> | null> {
+	if (options.fallbackDelayMs !== undefined) {
+		return requestOverlappingChat(options, options.fallbackDelayMs);
+	}
 	const attempt = await requestStructuredChatDetailed(options);
 	return attempt.ok ? attempt.result : null;
+}
+
+async function requestOverlappingChat<T>(
+	options: StructuredChatOptions<T>,
+	delayMs: number,
+): Promise<StructuredChatResult<T> | null> {
+	const providers = uniqueChatProviders([
+		options.primary,
+		options.fallback,
+		...(options.fallbacks ?? []),
+	]);
+	const controller = new AbortController();
+	const signal = options.signal
+		? AbortSignal.any([controller.signal, options.signal])
+		: controller.signal;
+	const attempts = providers.map(async (primary, index) => {
+		try {
+			if (index > 0) await wait(index * delayMs, undefined, { signal });
+			if (signal.aborted) return null;
+			const attempt = await requestStructuredChatDetailed({
+				...options,
+				primary,
+				fallback: undefined,
+				fallbacks: undefined,
+				signal,
+			});
+			return attempt.ok ? attempt.result : null;
+		} catch {
+			return null;
+		}
+	});
+	try {
+		for (const attempt of attempts) {
+			const result = await attempt;
+			if (result) return result;
+		}
+		return null;
+	} finally {
+		controller.abort();
+	}
 }
 
 export async function requestStructuredChatDetailed<T>(
@@ -154,7 +201,9 @@ async function requestChatContent<T>(
 		const response = await fetch(chatCompletionsUrl(provider.baseUrl), {
 			method: "POST",
 			headers,
-			signal: controller.signal,
+			signal: options.signal
+				? AbortSignal.any([controller.signal, options.signal])
+				: controller.signal,
 			body: JSON.stringify({
 				model: provider.model,
 				messages: options.messages,

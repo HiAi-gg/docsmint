@@ -15,9 +15,11 @@ export interface ExpansionScope {
 	tenantScope?: string;
 	tenantId?: string;
 	ownerId?: string;
+	overlapFallbacks?: boolean;
 }
 
 const EXPANSION_SCHEMA_VERSION = "v1";
+const SCOPED_EXPANSION_FALLBACK_DELAY_MS = 200;
 const expansionOutputSchema = z.object({
 	translations: z.array(z.string()),
 	synonyms: z.array(z.string()),
@@ -133,6 +135,10 @@ export async function expandQuery(
 		outputSchema: expansionOutputSchema,
 		maxTokens: 512,
 		temperature: 0,
+		fallbackDelayMs:
+			typeof scope !== "string" && scope.overlapFallbacks
+				? SCOPED_EXPANSION_FALLBACK_DELAY_MS
+				: undefined,
 	});
 	const local = localQueryVariants(plan);
 	if (!result && local.every((values) => values.length === 0)) return null;

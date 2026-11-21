@@ -33,6 +33,62 @@ function executor(rowsByChannel: Partial<Record<SearchChannel, FakeRow[]>>) {
 }
 
 describe("owner-scoped retrieval channels", () => {
+	test("skips unused exact retrieval without dropping the remaining channels", async () => {
+		const executed: SearchChannel[] = [];
+		const results = await retrieveFastChannels(
+			{ userId: OWNER_ID, role: "user" },
+			plan,
+			{
+				includeExact: false,
+				execute: async (channel) => {
+					executed.push(channel);
+					return [];
+				},
+				queryEmbedding: embedding,
+			},
+		);
+
+		expect(executed).toEqual(["fts", "fuzzy", "vector"]);
+		expect(results[0]).toEqual({
+			channel: "exact",
+			candidates: [],
+			durationMs: 0,
+		});
+	});
+
+	test("uses active-generation index lookups within an authorized category", async () => {
+		const categoryId = "00000000-0000-4000-8000-000000000099";
+		let vectorSql = "";
+		await retrieveFastChannels(
+			{
+				userId: OWNER_ID,
+				role: "user",
+				source: "external",
+				workspaceId: "workspace-a",
+				resourceScope: { kind: "category", categoryId, permissions: ["read"] },
+			},
+			plan,
+			{
+				categoryId,
+				documentIds: ["00000000-0000-4000-8000-000000000098"],
+				queryEmbedding: embedding,
+				execute: async (channel, _context, query) => {
+					if (channel === "vector") {
+						vectorSql = new PgDialect().sqlToQuery(
+							query as Parameters<PgDialect["sqlToQuery"]>[0],
+						).sql;
+					}
+					return [];
+				},
+			},
+		);
+		expect(vectorSql).toContain("CROSS JOIN LATERAL");
+		expect(vectorSql).toContain(
+			"de.generation_id = d.active_embedding_generation",
+		);
+		expect(vectorSql).toContain("WITH RECURSIVE ancestors");
+	});
+
 	test("rejects adapter candidates outside a restricted category allow-list before ranking", async () => {
 		const results = await retrieveFastChannels(
 			{ userId: OWNER_ID, role: "user" },
@@ -296,6 +352,25 @@ describe("owner-scoped retrieval channels", () => {
 		).toEqual([
 			expect.objectContaining({ documentId: "active-doc", rawScore: 0.91 }),
 		]);
+	});
+
+	test("scores each document by its best eligible chunk without sorting its chunks", async () => {
+		let vectorSql = "";
+		await retrieveFastChannels({ userId: OWNER_ID, role: "user" }, plan, {
+			queryEmbedding: embedding,
+			execute: async (channel, _ctx, query) => {
+				if (channel === "vector") {
+					vectorSql = new PgDialect().sqlToQuery(
+						query as Parameters<PgDialect["sqlToQuery"]>[0],
+					).sql;
+				}
+				return [];
+			},
+		});
+		expect(vectorSql).toContain("MAX(1 - (de.embedding <=>");
+		expect(vectorSql).toContain("GROUP BY de.document_id");
+		expect(vectorSql).toContain("ORDER BY score DESC, document_id ASC");
+		expect(vectorSql).not.toContain("row_number()");
 	});
 
 	test("returns vector provider failures without failing lexical channels", async () => {
