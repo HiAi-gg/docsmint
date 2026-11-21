@@ -1,0 +1,10 @@
+{
+  "name": "docsmint",
+  "version": "1.0.0",
+  "description": "Search, read, and manage authorized DocsMint Cloud documents from Claude.",
+  "author": { "name": "DocsMint", "url": "https://docsmint.com/" },
+  "homepage": "https://docsmint.com/mcp/connect",
+  "repository": "https://github.com/HiAi-gg/docsmint",
+  "license": "Apache-2.0",
+  "keywords": ["mcp", "knowledge-base", "documents", "search"]
+}
