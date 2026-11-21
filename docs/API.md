@@ -200,12 +200,16 @@ curl -G "$HIAI_DOCS_URL/api/search" \
 Search combines exact/title, multilingual lexical, fuzzy, vector, adaptive
 expansion, and GraphRAG channels with reciprocal rank fusion, then a
 cross-encoder rerank of the fused prefix (Voyage rerank-2.5 by default).
-Results are authorized before retrieval and hydration. Common filters include
-`folder`, comma-separated `tags`, `dateFrom`, `dateTo`, and `sort`. Each result
+Results are authorized before retrieval and hydration. Filter by `folderId`,
+effective `categoryId` and comma-separated `tagIds`. `tagMatch=all` is the default
+and `tagMatch=any` accepts any selected tag. Legacy `folder`, `category` and
+comma-separated tag names in `tags` still work. Supply only one form of each
+filter. Date filters and sorting are also available. Each result
 includes safe explanations; `includeChunks=true` adds up to three matching
 snippets. Provider prompts, credentials, tenant identifiers, and internal
 scores are not returned. Provider, rerank, or graph failures degrade to the
-remaining channels. There is no public `/rerank` endpoint.
+remaining channels. If every primary retrieval channel fails, search returns
+`503 SEARCH_UNAVAILABLE` with a request ID.
 
 ### Graph context
 
