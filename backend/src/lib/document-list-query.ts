@@ -1,5 +1,16 @@
 import { documents } from "@hiai-docs/db/schema";
-import { and, asc, desc, eq, gte, isNull, lt, or, type SQL, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	gte,
+	isNull,
+	lt,
+	or,
+	type SQL,
+	sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import {
 	effectiveDocumentCategoryCondition,
@@ -105,7 +116,8 @@ export function documentListConditions(
 		);
 	const ids = query.tagIds ?? (query.tag ? [query.tag] : []);
 	const tags = documentTagCondition(ctx, sql`${documents.id}`, {
-		tagIds: ids, tagMatch: query.tagMatch,
+		tagIds: ids,
+		tagMatch: query.tagMatch,
 	});
 	if (tags) conditions.push(tags);
 	return conditions;
@@ -119,10 +131,12 @@ export function documentTagCondition(
 	const matches = [
 		...(filters.tagIds ?? []).map((id) => sql`list_dt.tag_id = ${id}`),
 		...(filters.tagNames ?? []).map((name) => sql`list_tag.name = ${name}`),
-	].map((predicate) => sql`EXISTS (
+	].map(
+		(predicate) => sql`EXISTS (
 		SELECT 1 FROM document_tags list_dt JOIN tags list_tag ON list_tag.id = list_dt.tag_id
 		WHERE list_dt.document_id = ${documentId} AND ${predicate} AND ${tenantOwnerSql("list_tag", ctx)}
-	)`);
+	)`,
+	);
 	return filters.tagMatch === "any" ? or(...matches) : and(...matches);
 }
 

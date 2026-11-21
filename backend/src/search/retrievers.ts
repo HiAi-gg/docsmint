@@ -5,11 +5,11 @@ import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { EMBEDDING_NORM_EPSILON } from "../embedding/validation";
 import { config } from "../lib/config";
-import { documentTagCondition } from "../lib/document-list-query";
 import {
 	effectiveDocumentCategorySql,
 	tenantOwnerSql,
 } from "../lib/content-access";
+import { documentTagCondition } from "../lib/document-list-query";
 import type {
 	ChannelResult,
 	QueryPlan,
@@ -31,7 +31,10 @@ export interface RetrieverOptions {
 	documentIds?: string[];
 	/** Effective category enforced for a restricted assertion. */
 	categoryId?: string;
-	filters?: Pick<SearchFilters, "folderId" | "tagIds" | "tagNames" | "tagMatch">;
+	filters?: Pick<
+		SearchFilters,
+		"folderId" | "tagIds" | "tagNames" | "tagMatch"
+	>;
 	vectorMinSimilarity?: number;
 	fuzzyMinSimilarity?: number;
 	chunkLimitPerDocument?: number;
@@ -429,7 +432,8 @@ function buildRetrievalScope(
 	const folder = options.filters?.folderId
 		? sql`AND d.folder_id = ${options.filters.folderId}`
 		: sql``;
-	const tagCondition = options.filters && documentTagCondition(ctx, sql`d.id`, options.filters);
+	const tagCondition =
+		options.filters && documentTagCondition(ctx, sql`d.id`, options.filters);
 	return sql`${ids} ${category} ${folder} ${tagCondition ? sql`AND ${tagCondition}` : sql``}`;
 }
 

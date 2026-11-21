@@ -1,5 +1,4 @@
 import { documentTags, tags as tagsTable } from "@hiai-docs/db/schema";
-import { csvIds } from "../../lib/document-list-query";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Elysia } from "elysia";
@@ -17,6 +16,7 @@ import {
 	tenantOwnerCondition,
 	tenantOwnerSql,
 } from "../../lib/content-access";
+import { csvIds } from "../../lib/document-list-query";
 import {
 	documentLocation,
 	documentPreview,
@@ -267,9 +267,15 @@ export function createSearchRoutes(
 					includeDiagnostics,
 				} = parsed.data;
 				const { folderId, categoryId, tagIds, tagMatch } = parsed.data;
-				if ((folder !== undefined && folderId) || (category && categoryId) || (tags !== undefined && tagIds)) {
+				if (
+					(folder !== undefined && folderId) ||
+					(category && categoryId) ||
+					(tags !== undefined && tagIds)
+				) {
 					set.status = 400;
-					return { error: "Use either the current filter name or its legacy alias." };
+					return {
+						error: "Use either the current filter name or its legacy alias.",
+					};
 				}
 				const q = rawQ ?? "";
 				if (!q.trim()) return { items: [], total: 0, page, limit };
@@ -368,12 +374,18 @@ export function createSearchRoutes(
 			} catch (err) {
 				if (err instanceof SearchUnavailableError) {
 					const incomingId = request.headers.get("x-request-id");
-					const requestId = incomingId && /^[a-z0-9-]{1,64}$/i.test(incomingId)
-						? incomingId : crypto.randomUUID();
+					const requestId =
+						incomingId && /^[a-z0-9-]{1,64}$/i.test(incomingId)
+							? incomingId
+							: crypto.randomUUID();
 					logger.warn({ requestId }, "All search channels unavailable");
 					set.headers["X-Request-Id"] = requestId;
 					set.status = 503;
-					return { error: "Search temporarily unavailable", code: "SEARCH_UNAVAILABLE", requestId };
+					return {
+						error: "Search temporarily unavailable",
+						code: "SEARCH_UNAVAILABLE",
+						requestId,
+					};
 				}
 				logger.error({ err }, "Search failed");
 				set.status = 500;

@@ -4,8 +4,8 @@ import type { EmbeddingResult } from "../embedding/result";
 import { getMetrics, METRIC_NAMES, resetMetrics } from "../lib/metrics";
 import {
 	resolveSearchEmbedding,
-	searchDocuments,
 	SearchUnavailableError,
+	searchDocuments,
 } from "../search/orchestrator";
 import type {
 	ChannelResult,
@@ -52,27 +52,52 @@ function candidate(
 }
 
 test("keeps a strong title match ahead of unrelated reranked results", async () => {
-	const result = await searchDocuments(ctx, {
-		query: "Lauch brieff", graphEnabled: false, rerankEnabled: true,
-	}, {
-		retrieveFast: async () => channels({
-			fuzzy: [candidate("launch", "fuzzy", 1, 0.529)],
-			vector: [candidate("notes", "vector", 1, 0.8)],
-		}),
-		expand: async () => null,
-		loadRerankTexts: async () => new Map([["launch", "Launch brief"], ["notes", "Meeting notes"]]),
-		rerank: async () => ({
-			model: "test-reranker",
-			hits: [{ id: "notes", rank: 1, score: 0.9 }, { id: "launch", rank: 2, score: 0.8 }],
-		}),
-	});
-	expect(result.items.map((item) => item.documentId)).toEqual(["launch", "notes"]);
+	const result = await searchDocuments(
+		ctx,
+		{
+			query: "Lauch brieff",
+			graphEnabled: false,
+			rerankEnabled: true,
+		},
+		{
+			retrieveFast: async () =>
+				channels({
+					fuzzy: [candidate("launch", "fuzzy", 1, 0.529)],
+					vector: [candidate("notes", "vector", 1, 0.8)],
+				}),
+			expand: async () => null,
+			loadRerankTexts: async () =>
+				new Map([
+					["launch", "Launch brief"],
+					["notes", "Meeting notes"],
+				]),
+			rerank: async () => ({
+				model: "test-reranker",
+				hits: [
+					{ id: "notes", rank: 1, score: 0.9 },
+					{ id: "launch", rank: 2, score: 0.8 },
+				],
+			}),
+		},
+	);
+	expect(result.items.map((item) => item.documentId)).toEqual([
+		"launch",
+		"notes",
+	]);
 });
 
 test("reports unavailability when every primary retrieval channel fails", async () => {
-	await expect(searchDocuments(ctx, { query: "launch brief" }, {
-		retrieveFast: async () => { throw new Error("database unavailable"); },
-	})).rejects.toBeInstanceOf(SearchUnavailableError);
+	await expect(
+		searchDocuments(
+			ctx,
+			{ query: "launch brief" },
+			{
+				retrieveFast: async () => {
+					throw new Error("database unavailable");
+				},
+			},
+		),
+	).rejects.toBeInstanceOf(SearchUnavailableError);
 });
 
 function channels(

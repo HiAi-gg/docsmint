@@ -101,7 +101,10 @@ export async function requestRerank(
 			try {
 				const hits = await callRerankSlot(slot, input.query, candidates, {
 					topN,
-					timeoutMs: Math.max(1, Math.floor(remaining / (slots.length - index))),
+					timeoutMs: Math.max(
+						1,
+						Math.floor(remaining / (slots.length - index)),
+					),
 				});
 				if (hits.length === 0) continue;
 				incrementCounter(METRIC_NAMES.SEARCH_RERANK_SUCCESS_TOTAL);

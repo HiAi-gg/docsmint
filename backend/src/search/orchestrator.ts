@@ -4,11 +4,11 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getEmbedding } from "../embedding";
 import type { EmbeddingResult } from "../embedding/result";
 import { config } from "../lib/config";
-import { documentTagCondition } from "../lib/document-list-query";
 import {
 	effectiveDocumentCategoryCondition,
 	tenantOwnerCondition,
 } from "../lib/content-access";
+import { documentTagCondition } from "../lib/document-list-query";
 import {
 	METRIC_NAMES,
 	recordDuration,
@@ -28,7 +28,11 @@ import { expandQuery } from "./query-expander";
 import { applyRerankOrder, type RerankProviderResult } from "./rerank";
 import { requestRerank } from "./rerank-provider";
 import { loadRerankTexts } from "./rerank-texts";
-import { isShortTitleQuery, retrieveFastChannels, type RetrieverOptions } from "./retrievers";
+import {
+	isShortTitleQuery,
+	type RetrieverOptions,
+	retrieveFastChannels,
+} from "./retrievers";
 import { fuseCandidates } from "./rrf";
 import type {
 	ChannelResult,
@@ -218,7 +222,10 @@ export async function searchDocuments(
 		METRIC_NAMES.SEARCH_FAST_DURATION_MS,
 		performance.now() - fastStarted,
 	);
-	if (fast.length === CHANNELS.length && fast.every((channel) => channel.errorCode)) {
+	if (
+		fast.length === CHANNELS.length &&
+		fast.every((channel) => channel.errorCode)
+	) {
 		throw new SearchUnavailableError();
 	}
 
@@ -249,7 +256,8 @@ export async function searchDocuments(
 					expanded = await retrieveExpanded(ctx, expandedPlan, {
 						limit: rankingWindow,
 						documentIds: request.documentIds,
-						categoryId: request.authorizedCategoryId ?? request.filters?.categoryId,
+						categoryId:
+							request.authorizedCategoryId ?? request.filters?.categoryId,
 						filters: request.filters,
 						getEmbedding: getCachedEmbedding,
 					});
@@ -418,14 +426,27 @@ export async function searchDocuments(
 			];
 		}
 	}
-	const titleMatches = fast.find((channel) => channel.channel === "fuzzy")?.candidates ?? [];
-	if (isShortTitleQuery(plan.normalized) && (request.filters?.sort ?? "relevance") === "relevance") {
+	const titleMatches =
+		fast.find((channel) => channel.channel === "fuzzy")?.candidates ?? [];
+	if (
+		isShortTitleQuery(plan.normalized) &&
+		(request.filters?.sort ?? "relevance") === "relevance"
+	) {
 		const best = titleMatches[0]?.rawScore ?? 0;
-		const leadingIds = new Set(titleMatches
-			.filter((candidate) => (candidate.rawScore ?? 0) >= Math.max(0.5, best - 0.03))
-			.map((candidate) => candidate.documentId));
+		const leadingIds = new Set(
+			titleMatches
+				.filter(
+					(candidate) =>
+						(candidate.rawScore ?? 0) >= Math.max(0.5, best - 0.03),
+				)
+				.map((candidate) => candidate.documentId),
+		);
 		const priority = (item: RankedSearchResult) =>
-			item.channels.includes("exact") ? 2 : leadingIds.has(item.documentId) ? 1 : 0;
+			item.channels.includes("exact")
+				? 2
+				: leadingIds.has(item.documentId)
+					? 1
+					: 0;
 		ranked.sort((left, right) => priority(right) - priority(left));
 	}
 	const filters = request.filters;
