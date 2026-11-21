@@ -3,7 +3,7 @@
   "info": {
     "title": "DocsMint API",
     "description": "Self-hosted AI-native knowledge workspace and installable PWA with hybrid search, GraphRAG, REST, SDK, CLI, and MCP access for people and AI agents.",
-    "version": "2.2.2",
+    "version": "2.2.3",
     "contact": {
       "name": "HiAi-gg",
       "url": "https://github.com/HiAi-gg/docsmint"
@@ -6426,6 +6426,35 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Every primary search channel failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "error",
+                    "code",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "SEARCH_UNAVAILABLE"
+                      ]
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "x-docsmint-v1-route-alias": "/api/v1/search/",
@@ -6577,6 +6606,49 @@
               "deprecated": true
             },
             "required": false
+          },
+          {
+            "name": "folderId",
+            "in": "query",
+            "required": false,
+            "description": "Filter by folder UUID. Alternative to folder.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "categoryId",
+            "in": "query",
+            "required": false,
+            "description": "Filter by effective category UUID, including inherited placement. Alternative to category.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "tagIds",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated tag UUIDs. Alternative to tags. Supply at most 100 IDs.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tagMatch",
+            "in": "query",
+            "required": false,
+            "description": "Match all selected tags or any selected tag.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "any"
+              ],
+              "default": "all"
+            }
           }
         ]
       }

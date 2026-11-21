@@ -257,8 +257,12 @@ export interface DocsSearchResponse {
 
 export interface DocsSearchOptions {
 	folder?: string;
+	folderId?: string;
 	tags?: string;
+	tagIds?: string[];
+	tagMatch?: "all" | "any";
 	category?: string;
+	categoryId?: string;
 	dateFrom?: string;
 	dateTo?: string;
 	sort?: string;

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.3 - 2026-11-21
+
+- Filter semantic search by workspace permissions, effective category, folder and tag IDs, with all-tag or any-tag matching.
+- Keep strong title matches visible for short queries containing typos.
+- Limit the full reranking fallback chain to one time budget. Search returns available results when optional providers fail and a retryable error when all primary retrieval channels fail.
+
 ## 2.2.2 - 2026-11-19
 
 - Start touch dragging in the sidebar after a short hold, so swiping scrolls the document tree.
