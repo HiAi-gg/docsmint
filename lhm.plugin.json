@@ -22,9 +22,199 @@
   "tools": [
     {
       "name": "find_documents",
-      "description": "Find readable documents in the active scope. Use mode=list for paginated browsing by folder or tag UUID; use mode=search for hybrid text and semantic retrieval with tag names.",
+      "description": "Find readable documents in the active scope. Use mode=list for paginated browsing or literal text filtering. Use mode=search for ranked text, typo-tolerant titles and semantic matches. Both modes support folder, effective category and tag filters.",
       "inputSchema": {
         "type": "object",
+        "properties": {
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "list",
+                "description": "Select the list operation explicitly."
+              },
+              {
+                "type": "string",
+                "const": "search",
+                "description": "Select the search operation explicitly."
+              }
+            ]
+          },
+          "folderId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "description": "UUID returned by the corresponding list or read operation."
+              },
+              {
+                "description": "Filter by folder UUID.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            ]
+          },
+          "categoryId": {
+            "description": "Filter by effective category UUID, including inherited folder placement.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "visibility": {
+            "description": "Optional document visibility filter; never expands access.",
+            "type": "string",
+            "enum": [
+              "private",
+              "shared",
+              "public"
+            ]
+          },
+          "rootOnly": {
+            "description": "Return only documents without a folder; cannot combine with folderId.",
+            "type": "boolean"
+          },
+          "tag": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "UUID returned by the corresponding list or read operation."
+          },
+          "tagIds": {
+            "anyOf": [
+              {
+                "description": "Filter by tag UUIDs; cannot combine with the legacy tag field.",
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID returned by the corresponding list or read operation."
+                }
+              },
+              {
+                "description": "Filter by tag UUIDs.",
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID returned by the corresponding list or read operation."
+                }
+              }
+            ]
+          },
+          "tagMatch": {
+            "anyOf": [
+              {
+                "description": "Require all supplied tags by default, or any supplied tag.",
+                "type": "string",
+                "enum": [
+                  "all",
+                  "any"
+                ]
+              },
+              {
+                "description": "Match all supplied tags by default, or any supplied tag.",
+                "type": "string",
+                "enum": [
+                  "all",
+                  "any"
+                ]
+              }
+            ]
+          },
+          "q": {
+            "description": "Literal case-insensitive title/content filter; does not invoke semantic search.",
+            "type": "string"
+          },
+          "updatedFrom": {
+            "description": "Inclusive updated timestamp lower bound, with timezone.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedTo": {
+            "description": "Exclusive updated timestamp upper bound, with timezone.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "sortBy": {
+            "description": "Stable server-side sort field; defaults to updatedAt.",
+            "type": "string",
+            "enum": [
+              "updatedAt",
+              "createdAt",
+              "title"
+            ]
+          },
+          "sortOrder": {
+            "description": "Sort direction, descending by default with an ID tie-breaker.",
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "page": {
+            "description": "One-based page number; defaults to the API first page.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum documents per page, up to 1000.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              {
+                "description": "Maximum results to return, up to 100.",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            ]
+          },
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Text to search in the original language."
+          },
+          "includeDiagnostics": {
+            "description": "Include redacted diagnostic details; omitted by default.",
+            "type": "boolean"
+          },
+          "includeChunks": {
+            "description": "Include matching text chunks only when requested.",
+            "type": "boolean"
+          },
+          "folder": {
+            "description": "Legacy alias for folderId.",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Legacy filter by tag names.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "workspaceId": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "oneOf": [
           {
@@ -196,16 +386,48 @@
                 "description": "Include matching text chunks only when requested.",
                 "type": "boolean"
               },
+              "folderId": {
+                "description": "Filter by folder UUID.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "categoryId": {
+                "description": "Filter by effective category UUID, including inherited folder placement.",
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
               "folder": {
-                "description": "Optional folder UUID filter for search.",
+                "description": "Legacy alias for folderId.",
                 "type": "string"
               },
               "tags": {
-                "description": "Optional tag names; all supplied names must match.",
+                "description": "Legacy filter by tag names.",
                 "type": "array",
                 "items": {
                   "type": "string"
                 }
+              },
+              "tagIds": {
+                "description": "Filter by tag UUIDs.",
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "UUID returned by the corresponding list or read operation."
+                }
+              },
+              "tagMatch": {
+                "description": "Match all supplied tags by default, or any supplied tag.",
+                "type": "string",
+                "enum": [
+                  "all",
+                  "any"
+                ]
               },
               "limit": {
                 "description": "Maximum results to return, up to 100.",
@@ -231,16 +453,6 @@
                   "anyOf": [
                     {
                       "required": [
-                        "folderId"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "categoryId"
-                      ]
-                    },
-                    {
-                      "required": [
                         "visibility"
                       ]
                     },
@@ -252,16 +464,6 @@
                     {
                       "required": [
                         "tag"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "tagIds"
-                      ]
-                    },
-                    {
-                      "required": [
-                        "tagMatch"
                       ]
                     },
                     {
@@ -300,165 +502,7 @@
             ]
           }
         ],
-        "properties": {
-          "mode": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "list",
-                "description": "Select the list operation explicitly."
-              },
-              {
-                "type": "string",
-                "const": "search",
-                "description": "Select the search operation explicitly."
-              }
-            ]
-          },
-          "folderId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID returned by the corresponding list or read operation."
-          },
-          "categoryId": {
-            "description": "Filter by effective category UUID, including inherited folder placement.",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "visibility": {
-            "description": "Optional document visibility filter; never expands access.",
-            "type": "string",
-            "enum": [
-              "private",
-              "shared",
-              "public"
-            ]
-          },
-          "rootOnly": {
-            "description": "Return only documents without a folder; cannot combine with folderId.",
-            "type": "boolean"
-          },
-          "tag": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "description": "UUID returned by the corresponding list or read operation."
-          },
-          "tagIds": {
-            "description": "Filter by tag UUIDs; cannot combine with the legacy tag field.",
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "description": "UUID returned by the corresponding list or read operation."
-            }
-          },
-          "tagMatch": {
-            "description": "Require all supplied tags by default, or any supplied tag.",
-            "type": "string",
-            "enum": [
-              "all",
-              "any"
-            ]
-          },
-          "q": {
-            "description": "Literal case-insensitive title/content filter; does not invoke semantic search.",
-            "type": "string"
-          },
-          "updatedFrom": {
-            "description": "Inclusive updated timestamp lower bound, with timezone.",
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-          },
-          "updatedTo": {
-            "description": "Exclusive updated timestamp upper bound, with timezone.",
-            "type": "string",
-            "format": "date-time",
-            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-          },
-          "sortBy": {
-            "description": "Stable server-side sort field; defaults to updatedAt.",
-            "type": "string",
-            "enum": [
-              "updatedAt",
-              "createdAt",
-              "title"
-            ]
-          },
-          "sortOrder": {
-            "description": "Sort direction, descending by default with an ID tie-breaker.",
-            "type": "string",
-            "enum": [
-              "asc",
-              "desc"
-            ]
-          },
-          "page": {
-            "description": "One-based page number; defaults to the API first page.",
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 9007199254740991
-          },
-          "limit": {
-            "anyOf": [
-              {
-                "description": "Maximum documents per page, up to 1000.",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 1000
-              },
-              {
-                "description": "Maximum results to return, up to 100.",
-                "type": "integer",
-                "minimum": 1,
-                "maximum": 100
-              }
-            ]
-          },
-          "query": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Text to search in the original language."
-          },
-          "includeDiagnostics": {
-            "description": "Include redacted diagnostic details; omitted by default.",
-            "type": "boolean"
-          },
-          "includeChunks": {
-            "description": "Include matching text chunks only when requested.",
-            "type": "boolean"
-          },
-          "folder": {
-            "description": "Optional folder UUID filter for search.",
-            "type": "string"
-          },
-          "tags": {
-            "description": "Optional tag names; all supplied names must match.",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "workspaceId": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "description": "Workspace UUID from list_workspace_structure(kind=workspaces). Required for ambiguous creates and structure changes; omit to search all granted scopes.",
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          }
-        },
         "additionalProperties": false
-      },
-      "annotations": {
-        "readOnlyHint": true,
-        "destructiveHint": false,
-        "idempotentHint": true,
-        "openWorldHint": false
       },
       "outputSchema": {
         "type": "object",
@@ -1118,6 +1162,12 @@
             "additionalProperties": false
           }
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
       }
     },
     {
