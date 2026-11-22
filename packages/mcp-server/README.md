@@ -25,22 +25,24 @@ No self-hosted server or local MCP process is required.
 OAuth-capable clients use the same hosted URL. An unauthenticated request returns
 `401` with a `WWW-Authenticate` link to
 `/.well-known/oauth-protected-resource/mcp`. That resource metadata points to
-`/.well-known/oauth-authorization-server`. The current hosted authorization and
-client-connection methods are described in the
-[DocsMint Cloud setup guide](https://docsmint.com/mcp/connect).
+`/.well-known/oauth-authorization-server`. Use the public
+[DocsMint Cloud setup guide](https://docsmint.com/mcp/connect) as the project
+homepage in directories. Register `https://docsmint.com/mcp` as the authenticated
+Streamable HTTP endpoint. See the [hosted MCP reference](https://docsmint.com/docs/mcp)
+for the current connection contract.
 
-Current authorization metadata advertises the `code` response type, only the
-`authorization_code` grant, no token-endpoint client authentication, and PKCE
-with `S256`. The token endpoint exchanges an authorization code and does not
-issue or accept refresh tokens.
+The hosted authorization server advertises the authorization code and refresh
+token grants, with PKCE `S256` for authorization and no token-endpoint client
+authentication. Browser consent binds access to the selected workspace, optional
+category, and explicitly requested scopes (`mcp:read`, `mcp:edit`, `mcp:write`).
 
-Authorization uses your existing DocsMint account and browser consent with the
-authorization-code grant and required PKCE S256. Consent binds access to the
-selected workspace, optional category, and requested `mcp:read`, `mcp:edit`, and
-`mcp:write` scopes. Opaque bearer tokens are bound to the hosted MCP resource,
-expire after one hour, and can be revoked in the browser UI. No refresh tokens are
-issued; authorize again after expiry. This is a DocsMint Cloud feature, not an
-OAuth server installed by the stdio npm bridge.
+Resource-bound opaque access tokens last up to one hour. New authorizations also
+issue rotating refresh tokens with a 90-day deadline from the code exchange.
+Compatible clients save each returned token pair and serialize refresh requests.
+Reusing a consumed refresh token revokes the connection. Clients without refresh
+support require a new browser authorization after expiry. You can revoke a
+connection in the DocsMint UI. The self-hosted stdio bridge uses your own DocsMint
+API key.
 
 API-key clients connect to `https://docsmint.com/mcp` using
 `Authorization: Bearer <key>`. Credential creation, changes, and revocation are
