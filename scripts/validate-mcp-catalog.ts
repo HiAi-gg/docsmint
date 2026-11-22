@@ -124,8 +124,16 @@ export async function validateMcpCatalog(root = new URL("../", import.meta.url))
 	if (asString(lobehub.version, "lhm.plugin.json version") !== publishedVersion) {
 		throw new Error("LobeHub catalog version must match the public package version");
 	}
-	if (asString(lobehub.description, "lhm.plugin.json description") !== catalogDescription) {
-		throw new Error("LobeHub description must match server.json");
+	const lobeDescription = asString(lobehub.description, "lhm.plugin.json description");
+	const englishLocale = asArray(lobehub.localizations, "lhm.plugin.json localizations")
+		.map((entry) => asObject(entry, "LobeHub localization"))
+		.find((entry) => entry.locale === "en-US");
+	if (!englishLocale || englishLocale.description !== lobeDescription) {
+		throw new Error("LobeHub English description must match the listing description");
+	}
+	const summary = asString(englishLocale.summary, "LobeHub English summary");
+	if (!summary.includes(`@hiai-gg/docsmint@${publishedVersion} docsmint-mcp`)) {
+		throw new Error("LobeHub installation example must pin the public package version");
 	}
 	if (
 		asString(lobehub.icon, "lhm.plugin.json icon") !==
