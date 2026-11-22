@@ -37,7 +37,8 @@ Apache-2.0 application on your own infrastructure.
 
 Connect DocsMint Cloud instantly or run the self-hosted stdio bridge against
 your own DocsMint API. Both paths give agents access to persistent knowledge;
-the self-hosted bridge exposes 22 focused tools covering all 31 existing operations plus bounded batch actions and direct workspace-item inspection, with 2 prompts and 3 resources.
+the self-hosted bridge exposes 24 tools, 2 prompts, and 3 resources, including batch actions and
+direct workspace-item inspection.
 
 **Recommended: [DocsMint Cloud setup](https://docsmint.com/mcp/connect?source=github_mcp).**
 No server installation is required. Sign up or log in, choose your workspace,
@@ -51,9 +52,10 @@ clients discover the hosted resource and authorization-server metadata; current
 authorization and client-connection methods are described in the
 [DocsMint Cloud setup guide](https://docsmint.com/mcp/connect?source=github_mcp).
 Browser consent binds access to the selected workspaces, optional categories, and requested scopes.
-DocsMint Cloud 1.1.9 and later supports hourly access tokens and rotating refresh tokens for up to
-30 days from authorization when the client supports renewal. Existing connections need one reconnect
-to enable refresh; clients without refresh support still reconnect after access expires.
+New authorizations issue one-hour access tokens and rotating refresh tokens with a 90-day
+deadline from authorization. Clients without refresh support reconnect when access expires.
+A personal workspace on Free includes 200 MCP calls per month, including up to 10 document
+creates or updates. [See current plan limits](https://docsmint.com/pricing).
 API-key clients can instead send
 `Authorization: Bearer <key>` with an MCP/API credential created in the authenticated
 browser UI. Credentials cannot create or elevate other credentials; lifecycle
@@ -183,7 +185,7 @@ docker pull vgalibov/docsmint:web-latest
 docker pull vgalibov/docsmint:caddy-latest
 ```
 
-Use versioned tags `api-v1.0.3`, `web-v1.0.3`, and `caddy-v1.0.3` for
+Use versioned tags `api-v2.2.4`, `web-v2.2.4`, and `caddy-v2.2.4` for
 reproducible deploys. Caddy is the supporting reverse proxy with rate limiting;
 it is separate from the API and web application. The quickstart still builds the Compose stack from this repository so PostgreSQL,
 Redis, and SeaweedFS start together with the application.
