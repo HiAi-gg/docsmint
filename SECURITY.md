@@ -22,7 +22,7 @@ For OSS or self-hosted vulnerabilities, please report responsibly.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **docs@webs.cool**
+Instead, please email: **hi@docsmint.com**
 
 ### What to include
 
